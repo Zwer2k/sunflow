@@ -19,6 +19,7 @@ class Settings:
     data_dir: Path
     profiles_dir: Path
     schema_dir: Path
+    frontend_dir: Path
 
     @property
     def ha_websocket_url(self) -> str:
@@ -54,4 +55,7 @@ def load_settings() -> Settings:
             os.environ.get("SUNFLOW_PROFILES_DIR", repo_root / "profiles")
         ),
         schema_dir=Path(os.environ.get("SUNFLOW_SCHEMA_DIR", repo_root / "schema")),
+        frontend_dir=Path(
+            os.environ.get("SUNFLOW_FRONTEND_DIR", repo_root / "frontend")
+        ),
     )

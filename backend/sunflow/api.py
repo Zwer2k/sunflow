@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import API_VERSION, __version__
@@ -291,4 +292,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Sunflow", version=__version__, lifespan=lifespan)
     app.include_router(router)
+    # Mounted last so API routes take precedence
+    if settings is not None and settings.frontend_dir.is_dir():
+        app.mount(
+            "/", StaticFiles(directory=settings.frontend_dir, html=True), name="frontend"
+        )
     return app
