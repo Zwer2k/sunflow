@@ -1,6 +1,7 @@
 # Sofar hybrid inverters via the solax_modbus custom integration (Sofar plugin).
 # Verified on hardware:
-#   grid: + = import, - = export; battery: + = charge, - = discharge
+#   Passive mode registers: grid + = import, - = export; battery + = charge, - = discharge
+#   Sensor active_power_pcc_total uses the opposite grid sign: - = import
 #   The inverter clamps battery power to [bat_min, bat_max] and regulates the grid to grid_target.
 #   Passive values live in inverter RAM (reset to 0/0/0 on inverter reboot -> battery idle).
 #   Mode and other settings are stored in EEPROM.
@@ -19,7 +20,7 @@ roles:
   battery_power: {key: battery_power_total, unit: kW, sign: charge_positive}
   pv_power: {key: pv_power_total, unit: kW}
   pv_ext_power: {key: active_power_pv_ext, unit: kW}
-  grid_power: {key: active_power_pcc_total, unit: kW, sign: import_positive}
+  grid_power: {key: active_power_pcc_total, unit: kW, sign: export_positive}
   load_power: {key: active_power_load_sys, unit: kW}
 
 primitive:
