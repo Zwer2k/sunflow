@@ -1,0 +1,15 @@
+# Huawei SUN2000 without battery via the huawei_solar custom integration.
+# Read-only: export limitation needs a DTSU666-H meter; no control without installer login.
+profile: huawei_solar/pv_only
+version: 1
+match:
+  integration: huawei_solar
+  has_battery: false
+
+capabilities: [pv]
+
+roles:
+  ac_power: {key: active_power, unit: W}
+  pv_power: {key: input_power, unit: W}
+  daily_yield: {key: daily_yield_energy, unit: kWh}
+  status: {key: device_status}

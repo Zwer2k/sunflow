@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sunflow"
+version = "0.1.0"
+description = "Predictive energy management backend for Home Assistant"
+requires-python = ">=3.13"
+dependencies = [
+    "aiohttp>=3.11",
+    "fastapi>=0.115",
+    "jsonschema>=4.23",
+    "pydantic>=2.10",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "uvicorn>=0.34",
+]
+
+[project.optional-dependencies]
+dev = ["httpx2", "pytest>=8", "pytest-asyncio>=0.25", "ruff>=0.9"]
+
+[tool.setuptools.packages.find]
+include = ["sunflow*"]
+
+[tool.pytest.ini_options]
+testpaths = ["../tests"]
+asyncio_mode = "auto"
