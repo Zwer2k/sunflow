@@ -1,12 +1,12 @@
 {
   "domain": "sunflow",
   "name": "Sunflow",
-  "codeowners": [],
+  "codeowners": ["@Zwer2k"],
   "config_flow": true,
-  "documentation": "https://github.com/OWNER/sunflow",
+  "documentation": "https://github.com/Zwer2k/sunflow",
   "integration_type": "service",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/OWNER/sunflow/issues",
+  "issue_tracker": "https://github.com/Zwer2k/sunflow/issues",
   "requirements": [],
   "version": "0.1.0"
 }

@@ -1,7 +1,7 @@
 # Sunflow
 
-Predictive energy management for Home Assistant: plans battery, EV charging,
-heat pumps and other loads from PV forecasts and dynamic electricity prices.
+Predictive energy management for Home Assistant – plans battery, EV and heat
+pump around PV forecasts and dynamic prices.
 
 ## Repository layout
 
