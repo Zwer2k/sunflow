@@ -1,0 +1,12 @@
+{
+  "domain": "sunflow",
+  "name": "Sunflow",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/OWNER/sunflow",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/OWNER/sunflow/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

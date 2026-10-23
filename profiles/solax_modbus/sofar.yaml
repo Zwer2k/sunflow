@@ -1,0 +1,56 @@
+# Sofar hybrid inverters via the solax_modbus custom integration (Sofar plugin).
+# Verified on hardware:
+#   grid: + = import, - = export; battery: + = charge, - = discharge
+#   The inverter clamps battery power to [bat_min, bat_max] and regulates the grid to grid_target.
+#   Passive values live in inverter RAM (reset to 0/0/0 on inverter reboot -> battery idle).
+#   Mode and other settings are stored in EEPROM.
+profile: solax_modbus/sofar
+version: 1
+match:
+  integration: solax_modbus
+  requires: [charger_use_mode, passive_mode_battery_charge_discharge]
+
+capabilities: [pv, pv_ext, battery, grid_meter, battery_window]
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: battery_capacity_total, unit: "%"}
+  battery_power: {key: battery_power_total, unit: kW, sign: charge_positive}
+  pv_power: {key: pv_power_total, unit: kW}
+  pv_ext_power: {key: active_power_pv_ext, unit: kW}
+  grid_power: {key: active_power_pcc_total, unit: kW, sign: import_positive}
+  load_power: {key: active_power_load_sys, unit: kW}
+
+primitive:
+  battery_window:
+    params: {bat_min: W, bat_max: W, grid_target: W}
+    storage: volatile
+    refresh: 60s
+    steps:
+      - number: {key: passive_mode_grid_power, value: "{{ grid_target }}"}
+      - number: {key: passive_mode_battery_power_min, value: "{{ bat_min }}"}
+      - number: {key: passive_mode_battery_power_max, value: "{{ bat_max }}"}
+      - press: {key: passive_mode_battery_charge_discharge}
+
+defaults:
+  max_charge: 20000
+  max_discharge: 20000
+  grid_offset: -200
+
+actions:
+  auto: {bat_min: -max_discharge, bat_max: max_charge, grid_target: grid_offset}
+  hold: {bat_min: 0, bat_max: max_charge, grid_target: grid_offset}
+  force_charge: {bat_min: P, bat_max: max_charge, grid_target: grid_offset}
+  force_discharge: {bat_min: -max_discharge, bat_max: -P, grid_target: grid_offset}
+  limit_charge: {bat_min: -max_discharge, bat_max: P, grid_target: grid_offset}
+  limit_discharge: {bat_min: -P, bat_max: max_charge, grid_target: grid_offset}
+  absorb: {bat_min: 0, bat_max: max_charge, grid_target: 0}
+
+setup:
+  - select: {key: passive_mode_timeout, option: "Disabled"}
+  - press: {key: passive_mode_update_timeout, storage: eeprom, write: if_differs, readback: passive_mode_timeout}
+  - select: {key: charger_use_mode, option: "Passive Mode", storage: eeprom, write: if_differs}
+
+eeprom_guard:
+  max_writes_per_day: 10

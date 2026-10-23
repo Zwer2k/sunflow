@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sunflow/schema/profile.schema.json",
+  "title": "Sunflow device profile",
+  "description": "Maps a device of a Home Assistant integration to Sunflow roles and actions.",
+  "type": "object",
+  "required": ["profile", "version", "match", "capabilities", "roles"],
+  "additionalProperties": false,
+  "properties": {
+    "profile": {
+      "description": "Profile id: <integration domain>/<variant>.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+/[a-z0-9_]+$"
+    },
+    "version": {"type": "integer", "minimum": 1},
+    "match": {"$ref": "#/$defs/match"},
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": ["pv", "pv_ext", "battery", "grid_meter", "battery_window", "curtail", "switch_off", "ev_charger", "load"]
+      }
+    },
+    "watchdog": {
+      "description": "Device-side fallback when control stops: none, on communication loss, or on missing commands.",
+      "enum": ["none", "comm_loss", "command"],
+      "default": "none"
+    },
+    "fallback": {
+      "description": "Action executed when Sunflow stops controlling the device.",
+      "type": "string"
+    },
+    "roles": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"$ref": "#/$defs/role"}
+    },
+    "primitive": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"$ref": "#/$defs/primitive"}
+    },
+    "defaults": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"type": "number"}
+    },
+    "actions": {
+      "description": "Named presets of the primitive's parameters. Values are numbers or names of defaults / runtime parameters, optionally negated.",
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "oneOf": [
+            {"type": "number"},
+            {"type": "string", "pattern": "^-?[A-Za-z_][A-Za-z0-9_]*$"}
+          ]
+        }
+      }
+    },
+    "setup": {
+      "description": "Steps executed once when the device is activated.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/step"}
+    },
+    "eeprom_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_writes_per_day": {"type": "integer", "minimum": 1}
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "match": {
+      "type": "object",
+      "required": ["integration"],
+      "additionalProperties": false,
+      "properties": {
+        "integration": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+        "requires": {
+          "description": "Entity keys that must exist on the device.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "has_battery": {"type": "boolean"},
+        "model": {
+          "description": "Glob pattern matched against the device model.",
+          "type": "string"
+        },
+        "manufacturer": {"type": "string"}
+      }
+    },
+    "role": {
+      "type": "object",
+      "required": ["key"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "Entity key; matched against the end of the entity's unique_id.",
+          "type": "string"
+        },
+        "unit": {"type": "string"},
+        "sign": {"enum": ["charge_positive", "discharge_positive", "import_positive", "export_positive"]},
+        "optional": {"type": "boolean", "default": false}
+      }
+    },
+    "storage": {
+      "description": "Where the device persists a written value.",
+      "enum": ["volatile", "eeprom"]
+    },
+    "primitive": {
+      "type": "object",
+      "required": ["params", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "params": {
+          "type": "object",
+          "propertyNames": {"$ref": "#/$defs/identifier"},
+          "additionalProperties": {"type": "string"}
+        },
+        "storage": {"$ref": "#/$defs/storage"},
+        "refresh": {"$ref": "#/$defs/duration"},
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/step"}
+        }
+      }
+    },
+    "duration": {"type": "string", "pattern": "^[0-9]+(s|min|h)$"},
+    "step_options": {
+      "type": "object",
+      "properties": {
+        "key": {"type": "string"},
+        "storage": {"$ref": "#/$defs/storage"},
+        "write": {"enum": ["always", "if_differs"]},
+        "readback": {"type": "string"}
+      }
+    },
+    "step": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "number": {
+          "allOf": [
+            {"$ref": "#/$defs/step_options"},
+            {"required": ["key", "value"], "properties": {"value": {"type": ["number", "string"]}}}
+          ]
+        },
+        "select": {
+          "allOf": [
+            {"$ref": "#/$defs/step_options"},
+            {"required": ["key", "option"], "properties": {"option": {"type": "string"}}}
+          ]
+        },
+        "switch": {
+          "allOf": [
+            {"$ref": "#/$defs/step_options"},
+            {"required": ["key", "state"], "properties": {"state": {"enum": ["on", "off"]}}}
+          ]
+        },
+        "press": {
+          "allOf": [
+            {"$ref": "#/$defs/step_options"},
+            {"required": ["key"]}
+          ]
+        },
+        "service": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {"type": "string", "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"},
+            "data": {"type": "object"},
+            "storage": {"$ref": "#/$defs/storage"}
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
