@@ -1,5 +1,6 @@
 """Persistent Sunflow configuration."""
 
+from datetime import datetime
 import json
 from pathlib import Path
 from typing import Literal
@@ -44,6 +45,7 @@ class DeviceConfig(BaseModel):
     role_overrides: dict[str, RoleOverride] = Field(default_factory=dict)
     feed_in: FeedIn | None = None
     measured_by: MeasuredBy | None = None
+    test_passed_at: datetime | None = None
 
 
 class TariffConfig(BaseModel):
@@ -92,5 +94,5 @@ class ConfigStore:
         """Write the configuration atomically."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(config.model_dump(), indent=2))
+        tmp.write_text(json.dumps(config.model_dump(mode="json"), indent=2))
         tmp.replace(self._path)

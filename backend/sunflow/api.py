@@ -25,6 +25,7 @@ from .config_store import (
     RoleOverride,
     TariffConfig,
 )
+from .device_test import DeviceTestState, run_device_test, state_response
 from .discovery import Snapshot, discover, fetch_snapshot
 from .executor import (
     ActionResult,
@@ -218,7 +219,7 @@ async def _preview(
 @router.get("/config")
 async def get_config(request: Request) -> dict[str, Any]:
     """Return the stored configuration."""
-    return request.app.state.store.load().model_dump()
+    return request.app.state.store.load().model_dump(mode="json")
 
 
 @router.post("/config/devices")
@@ -421,6 +422,77 @@ async def get_forecast_series(
     }
 
 
+def _tests(request: Request) -> dict[str, tuple[DeviceTestState, asyncio.Task[None]]]:
+    return request.app.state.device_tests
+
+
+@router.post("/config/devices/{device_id}/test")
+async def start_device_test(
+    request: Request, device_id: str, confirm: bool = False
+) -> dict[str, Any]:
+    """Start the device test. Writes to the device, so confirm=true is required."""
+    if not confirm:
+        raise HTTPException(status_code=400, detail="The device test writes to the device; pass confirm=true")
+    device = _configured_device(request, device_id)
+    profile = _library(request).profiles[device.profile]
+    if "battery_window" not in profile["capabilities"]:
+        raise HTTPException(status_code=422, detail="Device has no battery control")
+    if (running := _tests(request).get(device_id)) and running[0].running:
+        raise HTTPException(status_code=409, detail="Test already running")
+
+    client: HAClient = request.app.state.ha
+    overrides = {r: o.model_dump() for r, o in device.role_overrides.items()}
+    guard = _guard(request, profile)
+
+    async def read() -> tuple[float | None, float | None]:
+        snapshot = await fetch_snapshot(client)
+        roles = {r.role: r.value for r in preview(profile, snapshot, device.ha_device_id, overrides)}
+        return roles.get("battery_power"), roles.get("battery_soc")
+
+    async def run_action(action: str, runtime: dict[str, float]) -> list[PlannedCall]:
+        snapshot = await fetch_snapshot(client)
+        _, calls = plan_action(
+            profile, action, device.parameters, runtime, device_entities(snapshot, device.ha_device_id)
+        )
+        await execute(client, calls, snapshot.states, guard, dry_run=False)
+        return calls
+
+    state = DeviceTestState(device_id=device_id)
+    store: ConfigStore = request.app.state.store
+
+    async def run() -> None:
+        await run_device_test(state, read, run_action)
+        if state.phase == "done" and state.control_works and state.sign_correct and state.restored:
+            config = store.load()
+            if (stored := config.device(device_id)) is not None:
+                stored.test_passed_at = state.finished
+                store.save(config)
+
+    _tests(request)[device_id] = (state, asyncio.create_task(run()))
+    return state_response(state)
+
+
+@router.get("/config/devices/{device_id}/test")
+async def get_device_test(request: Request, device_id: str) -> dict[str, Any]:
+    """Return progress and result of the last device test."""
+    if (entry := _tests(request).get(device_id)) is None:
+        raise HTTPException(status_code=404, detail="No test run")
+    return state_response(entry[0])
+
+
+@router.post("/config/devices/{device_id}/test/abort")
+async def abort_device_test(request: Request, device_id: str) -> dict[str, Any]:
+    """Abort a running test; the device is restored to self-consumption."""
+    if (entry := _tests(request).get(device_id)) is None:
+        raise HTTPException(status_code=404, detail="No test run")
+    state, task = entry
+    if state.running:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+    return state_response(state)
+
+
 def _summary_response(summary: SetupSummary) -> dict[str, Any]:
     return asdict(summary) | {"can_complete": summary.can_complete}
 
@@ -560,10 +632,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.profiles_dir, load_schema(settings.schema_dir)
         )
         app.state.ha = HAClient(settings.ha_websocket_url, settings.ha_token)
+        app.state.device_tests = {}
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
         try:
             yield
         finally:
+            # A running device test restores self-consumption when cancelled
+            for _, task in app.state.device_tests.values():
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
             keeper.cancel()
             with suppress(asyncio.CancelledError):
                 await keeper
