@@ -289,6 +289,9 @@ class SunflowApp extends LitElement {
           <span class="card-title">${integration.title}</span>
           <span class="check ${selected ? "on" : ""}" aria-hidden="true">${selected ? "✓" : ""}</span>
         </div>
+        ${integration.devices
+          .filter((d) => d.profile)
+          .map((d) => html`<span class="model">${[d.manufacturer, d.model].filter(Boolean).join(" ") || d.name}</span>`)}
         <span class="muted small">${integration.domain}${integration.in_energy_dashboard ? " · im Energie-Dashboard" : ""}</span>
         ${chip}
       </button>
@@ -558,6 +561,7 @@ class SunflowApp extends LitElement {
     .card:disabled { cursor: default; opacity: .85; }
     .card-head { display: flex; justify-content: space-between; gap: 8px; width: 100%; }
     .card-title { font-weight: 600; }
+    .model { font-size: 14px; }
     .check {
       flex: none; width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
       border: 1.5px solid var(--sf-muted); font-size: 14px; font-weight: 700;
