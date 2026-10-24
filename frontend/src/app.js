@@ -7,6 +7,13 @@ const PREVIEW_INTERVAL_MS = 5000;
 // Sensors are polled at different times, so single readings can disagree.
 const BALANCE_SAMPLES = 6;
 const BALANCE_MIN_SAMPLES = 3;
+const UNAVAILABLE = new Set(["unavailable", "unknown", ""]);
+
+// Non-numeric states such as a device status are shown as text
+function isText(role) {
+  return role.value === null && role.raw_state !== null && !UNAVAILABLE.has(role.raw_state) && isNaN(Number(role.raw_state));
+}
+
 const OPPOSITE_SIGN = {
   charge_positive: "discharge_positive",
   discharge_positive: "charge_positive",
@@ -343,12 +350,14 @@ class SunflowApp extends LitElement {
     return html`
       <div class="tiles">
         ${preview.roles
-          .filter((r) => r.unit !== null || r.missing)
+          .filter((r) => r.unit !== null || r.missing || isText(r))
           .map(
             (r) => html`
               <div class="tile ${r.missing ? "missing" : ""}">
                 <div class="small muted">${roleLabel(r.role)}</div>
-                <div class="value">${SIGNED_ROLES.has(r.role) ? formatSigned(r.value, r.unit) : formatValue(r.value, r.unit)}</div>
+                <div class="value ${isText(r) ? "text" : ""}">
+                  ${isText(r) ? r.raw_state : SIGNED_ROLES.has(r.role) ? formatSigned(r.value, r.unit) : formatValue(r.value, r.unit)}
+                </div>
                 <div class="small muted">${r.missing ? "nicht gefunden" : roleHint(r.role, r.value)}</div>
               </div>
             `,
@@ -570,6 +579,7 @@ class SunflowApp extends LitElement {
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }
     .tile.missing { outline: 1px dashed var(--sf-warn-text); }
     .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .tile .value.text { font-size: 15px; padding-top: 4px; }
 
     .alert { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
     .alert.ok { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
