@@ -7,6 +7,12 @@ const PREVIEW_INTERVAL_MS = 5000;
 // Sensors are polled at different times, so single readings can disagree.
 const BALANCE_SAMPLES = 6;
 const BALANCE_MIN_SAMPLES = 3;
+const OPPOSITE_SIGN = {
+  charge_positive: "discharge_positive",
+  discharge_positive: "charge_positive",
+  import_positive: "export_positive",
+  export_positive: "import_positive",
+};
 const BALANCE_FORMULAS = {
   ac: "Netz + WR-Ausgang (AC) + PV extern",
   dc: "Netz + PV + PV extern − Batterie",
@@ -19,7 +25,11 @@ class SunflowApp extends LitElement {
     _integrations: { state: true },
     _selected: { state: true },
     _previews: { state: true },
-    _configured: { state: true },
+    _configDevices: { state: true },
+    _editing: { state: true },
+    _overrides: { state: true },
+    _entities: { state: true },
+    _dirty: { state: true },
     _busy: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
@@ -32,7 +42,13 @@ class SunflowApp extends LitElement {
     this._integrations = null;
     this._selected = new Set();
     this._previews = {};
-    this._configured = new Set();
+    // ha_device_id -> stored device config
+    this._configDevices = {};
+    this._editing = new Set();
+    // ha_device_id -> {role: {entity_id?, sign?}}
+    this._overrides = {};
+    this._entities = {};
+    this._dirty = new Set();
     this._busy = new Set();
     this._error = null;
     this._haConnected = null;
@@ -58,7 +74,8 @@ class SunflowApp extends LitElement {
       this._selected = new Set(
         integrations.filter((i) => i.supported && i.devices.some((d) => d.profile)).map((i) => i.entry_id),
       );
-      this._configured = new Set(config.devices.map((d) => d.ha_device_id));
+      this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
+      this._overrides = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
       this._error = null;
     } catch (err) {
       this._error = `Daten konnten nicht geladen werden: ${err.message}`;
@@ -93,7 +110,7 @@ class SunflowApp extends LitElement {
     const results = await Promise.all(
       this._devices.map(async (d) => {
         try {
-          return [d.device_id, await api.preview(d.device_id)];
+          return [d.device_id, await api.preview(d.device_id, d.profile, this._overrides[d.device_id])];
         } catch (err) {
           return [d.device_id, { error: err.message }];
         }
@@ -116,18 +133,65 @@ class SunflowApp extends LitElement {
   }
 
   async _accept(device) {
-    this._busy = new Set([...this._busy, device.device_id]);
+    const id = device.device_id;
+    const overrides = this._overrides[id] ?? {};
+    this._busy = new Set([...this._busy, id]);
     try {
-      await api.addDevice(device.device_id, device.profile);
-      this._configured = new Set([...this._configured, device.device_id]);
+      const stored = this._configDevices[id];
+      const saved = stored
+        ? await api.setOverrides(stored.id, overrides)
+        : await api.addDevice(id, device.profile, overrides);
+      this._configDevices = { ...this._configDevices, [id]: saved };
+      this._editing = this._without(this._editing, id);
+      this._dirty = this._without(this._dirty, id);
       this._error = null;
     } catch (err) {
-      this._error = `Gerät konnte nicht übernommen werden: ${err.message}`;
+      this._error = `Gerät konnte nicht gespeichert werden: ${err.message}`;
     } finally {
-      const busy = new Set(this._busy);
-      busy.delete(device.device_id);
-      this._busy = busy;
+      this._busy = this._without(this._busy, id);
     }
+  }
+
+  _without(set, value) {
+    const copy = new Set(set);
+    copy.delete(value);
+    return copy;
+  }
+
+  async _toggleEdit(device) {
+    const id = device.device_id;
+    if (this._editing.has(id)) {
+      this._editing = this._without(this._editing, id);
+      return;
+    }
+    this._editing = new Set([...this._editing, id]);
+    if (!this._entities[id]) {
+      try {
+        this._entities = { ...this._entities, [id]: await api.entities(id) };
+      } catch (err) {
+        this._error = `Entitäten konnten nicht geladen werden: ${err.message}`;
+      }
+    }
+  }
+
+  _setOverride(deviceId, role, field, value) {
+    const deviceOverrides = { ...(this._overrides[deviceId] ?? {}) };
+    const roleOverride = { ...(deviceOverrides[role] ?? {}) };
+    if (value === null || value === "") delete roleOverride[field];
+    else roleOverride[field] = value;
+    if (Object.keys(roleOverride).length) deviceOverrides[role] = roleOverride;
+    else delete deviceOverrides[role];
+    this._overrides = { ...this._overrides, [deviceId]: deviceOverrides };
+    this._dirty = new Set([...this._dirty, deviceId]);
+    this._balanceHistory[deviceId] = [];
+    this._refreshPreviews();
+  }
+
+  _resetOverrides(deviceId) {
+    this._overrides = { ...this._overrides, [deviceId]: {} };
+    this._dirty = new Set([...this._dirty, deviceId]);
+    this._balanceHistory[deviceId] = [];
+    this._refreshPreviews();
   }
 
   render() {
@@ -237,8 +301,11 @@ class SunflowApp extends LitElement {
   }
 
   _renderDevice(device) {
-    const preview = this._previews[device.device_id];
-    const configured = this._configured.has(device.device_id);
+    const id = device.device_id;
+    const preview = this._previews[id];
+    const configured = Boolean(this._configDevices[id]);
+    const editing = this._editing.has(id);
+    const dirty = this._dirty.has(id);
     return html`
       <section class="device">
         <div class="device-head">
@@ -254,14 +321,19 @@ class SunflowApp extends LitElement {
         ${preview?.error ? html`<div class="alert error">${preview.error}</div>` : nothing}
         ${preview?.roles ? this._renderTiles(preview) : nothing}
         ${preview?.balance ? this._renderBalance(device.device_id) : nothing}
-        ${this._advanced && preview?.roles ? this._renderRoleTable(preview) : nothing}
+        ${editing && preview?.roles ? this._renderRoleEditor(device, preview) : nothing}
+        ${!editing && this._advanced && preview?.roles ? this._renderRoleTable(preview) : nothing}
         ${this._advanced && device.components.length ? this._renderComponents(device) : nothing}
         <div class="actions">
-          ${configured
+          ${configured && !dirty
             ? html`<span class="chip ok">✓ Übernommen</span>`
-            : html`<button class="ok" ?disabled=${this._busy.has(device.device_id) || !preview?.complete}
-                @click=${() => this._accept(device)}>Werte passen</button>`}
-          <button class="secondary" @click=${() => (this._advanced = true)}>Anpassen</button>
+            : html`<button class="ok" ?disabled=${this._busy.has(id) || !preview?.complete}
+                @click=${() => this._accept(device)}>
+                ${configured ? "Anpassungen speichern" : dirty ? "Mit Anpassungen übernehmen" : "Werte passen"}
+              </button>`}
+          <button class="secondary" aria-expanded=${editing} @click=${() => this._toggleEdit(device)}>
+            ${editing ? "Anpassen schließen" : "Anpassen"}
+          </button>
         </div>
       </section>
     `;
@@ -332,6 +404,75 @@ class SunflowApp extends LitElement {
             )}
           </tbody>
         </table>
+      </div>
+    `;
+  }
+
+  _renderRoleEditor(device, preview) {
+    const id = device.device_id;
+    const overrides = this._overrides[id] ?? {};
+    const entities = this._entities[id];
+    const sensors = (entities ?? []).filter((e) => e.entity_id.startsWith("sensor."));
+    return html`
+      <div class="editor">
+        <div class="editor-head">
+          <div>
+            <div class="editor-title">Zuordnung anpassen</div>
+            <div class="small muted">Wähle eine andere Entität oder kehre das Vorzeichen um. Die Vorschau aktualisiert sich sofort.</div>
+          </div>
+          <button class="secondary" ?disabled=${!Object.keys(overrides).length} @click=${() => this._resetOverrides(id)}>
+            Auf Profil zurücksetzen
+          </button>
+        </div>
+        ${entities === undefined ? html`<p class="muted small">Lade Entitäten …</p>` : nothing}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Rolle</th><th>Entität</th><th>Vorzeichen</th><th>Wert</th></tr>
+            </thead>
+            <tbody>
+              ${preview.roles.map((r) => {
+                const override = overrides[r.role] ?? {};
+                const inverted = Boolean(override.sign) && override.sign !== r.profile_sign;
+                return html`
+                  <tr class=${Object.keys(override).length ? "overridden" : ""}>
+                    <td>
+                      ${roleLabel(r.role)}
+                      ${Object.keys(override).length ? html`<span class="chip warn">angepasst</span>` : nothing}
+                    </td>
+                    <td>
+                      <select aria-label="Entität für ${roleLabel(r.role)}"
+                        @change=${(e) => this._setOverride(id, r.role, "entity_id", e.target.value)}>
+                        <option value="" ?selected=${!override.entity_id}>
+                          Profil: ${r.profile_entity_id ?? "nicht gefunden"}
+                        </option>
+                        ${sensors.map(
+                          (e) => html`<option value=${e.entity_id} ?selected=${override.entity_id === e.entity_id}>
+                            ${e.entity_id} (${e.state ?? "–"} ${e.unit ?? ""})
+                          </option>`,
+                        )}
+                      </select>
+                    </td>
+                    <td>
+                      ${r.profile_sign
+                        ? html`<label class="inline">
+                            <input type="checkbox" .checked=${inverted}
+                              @change=${(e) =>
+                                this._setOverride(id, r.role, "sign", e.target.checked ? OPPOSITE_SIGN[r.profile_sign] : null)}>
+                            umkehren
+                          </label>`
+                        : html`<span class="muted small">–</span>`}
+                    </td>
+                    <td class="nowrap">
+                      ${SIGNED_ROLES.has(r.role) ? formatSigned(r.value, r.unit) : formatValue(r.value, r.unit)}
+                      <div class="small muted">${roleHint(r.role, r.value)}</div>
+                    </td>
+                  </tr>
+                `;
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     `;
   }
@@ -435,6 +576,20 @@ class SunflowApp extends LitElement {
     .alert.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }
     .alert.error { background: var(--sf-error-bg); color: var(--sf-error-text); }
     .alert.neutral { background: var(--sf-neutral-bg); color: var(--sf-neutral-text); }
+
+    .editor { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--sf-subtle); border-radius: 8px; }
+    .editor-head { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
+    .editor-title { font-weight: 600; }
+    .editor .table-wrap { background: var(--sf-surface); }
+    tr.overridden td:first-child { box-shadow: inset 3px 0 0 var(--sf-warn-text); }
+    select {
+      font: inherit; font-size: 13px; min-height: 36px; max-width: 100%; padding: 0 8px;
+      border: 1px solid var(--sf-border-strong); border-radius: 6px; background: var(--sf-surface); color: var(--sf-text);
+    }
+    .inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+    .inline input { width: 18px; height: 18px; }
+    .nowrap { white-space: nowrap; }
+    td .chip { margin-left: 6px; }
 
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }

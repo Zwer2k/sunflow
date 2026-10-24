@@ -17,8 +17,14 @@ async function request(method, path, body) {
 export const api = {
   health: () => request("GET", "/health"),
   discovery: () => request("GET", "/discovery"),
-  preview: (haDeviceId) => request("GET", `/devices/${encodeURIComponent(haDeviceId)}/preview`),
+  preview: (haDeviceId, profile, overrides) =>
+    overrides
+      ? request("POST", `/devices/${encodeURIComponent(haDeviceId)}/preview`, { profile, role_overrides: overrides })
+      : request("GET", `/devices/${encodeURIComponent(haDeviceId)}/preview`),
+  entities: (haDeviceId) => request("GET", `/devices/${encodeURIComponent(haDeviceId)}/entities`),
   config: () => request("GET", "/config"),
-  addDevice: (haDeviceId, profile) =>
-    request("POST", "/config/devices", { ha_device_id: haDeviceId, profile }),
+  addDevice: (haDeviceId, profile, overrides) =>
+    request("POST", "/config/devices", { ha_device_id: haDeviceId, profile, role_overrides: overrides ?? {} }),
+  setOverrides: (configDeviceId, overrides) =>
+    request("PUT", `/config/devices/${encodeURIComponent(configDeviceId)}/role_overrides`, overrides),
 };

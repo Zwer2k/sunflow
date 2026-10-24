@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import API_VERSION, __version__
-from .config_store import ConfigStore, DeviceConfig
+from .config_store import ConfigStore, DeviceConfig, RoleOverride
 from .discovery import Snapshot, discover, fetch_snapshot
 from .executor import (
     ActionResult,
@@ -41,6 +41,7 @@ class AddDevice(BaseModel):
 
     ha_device_id: str
     profile: str | None = None
+    role_overrides: dict[str, RoleOverride] = {}
 
 
 async def _snapshot(request: Request) -> Snapshot:
@@ -98,6 +99,33 @@ async def discovery(request: Request) -> list[dict[str, Any]]:
     return [asdict(i) for i in discover(snapshot, _library(request))]
 
 
+class PreviewRequest(BaseModel):
+    """Preview with unsaved role overrides."""
+
+    profile: str | None = None
+    role_overrides: dict[str, RoleOverride] = {}
+
+
+@router.get("/devices/{device_id}/entities")
+async def device_entity_list(request: Request, device_id: str) -> list[dict[str, Any]]:
+    """Return the entities of a device and its sub-devices for manual mapping."""
+    snapshot = await _snapshot(request)
+    result = []
+    for entity in device_entities(snapshot, device_id):
+        state = snapshot.states.get(entity["entity_id"], {})
+        attributes = state.get("attributes", {})
+        result.append(
+            {
+                "entity_id": entity["entity_id"],
+                "name": attributes.get("friendly_name") or entity["entity_id"],
+                "state": state.get("state"),
+                "unit": attributes.get("unit_of_measurement"),
+                "device_class": attributes.get("device_class"),
+            }
+        )
+    return sorted(result, key=lambda e: e["entity_id"])
+
+
 @router.get("/devices/{device_id}/preview")
 async def device_preview(
     request: Request, device_id: str, profile: str | None = None
@@ -105,7 +133,34 @@ async def device_preview(
     """Return the live, normalized role values of a Home Assistant device.
 
     Without a profile parameter the profile found by discovery is used.
+    Role overrides of a configured device are applied.
     """
+    configured = next(
+        (
+            d
+            for d in request.app.state.store.load().devices
+            if d.ha_device_id == device_id
+        ),
+        None,
+    )
+    overrides = configured.role_overrides if configured else {}
+    return await _preview(request, device_id, profile, overrides)
+
+
+@router.post("/devices/{device_id}/preview")
+async def device_preview_with_overrides(
+    request: Request, device_id: str, body: PreviewRequest
+) -> dict[str, Any]:
+    """Return the preview with unsaved role overrides (advanced mode)."""
+    return await _preview(request, device_id, body.profile, body.role_overrides)
+
+
+async def _preview(
+    request: Request,
+    device_id: str,
+    profile: str | None,
+    overrides: dict[str, RoleOverride],
+) -> dict[str, Any]:
     library = _library(request)
     snapshot = await _snapshot(request)
 
@@ -121,7 +176,12 @@ async def device_preview(
     if profile not in library.profiles:
         raise HTTPException(status_code=404, detail=f"Unknown profile {profile}")
 
-    roles = preview(library.profiles[profile], snapshot, device_id)
+    roles = preview(
+        library.profiles[profile],
+        snapshot,
+        device_id,
+        {role: o.model_dump() for role, o in overrides.items()},
+    )
     balance = check_balance(roles)
     return {
         "device_id": device_id,
@@ -160,8 +220,23 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
         profile=profile_id,
         profile_version=library.profiles[profile_id]["version"],
         name=discovered.name,
+        role_overrides=body.role_overrides,
     )
     config.devices.append(device)
+    store.save(config)
+    return device.model_dump()
+
+
+@router.put("/config/devices/{device_id}/role_overrides")
+async def set_role_overrides(
+    request: Request, device_id: str, overrides: dict[str, RoleOverride] = Body(...)
+) -> dict[str, Any]:
+    """Replace the role overrides of a configured device."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if (device := config.device(device_id)) is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    device.role_overrides = overrides
     store.save(config)
     return device.model_dump()
 

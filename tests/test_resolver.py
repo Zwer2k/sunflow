@@ -44,6 +44,23 @@ def test_preview_normalizes(library: ProfileLibrary) -> None:
     assert values["grid_power"].unit == "W"
 
 
+def test_preview_overrides(library: ProfileLibrary) -> None:
+    """Overrides replace the entity and the sign of a role."""
+    overrides = {
+        "pv_power": {"entity_id": "sensor.sofar_active_power_pv_ext", "unit": None, "sign": None},
+        "grid_power": {"sign": "import_positive"},
+    }
+
+    values = {v.role: v for v in preview(library.profiles["solax_modbus/sofar"], _snapshot(SOFAR_STATES), "d_inv", overrides)}
+
+    assert values["pv_power"].entity_id == "sensor.sofar_active_power_pv_ext"
+    assert values["pv_power"].profile_entity_id == "sensor.sofar_pv_power_total"
+    assert values["pv_power"].value == pytest.approx(1400)
+    assert values["grid_power"].sign == "import_positive"
+    assert values["grid_power"].profile_sign == "export_positive"
+    assert values["grid_power"].value == pytest.approx(-500)
+
+
 def test_preview_missing_and_unavailable(library: ProfileLibrary) -> None:
     """Missing entities and unavailable states yield no value."""
     states = dict(SOFAR_STATES)
