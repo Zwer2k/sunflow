@@ -286,7 +286,7 @@ class SunflowApp extends LitElement {
   _renderIntegration(integration) {
     const selected = this._selected.has(integration.entry_id);
     const matched = integration.devices.filter((d) => d.profile);
-    const capabilities = matched.flatMap((d) => d.capabilities);
+    const capabilities = matched.flatMap((d) => d.capabilities ?? []);
     let chip;
     if (!integration.supported) chip = html`<span class="chip warn">Nicht unterstützt – im Expertenmodus manuell</span>`;
     else if (matched.length === 0) chip = html`<span class="chip warn">Kein passendes Profil</span>`;
@@ -301,7 +301,7 @@ class SunflowApp extends LitElement {
         </div>
         ${matched.map(
           (d) => html`<span class="model">
-            <strong>${devicePurpose(d.capabilities)}</strong> · ${[d.manufacturer, d.model].filter(Boolean).join(" ") || d.name}
+            <strong>${devicePurpose(d.capabilities ?? [])}</strong> · ${[d.manufacturer, d.model].filter(Boolean).join(" ") || d.name}
           </span>`,
         )}
         <span class="muted small">${integration.domain}${integration.in_energy_dashboard ? " · im Energie-Dashboard" : ""}</span>
@@ -565,7 +565,7 @@ class SunflowApp extends LitElement {
 
     .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
     .card {
-      display: flex; flex-direction: column; gap: 8px; align-items: flex-start; text-align: left; width: 100%;
+      display: flex; flex-direction: column; justify-content: flex-start; gap: 8px; align-items: flex-start; text-align: left; width: 100%;
       padding: 14px 16px; border-radius: 10px; cursor: pointer; border: 1px solid var(--sf-border);
       background: var(--sf-surface); margin: 1px;
     }
@@ -580,7 +580,10 @@ class SunflowApp extends LitElement {
     }
     .check.on { background: var(--sf-primary); border-color: var(--sf-primary); color: #fff; }
 
-    .chip { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; }
+    .chip {
+      display: inline-block; flex: none; align-self: flex-start; line-height: 1.4;
+      font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px;
+    }
     .chip.ok { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
     .chip.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }
     .chip.neutral { background: var(--sf-neutral-bg); color: var(--sf-neutral-text); }
