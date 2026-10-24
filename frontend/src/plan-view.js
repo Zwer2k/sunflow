@@ -361,10 +361,13 @@ class SunflowPlan extends LitElement {
             </span>
           </label>
         </div>
-        <div class="actions">
-          <button class="ok" ?disabled=${(this._wear === undefined && this._reserve === undefined) || this._saving}
-            @click=${() => this._saveNumbers(settings)}>Speichern und neu planen</button>
-        </div>
+        ${this._wear !== undefined || this._reserve !== undefined
+          ? html`<div class="actions">
+              <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
+                Speichern und neu planen
+              </button>
+            </div>`
+          : html`<p class="small muted">Strategie und Netzladen gelten sofort. Zahlenwerte werden nach einer Änderung mit „Speichern und neu planen“ übernommen.</p>`}
       </section>
     `;
   }
