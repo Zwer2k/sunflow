@@ -522,12 +522,12 @@ class SunflowApp extends LitElement {
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"></path></svg>
           <div>
             <div class="title">Sunflow</div>
-            <div class="subtitle">${this._view === "plan" ? "Plan" : "Einrichtung"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
+            <div class="subtitle">${this._view === "plan" ? "Übersicht" : "Einrichtung"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
           </div>
         </div>
         <div class="tabs" role="tablist">
           ${[
-            ["plan", "Plan"],
+            ["plan", "Übersicht"],
             ["setup", "Einrichtung"],
           ].map(
             ([view, label]) => html`<button role="tab" class="tab ${this._view === view ? "active" : ""}"

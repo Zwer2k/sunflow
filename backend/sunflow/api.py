@@ -39,6 +39,7 @@ from .executor import (
     plan_setup,
 )
 from .ha import HAClient, HAError
+from .history import fetch_history, history_series
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import check_balance, device_entities, preview
 from .settings import Settings
@@ -607,6 +608,26 @@ async def get_plan(request: Request) -> dict[str, Any]:
         "savings": plan.savings if plan.slots else None,
         "slots": [asdict(slot) for slot in plan.slots],
     }
+
+
+@router.get("/history")
+async def get_history(request: Request, hours: int = 24) -> dict[str, Any]:
+    """Return measured SoC, PV, load and grid of the last hours from HA statistics."""
+    hours = max(1, min(hours, 7 * 24))
+    snapshot = await _snapshot(request)
+    config = request.app.state.store.load()
+    series = history_series(config, _library(request).profiles, snapshot)
+    end = _slot_start()
+    # 15 minute resolution up to two days, hourly above to keep charts readable
+    bucket = timedelta(minutes=15) if hours <= 48 else timedelta(hours=1)
+    start = end - timedelta(hours=hours)
+    if bucket == timedelta(hours=1):
+        start = start.replace(minute=0)
+    try:
+        points = await fetch_history(request.app.state.ha, series, start, end, bucket)
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    return {"start": start.isoformat(), "end": end.isoformat(), "points": points}
 
 
 @router.get("/shadow")

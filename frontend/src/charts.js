@@ -79,37 +79,60 @@ export function priceChart(points, label) {
 }
 
 /**
- * Lines over time; series: [{name, color, points: [{start, end, value}]}].
- * Each point is drawn as a level from start to end, joined vertically.
+ * Lines over time; series: [{name, color, dashed?, points: [{start, end, value}]}].
+ * Points with value null leave a gap. `now` draws a marker separating measured
+ * values (left) from forecasts (right).
  */
-export function lineChart(series, { label, formatY, yMax: fixedMax, step = false }) {
-  const all = series.flatMap((s) => s.points);
+export function lineChart(series, { label, formatY, yMax: fixedMax, now = null }) {
+  const all = series.flatMap((s) => s.points).filter((p) => p.value !== null && p.value !== undefined);
   if (!all.length) return nothing;
-  const start = new Date(Math.min(...all.map((p) => new Date(p.start))));
-  const end = new Date(Math.max(...all.map((p) => new Date(p.end))));
+  const start = new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
+  const end = new Date(Math.max(...series.flatMap((s) => s.points.map((p) => new Date(p.end)))));
   const yMax = fixedMax ?? niceMax(Math.max(...all.map((p) => p.value)) * 1.1);
   const { x, y, axes } = frame(start, end, yMax, formatY);
-  const pathOf = (points) =>
-    points
-      .map((p, i) => {
-        const x0 = x(new Date(p.start));
-        const x1 = x(new Date(p.end));
-        const yv = y(p.value);
-        return step ? `${i ? "L" : "M"}${x0},${yv} L${x1},${yv}` : `${i ? "L" : "M"}${(x0 + x1) / 2},${yv}`;
+  const pathOf = (points) => {
+    let pen = "M";
+    return points
+      .map((p) => {
+        if (p.value === null || p.value === undefined) {
+          pen = "M";
+          return "";
+        }
+        const segment = `${pen}${(x(new Date(p.start)) + x(new Date(p.end))) / 2},${y(p.value)}`;
+        pen = "L";
+        return segment;
       })
       .join(" ");
-  const hits = series[0].points;
+  };
+  // One hover target per distinct interval, listing every series that has a value there
+  const slots = new Map();
+  for (const s of series) {
+    for (const p of s.points) {
+      if (p.value === null || p.value === undefined) continue;
+      const slot = slots.get(p.start) ?? { start: new Date(p.start), end: new Date(p.end), values: [] };
+      slot.values.push(`${s.name} ${formatY(p.value)}`);
+      slots.set(p.start, slot);
+    }
+  }
+  const nowX = now ? x(now) : null;
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
       ${axes}
+      ${nowX !== null && nowX > PAD.left && nowX < W - PAD.right
+        ? svg`
+            <line x1=${nowX} x2=${nowX} y1=${PAD.top} y2=${H - PAD.bottom} class="now"></line>
+            <text x=${nowX - 4} y=${PAD.top + 10} text-anchor="end" class="axis">gemessen</text>
+            <text x=${nowX + 4} y=${PAD.top + 10} text-anchor="start" class="axis">Prognose</text>
+          `
+        : nothing}
       ${series.map(
         (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width="2"
-          stroke-linejoin="round" stroke-linecap="round"></path>`,
+          stroke-dasharray=${s.dashed ? "5 4" : "none"} stroke-linejoin="round" stroke-linecap="round"></path>`,
       )}
-      ${hits.map(
-        (p, i) => svg`<rect x=${x(new Date(p.start))} y=${PAD.top}
-          width=${Math.max(x(new Date(p.end)) - x(new Date(p.start)), 1)} height=${H - PAD.top - PAD.bottom} class="hit">
-          <title>${timeFormat.format(new Date(p.start))}: ${series.map((s) => `${s.name} ${formatY(s.points[i]?.value ?? 0)}`).join(", ")}</title>
+      ${[...slots.values()].map(
+        (slot) => svg`<rect x=${x(slot.start)} y=${PAD.top}
+          width=${Math.max(x(slot.end) - x(slot.start), 1)} height=${H - PAD.top - PAD.bottom} class="hit">
+          <title>${dayFormat.format(slot.start)} ${timeFormat.format(slot.start)}: ${slot.values.join(", ")}</title>
         </rect>`,
       )}
     </svg>
