@@ -31,6 +31,7 @@ class SetupSummary:
 
     devices: list[dict[str, Any]] = field(default_factory=list)
     tariff: str | None = None
+    fixed_price_ct: float | None = None
     forecast_planes: list[dict[str, Any]] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     completed: bool = False
@@ -45,7 +46,11 @@ def build_summary(
     config: SunflowConfig, profiles: dict[str, dict[str, Any]]
 ) -> SetupSummary:
     """Collect configured items and open issues."""
-    summary = SetupSummary(tariff=config.tariff.import_entity_id, completed=config.setup_completed)
+    summary = SetupSummary(
+        tariff=config.tariff.import_entity_id,
+        fixed_price_ct=config.tariff.fixed_price_ct,
+        completed=config.setup_completed,
+    )
     names = {d.id: d.name for d in config.devices}
     if not config.devices:
         summary.issues.append(
@@ -112,8 +117,14 @@ def build_summary(
                 )
             )
 
-    if config.tariff.import_entity_id is None:
-        summary.issues.append(Issue(level="error", step=STEP_SOURCES, message="Keine Quelle für den Bezugspreis gewählt."))
+    if config.tariff.import_entity_id is None and config.tariff.fixed_price_ct is None:
+        summary.issues.append(
+            Issue(
+                level="warning",
+                step=STEP_SOURCES,
+                message="Kein Bezugspreis angegeben – Sunflow optimiert dann nur auf Eigenverbrauch.",
+            )
+        )
 
     assigned = {p.device_id for p in config.forecast_planes if p.device_id}
     summary.forecast_planes = [
@@ -122,7 +133,13 @@ def build_summary(
         for p in config.forecast_planes
     ]
     if pv_plants and not assigned:
-        summary.issues.append(Issue(level="error", step=STEP_SOURCES, message="Keine PV-Prognose einer Anlage zugeordnet."))
+        summary.issues.append(
+            Issue(
+                level="warning",
+                step=STEP_SOURCES,
+                message="Keine PV-Prognose zugeordnet – die Planung kann PV-Erträge dann nicht vorhersehen.",
+            )
+        )
     else:
         for device in pv_plants:
             if device.id not in assigned:
