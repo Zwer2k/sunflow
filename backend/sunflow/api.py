@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from . import API_VERSION, __version__
-from .config_store import ConfigStore, DeviceConfig, RoleOverride
+from .config_store import ConfigStore, DeviceConfig, FeedIn, MeasuredBy, RoleOverride
 from .discovery import Snapshot, discover, fetch_snapshot
 from .executor import (
     ActionResult,
@@ -29,6 +29,7 @@ from .ha import HAClient, HAError
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import check_balance, device_entities, preview
 from .settings import Settings
+from .site import device_parameters, site_status
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -243,18 +244,61 @@ async def set_role_overrides(
     return device.model_dump()
 
 
-@router.patch("/config/devices/{device_id}/parameters")
-async def update_parameters(
-    request: Request, device_id: str, parameters: dict[str, float] = Body(...)
+class DeviceUpdate(BaseModel):
+    """Partial update of a configured device; omitted fields stay unchanged."""
+
+    parameters: dict[str, float | None] | None = None
+    feed_in: FeedIn | None = None
+    measured_by: MeasuredBy | None = None
+    clear_measured_by: bool = False
+
+
+@router.patch("/config/devices/{device_id}")
+async def update_device(
+    request: Request, device_id: str, body: DeviceUpdate
 ) -> dict[str, Any]:
-    """Merge device parameters such as max_charge or grid_offset."""
+    """Update parameters (None removes a value), feed-in and measurement link."""
     store: ConfigStore = request.app.state.store
     config = store.load()
     if (device := config.device(device_id)) is None:
         raise HTTPException(status_code=404, detail="Device not configured")
-    device.parameters.update(parameters)
+    if body.parameters is not None:
+        for name, value in body.parameters.items():
+            if value is None:
+                device.parameters.pop(name, None)
+            else:
+                device.parameters[name] = value
+    if body.feed_in is not None:
+        device.feed_in = body.feed_in
+    if body.clear_measured_by:
+        device.measured_by = None
+    elif body.measured_by is not None:
+        if config.device(body.measured_by.device_id) is None:
+            raise HTTPException(status_code=422, detail="Measuring device not configured")
+        device.measured_by = body.measured_by
     store.save(config)
     return device.model_dump()
+
+
+@router.get("/config/devices/{device_id}/parameters")
+async def get_parameters(request: Request, device_id: str) -> list[dict[str, Any]]:
+    """Return profile parameters with stored, derived and default values."""
+    device = _configured_device(request, device_id)
+    snapshot = await _snapshot(request)
+    return device_parameters(_library(request).profiles[device.profile], device, snapshot)
+
+
+@router.get("/site")
+async def get_site(request: Request) -> dict[str, Any]:
+    """Return live status, cross checks and PV total of all configured devices."""
+    config = request.app.state.store.load()
+    snapshot = await _snapshot(request)
+    site = site_status(config.devices, _library(request).profiles, snapshot)
+    result = asdict(site)
+    for device in result["devices"]:
+        for role in device["roles"]:
+            role["missing"] = role["entity_id"] is None
+    return result
 
 
 @router.delete("/config/devices/{device_id}")

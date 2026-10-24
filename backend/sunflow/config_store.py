@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Literal
 import uuid
 
 from pydantic import BaseModel, Field
@@ -17,6 +18,20 @@ class RoleOverride(BaseModel):
     sign: str | None = None
 
 
+class FeedIn(BaseModel):
+    """Feed-in remuneration of a PV plant."""
+
+    model: Literal["eeg_fixed", "solar_peak", "direct"] = "eeg_fixed"
+    rate_ct_per_kwh: float | None = None
+
+
+class MeasuredBy(BaseModel):
+    """Another device that also measures this device's output (e.g. as PV ext)."""
+
+    device_id: str
+    role: str
+
+
 class DeviceConfig(BaseModel):
     """A device managed by Sunflow."""
 
@@ -27,6 +42,8 @@ class DeviceConfig(BaseModel):
     name: str
     parameters: dict[str, float] = Field(default_factory=dict)
     role_overrides: dict[str, RoleOverride] = Field(default_factory=dict)
+    feed_in: FeedIn | None = None
+    measured_by: MeasuredBy | None = None
 
 
 class SunflowConfig(BaseModel):

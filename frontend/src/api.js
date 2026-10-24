@@ -25,6 +25,10 @@ export const api = {
   config: () => request("GET", "/config"),
   addDevice: (haDeviceId, profile, overrides) =>
     request("POST", "/config/devices", { ha_device_id: haDeviceId, profile, role_overrides: overrides ?? {} }),
+  parameters: (configDeviceId) => request("GET", `/config/devices/${encodeURIComponent(configDeviceId)}/parameters`),
+  updateDevice: (configDeviceId, changes) =>
+    request("PATCH", `/config/devices/${encodeURIComponent(configDeviceId)}`, changes),
+  site: () => request("GET", "/site"),
   setOverrides: (configDeviceId, overrides) =>
     request("PUT", `/config/devices/${encodeURIComponent(configDeviceId)}/role_overrides`, overrides),
 };
