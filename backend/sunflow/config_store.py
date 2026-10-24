@@ -64,6 +64,13 @@ class ForecastPlane(BaseModel):
     device_id: str | None = None
 
 
+class OptimizerConfig(BaseModel):
+    """User settings for planning."""
+
+    wear_ct_per_kwh: float = 3.0
+    allow_grid_charge: bool = True
+
+
 class SunflowConfig(BaseModel):
     """The complete configuration."""
 
@@ -71,6 +78,7 @@ class SunflowConfig(BaseModel):
     devices: list[DeviceConfig] = Field(default_factory=list)
     tariff: TariffConfig = Field(default_factory=TariffConfig)
     forecast_planes: list[ForecastPlane] = Field(default_factory=list)
+    optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
     setup_completed: bool = False
 
     def device(self, device_id: str) -> DeviceConfig | None:

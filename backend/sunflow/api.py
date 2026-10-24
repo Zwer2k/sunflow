@@ -22,6 +22,7 @@ from .config_store import (
     FeedIn,
     ForecastPlane,
     MeasuredBy,
+    OptimizerConfig,
     RoleOverride,
     TariffConfig,
 )
@@ -41,6 +42,8 @@ from .ha import HAClient, HAError
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import check_balance, device_entities, preview
 from .settings import Settings
+from .optimizer import Settings as OptimizerSettings
+from .plan import compute_plan
 from .site import device_parameters, site_status
 from .summary import SetupSummary, build_summary
 from .sources import (
@@ -568,6 +571,55 @@ async def complete_setup(request: Request) -> dict[str, Any]:
     store.save(config)
     summary.completed = True
     return _summary_response(summary)
+
+
+@router.put("/config/optimizer")
+async def set_optimizer(request: Request, body: OptimizerConfig) -> dict[str, Any]:
+    """Store planning settings."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.optimizer = body
+    store.save(config)
+    return body.model_dump()
+
+
+@router.get("/plan")
+async def get_plan(request: Request) -> dict[str, Any]:
+    """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
+    config = request.app.state.store.load()
+    snapshot = await _snapshot(request)
+    settings = OptimizerSettings(
+        wear_ct_per_kwh=config.optimizer.wear_ct_per_kwh,
+        allow_grid_charge=config.optimizer.allow_grid_charge,
+    )
+    try:
+        result = await compute_plan(
+            request.app.state.ha,
+            config,
+            _library(request).profiles,
+            snapshot,
+            _slot_start(),
+            await _local_tz(request),
+            settings,
+        )
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    plan = result.plan
+    return {
+        "status": plan.status,
+        "warnings": result.warnings,
+        "price_source": result.price_source,
+        "pv_planes": result.pv_planes,
+        "load_quality": result.load.quality if result.load else None,
+        "load_history_hours": result.load.history_hours if result.load else 0,
+        "settings": config.optimizer.model_dump(),
+        "cost": plan.cost,
+        "baseline_cost": plan.baseline_cost,
+        "terminal_value": plan.terminal_value,
+        "baseline_terminal_value": plan.baseline_terminal_value,
+        "savings": plan.savings if plan.slots else None,
+        "slots": [asdict(slot) for slot in plan.slots],
+    }
 
 
 @router.get("/site")
