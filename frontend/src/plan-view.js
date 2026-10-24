@@ -86,6 +86,7 @@ class SunflowPlan extends LitElement {
     _shadow: { state: true },
     _history: { state: true },
     _historyHours: { state: true },
+    _importResult: { state: true },
     _saving: { state: true },
   };
 
@@ -407,6 +408,14 @@ class SunflowPlan extends LitElement {
           ${e.compared} vollständige Zeitabschnitte (letzte 48 h).
           ${shadow.status.last_error ? html`<br><span class="warn-text">Letzter Fehler: ${shadow.status.last_error}</span>` : nothing}
         </p>
+        <div class="actions">
+          <a class="secondary button-link" href="api/v1/export" download>Daten exportieren</a>
+          <label class="secondary button-link">
+            Export importieren
+            <input type="file" accept=".zip" hidden @change=${(e) => this._import(e)}>
+          </label>
+          ${this._importResult ? html`<span class="small muted">${this._importResult}</span>` : nothing}
+        </div>
         ${e.compared === 0
           ? html`<p class="muted">Noch keine abgeschlossenen Zeitabschnitte – der erste erscheint nach dem nächsten Viertelstundenwechsel.</p>`
           : html`
@@ -472,6 +481,23 @@ class SunflowPlan extends LitElement {
     } catch (err) {
       this._error = `Verlauf konnte nicht geladen werden: ${err.message}`;
     }
+  }
+
+  async _import(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const response = await fetch("api/v1/import", { method: "POST", body });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? response.statusText);
+      this._importResult = `${data.imported_slots} Zeitabschnitte importiert.`;
+      this._shadow = await api.shadow();
+    } catch (err) {
+      this._error = `Import fehlgeschlagen: ${err.message}`;
+    }
+    event.target.value = "";
   }
 
   _point(row, key) {
@@ -661,6 +687,10 @@ class SunflowPlan extends LitElement {
     .actions { display: flex; gap: 10px; margin-top: 12px; }
     .secondary, .ok { min-height: 44px; padding: 0 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
+    .button-link {
+      display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 8px;
+      text-decoration: none; color: var(--sf-text); cursor: pointer; font-size: 14px;
+    }
     .ok { border: 0; background: var(--sf-ok); color: #fff; }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }

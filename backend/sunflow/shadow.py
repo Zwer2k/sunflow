@@ -136,6 +136,30 @@ class ShadowStore:
         )
         self._db.commit()
 
+    def backup_to(self, path: Path) -> None:
+        """Write a consistent copy of the database to path."""
+        target = sqlite3.connect(path)
+        try:
+            self._db.backup(target)
+        finally:
+            target.close()
+
+    def merge_from(self, path: Path) -> int:
+        """Merge slots of another shadow database; existing slots are replaced. Returns the count."""
+        other = sqlite3.connect(path)
+        try:
+            cursor = other.execute("SELECT * FROM slots")
+            names = [c[0] for c in cursor.description]
+            rows = cursor.fetchall()
+        finally:
+            other.close()
+        placeholders = ", ".join("?" for _ in names)
+        self._db.executemany(
+            f"INSERT OR REPLACE INTO slots ({', '.join(names)}) VALUES ({placeholders})", rows  # noqa: S608
+        )
+        self._db.commit()
+        return len(rows)
+
     def rows(self, since: datetime) -> list[dict[str, Any]]:
         """Return all slots starting at or after since, oldest first."""
         cursor = self._db.execute(

@@ -1,5 +1,5 @@
 name: Sunflow
-version: "0.1.0"
+version: "0.2.0"
 slug: sunflow
 description: Predictive energy management with PV forecasts and dynamic prices
 url: https://github.com/Zwer2k/sunflow
@@ -12,5 +12,5 @@ ingress: true
 ingress_port: 8099
 panel_icon: mdi:solar-power-variant
 panel_title: Sunflow
-# Prebuilt images, built by CI from the repository root (backend/ and frontend/ are outside this folder)
+# Built locally by the Supervisor (see Dockerfile). Later: prebuilt images by CI
 # image: ghcr.io/zwer2k/sunflow-{arch}
