@@ -1,5 +1,6 @@
 """Collect forecasts, prices and battery state and run the optimizer."""
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, tzinfo
 from typing import Any
@@ -200,7 +201,8 @@ async def compute_plan(
     inputs = build_inputs(start, prices, pv, load, feed_in_price(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
-    plan = optimize(inputs, battery, settings)
+    # The solver is CPU bound; keep the event loop (HA connection, API) responsive
+    plan = await asyncio.to_thread(optimize, inputs, battery, settings)
     return PlanResult(
         plan=plan,
         battery_device=battery_device.id,

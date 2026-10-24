@@ -51,6 +51,7 @@ class SunflowPlan extends LitElement {
     _error: { state: true },
     _wear: { state: true },
     _reserve: { state: true },
+    _shadow: { state: true },
     _saving: { state: true },
   };
 
@@ -61,6 +62,7 @@ class SunflowPlan extends LitElement {
     this._error = null;
     this._wear = undefined;
     this._reserve = undefined;
+    this._shadow = null;
     this._saving = false;
     this._timer = null;
   }
@@ -79,7 +81,7 @@ class SunflowPlan extends LitElement {
   async _load() {
     this._loading = true;
     try {
-      this._plan = await api.plan();
+      [this._plan, this._shadow] = await Promise.all([api.plan(), api.shadow()]);
       this._error = null;
     } catch (err) {
       this._error = `Plan konnte nicht berechnet werden: ${err.message}`;
@@ -221,7 +223,95 @@ class SunflowPlan extends LitElement {
         ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price })), "Bezugspreis im Plan")}
       </section>
 
+      ${this._renderShadow()}
       ${this._renderSettings(plan.settings)}
+    `;
+  }
+
+  _renderShadow() {
+    const shadow = this._shadow;
+    if (!shadow) return nothing;
+    const e = shadow.evaluation;
+    const since = shadow.status.since ? dayTime.format(new Date(shadow.status.since)) : "–";
+    const rows = shadow.rows.filter((r) => r.actual_action !== null && r.planned_action !== null);
+    const pct = (v) => (v === null ? "–" : `${Math.round(v * 100)} %`);
+    const deviation = (forecast, actual) =>
+      actual > 0.05 ? `${forecast >= actual ? "+" : "−"}${Math.round((Math.abs(forecast - actual) / actual) * 100)} %` : "–";
+    const kwh = (v) => formatValue(v * 1000, "Wh");
+    return html`
+      <section>
+        <h2>Schattenbetrieb: Prognose vs. Wirklichkeit</h2>
+        <p class="small muted">
+          Seit ${since} protokolliert Sunflow alle 15 Minuten, was es tun würde und was tatsächlich passiert ist –
+          ${e.compared} vollständige Zeitabschnitte (letzte 48 h).
+          ${shadow.status.last_error ? html`<br><span class="warn-text">Letzter Fehler: ${shadow.status.last_error}</span>` : nothing}
+        </p>
+        ${e.compared === 0
+          ? html`<p class="muted">Noch keine abgeschlossenen Zeitabschnitte – der erste erscheint nach dem nächsten Viertelstundenwechsel.</p>`
+          : html`
+              <div class="tiles">
+                <div class="tile">
+                  <div class="small muted">PV-Prognose</div>
+                  <div class="value">${kwh(e.pv_forecast_kwh)}</div>
+                  <div class="small muted">tatsächlich ${kwh(e.pv_actual_kwh)} (${deviation(e.pv_forecast_kwh, e.pv_actual_kwh)})</div>
+                </div>
+                <div class="tile">
+                  <div class="small muted">Lastprognose</div>
+                  <div class="value">${kwh(e.load_forecast_kwh)}</div>
+                  <div class="small muted">tatsächlich ${kwh(e.load_actual_kwh)} (${deviation(e.load_forecast_kwh, e.load_actual_kwh)})</div>
+                </div>
+                <div class="tile">
+                  <div class="small muted">Ladestand-Abweichung</div>
+                  <div class="value">${e.soc_mae_wh === null ? "–" : formatValue(e.soc_mae_wh, "Wh")}</div>
+                  <div class="small muted">mittlerer Abstand Plan zu Ist</div>
+                </div>
+                <div class="tile">
+                  <div class="small muted">Gleiche Entscheidung</div>
+                  <div class="value">${pct(e.agreement)}</div>
+                  <div class="small muted">${e.differing_slots} Abschnitte hätte Sunflow anders gesteuert</div>
+                </div>
+              </div>
+              <div class="legend">
+                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Ladestand tatsächlich</span>
+                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>Ladestand laut Plan</span>
+              </div>
+              ${lineChart(
+                [
+                  { name: "Ist", color: SERIES_COLORS[0], points: rows.map((r) => this._point(r, "actual_soc_wh")) },
+                  { name: "Plan", color: SERIES_COLORS[1], points: rows.map((r) => this._point(r, "planned_soc_wh")) },
+                ],
+                { label: "Ladestand Plan gegen Ist", formatY: (v) => formatValue(v, "Wh") },
+              )}
+              ${this._renderDifferences(rows)}
+            `}
+      </section>
+    `;
+  }
+
+  _point(row, key) {
+    const start = new Date(row.start);
+    return { start: start.toISOString(), end: new Date(start.getTime() + 15 * 60_000).toISOString(), value: row[key] ?? 0 };
+  }
+
+  _renderDifferences(rows) {
+    const differing = rows.filter((r) => r.planned_action !== r.actual_action).slice(-12).reverse();
+    if (!differing.length) return html`<p class="small muted">Bisher hätte Sunflow genauso gehandelt wie der Wechselrichter.</p>`;
+    return html`
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Zeit</th><th>Sunflow hätte</th><th>Tatsächlich</th><th>PV / Last (Ist)</th></tr></thead>
+          <tbody>
+            ${differing.map(
+              (r) => html`<tr>
+                <td>${dayTime.format(new Date(r.start))}</td>
+                <td>${ACTIONS[r.planned_action]?.label ?? r.planned_action}${r.planned_power_w ? ` · ${formatValue(r.planned_power_w, "W")}` : ""}</td>
+                <td>${ACTIONS[r.actual_action]?.label ?? r.actual_action}</td>
+                <td>${formatValue(r.actual_pv_w, "W")} / ${formatValue(r.actual_load_w, "W")}</td>
+              </tr>`,
+            )}
+          </tbody>
+        </table>
+      </div>
     `;
   }
 
@@ -316,6 +406,11 @@ class SunflowPlan extends LitElement {
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }
+    .warn-text { color: var(--sf-error-text); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; margin-top: 10px; }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13px; }
+    th { text-align: left; font-weight: 600; background: var(--sf-subtle); padding: 8px 10px; }
+    td { padding: 6px 10px; border-top: 1px solid var(--sf-border); }
     .settings { border-top: 1px solid var(--sf-border); padding-top: 16px; display: flex; flex-direction: column; gap: 16px; }
     .strategy { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
     .strategy legend { margin-bottom: 8px; padding: 0; }

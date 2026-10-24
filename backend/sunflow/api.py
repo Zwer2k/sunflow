@@ -42,7 +42,8 @@ from .ha import HAClient, HAError
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import check_balance, device_entities, preview
 from .settings import Settings
-from .plan import compute_plan
+from .runner import ShadowRunner, current_plan
+from .shadow import ShadowStore, evaluate as evaluate_shadow
 from .site import device_parameters, site_status
 from .summary import SetupSummary, build_summary
 from .sources import (
@@ -585,19 +586,11 @@ async def set_optimizer(request: Request, body: OptimizerConfig) -> dict[str, An
 @router.get("/plan")
 async def get_plan(request: Request) -> dict[str, Any]:
     """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
-    config = request.app.state.store.load()
-    snapshot = await _snapshot(request)
     try:
-        result = await compute_plan(
-            request.app.state.ha,
-            config,
-            _library(request).profiles,
-            snapshot,
-            _slot_start(),
-            await _local_tz(request),
-        )
+        result = await current_plan(request.app.state.ha, request.app.state.store, _library(request))
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
+    config = request.app.state.store.load()
     plan = result.plan
     return {
         "status": plan.status,
@@ -613,6 +606,19 @@ async def get_plan(request: Request) -> dict[str, Any]:
         "baseline_terminal_value": plan.baseline_terminal_value,
         "savings": plan.savings if plan.slots else None,
         "slots": [asdict(slot) for slot in plan.slots],
+    }
+
+
+@router.get("/shadow")
+async def get_shadow(request: Request, hours: int = 48) -> dict[str, Any]:
+    """Return recorded planned vs actual slots and their evaluation."""
+    runner: ShadowRunner = request.app.state.runner
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    rows = await asyncio.to_thread(runner.shadow.rows, since)
+    return {
+        "status": asdict(runner.status),
+        "evaluation": evaluate_shadow(rows),
+        "rows": rows,
     }
 
 
@@ -732,9 +738,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ha = HAClient(settings.ha_websocket_url, settings.ha_token)
         app.state.device_tests = {}
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
+        shadow = ShadowStore(settings.data_dir)
+        app.state.runner = ShadowRunner(app.state.ha, app.state.store, app.state.profiles, shadow)
+        runner_task = asyncio.create_task(app.state.runner.run())
         try:
             yield
         finally:
+            runner_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await runner_task
+            shadow.close()
             # A running device test restores self-consumption when cancelled
             for _, task in app.state.device_tests.values():
                 task.cancel()
