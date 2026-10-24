@@ -52,6 +52,8 @@ class SunflowPlan extends LitElement {
     _wear: { state: true },
     _reserve: { state: true },
     _shadow: { state: true },
+    _history: { state: true },
+    _historyHours: { state: true },
     _saving: { state: true },
   };
 
@@ -63,6 +65,8 @@ class SunflowPlan extends LitElement {
     this._wear = undefined;
     this._reserve = undefined;
     this._shadow = null;
+    this._history = null;
+    this._historyHours = 24;
     this._saving = false;
     this._timer = null;
   }
@@ -81,7 +85,11 @@ class SunflowPlan extends LitElement {
   async _load() {
     this._loading = true;
     try {
-      [this._plan, this._shadow] = await Promise.all([api.plan(), api.shadow()]);
+      [this._plan, this._shadow, this._history] = await Promise.all([
+        api.plan(),
+        api.shadow(),
+        api.history(this._historyHours),
+      ]);
       this._error = null;
     } catch (err) {
       this._error = `Plan konnte nicht berechnet werden: ${err.message}`;
@@ -130,8 +138,9 @@ class SunflowPlan extends LitElement {
     return html`
       <div class="heading">
         <div>
-          <h1>Plan</h1>
-          <p class="muted">Vorschau für die nächsten Stunden. Sunflow steuert noch nichts – der Plan zeigt, was es tun würde.</p>
+          <h1>Übersicht</h1>
+          <p class="muted">Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung.
+            Sunflow steuert noch nichts – die Planung zeigt, was es tun würde.</p>
         </div>
         <button class="secondary" ?disabled=${this._loading} @click=${() => this._load()}>
           ${this._loading ? "Berechne …" : "Neu berechnen"}
@@ -151,34 +160,36 @@ class SunflowPlan extends LitElement {
     }
     const segs = segments(slots);
     const now = segs[0];
-    const capacity = Math.max(...slots.map((s) => s.soc_wh)) || 1;
+    const history = this._history?.points ?? [];
+    const capacity = Math.max(...slots.map((s) => s.soc_wh), ...history.map((p) => p.soc_wh ?? 0)) || 1;
+    const nowDate = new Date(slots[0].start);
     return html`
       ${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
       <div class="tiles">
         <div class="tile now">
-          <div class="small muted">Jetzt bis ${time.format(new Date(now.end))}</div>
+          <div class="small muted">Geplante Steuerung jetzt (bis ${time.format(new Date(now.end))})</div>
           <div class="value">${ACTIONS[now.action].label}</div>
           <div class="small muted">${ACTIONS[now.action].hint}</div>
         </div>
         <div class="tile">
-          <div class="small muted">Ersparnis im Planungszeitraum</div>
+          <div class="small muted">Erwartete Ersparnis (nächste ${Math.round(slots.length / 4)} h)</div>
           <div class="value">${euro.format(plan.savings ?? 0)}</div>
           <div class="small muted">gegenüber reinem Eigenverbrauch</div>
         </div>
         <div class="tile">
-          <div class="small muted">Stromkosten geplant</div>
+          <div class="small muted">Erwartete Stromkosten</div>
           <div class="value">${euro.format(plan.cost)}</div>
           <div class="small muted">ohne Sunflow ${euro.format(plan.baseline_cost)}</div>
         </div>
         <div class="tile">
-          <div class="small muted">Ladestand am Ende</div>
+          <div class="small muted">Erwarteter Ladestand am Ende</div>
           <div class="value">${formatValue(slots.at(-1).soc_wh, "Wh")}</div>
           <div class="small muted">${dayTime.format(new Date(slots.at(-1).end))}</div>
         </div>
       </div>
 
       <section>
-        <h2>Ablauf</h2>
+        <h2>Geplante Steuerung <span class="tag">Vorschau</span></h2>
         <ol class="timeline">
           ${segs.map(
             (s) => html`
@@ -195,31 +206,52 @@ class SunflowPlan extends LitElement {
       </section>
 
       <section>
-        <h2>Ladestand</h2>
+        <div class="section-head">
+          <h2>Verlauf und Prognose</h2>
+          <div class="range" role="group" aria-label="Zeitraum zurück">
+            ${[24, 48, 168].map(
+              (h) => html`<button class=${this._historyHours === h ? "active" : ""} aria-pressed=${this._historyHours === h}
+                @click=${() => this._setHistoryHours(h)}>${h === 168 ? "7 Tage" : `${h} h`}</button>`,
+            )}
+          </div>
+        </div>
+        <div class="legend">
+          <span class="legend-item"><span class="line solid"></span>gemessen</span>
+          <span class="legend-item"><span class="line dashed"></span>Prognose / Planung</span>
+        </div>
+      </section>
+
+      <section>
+        <h3>Ladestand</h3>
         ${lineChart(
-          [{ name: "Ladestand", color: SERIES_COLORS[0], points: slots.map((s) => ({ start: s.start, end: s.end, value: s.soc_wh })) }],
-          { label: "Geplanter Ladestand", formatY: (v) => formatValue(v, "Wh"), yMax: capacity * 1.05 },
+          [
+            { name: "Gemessen", color: SERIES_COLORS[0], points: this._past("soc_wh") },
+            { name: "Erwartet", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "soc_wh") },
+          ],
+          { label: "Ladestand gemessen und erwartet", formatY: (v) => formatValue(v, "Wh"), yMax: capacity * 1.05, now: nowDate },
         )}
       </section>
 
       <section>
-        <h2>PV-Erzeugung und Hausverbrauch</h2>
+        <h3>PV-Erzeugung und Hausverbrauch</h3>
         <div class="legend">
-          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>PV-Prognose</span>
-          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>
-            Hausverbrauch (${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie)</span>
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>PV-Erzeugung</span>
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Hausverbrauch
+            <span class="muted">(Prognose: ${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie)</span></span>
         </div>
         ${lineChart(
           [
-            { name: "Verbrauch", color: SERIES_COLORS[0], points: slots.map((s) => ({ start: s.start, end: s.end, value: s.load_w })) },
-            { name: "PV", color: SERIES_COLORS[1], points: slots.map((s) => ({ start: s.start, end: s.end, value: s.pv_w })) },
+            { name: "Verbrauch gemessen", color: SERIES_COLORS[0], points: this._past("load_w") },
+            { name: "Verbrauch Prognose", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
+            { name: "PV gemessen", color: SERIES_COLORS[1], points: this._past("pv_w") },
+            { name: "PV Prognose", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "pv_w") },
           ],
-          { label: "PV-Prognose und Lastprognose", formatY: (v) => formatValue(v, "W") },
+          { label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose", formatY: (v) => formatValue(v, "W"), now: nowDate },
         )}
       </section>
 
       <section>
-        <h2>Bezugspreis</h2>
+        <h3>Bezugspreis <span class="tag">Vorschau</span></h3>
         ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price })), "Bezugspreis im Plan")}
       </section>
 
@@ -286,6 +318,23 @@ class SunflowPlan extends LitElement {
             `}
       </section>
     `;
+  }
+
+  _past(key) {
+    return (this._history?.points ?? []).map((p) => ({ start: p.start, end: p.end, value: p[key] }));
+  }
+
+  _future(slots, key) {
+    return slots.map((s) => ({ start: s.start, end: s.end, value: s[key] }));
+  }
+
+  async _setHistoryHours(hours) {
+    this._historyHours = hours;
+    try {
+      this._history = await api.history(hours);
+    } catch (err) {
+      this._error = `Verlauf konnte nicht geladen werden: ${err.message}`;
+    }
   }
 
   _point(row, key) {
@@ -410,6 +459,21 @@ class SunflowPlan extends LitElement {
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }
     .warn-text { color: var(--sf-error-text); }
+    h3 { margin: 0 0 8px; font-size: 15px; }
+    .tag {
+      font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-left: 6px;
+      background: var(--sf-neutral-bg); color: var(--sf-neutral-text); vertical-align: middle;
+    }
+    .section-head { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+    .range { display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; }
+    .range button {
+      min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+      font-size: 13px; color: var(--sf-muted);
+    }
+    .range button.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; }
+    .line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--sf-text); }
+    .line.dashed { border-top-style: dashed; }
+    .chart .now { stroke: var(--sf-text); stroke-width: 1; stroke-dasharray: 2 3; }
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; margin-top: 10px; }
     table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13px; }
     th { text-align: left; font-weight: 600; background: var(--sf-subtle); padding: 8px 10px; }
