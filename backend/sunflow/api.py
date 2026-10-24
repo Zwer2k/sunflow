@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 import logging
 from pathlib import Path
@@ -45,6 +45,7 @@ from .site import device_parameters, site_status
 from .summary import SetupSummary, build_summary
 from .sources import (
     ForecastPoint,
+    PricePoint,
     detect_price_adapter,
     forecast_solar_forecast,
     forecast_solar_planes,
@@ -383,10 +384,15 @@ async def set_forecast(
 async def get_tariff_series(
     request: Request, entity_id: str | None = None, hours: int = FORECAST_HOURS
 ) -> dict[str, Any]:
-    """Return the import price schedule (€/kWh) of the given or configured entity."""
-    entity_id = entity_id or request.app.state.store.load().tariff.import_entity_id
+    """Return the import price schedule (€/kWh) of the given or configured source."""
+    tariff = request.app.state.store.load().tariff
+    entity_id = entity_id or tariff.import_entity_id
     if entity_id is None:
-        raise HTTPException(status_code=404, detail="No price source configured")
+        if tariff.fixed_price_ct is None:
+            raise HTTPException(status_code=404, detail="No price source configured")
+        start = _slot_start()
+        point = PricePoint(start=start, end=start + timedelta(hours=hours), price=tariff.fixed_price_ct / 100)
+        return {"entity_id": None, "adapter": "fixed", "points": [asdict(point)]}
     snapshot = await _snapshot(request)
     if (state := snapshot.states.get(entity_id)) is None:
         raise HTTPException(status_code=404, detail=f"Unknown entity {entity_id}")

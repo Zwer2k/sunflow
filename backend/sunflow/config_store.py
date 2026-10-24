@@ -49,9 +49,10 @@ class DeviceConfig(BaseModel):
 
 
 class TariffConfig(BaseModel):
-    """Where the import price comes from."""
+    """Where the import price comes from: an entity, else a fixed price."""
 
     import_entity_id: str | None = None
+    fixed_price_ct: float | None = None
 
 
 class ForecastPlane(BaseModel):

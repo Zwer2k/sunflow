@@ -52,11 +52,24 @@ def test_complete_setup(library: ProfileLibrary) -> None:
 
 
 def test_empty_setup(library: ProfileLibrary) -> None:
-    """Without devices and price source the setup cannot be completed."""
+    """Only a missing device blocks completion; a missing price is a warning."""
     summary = build_summary(SunflowConfig(), library.profiles)
 
     assert not summary.can_complete
-    assert {(i.level, i.step) for i in summary.issues} == {("error", STEP_DEVICES), ("error", STEP_SOURCES)}
+    assert {(i.level, i.step) for i in summary.issues} == {("error", STEP_DEVICES), ("warning", STEP_SOURCES)}
+
+
+def test_minimal_setup_can_complete(library: ProfileLibrary) -> None:
+    """A device with a fixed price and no forecast can still be completed."""
+    config = _complete_config()
+    config.tariff = TariffConfig(fixed_price_ct=30)
+    config.forecast_planes = []
+
+    summary = build_summary(config, library.profiles)
+
+    assert summary.can_complete
+    assert not any(i.level == "error" for i in summary.issues)
+    assert any("PV-Prognose" in i.message for i in summary.issues if i.level == "warning")
 
 
 def test_open_items_are_warnings(library: ProfileLibrary) -> None:

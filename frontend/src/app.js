@@ -29,6 +29,7 @@ const ISSUE_STYLES = {
   info: { css: "neutral", icon: "ℹ" },
 };
 
+const FIXED_PRICE = "__fixed__";
 const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" };
 
 const PRICE_ADAPTERS = {
@@ -91,6 +92,8 @@ class SunflowApp extends LitElement {
     _nameEdits: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
+    _fixedPriceMode: { state: true },
+    _fixedPriceEdit: { state: true },
     _busy: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
@@ -123,6 +126,8 @@ class SunflowApp extends LitElement {
     // Sunflow device id -> device test state
     this._tests = {};
     this._testConfirm = new Set();
+    this._fixedPriceMode = false;
+    this._fixedPriceEdit = undefined;
     this._busy = new Set();
     this._error = null;
     this._haConnected = null;
@@ -253,13 +258,13 @@ class SunflowApp extends LitElement {
   }
 
   async _loadPriceSeries() {
-    const entityId = this._sources?.tariff.import_entity_id;
-    if (!entityId) {
+    const tariff = this._sources?.tariff;
+    if (!tariff?.import_entity_id && tariff?.fixed_price_ct == null) {
       this._priceSeries = null;
       return;
     }
     try {
-      this._priceSeries = await api.tariffSeries(entityId);
+      this._priceSeries = await api.tariffSeries(tariff.import_entity_id);
     } catch (err) {
       this._error = `Preisverlauf konnte nicht geladen werden: ${err.message}`;
     }
@@ -274,8 +279,27 @@ class SunflowApp extends LitElement {
   }
 
   async _setTariff(entityId) {
+    if (entityId === FIXED_PRICE) {
+      this._fixedPriceMode = true;
+      return;
+    }
+    this._fixedPriceMode = false;
+    await this._saveTariff({ import_entity_id: entityId || null, fixed_price_ct: null });
+  }
+
+  async _saveFixedPrice() {
+    const value = fromDisplay(this._fixedPriceEdit ?? "", "ct");
+    if (value === undefined || value === null || value < 0) {
+      this._error = "Bitte einen gültigen Preis in ct/kWh eingeben.";
+      return;
+    }
+    await this._saveTariff({ import_entity_id: null, fixed_price_ct: value });
+    this._fixedPriceEdit = undefined;
+  }
+
+  async _saveTariff(body) {
     try {
-      const tariff = await api.setTariff({ import_entity_id: entityId || null });
+      const tariff = await api.setTariff(body);
       this._sources = { ...this._sources, tariff };
       await this._loadPriceSeries();
     } catch (err) {
@@ -983,18 +1007,21 @@ class SunflowApp extends LitElement {
   }
 
   _renderPriceSource(sources) {
-    const selected = sources.tariff.import_entity_id ?? "";
+    const fixed = this._fixedPriceMode || (!sources.tariff.import_entity_id && sources.tariff.fixed_price_ct != null);
+    const selected = fixed ? FIXED_PRICE : (sources.tariff.import_entity_id ?? "");
     const points = this._priceSeries?.points ?? [];
     return html`
       <section class="device">
         <div class="device-title">Bezugspreis</div>
         ${sources.prices.length === 0
-          ? html`<p class="muted">Keine Preis-Entität gefunden (Einheit €/kWh oder ct/kWh).</p>`
-          : html`
+          ? html`<p class="small muted">Keine Preis-Entität gefunden (Einheit €/kWh oder ct/kWh) – du kannst einen festen Preis angeben.</p>`
+          : nothing}
+        ${html`
               <label class="field wide">
                 <span class="field-label">Quelle</span>
                 <select @change=${(e) => this._setTariff(e.target.value)}>
-                  <option value="" ?selected=${!selected}>– bitte wählen –</option>
+                  <option value="" ?selected=${!selected}>– keine (nur Eigenverbrauch) –</option>
+                  <option value=${FIXED_PRICE} ?selected=${selected === FIXED_PRICE}>Fester Preis …</option>
                   ${sources.prices.map(
                     (p) => html`<option value=${p.entity_id} ?selected=${selected === p.entity_id}>
                       ${p.name} · ${PRICE_ADAPTERS[p.adapter] ?? p.adapter}
@@ -1004,14 +1031,34 @@ class SunflowApp extends LitElement {
                 </select>
               </label>
             `}
-        ${points.length ? this._renderPriceSummary(points) : nothing}
-        ${points.length
+        ${fixed
+          ? html`
+              <div class="fields">
+                <label class="field">
+                  <span class="field-label">Arbeitspreis brutto</span>
+                  <span class="input-unit">
+                    <input inputmode="decimal" placeholder="z. B. 32,5"
+                      .value=${this._fixedPriceEdit ?? toDisplay(sources.tariff.fixed_price_ct, "ct")}
+                      @input=${(e) => (this._fixedPriceEdit = e.target.value)}>
+                    <span class="muted">ct/kWh</span>
+                  </span>
+                </label>
+              </div>
+              <div class="actions">
+                <button class="ok" ?disabled=${this._fixedPriceEdit === undefined} @click=${() => this._saveFixedPrice()}>
+                  Preis speichern
+                </button>
+              </div>
+            `
+          : nothing}
+        ${points.length && !fixed ? this._renderPriceSummary(points) : nothing}
+        ${points.length && !fixed
           ? html`<figure>
               <figcaption class="small muted">Bezugspreis nächste ${Math.round(points.length / 4)} h in ct/kWh</figcaption>
               ${priceChart(points, "Bezugspreis-Verlauf")}
             </figure>`
           : nothing}
-        ${this._priceSeries?.adapter === "fixed"
+        ${this._priceSeries?.adapter === "fixed" && !fixed
           ? html`<div class="alert warn">⚠ Diese Quelle liefert nur den aktuellen Preis, keinen Verlauf. Die Planung nimmt ihn als konstant an.</div>`
           : nothing}
       </section>
@@ -1214,8 +1261,11 @@ class SunflowApp extends LitElement {
     if (summary === null) return html`<h1>Fertig</h1><p class="muted">Lade Zusammenfassung …</p>`;
     const counts = { error: 0, warning: 0, info: 0 };
     for (const issue of summary.issues) counts[issue.level] += 1;
-    const priceName =
-      this._sources?.prices.find((p) => p.entity_id === summary.tariff)?.name ?? summary.tariff ?? "–";
+    const priceName = summary.tariff
+      ? (this._sources?.prices.find((p) => p.entity_id === summary.tariff)?.name ?? summary.tariff)
+      : summary.fixed_price_ct != null
+        ? `Fester Preis ${toDisplay(summary.fixed_price_ct, "ct")} ct/kWh`
+        : "keiner – nur Eigenverbrauch";
     return html`
       <div class="heading">
         <h1>${summary.completed ? "Einrichtung abgeschlossen" : "Fast fertig"}</h1>

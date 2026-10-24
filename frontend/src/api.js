@@ -38,7 +38,8 @@ export const api = {
   completeSetup: () => request("POST", "/setup/complete"),
   setTariff: (tariff) => request("PUT", "/config/tariff", tariff),
   setForecast: (planes) => request("PUT", "/config/forecast", planes),
-  tariffSeries: (entityId) => request("GET", `/tariff/series?entity_id=${encodeURIComponent(entityId)}`),
+  tariffSeries: (entityId) =>
+    request("GET", entityId ? `/tariff/series?entity_id=${encodeURIComponent(entityId)}` : "/tariff/series"),
   forecastSeries: () => request("GET", "/forecast/series"),
   setOverrides: (configDeviceId, overrides) =>
     request("PUT", `/config/devices/${encodeURIComponent(configDeviceId)}/role_overrides`, overrides),
