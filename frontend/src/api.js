@@ -30,6 +30,8 @@ export const api = {
     request("PATCH", `/config/devices/${encodeURIComponent(configDeviceId)}`, changes),
   site: () => request("GET", "/site"),
   sources: () => request("GET", "/sources"),
+  summary: () => request("GET", "/setup/summary"),
+  completeSetup: () => request("POST", "/setup/complete"),
   setTariff: (tariff) => request("PUT", "/config/tariff", tariff),
   setForecast: (planes) => request("PUT", "/config/forecast", planes),
   tariffSeries: (entityId) => request("GET", `/tariff/series?entity_id=${encodeURIComponent(entityId)}`),

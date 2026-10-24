@@ -40,6 +40,7 @@ from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import check_balance, device_entities, preview
 from .settings import Settings
 from .site import device_parameters, site_status
+from .summary import SetupSummary, build_summary
 from .sources import (
     ForecastPoint,
     detect_price_adapter,
@@ -241,7 +242,9 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
         ha_device_id=body.ha_device_id,
         profile=profile_id,
         profile_version=library.profiles[profile_id]["version"],
-        name=discovered.name,
+        # Device names like "Inverter" are ambiguous; manufacturer + model is not
+        name=" ".join(filter(None, (discovered.manufacturer, discovered.model)))
+        or discovered.name,
         role_overrides=body.role_overrides,
     )
     config.devices.append(device)
@@ -266,6 +269,7 @@ async def set_role_overrides(
 class DeviceUpdate(BaseModel):
     """Partial update of a configured device; omitted fields stay unchanged."""
 
+    name: str | None = None
     parameters: dict[str, float | None] | None = None
     feed_in: FeedIn | None = None
     measured_by: MeasuredBy | None = None
@@ -281,6 +285,8 @@ async def update_device(
     config = store.load()
     if (device := config.device(device_id)) is None:
         raise HTTPException(status_code=404, detail="Device not configured")
+    if body.name is not None and body.name.strip():
+        device.name = body.name.strip()
     if body.parameters is not None:
         for name, value in body.parameters.items():
             if value is None:
@@ -413,6 +419,31 @@ async def get_forecast_series(
             for device_id, series in by_plant.items()
         ]
     }
+
+
+def _summary_response(summary: SetupSummary) -> dict[str, Any]:
+    return asdict(summary) | {"can_complete": summary.can_complete}
+
+
+@router.get("/setup/summary")
+async def get_setup_summary(request: Request) -> dict[str, Any]:
+    """Return configured items and open issues of the setup."""
+    config = request.app.state.store.load()
+    return _summary_response(build_summary(config, _library(request).profiles))
+
+
+@router.post("/setup/complete")
+async def complete_setup(request: Request) -> dict[str, Any]:
+    """Mark the setup as completed if nothing blocks it."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    summary = build_summary(config, _library(request).profiles)
+    if not summary.can_complete:
+        raise HTTPException(status_code=409, detail="Setup has open errors")
+    config.setup_completed = True
+    store.save(config)
+    summary.completed = True
+    return _summary_response(summary)
 
 
 @router.get("/site")

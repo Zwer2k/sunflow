@@ -23,6 +23,12 @@ const BALANCE_SAMPLES = 6;
 const BALANCE_MIN_SAMPLES = 3;
 const UNAVAILABLE = new Set(["unavailable", "unknown", ""]);
 
+const ISSUE_STYLES = {
+  error: { css: "error", icon: "✕" },
+  warning: { css: "warn", icon: "⚠" },
+  info: { css: "neutral", icon: "ℹ" },
+};
+
 const PRICE_ADAPTERS = {
   timeslots: "Zeittarif",
   nordpool: "Börsenpreis (Nord Pool)",
@@ -79,6 +85,8 @@ class SunflowApp extends LitElement {
     _sources: { state: true },
     _priceSeries: { state: true },
     _forecastSeries: { state: true },
+    _summary: { state: true },
+    _nameEdits: { state: true },
     _busy: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
@@ -106,6 +114,8 @@ class SunflowApp extends LitElement {
     this._sources = null;
     this._priceSeries = null;
     this._forecastSeries = null;
+    this._summary = null;
+    this._nameEdits = {};
     this._busy = new Set();
     this._error = null;
     this._haConnected = null;
@@ -153,6 +163,25 @@ class SunflowApp extends LitElement {
     if (step === 2) this._loadParameters();
     if (step === 4) this._startSite();
     if (step === 5) this._loadSources();
+    if (step === 6) this._loadSummary();
+  }
+
+  async _loadSummary() {
+    try {
+      this._summary = await api.summary();
+      this._error = null;
+    } catch (err) {
+      this._error = `Zusammenfassung konnte nicht geladen werden: ${err.message}`;
+    }
+  }
+
+  async _completeSetup() {
+    try {
+      this._summary = await api.completeSetup();
+      this._error = null;
+    } catch (err) {
+      this._error = `Einrichtung konnte nicht abgeschlossen werden: ${err.message}`;
+    }
   }
 
   async _loadSources() {
@@ -262,6 +291,7 @@ class SunflowApp extends LitElement {
       parameters[name] = value;
     }
     const changes = { parameters };
+    if (this._nameEdits[device.id] !== undefined) changes.name = this._nameEdits[device.id];
     const feedEdit = this._feedEdits[device.id];
     if (feedEdit) {
       const rate = fromDisplay(feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct"), "ct");
@@ -279,6 +309,7 @@ class SunflowApp extends LitElement {
       this._params = { ...this._params, [device.id]: fresh };
       this._paramEdits = { ...this._paramEdits, [device.id]: {} };
       this._feedEdits = { ...this._feedEdits, [device.id]: undefined };
+      this._nameEdits = { ...this._nameEdits, [device.id]: undefined };
       this._error = null;
     } catch (err) {
       this._error = `Kenndaten konnten nicht gespeichert werden: ${err.message}`;
@@ -452,6 +483,8 @@ class SunflowApp extends LitElement {
         return this._renderSite();
       case 5:
         return this._renderSources();
+      case 6:
+        return this._renderSummary();
       default:
         return html`
           <h1>${STEPS[this._step]}</h1>
@@ -716,7 +749,9 @@ class SunflowApp extends LitElement {
     const capabilities = this._capabilitiesByHaDevice[device.ha_device_id] ?? [];
     const edits = this._paramEdits[device.id] ?? {};
     const feedEdit = this._feedEdits[device.id] ?? {};
-    const changed = Object.keys(edits).length > 0 || this._feedEdits[device.id] !== undefined;
+    const nameEdit = this._nameEdits[device.id];
+    const changed =
+      Object.keys(edits).length > 0 || this._feedEdits[device.id] !== undefined || nameEdit !== undefined;
     return html`
       <section class="device">
         <div class="device-head">
@@ -725,6 +760,13 @@ class SunflowApp extends LitElement {
             <div class="muted small">${devicePurpose(capabilities)} · Profil ${device.profile}</div>
           </div>
         </div>
+        <label class="field wide">
+          <span class="field-label">Bezeichnung</span>
+          <span class="input-unit">
+            <input .value=${nameEdit ?? device.name}
+              @input=${(e) => (this._nameEdits = { ...this._nameEdits, [device.id]: e.target.value })}>
+          </span>
+        </label>
         ${this._params[device.id] === undefined ? html`<p class="muted">Lade Kenndaten …</p>` : nothing}
         ${params.length
           ? html`<div class="fields">${params.map((p) => this._renderParameterField(device, p, edits))}</div>`
@@ -989,6 +1031,88 @@ class SunflowApp extends LitElement {
     `;
   }
 
+  _renderSummary() {
+    const summary = this._summary;
+    if (summary === null) return html`<h1>Fertig</h1><p class="muted">Lade Zusammenfassung …</p>`;
+    const counts = { error: 0, warning: 0, info: 0 };
+    for (const issue of summary.issues) counts[issue.level] += 1;
+    const priceName =
+      this._sources?.prices.find((p) => p.entity_id === summary.tariff)?.name ?? summary.tariff ?? "–";
+    return html`
+      <div class="heading">
+        <h1>${summary.completed ? "Einrichtung abgeschlossen" : "Fast fertig"}</h1>
+        <p class="muted">
+          ${summary.completed
+            ? "Sunflow ist eingerichtet. Die Planung folgt im nächsten Ausbauschritt."
+            : counts.error
+              ? "Bitte behebe die markierten Punkte, dann kannst du die Einrichtung abschließen."
+              : "Prüfe die Übersicht und schließe die Einrichtung ab."}
+        </p>
+      </div>
+      ${summary.issues.length
+        ? html`
+            <ul class="issues">
+              ${summary.issues.map(
+                (i) => html`
+                  <li class="alert ${ISSUE_STYLES[i.level].css}">
+                    <span>${ISSUE_STYLES[i.level].icon} ${i.message}</span>
+                    <button class="link" @click=${() => this._goTo(i.step)}>zu „${STEPS[i.step]}“</button>
+                  </li>
+                `,
+              )}
+            </ul>
+          `
+        : html`<div class="alert ok">✓ Alles eingerichtet.</div>`}
+      <ul class="summary-list">
+        ${summary.devices.map(
+          (d) => html`
+            <li>
+              <strong>${d.name}</strong> · ${devicePurpose(d.capabilities)}
+              <div class="small muted">${this._summaryDetails(d).join(" · ")}</div>
+            </li>
+          `,
+        )}
+        <li>
+          <strong>Bezugspreis</strong>
+          <div class="small muted">${priceName}</div>
+        </li>
+        <li>
+          <strong>PV-Prognose</strong>
+          <div class="small muted">
+            ${summary.forecast_planes.length
+              ? summary.forecast_planes.map((p) => `${p.name} → ${p.plant ?? "nicht zugeordnet"}`).join(" · ")
+              : "keine"}
+          </div>
+        </li>
+      </ul>
+      ${summary.completed
+        ? html`<span class="chip ok">✓ Abgeschlossen</span>`
+        : html`<div class="actions">
+            <button class="ok" ?disabled=${!summary.can_complete} @click=${() => this._completeSetup()}>
+              Einrichtung abschließen
+            </button>
+            ${counts.warning ? html`<span class="small muted">${counts.warning} Hinweise kannst du auch später erledigen.</span>` : nothing}
+          </div>`}
+    `;
+  }
+
+  _summaryDetails(device) {
+    const details = [];
+    const p = device.parameters;
+    if (p.capacity_wh) details.push(`${toDisplay(p.capacity_wh, "Wh")} kWh`);
+    if (p.min_soc !== undefined) details.push(`min. ${p.min_soc} %`);
+    if (p.max_charge) details.push(`Laden ≤ ${formatValue(p.max_charge, "W")}`);
+    if (p.max_discharge) details.push(`Entladen ≤ ${formatValue(p.max_discharge, "W")}`);
+    if (device.feed_in) {
+      const rate = device.feed_in.rate_ct_per_kwh;
+      details.push(`${FEED_IN_MODELS[device.feed_in.model]}${rate !== null ? ` ${toDisplay(rate, "ct")} ct/kWh` : ""}`);
+    }
+    if (device.measured_by) details.push(`gemessen von ${device.measured_by} (PV extern)`);
+    if (device.overrides.length) details.push(`${device.overrides.length} angepasste Rollen`);
+    details.push(`Profil ${device.profile}`);
+    return details;
+  }
+
   _renderComponents(device) {
     return html`
       <div class="small muted">
@@ -1134,6 +1258,11 @@ class SunflowApp extends LitElement {
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+    .issues, .summary-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .issues li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; }
+    .issues .link { color: inherit; }
+    .summary-list li { padding: 12px 14px; border: 1px solid var(--sf-border); border-radius: 8px; }
 
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }
