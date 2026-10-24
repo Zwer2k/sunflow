@@ -36,6 +36,7 @@ class LoadForecast:
     quality: str  # "day_type", "all_days", "mixed" or "default"
     excluded_hours: int = 0
     scaled_to_kwh: float | None = None
+    separated_hours: int = 0
 
 
 async def fetch_hourly_means(
@@ -56,6 +57,29 @@ async def fetch_hourly_means(
             continue
         rows.append((datetime.fromtimestamp(row["start"] / 1000, UTC), float(row["mean"])))
     return rows
+
+
+def subtract_loads(
+    history: list[tuple[datetime, float]], loads: list[list[tuple[datetime, float]]]
+) -> tuple[list[tuple[datetime, float]], int]:
+    """Subtract separately measured loads (e.g. evcc loadpoints) hour by hour.
+
+    Returns the base load history and how many hours were separated; hours
+    without data of the separate loads stay unchanged.
+    """
+    by_hour: dict[datetime, float] = {}
+    for series in loads:
+        for moment, power in series:
+            by_hour[moment] = by_hour.get(moment, 0.0) + power
+    base = []
+    separated = 0
+    for moment, power in history:
+        if moment in by_hour:
+            base.append((moment, max(power - by_hour[moment], 0.0)))
+            separated += 1
+        else:
+            base.append((moment, power))
+    return base, separated
 
 
 def _day_type(moment: datetime) -> str:

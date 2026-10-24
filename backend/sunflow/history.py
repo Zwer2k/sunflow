@@ -19,7 +19,7 @@ FIVE_MINUTE_LIMIT = timedelta(days=10)
 class Series:
     """One statistic and how to turn it into a site value."""
 
-    key: str  # soc_wh, pv_w, load_w, grid_w
+    key: str  # soc_wh, pv_w, load_w, grid_w, loadpoint_w
     statistic_id: str
     factor: float  # sign flip and unit conversion (e.g. % -> Wh)
 
@@ -52,6 +52,8 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
                 add("soc_wh", "battery_soc", capacity / 100)
             add("load_w", "load_power")
             add("grid_w", "grid_power")
+        if "loadpoint" in profile["capabilities"]:
+            add("loadpoint_w", "charge_power")
         if "pv" in profile["capabilities"]:
             role = next((r for r in PV_OUTPUT_ROLES if r in roles and roles[r].entity_id), None)
             if role:
@@ -89,7 +91,7 @@ async def fetch_history(
     for bucket_start in sorted(buckets):
         values = buckets[bucket_start]
         point: dict[str, Any] = {"start": bucket_start.isoformat(), "end": (bucket_start + bucket).isoformat()}
-        for key in ("soc_wh", "pv_w", "load_w", "grid_w"):
+        for key in ("soc_wh", "pv_w", "load_w", "grid_w", "loadpoint_w"):
             per_statistic = values.get(key)
             # Mean per statistic, summed over statistics (several PV plants)
             point[key] = (

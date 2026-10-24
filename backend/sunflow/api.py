@@ -95,6 +95,18 @@ def _configured_device(request: Request, device_id: str) -> DeviceConfig:
     return device
 
 
+def display_name(device: Any, profile: dict[str, Any]) -> str:
+    """Name for a new device: one-word names like "Inverter" are ambiguous, so use
+    manufacturer and model there; profiles may strip noise from names."""
+    name = device.name
+    for part in profile.get("name_strip", []):
+        name = name.replace(part, "")
+    name = name.strip()
+    if len(name.split()) <= 1:
+        name = " ".join(filter(None, (device.manufacturer, device.model))) or name
+    return name
+
+
 def _guard(request: Request, profile: dict[str, Any]) -> EepromGuard:
     limit = profile.get("eeprom_guard", {}).get(
         "max_writes_per_day", DEFAULT_MAX_EEPROM_WRITES
@@ -252,9 +264,7 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
         ha_device_id=body.ha_device_id,
         profile=profile_id,
         profile_version=library.profiles[profile_id]["version"],
-        # Device names like "Inverter" are ambiguous; manufacturer + model is not
-        name=" ".join(filter(None, (discovered.manufacturer, discovered.model)))
-        or discovered.name,
+        name=display_name(discovered, library.profiles[profile_id]),
         role_overrides=body.role_overrides,
     )
     config.devices.append(device)
@@ -603,6 +613,7 @@ async def get_plan(request: Request) -> dict[str, Any]:
         "load_history_hours": result.load.history_hours if result.load else 0,
         "load_scaled_to_kwh": result.load.scaled_to_kwh if result.load else None,
         "load_excluded_hours": result.load.excluded_hours if result.load else 0,
+        "load_separated_hours": result.load.separated_hours if result.load else 0,
         "settings": config.optimizer.model_dump(),
         "cost": plan.cost,
         "baseline_cost": plan.baseline_cost,

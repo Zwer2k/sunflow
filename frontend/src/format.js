@@ -5,6 +5,12 @@ const ROLE_LABELS = {
   pv_ext_power: "PV extern",
   grid_power: "Netz",
   load_power: "Hausverbrauch",
+  charge_power: "Ladeleistung",
+  mode: "Modus",
+  charging: "Lädt",
+  connected: "Verbunden",
+  vehicle_soc: "Ladestand / Temperatur",
+  limit_soc: "Ziel",
   inverter_power: "WR-Ausgang (AC)",
   ac_power: "PV (AC)",
   daily_yield: "Tagesertrag",
@@ -89,6 +95,7 @@ const CONTROL_CAPABILITIES = new Set(["battery_window", "curtail", "switch_off",
 export function devicePurpose(capabilities) {
   const has = (c) => capabilities.includes(c);
   if (has("ev_charger")) return "Wallbox";
+  if (has("loadpoint")) return "Ladepunkt (evcc)";
   if (has("battery")) return has("pv") ? "Wechselrichter + Speicher" : "Speicher";
   if (has("pv")) return "PV-Wechselrichter";
   if (has("load")) return "Verbraucher";

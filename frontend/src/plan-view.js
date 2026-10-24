@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
-import { lineChart, priceChart, SERIES_COLORS } from "./charts.js";
+import { lineChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import { formatValue, fromDisplay, toDisplay } from "./format.js";
 
 const ACTIONS = {
@@ -188,6 +188,7 @@ class SunflowPlan extends LitElement {
     const history = this._history?.points ?? [];
     const capacity = Math.max(...slots.map((s) => s.soc_wh), ...history.map((p) => p.soc_wh ?? 0)) || 1;
     const nowDate = new Date(slots[0].start);
+    const hasLoadpoints = history.some((p) => p.loadpoint_w !== null && p.loadpoint_w !== undefined);
     return html`
       ${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
       <div class="tiles">
@@ -261,16 +262,22 @@ class SunflowPlan extends LitElement {
         <h3>PV-Erzeugung und Hausverbrauch</h3>
         <div class="legend">
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>PV-Erzeugung</span>
+          ${hasLoadpoints
+            ? html`<span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>Ladepunkte (evcc)</span>`
+            : nothing}
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Hausverbrauch
             <span class="muted">(Prognose: ${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
               ? `, skaliert auf ${toDisplay(plan.load_scaled_to_kwh, "kWh")} kWh/Tag`
-              : ""})</span></span>
+              : ""}${plan.load_separated_hours ? `, ohne Ladepunkte (${plan.load_separated_hours} h getrennt)` : ""})</span></span>
         </div>
         ${lineChart(
           [
             { name: "Verbrauch gemessen", color: SERIES_COLORS[0], points: this._past("load_w") },
             { name: "Verbrauch Prognose", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
             { name: "PV gemessen", color: SERIES_COLORS[1], points: this._past("pv_w") },
+            ...(hasLoadpoints
+              ? [{ name: "Ladepunkte gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
+              : []),
             { name: "PV Prognose", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "pv_w") },
           ],
           { label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose", formatY: (v) => formatValue(v, "W"), now: nowDate },
