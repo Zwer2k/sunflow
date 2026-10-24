@@ -13,7 +13,7 @@ TOKEN = "secret"
 
 
 async def _fake_ha(request: web.Request) -> web.WebSocketResponse:
-    ws = web.WebSocketResponse()
+    ws = web.WebSocketResponse(max_msg_size=0)
     await ws.prepare(request)
     await ws.send_json({"type": "auth_required"})
     auth = await ws.receive_json()
@@ -102,3 +102,15 @@ async def test_call_service(client: HAClient) -> None:
     )
     assert result["echo"]["service_data"] == {"value": 500}
     assert result["echo"]["target"] == {"entity_id": "number.x"}
+
+
+async def test_large_message(server: TestServer) -> None:
+    """Results above aiohttp's 4 MB default do not drop the connection."""
+    ha = HAClient(str(server.make_url("/api/websocket")), TOKEN)
+    await ha.connect()
+    try:
+        result = await ha.call_service("number", "set_value", {"blob": "x" * (5 * 1024 * 1024)})
+        assert len(result["echo"]["service_data"]["blob"]) == 5 * 1024 * 1024
+        assert ha.connected
+    finally:
+        await ha.close()
