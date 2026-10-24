@@ -2,7 +2,7 @@ import { svg, nothing } from "../vendor/lit-all.min.js";
 
 // Validated categorical slots (light/dark) are CSS variables in base.css; SVG presentation
 // attributes do not resolve var(), so colors are applied through style
-export const SERIES_COLORS = ["var(--sf-series-1)", "var(--sf-series-2)"];
+export const SERIES_COLORS = [1, 2, 3, 4, 5, 6].map((i) => `var(--sf-series-${i})`);
 export const UNASSIGNED_COLOR = "var(--sf-series-neutral)";
 
 const W = 720;

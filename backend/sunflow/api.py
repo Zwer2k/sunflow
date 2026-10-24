@@ -434,11 +434,12 @@ async def get_tariff_series(
 async def get_forecast_series(
     request: Request, hours: int = FORECAST_HOURS
 ) -> dict[str, Any]:
-    """Return the PV forecast per plant, summed over its assigned planes."""
+    """Return the PV forecast per used plane (on a 30 minute grid) and its plant."""
     config = request.app.state.store.load()
     client: HAClient = request.app.state.ha
     start = _slot_start().replace(minute=0)
-    by_plant: dict[str, list[list[ForecastPoint]]] = {}
+    names = {d.id: d.name for d in config.devices}
+    planes: list[dict[str, Any]] = []
     try:
         for plane in config.forecast_planes:
             if plane.device_id is None:
@@ -450,20 +451,19 @@ async def get_forecast_series(
                     points = await forecast_solar_forecast(client, plane.ref, start, hours)
                 case _:
                     continue
-            by_plant.setdefault(plane.device_id, []).append(points)
+            planes.append(
+                {
+                    "source": plane.source,
+                    "ref": plane.ref,
+                    "name": plane.display_name,
+                    "device_id": plane.device_id,
+                    "plant": names.get(plane.device_id, plane.device_id),
+                    "points": [asdict(p) for p in sum_forecasts([points])],
+                }
+            )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
-    names = {d.id: d.name for d in config.devices}
-    return {
-        "plants": [
-            {
-                "device_id": device_id,
-                "name": names.get(device_id, device_id),
-                "points": [asdict(p) for p in sum_forecasts(series)],
-            }
-            for device_id, series in by_plant.items()
-        ]
-    }
+    return {"planes": planes}
 
 
 def _tests(request: Request) -> dict[str, tuple[DeviceTestState, asyncio.Task[None]]]:
