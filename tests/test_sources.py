@@ -123,13 +123,22 @@ def test_forecast_solar_planes() -> None:
         {"entry_id": "e3", "domain": "forecast_solar", "title": "", "state": "setup_error"},
         {"entry_id": "x", "domain": "met", "title": "Home", "state": "loaded"},
     ]
-    devices = [{"config_entries": ["e1"], "name": "Solar production forecast Carport", "name_by_user": None}]
+    devices = [
+        {"config_entries": ["e1"], "name": "Solar production forecast Carport", "name_by_user": None},
+        # Production instances often keep the generic device name
+        {"config_entries": ["e2"], "name": "Solar production forecast", "name_by_user": None},
+    ]
+    entities = [
+        {"entity_id": "sensor.energy_production_today", "unique_id": "e1_energy_production_today", "config_entry_id": "e1"},
+        {"entity_id": "sensor.energy_production_today_remaining", "unique_id": "e1_energy_production_today_remaining", "config_entry_id": "e1"},
+    ]
+    states = {"sensor.energy_production_today": {"state": "4.675"}}
 
-    planes = forecast_solar_planes(entries, devices)
+    planes = forecast_solar_planes(entries, devices, entities, states)
 
-    assert [(p.source, p.ref, p.name) for p in planes] == [
-        ("forecast_solar", "e1", "Carport"),
-        ("forecast_solar", "e2", "Forecast.Solar 2"),
+    assert [(p.source, p.ref, p.name, p.today_kwh) for p in planes] == [
+        ("forecast_solar", "e1", "Carport", 4.675),
+        ("forecast_solar", "e2", "Forecast.Solar 2", None),
     ]
 
 

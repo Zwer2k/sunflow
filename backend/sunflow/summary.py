@@ -129,7 +129,7 @@ def build_summary(
     assigned = {p.device_id for p in config.forecast_planes if p.device_id}
     summary.forecast_planes = [
         # Unassigned planes are fine: the same roof may exist at several providers
-        {"name": p.name, "plant": names.get(p.device_id) if p.device_id else None}
+        {"name": p.display_name, "plant": names.get(p.device_id) if p.device_id else None}
         for p in config.forecast_planes
     ]
     if pv_plants and not assigned:

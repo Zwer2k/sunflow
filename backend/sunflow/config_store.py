@@ -62,6 +62,13 @@ class ForecastPlane(BaseModel):
     ref: str
     name: str
     device_id: str | None = None
+    # Set by the user; the detected name may be generic ("Solar production forecast")
+    custom_name: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        """Return the user's name, else the detected one."""
+        return self.custom_name or self.name
 
 
 class OptimizerConfig(BaseModel):
