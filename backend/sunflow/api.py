@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.responses import Response
 
 from . import API_VERSION, __version__
 from .config_store import ConfigStore, DeviceConfig, RoleOverride
@@ -370,6 +371,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Mounted last so API routes take precedence
     if settings is not None and settings.frontend_dir.is_dir():
         app.mount(
-            "/", StaticFiles(directory=settings.frontend_dir, html=True), name="frontend"
+            "/",
+            NoCacheStaticFiles(directory=settings.frontend_dir, html=True),
+            name="frontend",
         )
     return app
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """Static files that the browser revalidates on every load.
+
+    The frontend has no build step with hashed file names, so cached ES
+    modules would otherwise survive updates.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        """Add a no-cache header to every file response."""
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
