@@ -56,6 +56,8 @@ class SunflowPlan extends LitElement {
     _error: { state: true },
     _wear: { state: true },
     _reserve: { state: true },
+    _daily: { state: true },
+    _largeLoad: { state: true },
     _shadow: { state: true },
     _history: { state: true },
     _historyHours: { state: true },
@@ -109,6 +111,8 @@ class SunflowPlan extends LitElement {
       await api.setOptimizer({ ...this._plan.settings, ...changes });
       this._wear = undefined;
       this._reserve = undefined;
+      this._daily = undefined;
+      this._largeLoad = undefined;
       await this._load();
     } catch (err) {
       this._error = `Einstellungen konnten nicht gespeichert werden: ${err.message}`;
@@ -126,6 +130,22 @@ class SunflowPlan extends LitElement {
         return;
       }
       changes.wear_ct_per_kwh = wear;
+    }
+    if (this._daily !== undefined) {
+      const daily = fromDisplay(this._daily, "kWh");
+      if (daily === undefined || (daily !== null && daily <= 0)) {
+        this._error = "Bitte einen gültigen Tagesverbrauch in kWh eingeben oder das Feld leeren.";
+        return;
+      }
+      changes.daily_consumption_kwh = daily;
+    }
+    if (this._largeLoad !== undefined) {
+      const kw = fromDisplay(this._largeLoad, "kW");
+      if (kw === undefined || (kw !== null && kw <= 0)) {
+        this._error = "Bitte eine gültige Leistung in kW eingeben oder das Feld leeren.";
+        return;
+      }
+      changes.large_load_threshold_w = kw === null ? null : kw * 1000;
     }
     if (this._reserve !== undefined) {
       const reserve = fromDisplay(this._reserve, "%");
@@ -242,7 +262,9 @@ class SunflowPlan extends LitElement {
         <div class="legend">
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>PV-Erzeugung</span>
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Hausverbrauch
-            <span class="muted">(Prognose: ${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie)</span></span>
+            <span class="muted">(Prognose: ${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
+              ? `, skaliert auf ${toDisplay(plan.load_scaled_to_kwh, "kWh")} kWh/Tag`
+              : ""})</span></span>
         </div>
         ${lineChart(
           [
@@ -425,6 +447,26 @@ class SunflowPlan extends LitElement {
               </label>`
             : nothing}
           <label class="field">
+            <span class="field-label">Durchschnittlicher Hausverbrauch</span>
+            <span class="input-unit">
+              <input inputmode="decimal" placeholder="z. B. 14"
+                .value=${this._daily ?? toDisplay(settings.daily_consumption_kwh, "kWh")}
+                @input=${(e) => (this._daily = e.target.value)}>
+              <span class="muted">kWh/Tag</span>
+            </span>
+            <span class="small muted">Die Tagesform kommt aus der Historie, die Summe aus diesem Wert. Leer lassen = nur Historie.</span>
+          </label>
+          <label class="field">
+            <span class="field-label">Großverbraucher ausklammern ab</span>
+            <span class="input-unit">
+              <input inputmode="decimal"
+                .value=${this._largeLoad ?? toDisplay(settings.large_load_threshold_w === null ? null : settings.large_load_threshold_w / 1000, "kW")}
+                @input=${(e) => (this._largeLoad = e.target.value)}>
+              <span class="muted">kW</span>
+            </span>
+            <span class="small muted">Stunden darüber (z. B. Wallbox) zählen nicht zur Lastprognose. Leer = nichts ausklammern.</span>
+          </label>
+          <label class="field">
             <span class="field-label">Verschleißkosten Speicher</span>
             <span class="input-unit">
               <input inputmode="decimal" .value=${this._wear ?? toDisplay(settings.wear_ct_per_kwh, "ct")}
@@ -442,7 +484,7 @@ class SunflowPlan extends LitElement {
             </span>
           </label>
         </div>
-        ${this._wear !== undefined || this._reserve !== undefined
+        ${this._wear !== undefined || this._reserve !== undefined || this._daily !== undefined || this._largeLoad !== undefined
           ? html`<div class="actions">
               <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
                 Speichern und neu planen

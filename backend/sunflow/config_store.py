@@ -71,6 +71,10 @@ class OptimizerConfig(BaseModel):
     allow_grid_charge: bool = True
     strategy: Literal["balanced", "pv_absorption", "backup"] = "balanced"
     backup_reserve_pct: float = 30.0
+    # Load forecast: average daily household consumption and the threshold above
+    # which hours count as large sporadic loads (e.g. EV charging) and are left out
+    daily_consumption_kwh: float | None = None
+    large_load_threshold_w: float | None = 3500.0
 
 
 class SunflowConfig(BaseModel):

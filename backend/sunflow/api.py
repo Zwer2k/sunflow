@@ -39,9 +39,10 @@ from .executor import (
     plan_setup,
 )
 from .ha import HAClient, HAError
+from .efficiency import estimate_from_history
 from .history import fetch_history, history_series
 from .profiles import ProfileLibrary, load_profiles, load_schema
-from .resolver import check_balance, device_entities, preview
+from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .settings import Settings
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, evaluate as evaluate_shadow
@@ -600,6 +601,8 @@ async def get_plan(request: Request) -> dict[str, Any]:
         "pv_planes": result.pv_planes,
         "load_quality": result.load.quality if result.load else None,
         "load_history_hours": result.load.history_hours if result.load else 0,
+        "load_scaled_to_kwh": result.load.scaled_to_kwh if result.load else None,
+        "load_excluded_hours": result.load.excluded_hours if result.load else 0,
         "settings": config.optimizer.model_dump(),
         "cost": plan.cost,
         "baseline_cost": plan.baseline_cost,
@@ -641,6 +644,38 @@ async def get_shadow(request: Request, hours: int = 48) -> dict[str, Any]:
         "evaluation": evaluate_shadow(rows),
         "rows": rows,
     }
+
+
+@router.get("/config/devices/{device_id}/efficiency")
+async def get_efficiency(request: Request, device_id: str, days: int = 10) -> dict[str, Any] | None:
+    """Estimate the battery efficiency from the measured history (suggestion only)."""
+    device = _configured_device(request, device_id)
+    profile = _library(request).profiles[device.profile]
+    snapshot = await _snapshot(request)
+    roles = {
+        r.role: r
+        for r in preview(
+            profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()}
+        )
+    }
+    power, soc = roles.get("battery_power"), roles.get("battery_soc")
+    params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+    if power is None or soc is None or not power.entity_id or not soc.entity_id or not params.get("capacity_wh"):
+        return None
+    # The sensor's sign convention applies to its statistics as well
+    sign = -1.0 if power.sign is not None and power.sign not in CANONICAL_SIGNS else 1.0
+    try:
+        result = await estimate_from_history(
+            request.app.state.ha,
+            power.entity_id,
+            soc.entity_id,
+            params["capacity_wh"],
+            min(max(days, 1), 10),
+            sign,
+        )
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    return asdict(result) if result else None
 
 
 @router.get("/site")

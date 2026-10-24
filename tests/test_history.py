@@ -66,3 +66,25 @@ async def test_long_ranges_use_hourly_statistics() -> None:
 
     assert await fetch_history(client, series, START - timedelta(days=11), START, timedelta(hours=1)) == []
     assert client.calls[0]["period"] == "hour"
+
+
+def test_efficiency_estimate() -> None:
+    """A battery cycling with 95 % per direction is recognized; standby losses make it implausible."""
+    from sunflow.efficiency import estimate
+
+    eta = 0.95
+    capacity = 20000.0
+    # Charge 40 kWh, discharge 36 kWh measured at the terminals over 1 h steps
+    charged, discharged = 40000.0, 36000.0
+    stored = eta * charged - discharged / eta
+    power = [charged] + [-discharged]
+    result = estimate(power, 1.0, 50, 50 + stored / capacity * 100, capacity)
+
+    assert result.efficiency == pytest.approx(eta)
+    assert result.round_trip == pytest.approx(eta * eta)
+    assert result.reliable and result.plausible
+
+    lossy = estimate([25700.0, -13800.0], 1.0, 40, 40 + 4700 / capacity * 100, capacity)
+    assert lossy.efficiency == pytest.approx(0.829, abs=0.002)
+    assert not lossy.plausible
+    assert not lossy.reliable

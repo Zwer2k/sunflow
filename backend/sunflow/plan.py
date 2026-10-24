@@ -202,11 +202,25 @@ async def compute_plan(
     history = []
     if load_entity := find_load_entity(roles):
         history = await fetch_hourly_means(client, load_entity, start)
-    load = build_load_forecast(history, start, HORIZON_HOURS, tz)
-    if load.quality == "default":
-        warnings.append("Keine Verbrauchshistorie – Hausverbrauch als konstant angenommen.")
-    elif load.history_hours < 7 * 24:
-        warnings.append(f"Erst {load.history_hours} h Verbrauchshistorie – die Lastprognose wird mit der Zeit genauer.")
+    load = build_load_forecast(
+        history,
+        start,
+        HORIZON_HOURS,
+        tz,
+        large_load_w=config.optimizer.large_load_threshold_w,
+        daily_kwh=config.optimizer.daily_consumption_kwh,
+    )
+    if load.history_hours < 7 * 24 and not config.optimizer.daily_consumption_kwh:
+        warnings.append(
+            f"Erst {load.history_hours} h Verbrauchshistorie – gib deinen durchschnittlichen Tagesverbrauch "
+            "in den Einstellungen an, damit die Lastprognose stimmt."
+        )
+    if load.excluded_hours:
+        warnings.append(
+            f"{load.excluded_hours} h mit mehr als "
+            f"{config.optimizer.large_load_threshold_w / 1000:.1f}".replace(".", ",") + " kW "
+            "(z. B. Wallbox) sind aus der Lastprognose ausgeklammert – solche Lasten plant Sunflow noch nicht ein."
+        )
 
     settings = optimizer_settings(config, battery)
     inputs = build_inputs(start, prices, pv, load, feed_in_price(config, battery_device))
