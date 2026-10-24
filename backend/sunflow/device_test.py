@@ -62,6 +62,8 @@ class DeviceTestState:
     control_works: bool | None = None
     sign_correct: bool | None = None
     restored: bool | None = None
+    previous_mode: str | None = None
+    previous_mode_restored: bool | None = None
     calls: list[PlannedCall] = field(default_factory=list)
     error: str | None = None
     started: datetime | None = None
@@ -103,11 +105,23 @@ ReadFn = Callable[[], Awaitable[tuple[float | None, float | None]]]
 RunFn = Callable[[str, dict[str, float]], Awaitable[list[PlannedCall]]]
 
 
+@dataclass(frozen=True, kw_only=True)
+class ModeControl:
+    """Switch the device into its control mode and back.
+
+    ensure() returns the previous option if it had to switch, else None.
+    """
+
+    ensure: Callable[[], Awaitable[str | None]]
+    set: Callable[[str], Awaitable[None]]
+
+
 async def run_device_test(
     state: DeviceTestState,
     read: ReadFn,
     run_action: RunFn,
     timings: Timings = Timings(),
+    mode: ModeControl | None = None,
 ) -> None:
     """Run the test, updating state in place. Cancelling aborts and restores."""
     state.started = datetime.now(UTC)
@@ -132,6 +146,10 @@ async def run_device_test(
         calls = await run_action("auto", {})
         state.calls += calls
         state.restored = all(c.status == "done" for c in calls)
+        if mode is not None and state.previous_mode is not None:
+            state.message = f"Schalte zurück in „{state.previous_mode}“ …"
+            await mode.set(state.previous_mode)
+            state.previous_mode_restored = True
 
     try:
         state.message = "Messe Ausgangszustand …"
@@ -141,8 +159,12 @@ async def run_device_test(
         action, power, expectation = choose_test(median(baseline))
         state.test_action, state.test_power, state.expectation = action, power, expectation
 
-        state.message = f"Testbefehl aktiv: {expectation}"
+        # From here on every exit path restores window and mode
         commanded = True
+        if mode is not None:
+            state.message = "Prüfe Betriebsmodus …"
+            state.previous_mode = await mode.ensure()
+        state.message = f"Testbefehl aktiv: {expectation}"
         state.calls += await run_action(action, {"P": power})
         await sample_for("command", timings.settle)
         settled = await sample_for("command", timings.hold - timings.settle)
@@ -200,6 +222,8 @@ def state_response(state: DeviceTestState) -> dict[str, Any]:
         "control_works": state.control_works,
         "sign_correct": state.sign_correct,
         "restored": state.restored,
+        "previous_mode": state.previous_mode,
+        "previous_mode_restored": state.previous_mode_restored,
         "calls": [
             {"entity_id": c.entity_id, "service": f"{c.domain}.{c.service}", "data": c.data, "status": c.status}
             for c in state.calls

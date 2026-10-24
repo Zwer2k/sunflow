@@ -1126,10 +1126,13 @@ class SunflowApp extends LitElement {
     return html`
       <ol class="plan small">
         <li>Ausgangszustand 20 s messen (nur lesen).</li>
+        <li>Falls der Wechselrichter nicht im passiven Modus ist: dorthin umschalten
+          (einmaliger EEPROM-Schreibzugriff).</li>
         <li>Je nach Zustand: Laden bzw. Entladen auf 300 W begrenzen oder 500 W aus dem Netz laden – 60 s lang.
-          Es werden nur die Werte des passiven Modus geschrieben (RAM), kein Moduswechsel, kein EEPROM.</li>
+          Dafür werden nur die Werte des passiven Modus geschrieben (RAM).</li>
         <li>Prüfen, ob die Batterie dem Befehl in der erwarteten Richtung folgt.</li>
-        <li>Zurück auf Eigenverbrauch und 30 s beobachten. Bei Abbruch oder Fehler wird sofort zurückgesetzt.</li>
+        <li>Zurück auf Eigenverbrauch, ggf. zurück in den vorherigen Modus, 30 s beobachten.
+          Bei Abbruch oder Fehler wird sofort zurückgesetzt.</li>
       </ol>
       <label class="inline confirm">
         <input type="checkbox" .checked=${confirmed}
@@ -1181,6 +1184,13 @@ class SunflowApp extends LitElement {
             ${result(test.control_works, "Steuerung wirkt", "Batterie folgt dem Befehl nicht")}
             ${result(test.sign_correct, "Vorzeichen korrekt (+ = Laden)", "Vorzeichen falsch – in Schritt 2 „umkehren“ setzen")}
             ${result(test.restored, "Zurück auf Eigenverbrauch", "Zurücksetzen fehlgeschlagen – bitte in HA prüfen!")}
+            ${test.previous_mode
+              ? result(
+                  test.previous_mode_restored === true,
+                  `Modus zurück auf „${test.previous_mode}“`,
+                  `Modus nicht zurückgesetzt – bitte in HA auf „${test.previous_mode}“ stellen!`,
+                )
+              : nothing}
           </ul>`
         : nothing}
       ${test.error ? html`<div class="alert error">${test.error}</div>` : nothing}
