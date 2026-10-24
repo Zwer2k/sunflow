@@ -17,7 +17,8 @@ import math
 from .ha import HAClient
 
 MIN_CYCLES = 2.0
-PLAUSIBLE = (0.85, 0.995)
+# Batteries with DC/DC converters in each module (e.g. Sofar BTS) lose noticeably more
+PLAUSIBLE = (0.70, 0.995)
 
 
 @dataclass(frozen=True, kw_only=True)

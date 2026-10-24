@@ -69,7 +69,7 @@ async def test_long_ranges_use_hourly_statistics() -> None:
 
 
 def test_efficiency_estimate() -> None:
-    """A battery cycling with 95 % per direction is recognized; standby losses make it implausible."""
+    """A battery cycling with 95 % per direction is recognized; implausible values are flagged."""
     from sunflow.efficiency import estimate
 
     eta = 0.95
@@ -85,6 +85,9 @@ def test_efficiency_estimate() -> None:
     assert result.reliable and result.plausible
 
     lossy = estimate([25700.0, -13800.0], 1.0, 40, 40 + 4700 / capacity * 100, capacity)
+    # Measured on Sofar BTS modules: high but real DC/DC losses
     assert lossy.efficiency == pytest.approx(0.829, abs=0.002)
-    assert not lossy.plausible
+    assert lossy.plausible
     assert not lossy.reliable
+
+    assert not estimate([10000.0, -2000.0], 1.0, 40, 40, capacity).plausible
