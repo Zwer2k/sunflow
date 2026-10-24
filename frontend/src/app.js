@@ -100,7 +100,7 @@ class SunflowApp extends LitElement {
   get _devices() {
     return (this._integrations ?? [])
       .filter((i) => this._selected.has(i.entry_id))
-      .flatMap((i) => i.devices.map((d) => ({ ...d, integration: i.title })))
+      .flatMap((i) => i.devices.map((d) => ({ ...d, integration: i.name ?? i.title })))
       .filter((d) => d.profile);
   }
 
@@ -296,7 +296,7 @@ class SunflowApp extends LitElement {
       <button class="card ${selected ? "selected" : ""}" aria-pressed=${selected}
         ?disabled=${!integration.supported} @click=${() => this._toggle(integration)}>
         <div class="card-head">
-          <span class="card-title">${integration.title}</span>
+          <span class="card-title">${integration.name ?? integration.title}</span>
           <span class="check ${selected ? "on" : ""}" aria-hidden="true">${selected ? "✓" : ""}</span>
         </div>
         ${matched.map(
@@ -304,7 +304,10 @@ class SunflowApp extends LitElement {
             <strong>${devicePurpose(d.capabilities ?? [])}</strong> · ${[d.manufacturer, d.model].filter(Boolean).join(" ") || d.name}
           </span>`,
         )}
-        <span class="muted small">${integration.domain}${integration.in_energy_dashboard ? " · im Energie-Dashboard" : ""}</span>
+        <span class="muted small">${[
+          integration.title !== integration.name ? `Eintrag „${integration.title}“` : null,
+          integration.in_energy_dashboard ? "im Energie-Dashboard" : null,
+        ].filter(Boolean).join(" · ")}</span>
         ${chip}
       </button>
     `;

@@ -29,6 +29,7 @@ class DiscoveredIntegration:
 
     entry_id: str
     domain: str
+    name: str
     title: str
     state: str
     supported: bool
@@ -45,6 +46,7 @@ class Snapshot:
     entities: list[dict[str, Any]]
     states: dict[str, dict[str, Any]]
     energy_prefs: dict[str, Any] | None
+    integration_names: dict[str, str] = field(default_factory=dict)
 
 
 async def fetch_snapshot(client: HAClient) -> Snapshot:
@@ -56,12 +58,16 @@ async def fetch_snapshot(client: HAClient) -> Snapshot:
         client.get_states(),
         client.get_energy_prefs(),
     )
+    manifests = await client.command(
+        "manifest/list", integrations=sorted({e["domain"] for e in entries})
+    )
     return Snapshot(
         entries=entries,
         devices=devices,
         entities=entities,
         states={s["entity_id"]: s for s in states},
         energy_prefs=energy_prefs,
+        integration_names={m["domain"]: m["name"] for m in manifests},
     )
 
 
@@ -151,6 +157,7 @@ def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[DiscoveredInte
         integration = DiscoveredIntegration(
             entry_id=entry_id,
             domain=domain,
+            name=snapshot.integration_names.get(domain, domain),
             title=entry["title"],
             state=entry["state"],
             supported=supported,

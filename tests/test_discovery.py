@@ -50,7 +50,8 @@ def snapshot() -> Snapshot:
         "energy_sources": [{"type": "grid", "flow_from": [{"stat_energy_from": "sensor.meter_energy"}]}],
         "device_consumption": [],
     }
-    return Snapshot(entries=entries, devices=devices, entities=entities, states=states, energy_prefs=energy_prefs)
+    names = {"solax_modbus": "SolaX Inverter Modbus", "huawei_solar": "Huawei Solar"}
+    return Snapshot(entries=entries, devices=devices, entities=entities, states=states, energy_prefs=energy_prefs, integration_names=names)
 
 
 def test_discover(snapshot: Snapshot, library: ProfileLibrary) -> None:
@@ -60,6 +61,8 @@ def test_discover(snapshot: Snapshot, library: ProfileLibrary) -> None:
     assert list(result) == ["huawei_solar", "solax_modbus", "shelly"]
 
     sofar = result["solax_modbus"]
+    assert sofar.name == "SolaX Inverter Modbus"
+    assert result["shelly"].name == "shelly"
     assert [d.name for d in sofar.devices] == ["Sofar Inverter"]
     inverter = sofar.devices[0]
     assert inverter.profile == "solax_modbus/sofar"

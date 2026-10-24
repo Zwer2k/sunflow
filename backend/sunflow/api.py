@@ -4,13 +4,14 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import asdict
+import hashlib
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Request
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
-from starlette.responses import Response
 
 from . import API_VERSION, __version__
 from .config_store import ConfigStore, DeviceConfig, RoleOverride
@@ -368,25 +369,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Sunflow", version=__version__, lifespan=lifespan)
     app.include_router(router)
-    # Mounted last so API routes take precedence
     if settings is not None and settings.frontend_dir.is_dir():
-        app.mount(
-            "/",
-            NoCacheStaticFiles(directory=settings.frontend_dir, html=True),
-            name="frontend",
-        )
+        add_frontend(app, settings.frontend_dir)
     return app
 
 
-class NoCacheStaticFiles(StaticFiles):
-    """Static files that the browser revalidates on every load.
+def frontend_version(frontend_dir: Path) -> str:
+    """Return a hash over all frontend files; changes with every edit."""
+    digest = hashlib.sha256()
+    for path in sorted(frontend_dir.rglob("*")):
+        if path.is_file():
+            digest.update(str(path.relative_to(frontend_dir)).encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
 
-    The frontend has no build step with hashed file names, so cached ES
-    modules would otherwise survive updates.
+
+def add_frontend(app: FastAPI, frontend_dir: Path) -> None:
+    """Serve the frontend below a versioned path.
+
+    There is no build step producing hashed file names, so all assets are
+    served under /assets/<version>/. Relative module imports stay inside
+    that prefix, so a browser can never mix cached files of an old version.
     """
+    root = frontend_dir.resolve()
 
-    def file_response(self, *args: Any, **kwargs: Any) -> Response:
-        """Add a no-cache header to every file response."""
-        response = super().file_response(*args, **kwargs)
-        response.headers["Cache-Control"] = "no-cache"
-        return response
+    @app.get("/", include_in_schema=False)
+    async def index() -> HTMLResponse:
+        html = (root / "index.html").read_text()
+        html = html.replace("__ASSETS__", f"assets/{frontend_version(root)}")
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+    @app.get("/assets/{version}/{path:path}", include_in_schema=False)
+    async def asset(version: str, path: str) -> FileResponse:
+        file = (root / path).resolve()
+        if not file.is_relative_to(root) or not file.is_file():
+            raise HTTPException(status_code=404)
+        return FileResponse(
+            file, headers={"Cache-Control": "public, max-age=31536000, immutable"}
+        )
