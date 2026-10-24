@@ -34,6 +34,9 @@ class RoleValue:
     value: float | None
     unit: str | None
     optional: bool
+    sign: str | None = None
+    profile_entity_id: str | None = None
+    profile_sign: str | None = None
 
     @property
     def missing(self) -> bool:
@@ -136,19 +139,28 @@ def check_balance(
 
 
 def preview(
-    profile: dict[str, Any], snapshot: Snapshot, device_id: str
+    profile: dict[str, Any],
+    snapshot: Snapshot,
+    device_id: str,
+    overrides: dict[str, dict[str, Any]] | None = None,
 ) -> list[RoleValue]:
-    """Return the current normalized value of every role of a device."""
+    """Return the current normalized value of every role of a device.
+
+    Overrides (advanced mode) replace entity, unit or sign of a role.
+    """
+    overrides = overrides or {}
     bindings = bind_roles(profile, device_entities(snapshot, device_id))
     result: list[RoleValue] = []
     for role, spec in profile["roles"].items():
-        entity_id = bindings[role]
+        override = {k: v for k, v in overrides.get(role, {}).items() if v is not None}
+        entity_id = override.get("entity_id", bindings[role])
+        sign = override.get("sign", spec.get("sign"))
         state = snapshot.states.get(entity_id) if entity_id else None
         raw_state = state["state"] if state else None
-        raw_unit = (
+        raw_unit = override.get("unit") or (
             state["attributes"].get("unit_of_measurement") if state else None
         ) or spec.get("unit")
-        value, unit = normalize(raw_state, raw_unit, spec.get("sign"))
+        value, unit = normalize(raw_state, raw_unit, sign)
         result.append(
             RoleValue(
                 role=role,
@@ -159,6 +171,9 @@ def preview(
                 value=value,
                 unit=unit,
                 optional=spec.get("optional", False),
+                sign=sign,
+                profile_entity_id=bindings[role],
+                profile_sign=spec.get("sign"),
             )
         )
     return result
