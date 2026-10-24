@@ -8,6 +8,11 @@ import {
   roleHint,
   roleLabel,
   SIGNED_ROLES,
+  FEED_IN_MODELS,
+  displayUnit,
+  fromDisplay,
+  paramLabel,
+  toDisplay,
 } from "./format.js";
 
 const STEPS = ["Integrationen", "Geräte", "Kenndaten", "Gerätetest", "Bilanzprüfung", "Tarif & Prognose", "Fertig"];
@@ -45,6 +50,10 @@ class SunflowApp extends LitElement {
     _overrides: { state: true },
     _entities: { state: true },
     _dirty: { state: true },
+    _params: { state: true },
+    _paramEdits: { state: true },
+    _feedEdits: { state: true },
+    _site: { state: true },
     _busy: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
@@ -64,6 +73,11 @@ class SunflowApp extends LitElement {
     this._overrides = {};
     this._entities = {};
     this._dirty = new Set();
+    // Sunflow device id -> parameter list from the backend
+    this._params = {};
+    this._paramEdits = {};
+    this._feedEdits = {};
+    this._site = null;
     this._busy = new Set();
     this._error = null;
     this._haConnected = null;
@@ -106,8 +120,98 @@ class SunflowApp extends LitElement {
 
   _goTo(step) {
     this._step = step;
+    this._stopPreview();
     if (step === 1) this._startPreview();
-    else this._stopPreview();
+    if (step === 2) this._loadParameters();
+    if (step === 4) this._startSite();
+  }
+
+  _startSite() {
+    this._refreshSite();
+    this._timer = setInterval(() => this._refreshSite(), PREVIEW_INTERVAL_MS);
+  }
+
+  async _refreshSite() {
+    try {
+      this._site = await api.site();
+    } catch (err) {
+      this._error = `Anlagenstatus konnte nicht geladen werden: ${err.message}`;
+    }
+  }
+
+  get _capabilitiesByHaDevice() {
+    return Object.fromEntries(
+      (this._integrations ?? []).flatMap((i) => i.devices.map((d) => [d.device_id, d.capabilities ?? []])),
+    );
+  }
+
+  async _loadParameters() {
+    const devices = Object.values(this._configDevices);
+    try {
+      const results = await Promise.all(devices.map(async (d) => [d.id, await api.parameters(d.id)]));
+      this._params = Object.fromEntries(results);
+      this._paramEdits = {};
+      this._feedEdits = {};
+    } catch (err) {
+      this._error = `Kenndaten konnten nicht geladen werden: ${err.message}`;
+    }
+  }
+
+  _editParam(deviceId, name, text) {
+    this._paramEdits = { ...this._paramEdits, [deviceId]: { ...(this._paramEdits[deviceId] ?? {}), [name]: text } };
+  }
+
+  _editFeedIn(deviceId, field, value) {
+    this._feedEdits = { ...this._feedEdits, [deviceId]: { ...(this._feedEdits[deviceId] ?? {}), [field]: value } };
+  }
+
+  async _saveDevice(device) {
+    const params = this._params[device.id] ?? [];
+    const parameters = {};
+    for (const [name, text] of Object.entries(this._paramEdits[device.id] ?? {})) {
+      const unit = params.find((p) => p.name === name)?.unit;
+      const value = fromDisplay(text, unit);
+      if (value === undefined) {
+        this._error = `Ungültige Zahl bei „${paramLabel(name)}“.`;
+        return;
+      }
+      parameters[name] = value;
+    }
+    const changes = { parameters };
+    const feedEdit = this._feedEdits[device.id];
+    if (feedEdit) {
+      const rate = fromDisplay(feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct"), "ct");
+      if (rate === undefined) {
+        this._error = "Ungültige Zahl bei der Vergütung.";
+        return;
+      }
+      changes.feed_in = { model: feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed", rate_ct_per_kwh: rate };
+    }
+    this._busy = new Set([...this._busy, device.id]);
+    try {
+      const saved = await api.updateDevice(device.id, changes);
+      this._configDevices = { ...this._configDevices, [saved.ha_device_id]: saved };
+      const fresh = await api.parameters(device.id);
+      this._params = { ...this._params, [device.id]: fresh };
+      this._paramEdits = { ...this._paramEdits, [device.id]: {} };
+      this._feedEdits = { ...this._feedEdits, [device.id]: undefined };
+      this._error = null;
+    } catch (err) {
+      this._error = `Kenndaten konnten nicht gespeichert werden: ${err.message}`;
+    } finally {
+      this._busy = this._without(this._busy, device.id);
+    }
+  }
+
+  async _setMeasuredBy(device, value) {
+    const changes = value ? { measured_by: { device_id: value, role: "pv_ext_power" } } : { clear_measured_by: true };
+    try {
+      const saved = await api.updateDevice(device.id, changes);
+      this._configDevices = { ...this._configDevices, [saved.ha_device_id]: saved };
+      await this._refreshSite();
+    } catch (err) {
+      this._error = `Zuordnung konnte nicht gespeichert werden: ${err.message}`;
+    }
   }
 
   _startPreview() {
@@ -258,6 +362,10 @@ class SunflowApp extends LitElement {
         return this._renderIntegrations();
       case 1:
         return this._renderDevices();
+      case 2:
+        return this._renderParameters();
+      case 4:
+        return this._renderSite();
       default:
         return html`
           <h1>${STEPS[this._step]}</h1>
@@ -504,6 +612,176 @@ class SunflowApp extends LitElement {
     `;
   }
 
+  _renderParameters() {
+    const devices = Object.values(this._configDevices);
+    return html`
+      <div class="heading">
+        <h1>Kenndaten</h1>
+        <p class="muted">Was sich aus Home Assistant ermitteln ließ, ist vorgeschlagen. Ergänze oder überschreibe nur, was nicht stimmt.</p>
+      </div>
+      ${devices.length === 0
+        ? html`<p class="muted">Noch kein Gerät übernommen – bitte in Schritt 2 „Werte passen“ wählen.</p>`
+        : devices.map((d) => this._renderDeviceParameters(d))}
+    `;
+  }
+
+  _renderDeviceParameters(device) {
+    const params = (this._params[device.id] ?? []).filter((p) => this._advanced || !p.advanced);
+    const capabilities = this._capabilitiesByHaDevice[device.ha_device_id] ?? [];
+    const edits = this._paramEdits[device.id] ?? {};
+    const feedEdit = this._feedEdits[device.id] ?? {};
+    const changed = Object.keys(edits).length > 0 || this._feedEdits[device.id] !== undefined;
+    return html`
+      <section class="device">
+        <div class="device-head">
+          <div>
+            <div class="device-title">${device.name}</div>
+            <div class="muted small">${devicePurpose(capabilities)} · Profil ${device.profile}</div>
+          </div>
+        </div>
+        ${this._params[device.id] === undefined ? html`<p class="muted">Lade Kenndaten …</p>` : nothing}
+        ${params.length
+          ? html`<div class="fields">${params.map((p) => this._renderParameterField(device, p, edits))}</div>`
+          : nothing}
+        ${capabilities.includes("pv")
+          ? html`
+              <div class="fields">
+                <label class="field">
+                  <span class="field-label">Vergütung</span>
+                  <select @change=${(e) => this._editFeedIn(device.id, "model", e.target.value)}>
+                    ${Object.entries(FEED_IN_MODELS).map(
+                      ([value, label]) => html`<option value=${value}
+                        ?selected=${(feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed") === value}>${label}</option>`,
+                    )}
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Einspeisevergütung</span>
+                  <span class="input-unit">
+                    <input inputmode="decimal" placeholder="z. B. 8,2"
+                      .value=${feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct")}
+                      @input=${(e) => this._editFeedIn(device.id, "rate", e.target.value)}>
+                    <span class="muted">ct/kWh</span>
+                  </span>
+                </label>
+              </div>
+            `
+          : nothing}
+        <div class="actions">
+          <button class="ok" ?disabled=${!changed || this._busy.has(device.id)} @click=${() => this._saveDevice(device)}>
+            Speichern
+          </button>
+          ${!changed ? html`<span class="muted small">Keine ungespeicherten Änderungen</span>` : nothing}
+        </div>
+      </section>
+    `;
+  }
+
+  _renderParameterField(device, param, edits) {
+    const edited = edits[param.name];
+    const value = edited ?? toDisplay(param.stored, param.unit);
+    const placeholder = toDisplay(param.effective, param.unit);
+    let source;
+    if (param.stored !== null && edited === undefined) source = html`<span class="muted">eigener Wert</span>`;
+    else if (param.derived !== null)
+      source = html`<span class="ok-text">aus Sensoren: ${toDisplay(param.derived, param.unit)} ${displayUnit(param.unit)}</span>`;
+    else if (param.default !== null)
+      source = html`<span class="muted">Vorgabe: ${toDisplay(param.default, param.unit)} ${displayUnit(param.unit)}</span>`;
+    return html`
+      <label class="field">
+        <span class="field-label">${paramLabel(param.name)}</span>
+        <span class="input-unit">
+          <input inputmode="decimal" .value=${value} placeholder=${placeholder}
+            @input=${(e) => this._editParam(device.id, param.name, e.target.value)}>
+          <span class="muted">${displayUnit(param.unit)}</span>
+        </span>
+        <span class="small">
+          ${source}
+          ${param.stored !== null
+            ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, "")}>zurücksetzen</button>`
+            : nothing}
+        </span>
+      </label>
+    `;
+  }
+
+  _renderSite() {
+    const site = this._site;
+    const devices = Object.values(this._configDevices);
+    const byId = Object.fromEntries(devices.map((d) => [d.id, d]));
+    const capabilities = this._capabilitiesByHaDevice;
+    const measuring = devices.filter((d) => (capabilities[d.ha_device_id] ?? []).includes("pv_ext"));
+    const pvOnly = devices.filter((d) => {
+      const caps = capabilities[d.ha_device_id] ?? [];
+      return caps.includes("pv") && !caps.includes("battery");
+    });
+    return html`
+      <div class="heading">
+        <h1>Bilanzprüfung</h1>
+        <p class="muted">Wie hängen deine Geräte zusammen? Sunflow prüft damit die Messwerte gegeneinander und zählt keine PV-Leistung doppelt.</p>
+      </div>
+      ${pvOnly.length && measuring.length
+        ? html`
+            <section class="device">
+              <div class="device-title">Zusammenhang der Anlagen</div>
+              ${pvOnly.map(
+                (d) => html`
+                  <label class="field wide">
+                    <span class="field-label">${d.name} wird zusätzlich gemessen von</span>
+                    <select @change=${(e) => this._setMeasuredBy(d, e.target.value)}>
+                      <option value="" ?selected=${!d.measured_by}>niemandem (eigene Einspeisung)</option>
+                      ${measuring.map(
+                        (m) => html`<option value=${m.id} ?selected=${d.measured_by?.device_id === m.id}>
+                          ${m.name} als „PV extern“
+                        </option>`,
+                      )}
+                    </select>
+                  </label>
+                `,
+              )}
+            </section>
+          `
+        : nothing}
+      ${site === null ? html`<p class="muted">Lade Anlagenstatus …</p>` : this._renderSiteStatus(site, byId)}
+    `;
+  }
+
+  _renderSiteStatus(site, byId) {
+    return html`
+      ${site.hints.map((h) => html`<div class="alert warn">⚠ ${h}</div>`)}
+      ${site.cross_checks.map((c) => {
+        const own = byId[c.device_id]?.name ?? "?";
+        const other = byId[c.measured_by]?.name ?? "?";
+        const state = c.plausible === null ? "neutral" : c.plausible ? "ok" : "warn";
+        return html`
+          <div class="alert ${state}">
+            <div>${c.plausible === null ? "Gegenprobe nicht möglich" : c.plausible ? "✓ Gegenprobe passt" : "⚠ Gegenprobe weicht ab"}:
+              ${own} ${formatValue(c.own_value, "W")} · gemessen von ${other} ${formatValue(c.measured_value, "W")}</div>
+            ${c.deviation !== null ? html`<div class="small">Abweichung ${formatValue(Math.abs(c.deviation), "W")}</div>` : nothing}
+          </div>
+        `;
+      })}
+      <div class="tiles">
+        ${site.devices.map(
+          (d) => html`
+            <div class="tile">
+              <div class="small muted">${d.name}</div>
+              <div class="value">${d.pv_output === null ? "–" : formatValue(d.pv_output, "W")}</div>
+              <div class="small muted">
+                ${d.balance ? (d.balance.plausible ? "✓ Gerätebilanz plausibel" : "⚠ Gerätebilanz unplausibel") : "PV-Leistung"}
+              </div>
+            </div>
+          `,
+        )}
+        <div class="tile total">
+          <div class="small muted">PV gesamt</div>
+          <div class="value">${formatValue(site.pv_total, "W")}</div>
+          <div class="small muted">ohne Doppelzählung</div>
+        </div>
+      </div>
+    `;
+  }
+
   _renderComponents(device) {
     return html`
       <div class="small muted">
@@ -622,6 +900,23 @@ class SunflowApp extends LitElement {
     .inline input { width: 18px; height: 18px; }
     .nowrap { white-space: nowrap; }
     td .chip { margin-left: 6px; }
+
+    .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+    .field.wide { max-width: 520px; }
+    .field-label { font-weight: 500; }
+    .field select { min-height: 44px; font-size: 14px; }
+    .input-unit { display: flex; align-items: center; gap: 8px; }
+    .input-unit input {
+      flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; font-size: 15px;
+      border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
+    }
+    .ok-text { color: var(--sf-ok-text); }
+    .link {
+      border: 0; background: none; padding: 0; color: var(--sf-primary-text); text-decoration: underline;
+      cursor: pointer; font-size: 13px;
+    }
+    .tile.total { background: var(--sf-primary-bg); }
 
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }

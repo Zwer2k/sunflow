@@ -143,7 +143,12 @@ def plan_action(
     if action not in profile.get("actions", {}):
         raise ExecutorError(f"Unknown action {action}")
     ((_, primitive),) = profile["primitive"].items()
-    variables = {**profile.get("defaults", {}), **parameters, **runtime}
+    defaults = {
+        name: spec["default"]
+        for name, spec in profile.get("parameters", {}).items()
+        if "default" in spec
+    }
+    variables = {**defaults, **parameters, **runtime}
     params = {
         name: resolve_value(expr, variables)
         for name, expr in profile["actions"][action].items()

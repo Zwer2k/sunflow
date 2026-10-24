@@ -41,13 +41,14 @@
       "propertyNames": {"$ref": "#/$defs/identifier"},
       "additionalProperties": {"$ref": "#/$defs/primitive"}
     },
-    "defaults": {
+    "parameters": {
+      "description": "Device characteristics configured in the setup wizard; also usable as variables in actions.",
       "type": "object",
       "propertyNames": {"$ref": "#/$defs/identifier"},
-      "additionalProperties": {"type": "number"}
+      "additionalProperties": {"$ref": "#/$defs/parameter"}
     },
     "actions": {
-      "description": "Named presets of the primitive's parameters. Values are numbers or names of defaults / runtime parameters, optionally negated.",
+      "description": "Named presets of the primitive's parameters. Values are numbers or names of parameters / runtime values, optionally negated.",
       "type": "object",
       "propertyNames": {"$ref": "#/$defs/identifier"},
       "additionalProperties": {
@@ -75,6 +76,28 @@
   },
   "$defs": {
     "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "parameter": {
+      "type": "object",
+      "required": ["unit"],
+      "additionalProperties": false,
+      "properties": {
+        "unit": {"type": "string"},
+        "default": {"type": "number"},
+        "min": {"type": "number"},
+        "max": {"type": "number"},
+        "advanced": {"type": "boolean"},
+        "derive": {
+          "description": "Suggest a value from sensors: sum of all entities (device and sub-devices) with this key, times factor.",
+          "type": "object",
+          "required": ["sum_key"],
+          "additionalProperties": false,
+          "properties": {
+            "sum_key": {"type": "string"},
+            "factor": {"type": "number", "default": 1}
+          }
+        }
+      }
+    },
     "match": {
       "type": "object",
       "required": ["integration"],

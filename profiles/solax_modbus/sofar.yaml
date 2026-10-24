@@ -36,10 +36,13 @@ primitive:
       - number: {key: passive_mode_battery_power_max, value: "{{ bat_max }}"}
       - press: {key: passive_mode_battery_charge_discharge}
 
-defaults:
-  max_charge: 20000
-  max_discharge: 20000
-  grid_offset: -200
+parameters:
+  # 4x BTS 5K: full charge capacity per module in Ah x 51.2 V nominal (16 LFP cells)
+  capacity_wh: {unit: Wh, derive: {sum_key: pack_full_charge_capacity, factor: 51.2}}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, default: 20000, min: 0}
+  max_discharge: {unit: W, default: 20000, min: 0}
+  grid_offset: {unit: W, default: -200, advanced: true}
 
 actions:
   auto: {bat_min: -max_discharge, bat_max: max_charge, grid_target: grid_offset}

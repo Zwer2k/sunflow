@@ -45,6 +45,43 @@ export function roleHint(role, value) {
   return "";
 }
 
+const PARAM_LABELS = {
+  capacity_wh: "Nutzbare Kapazität",
+  min_soc: "Mindest-Ladestand",
+  max_charge: "Max. Ladeleistung",
+  max_discharge: "Max. Entladeleistung",
+  grid_offset: "Einspeise-Puffer (Netz-Zielwert)",
+};
+
+export function paramLabel(name) {
+  return PARAM_LABELS[name] ?? name;
+}
+
+// Energy is entered in kWh, stored in Wh
+export function displayUnit(unit) {
+  return unit === "Wh" ? "kWh" : unit;
+}
+
+export function toDisplay(value, unit) {
+  if (value === null || value === undefined) return "";
+  const text = unit === "Wh" ? String(Math.round(value / 100) / 10) : String(value);
+  return text.replace(".", ",");
+}
+
+export function fromDisplay(text, unit) {
+  const trimmed = String(text).trim().replace(",", ".");
+  if (trimmed === "") return null;
+  const number = Number(trimmed);
+  if (Number.isNaN(number)) return undefined;
+  return unit === "Wh" ? Math.round(number * 1000) : number;
+}
+
+export const FEED_IN_MODELS = {
+  eeg_fixed: "Feste EEG-Vergütung",
+  solar_peak: "Solarspitzengesetz (keine Vergütung bei negativen Preisen)",
+  direct: "Direktvermarktung / dynamisch",
+};
+
 const CONTROL_CAPABILITIES = new Set(["battery_window", "curtail", "switch_off", "ev_charger"]);
 
 // Purpose of a device derived from its profile capabilities, e.g. "Wechselrichter + Speicher"
