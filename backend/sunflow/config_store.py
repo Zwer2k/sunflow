@@ -68,6 +68,7 @@ class SunflowConfig(BaseModel):
     devices: list[DeviceConfig] = Field(default_factory=list)
     tariff: TariffConfig = Field(default_factory=TariffConfig)
     forecast_planes: list[ForecastPlane] = Field(default_factory=list)
+    setup_completed: bool = False
 
     def device(self, device_id: str) -> DeviceConfig | None:
         """Return a configured device by its Sunflow id."""
