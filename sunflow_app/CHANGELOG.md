@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Forecast.Solar planes without a specific device name get numbered names
+- Each forecast plane shows today's forecast to tell planes apart
+- Forecast planes can be renamed in the setup wizard
+
 ## 0.2.1
 
 - Fix "Connection lost" on larger installations: websocket messages above 4 MB

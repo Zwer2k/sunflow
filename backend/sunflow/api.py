@@ -358,14 +358,22 @@ async def get_sources(request: Request) -> dict[str, Any]:
     solcast_entities = {
         e["entity_id"] for e in snapshot.entities if e.get("platform") == "solcast_solar"
     }
-    assigned = {(p.source, p.ref): p.device_id for p in config.forecast_planes}
-    planes = [
-        asdict(site) | {"device_id": assigned.get((site.source, site.ref))}
-        for site in [
-            *solcast_sites(states, solcast_entities),
-            *forecast_solar_planes(snapshot.entries, snapshot.devices),
-        ]
-    ]
+    stored = {(p.source, p.ref): p for p in config.forecast_planes}
+    planes = []
+    for site in [
+        *solcast_sites(states, solcast_entities),
+        *forecast_solar_planes(snapshot.entries, snapshot.devices, snapshot.entities, snapshot.states),
+    ]:
+        plane = stored.get((site.source, site.ref))
+        planes.append(
+            asdict(site)
+            | {
+                "device_id": plane.device_id if plane else None,
+                "custom_name": plane.custom_name if plane else None,
+                "detected_name": site.name,
+                "name": (plane.custom_name if plane else None) or site.name,
+            }
+        )
     return {
         "prices": [asdict(p) for p in price_sources(states)],
         "forecast_planes": planes,

@@ -49,6 +49,8 @@ class ForecastSource:
     name: str
     capacity_kw: float | None
     entity_id: str | None
+    # Today's forecast, shown to tell unnamed planes apart
+    today_kwh: float | None = None
 
 
 def price_factor(unit: str | None) -> float | None:
@@ -198,9 +200,17 @@ def solcast_sites(states: list[dict[str, Any]], platform_entities: set[str]) -> 
                 name=attributes.get("name", state["entity_id"]),
                 capacity_kw=attributes.get("capacity"),
                 entity_id=state["entity_id"],
+                today_kwh=_float(state.get("state")),
             )
         )
     return sites
+
+
+def _float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except TypeError, ValueError:
+        return None
 
 
 def solcast_points(data: list[dict[str, Any]], period: timedelta) -> list[ForecastPoint]:
@@ -241,19 +251,41 @@ FORECAST_SOLAR_DEVICE_PREFIX = "Solar production forecast "
 
 
 def forecast_solar_planes(
-    entries: list[dict[str, Any]], devices: list[dict[str, Any]]
+    entries: list[dict[str, Any]],
+    devices: list[dict[str, Any]],
+    entities: list[dict[str, Any]] | None = None,
+    states: dict[str, dict[str, Any]] | None = None,
 ) -> list[ForecastSource]:
-    """Return one plane per Forecast.Solar config entry, named after its device."""
+    """Return one plane per Forecast.Solar config entry.
+
+    Named after its device without the generic "Solar production forecast",
+    else the entry title, else numbered.
+    """
     planes = []
     for number, entry in enumerate(
         (e for e in entries if e["domain"] == "forecast_solar" and e["state"] == "loaded"), start=1
     ):
         device = next((d for d in devices if entry["entry_id"] in d.get("config_entries", [])), None)
         name = (device or {}).get("name_by_user") or (device or {}).get("name") or ""
-        name = name.removeprefix(FORECAST_SOLAR_DEVICE_PREFIX) or entry["title"] or f"Forecast.Solar {number}"
+        name = name.removeprefix(FORECAST_SOLAR_DEVICE_PREFIX.strip()).strip(" -–")
+        name = name or entry["title"] or f"Forecast.Solar {number}"
+        today = next(
+            (
+                e["entity_id"]
+                for e in entities or []
+                if e.get("config_entry_id") == entry["entry_id"]
+                and (e.get("unique_id") or "").endswith("energy_production_today")
+            ),
+            None,
+        )
         planes.append(
             ForecastSource(
-                source="forecast_solar", ref=entry["entry_id"], name=name, capacity_kw=None, entity_id=None
+                source="forecast_solar",
+                ref=entry["entry_id"],
+                name=name,
+                capacity_kw=None,
+                entity_id=today,
+                today_kwh=_float((states or {}).get(today, {}).get("state")) if today else None,
             )
         )
     return planes

@@ -306,7 +306,7 @@ async def compute_plan(
         last = max((p.end for p in points), default=start)
         if last < horizon_end - timedelta(hours=12):
             warnings.append(
-                f"PV-Prognose „{plane.name}“ reicht nur bis {last.astimezone(tz):%a %H:%M} – "
+                f"PV-Prognose „{plane.display_name}“ reicht nur bis {last.astimezone(tz):%a %H:%M} – "
                 "danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig)."
             )
     pv = sum_forecasts(series) if series else []

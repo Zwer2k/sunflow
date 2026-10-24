@@ -315,15 +315,32 @@ class SunflowApp extends LitElement {
   }
 
   async _assignPlane(plane, deviceId) {
+    await this._savePlanes(plane, { device_id: deviceId || null });
+  }
+
+  async _renamePlane(plane, name) {
+    const custom = name.trim() || null;
+    await this._savePlanes(plane, { custom_name: custom, name: custom ?? plane.detected_name });
+  }
+
+  async _savePlanes(plane, changes) {
     const planes = this._sources.forecast_planes.map((p) =>
-      p.ref === plane.ref && p.source === plane.source ? { ...p, device_id: deviceId || null } : p,
+      p.ref === plane.ref && p.source === plane.source ? { ...p, ...changes } : p,
     );
     try {
-      await api.setForecast(planes.map(({ source, ref, name, device_id }) => ({ source, ref, name, device_id })));
+      await api.setForecast(
+        planes.map(({ source, ref, detected_name, device_id, custom_name }) => ({
+          source,
+          ref,
+          name: detected_name,
+          device_id,
+          custom_name,
+        })),
+      );
       this._sources = { ...this._sources, forecast_planes: planes };
       await this._loadForecastSeries();
     } catch (err) {
-      this._error = `Zuordnung konnte nicht gespeichert werden: ${err.message}`;
+      this._error = `Prognoseflächen konnten nicht gespeichert werden: ${err.message}`;
     }
   }
 
@@ -1168,15 +1185,20 @@ class SunflowApp extends LitElement {
               <div class="fields">
                 ${sources.forecast_planes.map(
                   (plane) => html`
-                    <label class="field">
+                    <div class="field">
                       <span class="field-label">${FORECAST_SOURCES[plane.source] ?? plane.source} · ${plane.name}${plane.capacity_kw ? ` (${plane.capacity_kw} kW)` : ""}</span>
-                      <select @change=${(e) => this._assignPlane(plane, e.target.value)}>
+                      <span class="small muted">${plane.today_kwh !== null ? `heute ${toDisplay(Math.round(plane.today_kwh * 10) / 10, "kWh")} kWh` : "keine Tagesprognose lesbar"}</span>
+                      <span class="input-unit">
+                        <input aria-label="Name der Fläche" placeholder=${plane.detected_name} .value=${plane.custom_name ?? ""}
+                          @change=${(e) => this._renamePlane(plane, e.target.value)}>
+                      </span>
+                      <select aria-label="Anlage für ${plane.name}" @change=${(e) => this._assignPlane(plane, e.target.value)}>
                         <option value="" ?selected=${!plane.device_id}>nicht verwenden</option>
                         ${plants.map(
                           (p) => html`<option value=${p.id} ?selected=${plane.device_id === p.id}>${p.name}</option>`,
                         )}
                       </select>
-                    </label>
+                    </div>
                   `,
                 )}
               </div>
