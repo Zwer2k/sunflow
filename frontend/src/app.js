@@ -1,6 +1,14 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
-import { formatSigned, formatValue, roleHint, roleLabel, SIGNED_ROLES } from "./format.js";
+import {
+  devicePurpose,
+  formatSigned,
+  formatValue,
+  isControllable,
+  roleHint,
+  roleLabel,
+  SIGNED_ROLES,
+} from "./format.js";
 
 const STEPS = ["Integrationen", "Geräte", "Kenndaten", "Gerätetest", "Bilanzprüfung", "Tarif & Prognose", "Fertig"];
 const PREVIEW_INTERVAL_MS = 5000;
@@ -277,11 +285,13 @@ class SunflowApp extends LitElement {
 
   _renderIntegration(integration) {
     const selected = this._selected.has(integration.entry_id);
-    const matched = integration.devices.filter((d) => d.profile).length;
+    const matched = integration.devices.filter((d) => d.profile);
+    const capabilities = matched.flatMap((d) => d.capabilities);
     let chip;
     if (!integration.supported) chip = html`<span class="chip warn">Nicht unterstützt – im Expertenmodus manuell</span>`;
-    else if (matched === 0) chip = html`<span class="chip warn">Kein passendes Profil</span>`;
-    else chip = html`<span class="chip ok">Unterstützt · ${matched} ${matched === 1 ? "Gerät" : "Geräte"}</span>`;
+    else if (matched.length === 0) chip = html`<span class="chip warn">Kein passendes Profil</span>`;
+    else if (isControllable(capabilities)) chip = html`<span class="chip ok">Unterstützt · steuerbar</span>`;
+    else chip = html`<span class="chip neutral">Unterstützt · nur lesen</span>`;
     return html`
       <button class="card ${selected ? "selected" : ""}" aria-pressed=${selected}
         ?disabled=${!integration.supported} @click=${() => this._toggle(integration)}>
@@ -289,9 +299,11 @@ class SunflowApp extends LitElement {
           <span class="card-title">${integration.title}</span>
           <span class="check ${selected ? "on" : ""}" aria-hidden="true">${selected ? "✓" : ""}</span>
         </div>
-        ${integration.devices
-          .filter((d) => d.profile)
-          .map((d) => html`<span class="model">${[d.manufacturer, d.model].filter(Boolean).join(" ") || d.name}</span>`)}
+        ${matched.map(
+          (d) => html`<span class="model">
+            <strong>${devicePurpose(d.capabilities)}</strong> · ${[d.manufacturer, d.model].filter(Boolean).join(" ") || d.name}
+          </span>`,
+        )}
         <span class="muted small">${integration.domain}${integration.in_energy_dashboard ? " · im Energie-Dashboard" : ""}</span>
         ${chip}
       </button>

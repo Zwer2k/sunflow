@@ -63,10 +63,13 @@ def test_discover(snapshot: Snapshot, library: ProfileLibrary) -> None:
     assert [d.name for d in sofar.devices] == ["Sofar Inverter"]
     inverter = sofar.devices[0]
     assert inverter.profile == "solax_modbus/sofar"
+    assert "battery_window" in inverter.capabilities
     assert [c.name for c in inverter.components] == ["Sofar Battery 1/1"]
     assert inverter.components[0].profile is None
 
     assert result["huawei_solar"].devices[0].profile == "huawei_solar/pv_only"
+    assert result["huawei_solar"].devices[0].capabilities == ["pv"]
+    assert inverter.components[0].capabilities == []
 
     shelly = result["shelly"]
     assert not shelly.supported

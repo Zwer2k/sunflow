@@ -19,6 +19,7 @@ class DiscoveredDevice:
     model: str | None
     entity_count: int
     profile: str | None
+    capabilities: list[str] = field(default_factory=list)
     components: list[DiscoveredDevice] = field(default_factory=list)
 
 
@@ -167,17 +168,23 @@ def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[DiscoveredInte
             device_entities = entities_by_device[device["id"]]
             # Sub-devices such as battery modules are matched as part of their parent
             is_component = device.get("via_device_id") in entry_device_ids
+            profile_id = (
+                None
+                if is_component
+                else match_profile(
+                    library, domain, device, device_entities, entry_has_battery
+                )
+            )
             by_id[device["id"]] = DiscoveredDevice(
                 device_id=device["id"],
                 name=device.get("name_by_user") or device.get("name") or device["id"],
                 manufacturer=device.get("manufacturer"),
                 model=device.get("model"),
                 entity_count=len(device_entities),
-                profile=None
-                if is_component
-                else match_profile(
-                    library, domain, device, device_entities, entry_has_battery
-                ),
+                profile=profile_id,
+                capabilities=library.profiles[profile_id]["capabilities"]
+                if profile_id
+                else [],
             )
         for device in entry_devices:
             discovered = by_id[device["id"]]

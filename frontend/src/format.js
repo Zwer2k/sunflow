@@ -45,4 +45,21 @@ export function roleHint(role, value) {
   return "";
 }
 
+const CONTROL_CAPABILITIES = new Set(["battery_window", "curtail", "switch_off", "ev_charger"]);
+
+// Purpose of a device derived from its profile capabilities, e.g. "Wechselrichter + Speicher"
+export function devicePurpose(capabilities) {
+  const has = (c) => capabilities.includes(c);
+  if (has("ev_charger")) return "Wallbox";
+  if (has("battery")) return has("pv") ? "Wechselrichter + Speicher" : "Speicher";
+  if (has("pv")) return "PV-Wechselrichter";
+  if (has("load")) return "Verbraucher";
+  if (has("grid_meter")) return "Netzzähler";
+  return "Gerät";
+}
+
+export function isControllable(capabilities) {
+  return capabilities.some((c) => CONTROL_CAPABILITIES.has(c));
+}
+
 export const SIGNED_ROLES = new Set(["battery_power", "grid_power"]);
