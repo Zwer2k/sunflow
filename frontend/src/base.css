@@ -18,6 +18,10 @@
   --sf-neutral-bg: #eef1f4;
   --sf-error-text: #a40e26;
   --sf-error-bg: #ffebe9;
+  /* Chart series, validated for CVD separation and contrast on the surface */
+  --sf-series-1: #2a78d6;
+  --sf-series-2: #eb6834;
+  --sf-series-neutral: #8c959f;
   color-scheme: light;
 }
 
@@ -42,6 +46,9 @@
     --sf-neutral-bg: #262e37;
     --sf-error-text: #ffa198;
     --sf-error-bg: #3d1418;
+    --sf-series-1: #3987e5;
+    --sf-series-2: #d95926;
+    --sf-series-neutral: #6e7781;
     color-scheme: dark;
   }
 }

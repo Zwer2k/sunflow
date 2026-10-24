@@ -29,6 +29,11 @@ export const api = {
   updateDevice: (configDeviceId, changes) =>
     request("PATCH", `/config/devices/${encodeURIComponent(configDeviceId)}`, changes),
   site: () => request("GET", "/site"),
+  sources: () => request("GET", "/sources"),
+  setTariff: (tariff) => request("PUT", "/config/tariff", tariff),
+  setForecast: (planes) => request("PUT", "/config/forecast", planes),
+  tariffSeries: (entityId) => request("GET", `/tariff/series?entity_id=${encodeURIComponent(entityId)}`),
+  forecastSeries: () => request("GET", "/forecast/series"),
   setOverrides: (configDeviceId, overrides) =>
     request("PUT", `/config/devices/${encodeURIComponent(configDeviceId)}/role_overrides`, overrides),
 };

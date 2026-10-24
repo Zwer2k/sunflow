@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import {
   devicePurpose,
   formatSigned,
@@ -21,6 +22,27 @@ const PREVIEW_INTERVAL_MS = 5000;
 const BALANCE_SAMPLES = 6;
 const BALANCE_MIN_SAMPLES = 3;
 const UNAVAILABLE = new Set(["unavailable", "unknown", ""]);
+
+const PRICE_ADAPTERS = {
+  timeslots: "Zeittarif",
+  nordpool: "Börsenpreis (Nord Pool)",
+  epex_spot: "Börsenpreis (EPEX Spot)",
+  fixed: "nur aktueller Preis",
+};
+const weekdayTimeFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const timeOnlyFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
+
+function formatCt(eurPerKwh) {
+  return `${(eurPerKwh * 100).toFixed(1).replace(".", ",")} ct`;
+}
+
+function weekdayTime(iso) {
+  return weekdayTimeFormat.format(new Date(iso));
+}
+
+function timeOnly(iso) {
+  return timeOnlyFormat.format(new Date(iso));
+}
 
 // Non-numeric states such as a device status are shown as text
 function isText(role) {
@@ -54,6 +76,9 @@ class SunflowApp extends LitElement {
     _paramEdits: { state: true },
     _feedEdits: { state: true },
     _site: { state: true },
+    _sources: { state: true },
+    _priceSeries: { state: true },
+    _forecastSeries: { state: true },
     _busy: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
@@ -78,6 +103,9 @@ class SunflowApp extends LitElement {
     this._paramEdits = {};
     this._feedEdits = {};
     this._site = null;
+    this._sources = null;
+    this._priceSeries = null;
+    this._forecastSeries = null;
     this._busy = new Set();
     this._error = null;
     this._haConnected = null;
@@ -124,6 +152,62 @@ class SunflowApp extends LitElement {
     if (step === 1) this._startPreview();
     if (step === 2) this._loadParameters();
     if (step === 4) this._startSite();
+    if (step === 5) this._loadSources();
+  }
+
+  async _loadSources() {
+    try {
+      this._sources = await api.sources();
+      this._error = null;
+    } catch (err) {
+      this._error = `Quellen konnten nicht geladen werden: ${err.message}`;
+      return;
+    }
+    await Promise.all([this._loadPriceSeries(), this._loadForecastSeries()]);
+  }
+
+  async _loadPriceSeries() {
+    const entityId = this._sources?.tariff.import_entity_id;
+    if (!entityId) {
+      this._priceSeries = null;
+      return;
+    }
+    try {
+      this._priceSeries = await api.tariffSeries(entityId);
+    } catch (err) {
+      this._error = `Preisverlauf konnte nicht geladen werden: ${err.message}`;
+    }
+  }
+
+  async _loadForecastSeries() {
+    try {
+      this._forecastSeries = await api.forecastSeries();
+    } catch (err) {
+      this._error = `PV-Prognose konnte nicht geladen werden: ${err.message}`;
+    }
+  }
+
+  async _setTariff(entityId) {
+    try {
+      const tariff = await api.setTariff({ import_entity_id: entityId || null });
+      this._sources = { ...this._sources, tariff };
+      await this._loadPriceSeries();
+    } catch (err) {
+      this._error = `Preisquelle konnte nicht gespeichert werden: ${err.message}`;
+    }
+  }
+
+  async _assignPlane(plane, deviceId) {
+    const planes = this._sources.forecast_planes.map((p) =>
+      p.ref === plane.ref && p.source === plane.source ? { ...p, device_id: deviceId || null } : p,
+    );
+    try {
+      await api.setForecast(planes.map(({ source, ref, name, device_id }) => ({ source, ref, name, device_id })));
+      this._sources = { ...this._sources, forecast_planes: planes };
+      await this._loadForecastSeries();
+    } catch (err) {
+      this._error = `Zuordnung konnte nicht gespeichert werden: ${err.message}`;
+    }
   }
 
   _startSite() {
@@ -366,6 +450,8 @@ class SunflowApp extends LitElement {
         return this._renderParameters();
       case 4:
         return this._renderSite();
+      case 5:
+        return this._renderSources();
       default:
         return html`
           <h1>${STEPS[this._step]}</h1>
@@ -782,6 +868,127 @@ class SunflowApp extends LitElement {
     `;
   }
 
+  _renderSources() {
+    const sources = this._sources;
+    if (sources === null) return html`<h1>Tarif und Prognose</h1><p class="muted">Suche Quellen …</p>`;
+    return html`
+      <div class="heading">
+        <h1>Tarif und Prognose</h1>
+        <p class="muted">Strompreis und PV-Prognose kommen aus deinen vorhandenen Integrationen.</p>
+      </div>
+      ${this._renderPriceSource(sources)}
+      ${this._renderForecastSource(sources)}
+    `;
+  }
+
+  _renderPriceSource(sources) {
+    const selected = sources.tariff.import_entity_id ?? "";
+    const points = this._priceSeries?.points ?? [];
+    return html`
+      <section class="device">
+        <div class="device-title">Bezugspreis</div>
+        ${sources.prices.length === 0
+          ? html`<p class="muted">Keine Preis-Entität gefunden (Einheit €/kWh oder ct/kWh).</p>`
+          : html`
+              <label class="field wide">
+                <span class="field-label">Quelle</span>
+                <select @change=${(e) => this._setTariff(e.target.value)}>
+                  <option value="" ?selected=${!selected}>– bitte wählen –</option>
+                  ${sources.prices.map(
+                    (p) => html`<option value=${p.entity_id} ?selected=${selected === p.entity_id}>
+                      ${p.name} · ${PRICE_ADAPTERS[p.adapter] ?? p.adapter}
+                      ${p.current !== null ? ` · ${formatCt(p.current)}` : ""}
+                    </option>`,
+                  )}
+                </select>
+              </label>
+            `}
+        ${points.length ? this._renderPriceSummary(points) : nothing}
+        ${points.length
+          ? html`<figure>
+              <figcaption class="small muted">Bezugspreis nächste ${Math.round(points.length / 4)} h in ct/kWh</figcaption>
+              ${priceChart(points, "Bezugspreis-Verlauf")}
+            </figure>`
+          : nothing}
+        ${this._priceSeries?.adapter === "fixed"
+          ? html`<div class="alert warn">⚠ Diese Quelle liefert nur den aktuellen Preis, keinen Verlauf. Die Planung nimmt ihn als konstant an.</div>`
+          : nothing}
+      </section>
+    `;
+  }
+
+  _renderPriceSummary(points) {
+    const now = points[0];
+    const min = Math.min(...points.map((p) => p.price));
+    const firstMin = points.findIndex((p) => p.price === min);
+    let lastMin = firstMin;
+    while (lastMin + 1 < points.length && points[lastMin + 1].price === min) lastMin += 1;
+    const window = `${weekdayTime(points[firstMin].start)}–${timeOnly(points[lastMin].end)}`;
+    return html`
+      <div class="tiles">
+        <div class="tile"><div class="small muted">Jetzt</div><div class="value">${formatCt(now.price)}</div></div>
+        <div class="tile"><div class="small muted">Günstigster Preis</div><div class="value">${formatCt(min)}</div>
+          <div class="small muted">${window}</div></div>
+        <div class="tile"><div class="small muted">Höchster Preis</div>
+          <div class="value">${formatCt(Math.max(...points.map((p) => p.price)))}</div></div>
+      </div>
+    `;
+  }
+
+  _renderForecastSource(sources) {
+    const devices = Object.values(this._configDevices);
+    const plants = devices.filter((d) => (this._capabilitiesByHaDevice[d.ha_device_id] ?? []).includes("pv"));
+    const colorOf = (deviceId) => {
+      const index = plants.findIndex((p) => p.id === deviceId);
+      return index >= 0 ? SERIES_COLORS[index % SERIES_COLORS.length] : UNASSIGNED_COLOR;
+    };
+    const series = (this._forecastSeries?.plants ?? []).map((p) => ({
+      name: p.name,
+      color: colorOf(p.device_id),
+      points: p.points,
+      kwh: p.points.reduce((s, x) => s + (x.power * (new Date(x.end) - new Date(x.start))) / 3600_000, 0) / 1000,
+    }));
+    return html`
+      <section class="device">
+        <div class="device-title">PV-Prognose</div>
+        ${sources.forecast_planes.length === 0
+          ? html`<p class="muted">Keine Prognose gefunden. Unterstützt wird derzeit Solcast.</p>`
+          : html`
+              <p class="small muted">Ordne jede Prognosefläche der Anlage zu, deren Module dort liegen.</p>
+              <div class="fields">
+                ${sources.forecast_planes.map(
+                  (plane) => html`
+                    <label class="field">
+                      <span class="field-label">${plane.name}${plane.capacity_kw ? ` (${plane.capacity_kw} kW)` : ""}</span>
+                      <select @change=${(e) => this._assignPlane(plane, e.target.value)}>
+                        <option value="" ?selected=${!plane.device_id}>nicht zugeordnet</option>
+                        ${plants.map(
+                          (p) => html`<option value=${p.id} ?selected=${plane.device_id === p.id}>${p.name}</option>`,
+                        )}
+                      </select>
+                    </label>
+                  `,
+                )}
+              </div>
+            `}
+        ${series.length
+          ? html`
+              <figure>
+                <figcaption class="small muted">PV-Prognose nächste 48 h je Anlage</figcaption>
+                <div class="legend">
+                  ${series.map(
+                    (s) => html`<span class="legend-item"><span class="swatch" style="background:${s.color}"></span>
+                      ${s.name} · ${s.kwh.toFixed(1).replace(".", ",")} kWh</span>`,
+                  )}
+                </div>
+                ${forecastChart(series, "PV-Prognose je Anlage")}
+              </figure>
+            `
+          : nothing}
+      </section>
+    `;
+  }
+
   _renderComponents(device) {
     return html`
       <div class="small muted">
@@ -917,6 +1124,16 @@ class SunflowApp extends LitElement {
       cursor: pointer; font-size: 13px;
     }
     .tile.total { background: var(--sf-primary-bg); }
+
+    figure { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+    .chart { width: 100%; height: auto; display: block; }
+    .chart .grid { stroke: var(--sf-border); stroke-width: 1; }
+    .chart .axis { fill: var(--sf-muted); font-size: 11px; }
+    .chart .hit { fill: transparent; }
+    .chart .hit:hover { fill: var(--sf-text); fill-opacity: 0.06; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; }
 
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }

@@ -4,17 +4,27 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import asdict
+from datetime import UTC, datetime
 import hashlib
 import logging
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from . import API_VERSION, __version__
-from .config_store import ConfigStore, DeviceConfig, FeedIn, MeasuredBy, RoleOverride
+from .config_store import (
+    ConfigStore,
+    DeviceConfig,
+    FeedIn,
+    ForecastPlane,
+    MeasuredBy,
+    RoleOverride,
+    TariffConfig,
+)
 from .discovery import Snapshot, discover, fetch_snapshot
 from .executor import (
     ActionResult,
@@ -30,6 +40,15 @@ from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import check_balance, device_entities, preview
 from .settings import Settings
 from .site import device_parameters, site_status
+from .sources import (
+    ForecastPoint,
+    detect_price_adapter,
+    price_series,
+    price_sources,
+    solcast_forecast,
+    solcast_sites,
+    sum_forecasts,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -286,6 +305,114 @@ async def get_parameters(request: Request, device_id: str) -> list[dict[str, Any
     device = _configured_device(request, device_id)
     snapshot = await _snapshot(request)
     return device_parameters(_library(request).profiles[device.profile], device, snapshot)
+
+
+FORECAST_HOURS = 48
+
+
+async def _local_tz(request: Request) -> ZoneInfo:
+    config = await request.app.state.ha.command("get_config")
+    return ZoneInfo(config["time_zone"])
+
+
+def _slot_start() -> datetime:
+    now = datetime.now(UTC)
+    return now.replace(minute=now.minute - now.minute % 15, second=0, microsecond=0)
+
+
+@router.get("/sources")
+async def get_sources(request: Request) -> dict[str, Any]:
+    """Return price entities and PV forecast planes found in Home Assistant."""
+    config = request.app.state.store.load()
+    snapshot = await _snapshot(request)
+    states = list(snapshot.states.values())
+    solcast_entities = {
+        e["entity_id"] for e in snapshot.entities if e.get("platform") == "solcast_solar"
+    }
+    assigned = {(p.source, p.ref): p.device_id for p in config.forecast_planes}
+    planes = [
+        asdict(site) | {"device_id": assigned.get((site.source, site.ref))}
+        for site in solcast_sites(states, solcast_entities)
+    ]
+    return {
+        "prices": [asdict(p) for p in price_sources(states)],
+        "forecast_planes": planes,
+        "tariff": config.tariff.model_dump(),
+    }
+
+
+@router.put("/config/tariff")
+async def set_tariff(request: Request, tariff: TariffConfig) -> dict[str, Any]:
+    """Store the import price source."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.tariff = tariff
+    store.save(config)
+    return config.tariff.model_dump()
+
+
+@router.put("/config/forecast")
+async def set_forecast(
+    request: Request, planes: list[ForecastPlane]
+) -> list[dict[str, Any]]:
+    """Store which forecast plane belongs to which plant."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    known = {d.id for d in config.devices}
+    if any(p.device_id is not None and p.device_id not in known for p in planes):
+        raise HTTPException(status_code=422, detail="Plant not configured")
+    config.forecast_planes = planes
+    store.save(config)
+    return [p.model_dump() for p in planes]
+
+
+@router.get("/tariff/series")
+async def get_tariff_series(
+    request: Request, entity_id: str | None = None, hours: int = FORECAST_HOURS
+) -> dict[str, Any]:
+    """Return the import price schedule (€/kWh) of the given or configured entity."""
+    entity_id = entity_id or request.app.state.store.load().tariff.import_entity_id
+    if entity_id is None:
+        raise HTTPException(status_code=404, detail="No price source configured")
+    snapshot = await _snapshot(request)
+    if (state := snapshot.states.get(entity_id)) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown entity {entity_id}")
+    points = price_series(state, _slot_start(), hours, await _local_tz(request))
+    return {
+        "entity_id": entity_id,
+        "adapter": detect_price_adapter(state.get("attributes", {})),
+        "points": [asdict(p) for p in points],
+    }
+
+
+@router.get("/forecast/series")
+async def get_forecast_series(
+    request: Request, hours: int = FORECAST_HOURS
+) -> dict[str, Any]:
+    """Return the PV forecast per plant, summed over its assigned planes."""
+    config = request.app.state.store.load()
+    client: HAClient = request.app.state.ha
+    start = _slot_start().replace(minute=0)
+    by_plant: dict[str | None, list[list[ForecastPoint]]] = {}
+    try:
+        for plane in config.forecast_planes:
+            if plane.source != "solcast":
+                continue
+            points = await solcast_forecast(client, plane.ref, start, hours)
+            by_plant.setdefault(plane.device_id, []).append(points)
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    names = {d.id: d.name for d in config.devices}
+    return {
+        "plants": [
+            {
+                "device_id": device_id,
+                "name": names.get(device_id, "Nicht zugeordnet") if device_id else "Nicht zugeordnet",
+                "points": [asdict(p) for p in sum_forecasts(series)],
+            }
+            for device_id, series in by_plant.items()
+        ]
+    }
 
 
 @router.get("/site")
