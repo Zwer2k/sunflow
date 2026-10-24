@@ -87,6 +87,8 @@ class SunflowApp extends LitElement {
     _forecastSeries: { state: true },
     _summary: { state: true },
     _nameEdits: { state: true },
+    _tests: { state: true },
+    _testConfirm: { state: true },
     _busy: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
@@ -116,6 +118,9 @@ class SunflowApp extends LitElement {
     this._forecastSeries = null;
     this._summary = null;
     this._nameEdits = {};
+    // Sunflow device id -> device test state
+    this._tests = {};
+    this._testConfirm = new Set();
     this._busy = new Set();
     this._error = null;
     this._haConnected = null;
@@ -164,6 +169,56 @@ class SunflowApp extends LitElement {
     if (step === 4) this._startSite();
     if (step === 5) this._loadSources();
     if (step === 6) this._loadSummary();
+    if (step === 3) this._startTestPolling();
+  }
+
+  get _testableDevices() {
+    return Object.values(this._configDevices).filter((d) =>
+      (this._capabilitiesByHaDevice[d.ha_device_id] ?? []).includes("battery_window"),
+    );
+  }
+
+  _startTestPolling() {
+    this._refreshTests();
+    this._timer = setInterval(() => this._refreshTests(), 2000);
+  }
+
+  async _refreshTests() {
+    const entries = await Promise.all(
+      this._testableDevices.map(async (d) => {
+        try {
+          return [d.id, await api.testState(d.id)];
+        } catch {
+          return [d.id, this._tests[d.id] ?? null];
+        }
+      }),
+    );
+    const tests = Object.fromEntries(entries);
+    // A finished test may have stored test_passed_at; reload config once it ends
+    const finished = entries.some(([id, t]) => t && !t.running && this._tests[id]?.running);
+    this._tests = tests;
+    if (finished) {
+      const config = await api.config();
+      this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
+    }
+  }
+
+  async _startTest(device) {
+    try {
+      this._tests = { ...this._tests, [device.id]: await api.startTest(device.id) };
+      this._testConfirm = this._without(this._testConfirm, device.id);
+      this._error = null;
+    } catch (err) {
+      this._error = `Test konnte nicht gestartet werden: ${err.message}`;
+    }
+  }
+
+  async _abortTest(device) {
+    try {
+      this._tests = { ...this._tests, [device.id]: await api.abortTest(device.id) };
+    } catch (err) {
+      this._error = `Abbruch fehlgeschlagen: ${err.message}`;
+    }
   }
 
   async _loadSummary() {
@@ -485,6 +540,8 @@ class SunflowApp extends LitElement {
         return this._renderSources();
       case 6:
         return this._renderSummary();
+      case 3:
+        return this._renderDeviceTest();
       default:
         return html`
           <h1>${STEPS[this._step]}</h1>
@@ -1031,6 +1088,114 @@ class SunflowApp extends LitElement {
     `;
   }
 
+  _renderDeviceTest() {
+    const devices = this._testableDevices;
+    return html`
+      <div class="heading">
+        <h1>Gerätetest</h1>
+        <p class="muted">Ein kurzer Test prüft, ob die Steuerung beim Wechselrichter ankommt und die Vorzeichen stimmen.
+          Danach geht der Speicher zurück auf Eigenverbrauch.</p>
+      </div>
+      ${devices.length === 0
+        ? html`<p class="muted">Kein steuerbares Gerät übernommen – für reine PV-Wechselrichter ist kein Test nötig.</p>`
+        : devices.map((d) => this._renderDeviceTestCard(d))}
+    `;
+  }
+
+  _renderDeviceTestCard(device) {
+    const test = this._tests[device.id];
+    const running = test?.running;
+    const confirmed = this._testConfirm.has(device.id);
+    const passedAt = device.test_passed_at ? new Date(device.test_passed_at) : null;
+    return html`
+      <section class="device">
+        <div class="device-head">
+          <div>
+            <div class="device-title">${device.name}</div>
+            <div class="muted small">Profil ${device.profile}</div>
+          </div>
+          ${passedAt ? html`<span class="chip ok">✓ Bestanden ${weekdayTime(passedAt.toISOString())}</span>` : nothing}
+        </div>
+        ${running ? nothing : this._renderTestPlan(device, confirmed)}
+        ${test ? this._renderTestProgress(device, test) : nothing}
+      </section>
+    `;
+  }
+
+  _renderTestPlan(device, confirmed) {
+    return html`
+      <ol class="plan small">
+        <li>Ausgangszustand 20 s messen (nur lesen).</li>
+        <li>Je nach Zustand: Laden bzw. Entladen auf 300 W begrenzen oder 500 W aus dem Netz laden – 60 s lang.
+          Es werden nur die Werte des passiven Modus geschrieben (RAM), kein Moduswechsel, kein EEPROM.</li>
+        <li>Prüfen, ob die Batterie dem Befehl in der erwarteten Richtung folgt.</li>
+        <li>Zurück auf Eigenverbrauch und 30 s beobachten. Bei Abbruch oder Fehler wird sofort zurückgesetzt.</li>
+      </ol>
+      <label class="inline confirm">
+        <input type="checkbox" .checked=${confirmed}
+          @change=${(e) =>
+            (this._testConfirm = e.target.checked
+              ? new Set([...this._testConfirm, device.id])
+              : this._without(this._testConfirm, device.id))}>
+        Automationen anderer Systeme, die den passiven Modus schreiben, sind pausiert.
+      </label>
+      <div class="actions">
+        <button class="primary" ?disabled=${!confirmed} @click=${() => this._startTest(device)}>
+          Test starten (schreibt in den Wechselrichter)
+        </button>
+      </div>
+    `;
+  }
+
+  _renderTestProgress(device, test) {
+    const phases = ["baseline", "command", "restore", "verify_restore"];
+    const current = phases.indexOf(test.phase);
+    const finished = !test.running;
+    const lastSamples = test.samples.slice(-6);
+    const result = (ok, good, bad) =>
+      ok === null ? nothing : html`<li class=${ok ? "ok-text" : "warn-text"}>${ok ? "✓" : "✕"} ${ok ? good : bad}</li>`;
+    return html`
+      <div class="alert ${test.phase === "done" ? "ok" : test.running ? "neutral" : "warn"}" role="status">
+        <div><strong>${test.message}</strong></div>
+        ${test.expectation ? html`<div class="small">Erwartung: ${test.expectation}</div>` : nothing}
+      </div>
+      ${test.running
+        ? html`
+            <ol class="phases small">
+              ${["Ausgangszustand", "Testbefehl", "Zurücksetzen", "Beobachten"].map(
+                (label, i) => html`<li class=${i < current ? "done" : i === current ? "active" : ""}>${label}</li>`,
+              )}
+            </ol>
+            <div class="actions">
+              <button class="secondary" @click=${() => this._abortTest(device)}>Abbrechen und zurücksetzen</button>
+            </div>
+          `
+        : nothing}
+      ${lastSamples.length
+        ? html`<div class="small muted">Batterie zuletzt:
+            ${lastSamples.map((s) => (s.battery_power === null ? "–" : formatSigned(s.battery_power, "W"))).join(" · ")}
+          </div>`
+        : nothing}
+      ${finished
+        ? html`<ul class="results">
+            ${result(test.control_works, "Steuerung wirkt", "Batterie folgt dem Befehl nicht")}
+            ${result(test.sign_correct, "Vorzeichen korrekt (+ = Laden)", "Vorzeichen falsch – in Schritt 2 „umkehren“ setzen")}
+            ${result(test.restored, "Zurück auf Eigenverbrauch", "Zurücksetzen fehlgeschlagen – bitte in HA prüfen!")}
+          </ul>`
+        : nothing}
+      ${test.error ? html`<div class="alert error">${test.error}</div>` : nothing}
+      ${this._advanced && test.calls.length
+        ? html`<div class="table-wrap"><table>
+            <thead><tr><th>Aktion</th><th>Entität</th><th>Daten</th><th>Status</th></tr></thead>
+            <tbody>${test.calls.map(
+              (c) => html`<tr><td class="mono">${c.service}</td><td class="mono">${c.entity_id}</td>
+                <td class="mono">${JSON.stringify(c.data)}</td><td>${c.status}</td></tr>`,
+            )}</tbody>
+          </table></div>`
+        : nothing}
+    `;
+  }
+
   _renderSummary() {
     const summary = this._summary;
     if (summary === null) return html`<h1>Fertig</h1><p class="muted">Lade Zusammenfassung …</p>`;
@@ -1263,6 +1428,15 @@ class SunflowApp extends LitElement {
     .issues li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; }
     .issues .link { color: inherit; }
     .summary-list li { padding: 12px 14px; border: 1px solid var(--sf-border); border-radius: 8px; }
+
+    .plan { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+    .confirm { white-space: normal; font-size: 14px; }
+    .phases { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .phases li { padding: 4px 10px; border-radius: 12px; background: var(--sf-neutral-bg); color: var(--sf-neutral-text); }
+    .phases li.active { background: var(--sf-primary); color: #fff; }
+    .phases li.done { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
+    .results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
+    .warn-text { color: var(--sf-error-text); }
 
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }

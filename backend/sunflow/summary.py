@@ -89,7 +89,7 @@ def build_summary(
                 summary.issues.append(
                     Issue(level="warning", step=STEP_PARAMETERS, message=f"{device.name}: Einspeisevergütung fehlt.")
                 )
-        if "battery_window" in capabilities:
+        if "battery_window" in capabilities and device.test_passed_at is None:
             summary.issues.append(
                 Issue(
                     level="info",
