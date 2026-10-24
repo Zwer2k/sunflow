@@ -51,7 +51,8 @@ class HAClient:
             self._session = aiohttp.ClientSession()
         self._closing = False
         try:
-            self._ws = await self._session.ws_connect(self._url, heartbeat=30)
+            # Registries and states of large installations exceed aiohttp's 4 MB default
+            self._ws = await self._session.ws_connect(self._url, heartbeat=30, max_msg_size=0)
             msg = await self._ws.receive_json()
             if msg["type"] != "auth_required":
                 raise HAError(f"Unexpected message: {msg['type']}")
@@ -162,6 +163,12 @@ class HAClient:
         try:
             async for raw in self._ws:
                 if raw.type is not aiohttp.WSMsgType.TEXT:
+                    _LOGGER.warning(
+                        "Websocket closed: %s %s (close code %s)",
+                        raw.type.name,
+                        raw.data or self._ws.exception() or "",
+                        self._ws.close_code,
+                    )
                     break
                 payload = raw.json()
                 for msg in payload if isinstance(payload, list) else [payload]:
