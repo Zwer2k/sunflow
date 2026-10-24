@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4
+
+- Chart y-axis labels are no longer cut off on the left
+
 ## 0.2.3
 
 - PV forecast chart in the setup wizard: one color per forecast plane (stacked),

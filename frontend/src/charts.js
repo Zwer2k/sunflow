@@ -7,7 +7,9 @@ export const UNASSIGNED_COLOR = "var(--sf-series-neutral)";
 
 const W = 720;
 const H = 200;
-const PAD = { top: 12, right: 12, bottom: 28, left: 48 };
+const PAD = { top: 12, right: 12, bottom: 28 };
+// Axis labels use 11px text; this is a safe average glyph width for digits, units and spaces
+const AXIS_CHAR_WIDTH = 6.6;
 const timeFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 const dayFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
@@ -17,16 +19,18 @@ function niceMax(value) {
   return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((m) => m * magnitude).find((m) => m >= value);
 }
 
-function timeScale(start, end) {
+function timeScale(start, end, left) {
   const t0 = start.getTime();
   const span = end.getTime() - t0 || 1;
-  return (date) => PAD.left + ((date.getTime() - t0) / span) * (W - PAD.left - PAD.right);
+  return (date) => left + ((date.getTime() - t0) / span) * (W - left - PAD.right);
 }
 
 function frame(start, end, yMax, formatY) {
-  const x = timeScale(start, end);
-  const y = (v) => H - PAD.bottom - (v / yMax) * (H - PAD.top - PAD.bottom);
   const ticks = [0, yMax / 2, yMax];
+  // Left margin fits the widest y label so it is never cut off
+  const left = Math.max(40, Math.max(...ticks.map((v) => String(formatY(v)).length)) * AXIS_CHAR_WIDTH + 12);
+  const x = timeScale(start, end, left);
+  const y = (v) => H - PAD.bottom - (v / yMax) * (H - PAD.top - PAD.bottom);
   const hours = [];
   const first = new Date(start);
   first.setMinutes(0, 0, 0);
@@ -36,11 +40,12 @@ function frame(start, end, yMax, formatY) {
   return {
     x,
     y,
+    left,
     axes: svg`
       ${ticks.map(
         (v) => svg`
-          <line x1=${PAD.left} x2=${W - PAD.right} y1=${y(v)} y2=${y(v)} class="grid"></line>
-          <text x=${PAD.left - 6} y=${y(v) + 4} text-anchor="end" class="axis">${formatY(v)}</text>
+          <line x1=${left} x2=${W - PAD.right} y1=${y(v)} y2=${y(v)} class="grid"></line>
+          <text x=${left - 6} y=${y(v) + 4} text-anchor="end" class="axis">${formatY(v)}</text>
         `,
       )}
       ${hours.map(
@@ -89,7 +94,7 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, now = null }
   const start = new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
   const end = new Date(Math.max(...series.flatMap((s) => s.points.map((p) => new Date(p.end)))));
   const yMax = fixedMax ?? niceMax(Math.max(...all.map((p) => p.value)) * 1.1);
-  const { x, y, axes } = frame(start, end, yMax, formatY);
+  const { x, y, axes, left } = frame(start, end, yMax, formatY);
   const pathOf = (points) => {
     let pen = "M";
     return points
@@ -118,7 +123,7 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, now = null }
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
       ${axes}
-      ${nowX !== null && nowX > PAD.left && nowX < W - PAD.right
+      ${nowX !== null && nowX > left && nowX < W - PAD.right
         ? svg`
             <line x1=${nowX} x2=${nowX} y1=${PAD.top} y2=${H - PAD.bottom} class="now"></line>
             <text x=${nowX - 4} y=${PAD.top + 10} text-anchor="end" class="axis">gemessen</text>
