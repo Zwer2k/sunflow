@@ -87,6 +87,7 @@ def normalize(
 class Balance:
     """Load computed from the energy flows compared to the reported load."""
 
+    method: str
     computed_load: float
     reported_load: float
     deviation: float
@@ -96,25 +97,37 @@ class Balance:
 def check_balance(
     values: list[RoleValue], tolerance: float = 0.1, min_abs: float = 100
 ) -> Balance | None:
-    """Check load = grid + pv + pv_ext - battery (all in W, canonical signs).
+    """Compare the load computed from the energy flows with the reported load.
 
+    AC method: load = grid + inverter AC output + pv_ext.
+    DC method (no inverter output available): load = grid + pv + pv_ext - battery;
+    it ignores conversion losses, so it gets a larger absolute floor.
     Returns None when a needed value is not available.
     """
     by_role = {v.role: v.value for v in values}
-    needed = ("grid_power", "pv_power", "load_power")
-    if any(by_role.get(role) is None for role in needed):
+    if by_role.get("grid_power") is None or by_role.get("load_power") is None:
         return None
-    computed = (
-        by_role["grid_power"]
-        + by_role["pv_power"]
-        + (by_role.get("pv_ext_power") or 0)
-        - (by_role.get("battery_power") or 0)
-    )
+    pv_ext = by_role.get("pv_ext_power") or 0
+    if by_role.get("inverter_power") is not None:
+        method = "ac"
+        computed = by_role["grid_power"] + by_role["inverter_power"] + pv_ext
+    elif by_role.get("pv_power") is not None:
+        method = "dc"
+        computed = (
+            by_role["grid_power"]
+            + by_role["pv_power"]
+            + pv_ext
+            - (by_role.get("battery_power") or 0)
+        )
+        min_abs = max(min_abs, 500)
+    else:
+        return None
     reported = by_role["load_power"]
     deviation = computed - reported
-    # Absolute floor so idle readings near zero do not fail on rounding
+    # Absolute floor so readings near zero do not fail on rounding
     allowed = max(abs(reported) * tolerance, min_abs)
     return Balance(
+        method=method,
         computed_load=computed,
         reported_load=reported,
         deviation=deviation,

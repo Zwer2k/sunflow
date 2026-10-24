@@ -82,16 +82,26 @@ def _values(**watts: float) -> list[RoleValue]:
 
 
 @pytest.mark.parametrize(
-    ("values", "plausible"),
+    ("values", "method", "plausible"),
     [
-        pytest.param(_values(grid_power=10660, pv_power=0, pv_ext_power=0, battery_power=0, load_power=10650), True, id="night_import"),
-        pytest.param(_values(grid_power=-500, pv_power=3000, pv_ext_power=1400, battery_power=-1200, load_power=5100), True, id="sunny"),
-        pytest.param(_values(grid_power=-500, pv_power=3000, pv_ext_power=1400, battery_power=-1200, load_power=3700), False, id="pv_double_counted"),
-        pytest.param(_values(grid_power=40, pv_power=0, load_power=0), True, id="idle_floor"),
+        pytest.param(_values(grid_power=10660, pv_power=0, pv_ext_power=0, battery_power=0, load_power=10650), "dc", True, id="dc_night_import"),
+        pytest.param(_values(grid_power=-500, pv_power=3000, pv_ext_power=1400, battery_power=-1200, load_power=5100), "dc", True, id="dc_sunny"),
+        pytest.param(_values(grid_power=-500, pv_power=3000, pv_ext_power=1400, battery_power=-1200, load_power=3700), "dc", False, id="dc_pv_double_counted"),
+        # Measured on the Sofar: DC values include conversion losses the AC side does not see
+        pytest.param(_values(grid_power=-20, pv_power=2700, pv_ext_power=460, battery_power=2100, inverter_power=30, load_power=480), "ac", True, id="ac_charging"),
+        pytest.param(_values(grid_power=-20, inverter_power=30, pv_ext_power=460, load_power=1480), "ac", False, id="ac_mismatch"),
+        pytest.param(_values(grid_power=40, pv_power=0, load_power=0), "dc", True, id="idle_floor"),
     ],
 )
-def test_check_balance(values: list[RoleValue], plausible: bool) -> None:
+def test_check_balance(values: list[RoleValue], method: str, plausible: bool) -> None:
     """The computed load is compared to the reported load."""
     balance = check_balance(values)
     assert balance is not None
+    assert balance.method == method
     assert balance.plausible is plausible
+
+
+def test_check_balance_needs_grid_and_load() -> None:
+    """Without grid or load values no balance is computed."""
+    assert check_balance(_values(pv_power=100, load_power=100)) is None
+    assert check_balance(_values(grid_power=100, load_power=100)) is None
