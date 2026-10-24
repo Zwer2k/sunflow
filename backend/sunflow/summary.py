@@ -117,6 +117,7 @@ def build_summary(
 
     assigned = {p.device_id for p in config.forecast_planes if p.device_id}
     summary.forecast_planes = [
+        # Unassigned planes are fine: the same roof may exist at several providers
         {"name": p.name, "plant": names.get(p.device_id) if p.device_id else None}
         for p in config.forecast_planes
     ]
@@ -128,8 +129,4 @@ def build_summary(
                 summary.issues.append(
                     Issue(level="warning", step=STEP_SOURCES, message=f"{device.name}: Keine Prognosefläche zugeordnet.")
                 )
-        if any(p.device_id is None for p in config.forecast_planes):
-            summary.issues.append(
-                Issue(level="warning", step=STEP_SOURCES, message="Mindestens eine Prognosefläche ist keiner Anlage zugeordnet.")
-            )
     return summary

@@ -29,6 +29,8 @@ const ISSUE_STYLES = {
   info: { css: "neutral", icon: "ℹ" },
 };
 
+const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" };
+
 const PRICE_ADAPTERS = {
   timeslots: "Zeittarif",
   nordpool: "Börsenpreis (Nord Pool)",
@@ -1051,16 +1053,17 @@ class SunflowApp extends LitElement {
       <section class="device">
         <div class="device-title">PV-Prognose</div>
         ${sources.forecast_planes.length === 0
-          ? html`<p class="muted">Keine Prognose gefunden. Unterstützt wird derzeit Solcast.</p>`
+          ? html`<p class="muted">Keine Prognose gefunden. Unterstützt werden Solcast und Forecast.Solar.</p>`
           : html`
-              <p class="small muted">Ordne jede Prognosefläche der Anlage zu, deren Module dort liegen.</p>
+              <p class="small muted">Ordne jede Prognosefläche der Anlage zu, deren Module dort liegen.
+                Gibt es eine Dachfläche bei mehreren Anbietern, verwende sie nur einmal – sonst wird sie doppelt gezählt.</p>
               <div class="fields">
                 ${sources.forecast_planes.map(
                   (plane) => html`
                     <label class="field">
-                      <span class="field-label">${plane.name}${plane.capacity_kw ? ` (${plane.capacity_kw} kW)` : ""}</span>
+                      <span class="field-label">${FORECAST_SOURCES[plane.source] ?? plane.source} · ${plane.name}${plane.capacity_kw ? ` (${plane.capacity_kw} kW)` : ""}</span>
                       <select @change=${(e) => this._assignPlane(plane, e.target.value)}>
-                        <option value="" ?selected=${!plane.device_id}>nicht zugeordnet</option>
+                        <option value="" ?selected=${!plane.device_id}>nicht verwenden</option>
                         ${plants.map(
                           (p) => html`<option value=${p.id} ?selected=${plane.device_id === p.id}>${p.name}</option>`,
                         )}
