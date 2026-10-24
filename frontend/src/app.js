@@ -963,16 +963,17 @@ class SunflowApp extends LitElement {
       <span class="small">
         aus Historie: <strong>${pct(estimate.efficiency)}</strong> je Richtung (Zyklus ${pct(estimate.round_trip)}),
         ${estimate.cycles.toFixed(1).replace(".", ",")} Zyklen in ${Math.round(estimate.hours)} h
-        ${estimate.plausible && estimate.reliable
-          ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, String(value).replace(".", ","))}>übernehmen</button>`
+        ${estimate.plausible
+          ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, String(value).replace(".", ","))}>
+              ${estimate.reliable ? "übernehmen" : "vorläufig übernehmen"}</button>`
           : nothing}
       </span>
       ${!estimate.plausible
-        ? html`<span class="small warn-text">Unplausibel – vermutlich Messungenauigkeit der Batterieleistung, abweichende Kapazität
-            oder Eigenverbrauch im Leerlauf. Wird nicht übernommen.</span>`
+        ? html`<span class="small warn-text">Unplausibel – vermutlich Messfehler der Batterieleistung oder falsche Kapazität.
+            Wird nicht angeboten.</span>`
         : !estimate.reliable
-          ? html`<span class="small muted">Vorläufig – belastbar erst ab 2 vollen Zyklen.</span>`
-          : nothing}
+          ? html`<span class="small muted">Vorläufig – belastbar erst ab 2 vollen Zyklen. Enthält auch den Eigenverbrauch des Speichers.</span>`
+          : html`<span class="small muted">Enthält auch den Eigenverbrauch des Speichers (z. B. DC/DC-Wandler der Module).</span>`}
     `;
   }
 
