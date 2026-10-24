@@ -4,14 +4,17 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import asdict
+import io
 from datetime import UTC, datetime, timedelta
 import hashlib
 import logging
 from pathlib import Path
+import tempfile
 from typing import Any
+import zipfile
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Body, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -649,6 +652,45 @@ async def get_history(request: Request, hours: int = 24) -> dict[str, Any]:
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     return {"start": start.isoformat(), "end": end.isoformat(), "points": points}
+
+
+@router.get("/export")
+async def export_data(request: Request) -> Response:
+    """Download shadow mode data and configuration as a zip file."""
+    runner: ShadowRunner = request.app.state.runner
+    data_dir: Path = request.app.state.settings.data_dir
+    buffer = io.BytesIO()
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "shadow.db"
+        await asyncio.to_thread(runner.shadow.backup_to, copy)
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.write(copy, "shadow.db")
+            for name in ("config.json", "eeprom_writes.json"):
+                if (data_dir / name).exists():
+                    archive.write(data_dir / name, name)
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
+    return Response(
+        buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="sunflow-export-{stamp}.zip"'},
+    )
+
+
+@router.post("/import")
+async def import_data(request: Request, file: UploadFile) -> dict[str, Any]:
+    """Merge the shadow mode data of an export; the configuration is not imported."""
+    runner: ShadowRunner = request.app.state.runner
+    content = await file.read()
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                if "shadow.db" not in archive.namelist():
+                    raise HTTPException(status_code=422, detail="Export enthält keine shadow.db")
+                archive.extract("shadow.db", tmp)
+        except zipfile.BadZipFile as err:
+            raise HTTPException(status_code=422, detail="Keine gültige Export-Datei") from err
+        count = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
+    return {"imported_slots": count}
 
 
 @router.get("/shadow")

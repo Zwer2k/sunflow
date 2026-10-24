@@ -78,3 +78,23 @@ def test_store_and_evaluate(tmp_path: Path) -> None:
     assert evaluation["agreement"] == pytest.approx(2 / 3)
     assert evaluation["soc_mae_wh"] == pytest.approx(800 / 3)
     assert evaluation["pv_forecast_kwh"] == pytest.approx(2 * 2000 * 0.25 / 1000)
+
+
+def test_backup_and_merge(tmp_path: Path) -> None:
+    """A backup of one store merges into another; equal slots are replaced."""
+    prod = ShadowStore(tmp_path / "prod")
+    dev = ShadowStore(tmp_path / "dev")
+    try:
+        planned = {"action": "auto", "power": None, "soc": 1, "pv": 0, "load": 0, "price": 0.3}
+        prod.store_planned(START, planned)
+        prod.store_planned(START + timedelta(minutes=15), planned | {"action": "hold"})
+        dev.store_planned(START, planned | {"action": "force_charge"})
+        prod.backup_to(tmp_path / "copy.db")
+
+        assert dev.merge_from(tmp_path / "copy.db") == 2
+        rows = dev.rows(START)
+    finally:
+        prod.close()
+        dev.close()
+
+    assert [r["planned_action"] for r in rows] == ["auto", "hold"]

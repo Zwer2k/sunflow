@@ -18,6 +18,19 @@ pump around PV forecasts and dynamic prices.
 The same repository is added both to the App store (`repository.yaml`) and to
 HACS (`hacs.json`).
 
+## Installation as Home Assistant App
+
+1. Settings → Apps → App store → ⋮ → Repositories → add `https://github.com/Zwer2k/sunflow`
+2. Install "Sunflow" (the Supervisor builds it on the device; this takes a few minutes)
+3. Start it and open the Sunflow panel; set up devices in the wizard
+
+Updates: the image fetches `main` at build time. A new version number in
+`sunflow_app/config.yaml` triggers the update; "Rebuild" fetches the latest
+`main` without a version change.
+
+Shadow mode data can be downloaded in the overview ("Daten exportieren") and
+merged into another instance ("Export importieren").
+
 ## Development
 
 The backend runs as a plain process during development and connects to a
