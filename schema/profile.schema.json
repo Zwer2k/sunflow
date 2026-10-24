@@ -36,6 +36,16 @@
       "propertyNames": {"$ref": "#/$defs/identifier"},
       "additionalProperties": {"$ref": "#/$defs/role"}
     },
+    "control_mode": {
+      "description": "Select entity and option the device must be in for the primitive to take effect.",
+      "type": "object",
+      "required": ["key", "option"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {"type": "string"},
+        "option": {"type": "string"}
+      }
+    },
     "primitive": {
       "type": "object",
       "propertyNames": {"$ref": "#/$defs/identifier"},

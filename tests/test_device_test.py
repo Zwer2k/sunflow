@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from sunflow.device_test import (
+    ModeControl,
     DeviceTestState,
     Timings,
     choose_test,
@@ -126,6 +127,70 @@ async def test_failure_restores() -> None:
     assert state.phase == "failed"
     assert "connection lost" in state.error
     assert [a for a, _ in inverter.actions] == ["limit_charge", "auto"]
+
+
+class FakeMode:
+    """Select entity with the device's operating mode."""
+
+    def __init__(self, current: str) -> None:
+        """Initialize."""
+        self.current = current
+        self.writes: list[str] = []
+
+    async def ensure(self) -> str | None:
+        """Switch to passive mode, returning the previous mode if switched."""
+        if self.current == "Passive Mode":
+            return None
+        previous = self.current
+        await self.set("Passive Mode")
+        return previous
+
+    async def set(self, option: str) -> None:
+        """Select an option."""
+        self.writes.append(option)
+        self.current = option
+
+
+@pytest.mark.parametrize(
+    ("initial", "writes"),
+    [
+        pytest.param("Self Use", ["Passive Mode", "Self Use"], id="switch_and_back"),
+        pytest.param("Passive Mode", [], id="already_passive"),
+    ],
+)
+async def test_control_mode(initial: str, writes: list[str]) -> None:
+    """The test switches into the control mode only if needed and restores the previous mode."""
+    inverter = FakeInverter(2000)
+    fake_mode = FakeMode(initial)
+    state = DeviceTestState(device_id="sofar")
+
+    await run_device_test(
+        state, inverter.read, inverter.run_action, FAST, ModeControl(ensure=fake_mode.ensure, set=fake_mode.set)
+    )
+
+    assert state.phase == "done"
+    assert fake_mode.writes == writes
+    assert fake_mode.current == initial
+
+
+async def test_abort_restores_mode() -> None:
+    """Aborting after the mode switch also restores the previous mode."""
+    inverter = FakeInverter(2000)
+    fake_mode = FakeMode("Self Use")
+    state = DeviceTestState(device_id="sofar")
+    slow = Timings(baseline=0.02, hold=10, settle=5, verify_restore=1, sample=0.01)
+
+    task = asyncio.create_task(
+        run_device_test(state, inverter.read, inverter.run_action, slow, ModeControl(ensure=fake_mode.ensure, set=fake_mode.set))
+    )
+    while state.phase != "command":
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert fake_mode.current == "Self Use"
+    assert state.previous_mode_restored is True
 
 
 def test_no_reading_means_no_command() -> None:

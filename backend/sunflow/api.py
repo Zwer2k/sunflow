@@ -25,7 +25,7 @@ from .config_store import (
     RoleOverride,
     TariffConfig,
 )
-from .device_test import DeviceTestState, run_device_test, state_response
+from .device_test import DeviceTestState, ModeControl, run_device_test, state_response
 from .discovery import Snapshot, discover, fetch_snapshot
 from .executor import (
     ActionResult,
@@ -33,6 +33,7 @@ from .executor import (
     ExecutorError,
     PlannedCall,
     execute,
+    find_entity,
     plan_action,
     plan_setup,
 )
@@ -449,7 +450,7 @@ async def start_device_test(
         roles = {r.role: r.value for r in preview(profile, snapshot, device.ha_device_id, overrides)}
         return roles.get("battery_power"), roles.get("battery_soc")
 
-    async def run_action(action: str, runtime: dict[str, float]) -> list[PlannedCall]:
+    async def apply_action(action: str, runtime: dict[str, float]) -> list[PlannedCall]:
         snapshot = await fetch_snapshot(client)
         _, calls = plan_action(
             profile, action, device.parameters, runtime, device_entities(snapshot, device.ha_device_id)
@@ -457,11 +458,45 @@ async def start_device_test(
         await execute(client, calls, snapshot.states, guard, dry_run=False)
         return calls
 
+    mode = None
+    if control_mode := profile.get("control_mode"):
+
+        async def set_mode(option: str) -> str | None:
+            """Select option if needed; return the previous option when switched."""
+            snapshot = await fetch_snapshot(client)
+            entities = device_entities(snapshot, device.ha_device_id)
+            if (entity_id := find_entity(entities, "select", control_mode["key"])) is None:
+                raise ExecutorError(f"No select entity for key {control_mode['key']}")
+            current = snapshot.states.get(entity_id, {}).get("state")
+            if current == option:
+                return None
+            call = PlannedCall(
+                domain="select",
+                service="select_option",
+                data={"option": option},
+                entity_id=entity_id,
+                storage="eeprom",
+                write="always",
+            )
+            await execute(client, [call], snapshot.states, guard, dry_run=False)
+            state.calls.append(call)
+            if call.status != "done":
+                raise ExecutorError(f"Mode switch {call.status}: {call.reason}")
+            return current
+
+        async def ensure_mode() -> str | None:
+            return await set_mode(control_mode["option"])
+
+        async def restore_mode(option: str) -> None:
+            await set_mode(option)
+
+        mode = ModeControl(ensure=ensure_mode, set=restore_mode)
+
     state = DeviceTestState(device_id=device_id)
     store: ConfigStore = request.app.state.store
 
     async def run() -> None:
-        await run_device_test(state, read, run_action)
+        await run_device_test(state, read, apply_action, mode=mode)
         if state.phase == "done" and state.control_works and state.sign_correct and state.restored:
             config = store.load()
             if (stored := config.device(device_id)) is not None:

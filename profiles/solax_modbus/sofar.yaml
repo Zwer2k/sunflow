@@ -25,6 +25,9 @@ roles:
   # AC output of the inverter (+ = feeding the house); preferred for the balance check
   inverter_power: {key: active_power_output_total, unit: kW, optional: true}
 
+# Mode in which the primitive takes effect; switching it is an EEPROM write
+control_mode: {key: charger_use_mode, option: "Passive Mode"}
+
 primitive:
   battery_window:
     params: {bat_min: W, bat_max: W, grid_target: W}
