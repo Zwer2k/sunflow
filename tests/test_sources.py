@@ -8,11 +8,13 @@ import pytest
 
 from sunflow.sources import (
     detect_price_adapter,
+    forecast_solar_planes,
     price_series,
     price_sources,
     solcast_points,
     solcast_sites,
     sum_forecasts,
+    wh_period_points,
 )
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -111,6 +113,41 @@ def test_price_sources() -> None:
     assert sources["sensor.octopus"].current == pytest.approx(0.326179)
     assert sources["sensor.spot"].current is None
     assert detect_price_adapter({}) == "fixed"
+
+
+def test_forecast_solar_planes() -> None:
+    """Planes are named after their device without the generic prefix."""
+    entries = [
+        {"entry_id": "e1", "domain": "forecast_solar", "title": "", "state": "loaded"},
+        {"entry_id": "e2", "domain": "forecast_solar", "title": "", "state": "loaded"},
+        {"entry_id": "e3", "domain": "forecast_solar", "title": "", "state": "setup_error"},
+        {"entry_id": "x", "domain": "met", "title": "Home", "state": "loaded"},
+    ]
+    devices = [{"config_entries": ["e1"], "name": "Solar production forecast Carport", "name_by_user": None}]
+
+    planes = forecast_solar_planes(entries, devices)
+
+    assert [(p.source, p.ref, p.name) for p in planes] == [
+        ("forecast_solar", "e1", "Carport"),
+        ("forecast_solar", "e2", "Forecast.Solar 2"),
+    ]
+
+
+def test_mixed_resolutions_are_summed() -> None:
+    """Hourly Forecast.Solar energy and 30 minute Solcast power add up on a 30 minute grid."""
+    hourly = wh_period_points({"2026-10-24T12:00:00+02:00": 1000}, timedelta(hours=1))
+    half_hourly = solcast_points(
+        [
+            {"period_start": "2026-10-24T12:00:00+02:00", "pv_estimate": 0.5},
+            {"period_start": "2026-10-24T12:30:00+02:00", "pv_estimate": 1.5},
+        ],
+        timedelta(minutes=30),
+    )
+
+    total = sum_forecasts([hourly, half_hourly])
+
+    assert [p.power for p in total] == pytest.approx([1500, 2500])
+    assert all(p.end - p.start == timedelta(minutes=30) for p in total)
 
 
 def test_solcast() -> None:

@@ -46,6 +46,8 @@ from .summary import SetupSummary, build_summary
 from .sources import (
     ForecastPoint,
     detect_price_adapter,
+    forecast_solar_forecast,
+    forecast_solar_planes,
     price_series,
     price_sources,
     solcast_forecast,
@@ -340,7 +342,10 @@ async def get_sources(request: Request) -> dict[str, Any]:
     assigned = {(p.source, p.ref): p.device_id for p in config.forecast_planes}
     planes = [
         asdict(site) | {"device_id": assigned.get((site.source, site.ref))}
-        for site in solcast_sites(states, solcast_entities)
+        for site in [
+            *solcast_sites(states, solcast_entities),
+            *forecast_solar_planes(snapshot.entries, snapshot.devices),
+        ]
     ]
     return {
         "prices": [asdict(p) for p in price_sources(states)],
@@ -401,12 +406,18 @@ async def get_forecast_series(
     config = request.app.state.store.load()
     client: HAClient = request.app.state.ha
     start = _slot_start().replace(minute=0)
-    by_plant: dict[str | None, list[list[ForecastPoint]]] = {}
+    by_plant: dict[str, list[list[ForecastPoint]]] = {}
     try:
         for plane in config.forecast_planes:
-            if plane.source != "solcast":
+            if plane.device_id is None:
                 continue
-            points = await solcast_forecast(client, plane.ref, start, hours)
+            match plane.source:
+                case "solcast":
+                    points = await solcast_forecast(client, plane.ref, start, hours)
+                case "forecast_solar":
+                    points = await forecast_solar_forecast(client, plane.ref, start, hours)
+                case _:
+                    continue
             by_plant.setdefault(plane.device_id, []).append(points)
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
@@ -415,7 +426,7 @@ async def get_forecast_series(
         "plants": [
             {
                 "device_id": device_id,
-                "name": names.get(device_id, "Nicht zugeordnet") if device_id else "Nicht zugeordnet",
+                "name": names.get(device_id, device_id),
                 "points": [asdict(p) for p in sum_forecasts(series)],
             }
             for device_id, series in by_plant.items()

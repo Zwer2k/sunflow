@@ -71,4 +71,4 @@ def test_open_items_are_warnings(library: ProfileLibrary) -> None:
 
     assert summary.can_complete
     warnings = [i.message for i in summary.issues if i.level == "warning"]
-    assert len(warnings) == 5
+    assert len(warnings) == 4

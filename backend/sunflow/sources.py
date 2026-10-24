@@ -237,11 +237,75 @@ async def solcast_forecast(
     return solcast_points(response["response"]["data"], timedelta(minutes=30))
 
 
+FORECAST_SOLAR_DEVICE_PREFIX = "Solar production forecast "
+
+
+def forecast_solar_planes(
+    entries: list[dict[str, Any]], devices: list[dict[str, Any]]
+) -> list[ForecastSource]:
+    """Return one plane per Forecast.Solar config entry, named after its device."""
+    planes = []
+    for number, entry in enumerate(
+        (e for e in entries if e["domain"] == "forecast_solar" and e["state"] == "loaded"), start=1
+    ):
+        device = next((d for d in devices if entry["entry_id"] in d.get("config_entries", [])), None)
+        name = (device or {}).get("name_by_user") or (device or {}).get("name") or ""
+        name = name.removeprefix(FORECAST_SOLAR_DEVICE_PREFIX) or entry["title"] or f"Forecast.Solar {number}"
+        planes.append(
+            ForecastSource(
+                source="forecast_solar", ref=entry["entry_id"], name=name, capacity_kw=None, entity_id=None
+            )
+        )
+    return planes
+
+
+def wh_period_points(wh_period: dict[str, float], period: timedelta) -> list[ForecastPoint]:
+    """Convert energy per interval (Wh, keyed by interval start) to average power in W."""
+    hours = period / timedelta(hours=1)
+    points = []
+    for key, wh in sorted(wh_period.items()):
+        start = datetime.fromisoformat(key)
+        points.append(ForecastPoint(start=start, end=start + period, power=float(wh) / hours))
+    return points
+
+
+async def forecast_solar_forecast(
+    client: HAClient, entry_id: str, start: datetime, hours: int
+) -> list[ForecastPoint]:
+    """Query one Forecast.Solar entry via its get_forecast action (hourly)."""
+    response = await client.call_service(
+        "forecast_solar",
+        "get_forecast",
+        {
+            "config_entry": entry_id,
+            "start": start.isoformat(),
+            "end": (start + timedelta(hours=hours)).isoformat(),
+            "resolution": "hourly",
+        },
+        return_response=True,
+    )
+    return wh_period_points(response["response"]["wh_period"], timedelta(hours=1))
+
+
+def resample(points: list[ForecastPoint], step: timedelta) -> list[ForecastPoint]:
+    """Split intervals into steps of equal average power so sources of different resolution add up."""
+    result = []
+    for p in points:
+        start = p.start
+        while start < p.end:
+            end = min(start + step, p.end)
+            result.append(
+                ForecastPoint(start=start, end=end, power=p.power, power10=p.power10, power90=p.power90)
+            )
+            start = end
+    return result
+
+
 def sum_forecasts(series: list[list[ForecastPoint]]) -> list[ForecastPoint]:
-    """Add forecasts with identical intervals (e.g. several planes of one plant)."""
+    """Add forecasts per interval (e.g. several planes of one plant), on a 30 minute grid."""
     totals: dict[tuple[datetime, datetime], list[float]] = {}
     for points in series:
-        for p in points:
+        for p in resample(points, timedelta(minutes=30)):
             total = totals.setdefault((p.start, p.end), [0.0, 0.0, 0.0])
             total[0] += p.power
             total[1] += p.power10 or 0
