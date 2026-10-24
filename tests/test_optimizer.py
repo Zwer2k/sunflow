@@ -240,3 +240,48 @@ def test_subtract_loadpoints() -> None:
 
     assert base == [(t0, 300.0), (t0 + hour, 400.0), (t0 + 2 * hour, 9000.0)]
     assert separated == 2
+
+
+def test_ev_charges_in_cheap_window() -> None:
+    """A plugged-in EV gets its energy in the cheap slots; the battery is not used for it."""
+    from sunflow.optimizer import FlexLoad
+
+    inputs = _slots(10, price=lambda i: 0.226 if 8 <= i < 28 else 0.326)
+    ev = FlexLoad(name="Auto", energy_wh=10000, max_power_w=11000, available=[True] * 40)
+
+    plan = optimize(inputs, BATTERY, Settings(), [ev])
+
+    (result,) = plan.flex
+    assert result.planned_wh == pytest.approx(10000)
+    assert result.unmet_wh == pytest.approx(0, abs=1)
+    charged_cheap = sum(s.flex_w["Auto"] for s in plan.slots[8:28]) / 4
+    assert charged_cheap == pytest.approx(10000)
+    # The battery does not cover the EV during the cheap window
+    assert all(s.discharge_w < s.load_w + 1 for s in plan.slots[8:28])
+
+
+def test_flex_unmet_when_not_available() -> None:
+    """A load that cannot run leaves its need unmet but the plan stays solvable."""
+    from sunflow.optimizer import FlexLoad
+
+    inputs = _slots(4, price=lambda i: 0.3)
+    ev = FlexLoad(name="Auto", energy_wh=5000, max_power_w=11000, available=[False] * 16)
+
+    plan = optimize(inputs, BATTERY, Settings(), [ev])
+
+    assert plan.slots
+    assert plan.flex[0].unmet_wh == pytest.approx(5000)
+
+
+def test_heater_uses_pv_surplus() -> None:
+    """A heater with a whole day to go runs in the PV surplus, not from the grid."""
+    from sunflow.optimizer import FlexLoad
+
+    full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 4000.0 if 40 <= i < 64 else 0.0)
+    heater = FlexLoad(name="Warmwasser", energy_wh=5600, max_power_w=3000, available=[True] * 96)
+
+    plan = optimize(inputs, full, Settings(), [heater])
+
+    assert sum(s.flex_w["Warmwasser"] for s in plan.slots[40:64]) / 4 == pytest.approx(5600, abs=10)
+    assert plan.savings > 0

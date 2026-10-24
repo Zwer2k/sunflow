@@ -34,6 +34,31 @@ function energy(slots, key) {
   return slots.reduce((sum, s) => sum + s[key] / 4, 0);
 }
 
+/** Consecutive slots in which a flexible load runs, with energy and main source. */
+function flexWindows(slots, name) {
+  const windows = [];
+  for (const slot of slots) {
+    const power = slot.flex_w?.[name] ?? 0;
+    const last = windows.at(-1);
+    if (power < 50) {
+      if (last) last.closed = true;
+      continue;
+    }
+    const surplus = Math.max(slot.pv_w - slot.load_w, 0);
+    if (last && !last.closed) {
+      last.end = slot.end;
+      last.energy += power / 4;
+      last.pv += Math.min(power, surplus) / 4;
+    } else {
+      windows.push({ start: slot.start, end: slot.end, energy: power / 4, pv: Math.min(power, surplus) / 4, closed: false });
+    }
+  }
+  return windows.map((w) => ({
+    ...w,
+    source: w.pv >= w.energy * 0.8 ? "aus PV-Überschuss" : w.pv > 0 ? "teils PV, teils Netz/Speicher" : "aus Netz/Speicher",
+  }));
+}
+
 /** Group consecutive slots with the same action. */
 function segments(slots) {
   const result = [];
@@ -188,7 +213,8 @@ class SunflowPlan extends LitElement {
     const history = this._history?.points ?? [];
     const capacity = Math.max(...slots.map((s) => s.soc_wh), ...history.map((p) => p.soc_wh ?? 0)) || 1;
     const nowDate = new Date(slots[0].start);
-    const hasLoadpoints = history.some((p) => p.loadpoint_w !== null && p.loadpoint_w !== undefined);
+    const hasLoadpoints =
+      history.some((p) => p.loadpoint_w !== null && p.loadpoint_w !== undefined) || Boolean(plan.flex?.length);
     return html`
       ${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
       <div class="tiles">
@@ -230,6 +256,8 @@ class SunflowPlan extends LitElement {
           )}
         </ol>
       </section>
+
+      ${plan.flex?.length ? this._renderFlex(plan) : nothing}
 
       <section>
         <div class="section-head">
@@ -278,6 +306,14 @@ class SunflowPlan extends LitElement {
             ...(hasLoadpoints
               ? [{ name: "Ladepunkte gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
               : []),
+            ...(plan.flex?.length
+              ? [{
+                  name: "Ladepunkte geplant",
+                  color: UNASSIGNED_COLOR,
+                  dashed: true,
+                  points: slots.map((s) => ({ start: s.start, end: s.end, value: Object.values(s.flex_w ?? {}).reduce((a, b) => a + b, 0) })),
+                }]
+              : []),
             { name: "PV Prognose", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "pv_w") },
           ],
           { label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose", formatY: (v) => formatValue(v, "W"), now: nowDate },
@@ -310,6 +346,46 @@ class SunflowPlan extends LitElement {
 
       ${this._renderShadow()}
       ${this._renderSettings(plan.settings)}
+    `;
+  }
+
+  _renderFlex(plan) {
+    const fmt = (v, unit) => (v === null || v === undefined ? "–" : `${Math.round(v * 10) / 10} ${unit}`.replace(".", ","));
+    return html`
+      <section>
+        <h2>Ladepunkte <span class="tag">Vorschau</span></h2>
+        <div class="flex-list">
+          ${plan.flex.map((f) => {
+            const windows = flexWindows(plan.slots, f.name);
+            return html`
+              <div class="flex-card">
+                <div class="flex-head">
+                  <strong>${f.name}</strong>
+                  <span class="small muted">${f.kind === "heater" ? "Warmwasser" : "Fahrzeug"}</span>
+                </div>
+                <div class="small">
+                  ${fmt(f.current, f.unit)} → ${fmt(f.target, f.unit)}
+                  ${f.need_wh > 0 ? html` · Bedarf ${formatValue(f.need_wh, "Wh")}` : nothing}
+                  ${f.deadline ? html` · bis ${dayTime.format(new Date(f.deadline))}` : nothing}
+                </div>
+                ${f.reason
+                  ? html`<div class="small muted">Nicht eingeplant: ${f.reason}</div>`
+                  : html`
+                      <div class="small">Geplant ${formatValue(f.planned_wh, "Wh")}${f.unmet_wh > 50
+                        ? html` · <span class="warn-text">${formatValue(f.unmet_wh, "Wh")} nicht erfüllbar</span>`
+                        : nothing}</div>
+                      <ul class="windows small">
+                        ${windows.map(
+                          (w) => html`<li>${dayTime.format(new Date(w.start))}–${time.format(new Date(w.end))} ·
+                            ${formatValue(w.energy, "Wh")} · ${w.source}</li>`,
+                        )}
+                      </ul>
+                    `}
+              </div>
+            `;
+          })}
+        </div>
+      </section>
     `;
   }
 
@@ -540,6 +616,10 @@ class SunflowPlan extends LitElement {
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }
     .warn-text { color: var(--sf-error-text); }
+    .flex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+    .flex-card { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+    .flex-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .windows { margin: 4px 0 0; padding-left: 18px; }
     h3 { margin: 0 0 8px; font-size: 15px; }
     .tag {
       font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-left: 6px;

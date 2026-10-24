@@ -620,6 +620,13 @@ async def get_plan(request: Request) -> dict[str, Any]:
         "terminal_value": plan.terminal_value,
         "baseline_terminal_value": plan.baseline_terminal_value,
         "savings": plan.savings if plan.slots else None,
+        "flex": [
+            asdict(info) | next(
+                ({"planned_wh": r.planned_wh, "unmet_wh": r.unmet_wh} for r in plan.flex if r.name == info.name),
+                {"planned_wh": 0.0, "unmet_wh": 0.0},
+            )
+            for info in result.flex
+        ],
         "slots": [asdict(slot) for slot in plan.slots],
     }
 

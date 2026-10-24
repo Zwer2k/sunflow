@@ -58,6 +58,34 @@ class SlotInput:
     feed_in: float  # export €/kWh
 
 
+@dataclass(frozen=True, kw_only=True)
+class FlexLoad:
+    """A shiftable consumer (EV, heater): energy needed until the deadline.
+
+    available[t] is False when the load cannot run in slot t (not plugged in,
+    after its deadline).
+    """
+
+    name: str
+    energy_wh: float
+    max_power_w: float
+    available: list[bool]
+
+
+@dataclass(kw_only=True)
+class FlexResult:
+    """How much of a flexible load's need the plan covers."""
+
+    name: str
+    energy_wh: float
+    planned_wh: float
+    unmet_wh: float
+
+
+# Penalty per unmet kWh of a flexible load: above any price, so needs are met when possible
+UNMET_PENALTY = 2.0
+
+
 @dataclass(kw_only=True)
 class PlanSlot:
     """Optimized values and the resulting control action for one slot."""
@@ -75,6 +103,7 @@ class PlanSlot:
     soc_wh: float
     action: Action
     action_power_w: float | None
+    flex_w: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(kw_only=True)
@@ -82,6 +111,7 @@ class Plan:
     """Result of an optimization run."""
 
     slots: list[PlanSlot] = field(default_factory=list)
+    flex: list[FlexResult] = field(default_factory=list)
     cost: float = 0.0
     baseline_cost: float = 0.0
     # Value of the energy left at the end; savings compare cost minus this value
@@ -167,14 +197,38 @@ def simulate_self_consumption(inputs: list[SlotInput], battery: BatterySpec) -> 
     return cost, soc
 
 
-def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings = Settings()) -> Plan:
-    """Compute the cost-optimal battery schedule."""
+def immediate_flex(inputs: list[SlotInput], flex: list[FlexLoad]) -> list[SlotInput]:
+    """Add flexible loads as if they ran at full power as soon as possible (no planning)."""
+    extra = [0.0] * len(inputs)
+    for load in flex:
+        remaining = load.energy_wh
+        for t, available in enumerate(load.available):
+            if remaining <= 0:
+                break
+            if available:
+                power = min(load.max_power_w, remaining / DT_H)
+                extra[t] += power
+                remaining -= power * DT_H
+    return [replace(slot, load_w=slot.load_w + extra[t]) for t, slot in enumerate(inputs)]
+
+
+def optimize(
+    inputs: list[SlotInput],
+    battery: BatterySpec,
+    settings: Settings = Settings(),
+    flex: list[FlexLoad] | tuple[FlexLoad, ...] = (),
+) -> Plan:
+    """Compute the cost-optimal battery and flexible load schedule."""
     n = len(inputs)
     if n == 0:
         return Plan(status="no input")
-    # Variable layout: charge, discharge, import, export, soc (each n)
+    flex = list(flex)
+    # Variable layout: charge, discharge, import, export, soc (each n),
+    # then per flexible load its power per slot and its unmet energy
     c, d, gi, ge, s = (np.arange(n) + k * n for k in range(5))
-    count = 5 * n
+    f = [5 * n + k * n + np.arange(n) for k in range(len(flex))]
+    u = [5 * n + len(flex) * n + k for k in range(len(flex))]
+    count = 5 * n + len(flex) * (n + 1)
     eta_c, eta_d = battery.efficiency_charge, battery.efficiency_discharge
     battery = replace(battery, soc_wh=min(max(battery.soc_wh, 0), battery.capacity_wh))
     wear = settings.wear_ct_per_kwh / 100
@@ -195,15 +249,20 @@ def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings =
         tie += 0.0001 * t / n
         cost[d[t]] = (wear + tie) * DT_H / 1000
     cost[s[-1]] -= terminal / 1000
+    for k in range(len(flex)):
+        cost[u[k]] = UNMET_PENALTY / 1000
 
-    a_eq = lil_matrix((2 * n, count))
-    b_eq = np.zeros(2 * n)
+    rows = 2 * n + len(flex)
+    a_eq = lil_matrix((rows, count))
+    b_eq = np.zeros(rows)
     for t, slot in enumerate(inputs):
         # Power balance
         a_eq[t, gi[t]] = 1
         a_eq[t, d[t]] = 1
         a_eq[t, c[t]] = -1
         a_eq[t, ge[t]] = -1
+        for k in range(len(flex)):
+            a_eq[t, f[k][t]] = -1
         b_eq[t] = slot.load_w - slot.pv_w
         # State of charge
         row = n + t
@@ -214,6 +273,13 @@ def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings =
             b_eq[row] = battery.soc_wh
         else:
             a_eq[row, s[t - 1]] = -1
+    for k, load in enumerate(flex):
+        # Delivered energy plus unmet rest equals the need
+        row = 2 * n + k
+        for t in range(n):
+            a_eq[row, f[k][t]] = DT_H
+        a_eq[row, u[k]] = 1
+        b_eq[row] = load.energy_wh
 
     # A battery below its floor may stay there but must not be drained further
     soc_min = min(max(battery.min_soc_wh, settings.reserve_wh), battery.soc_wh)
@@ -224,11 +290,15 @@ def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings =
             battery.max_charge_w, max(slot.pv_w, 0)
         )
         upper[d[t]] = battery.max_discharge_w
-        # The grid only carries what the house and battery can take or give
-        upper[gi[t]] = max(slot.load_w, 0) + battery.max_charge_w
+        # The grid only carries what the house, loads and battery can take or give
+        upper[gi[t]] = max(slot.load_w, 0) + battery.max_charge_w + sum(
+            load.max_power_w for load in flex if load.available[t]
+        )
         upper[ge[t]] = max(slot.pv_w, 0) + battery.max_discharge_w
         lower[s[t]] = soc_min
         upper[s[t]] = battery.capacity_wh
+        for k, load in enumerate(flex):
+            upper[f[k][t]] = load.max_power_w if load.available[t] else 0.0
 
     # Import and export (charge and discharge) at the same time is physically impossible.
     # A linear model only does it when it pays: import cheaper than export, or negative
@@ -260,7 +330,7 @@ def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings =
         b_ub[row + 1] = upper[d[t]]
         row += 2
 
-    a_eq_full = lil_matrix((2 * n, total))
+    a_eq_full = lil_matrix((rows, total))
     a_eq_full[:, :count] = a_eq
     constraints = [LinearConstraint(a_eq_full.tocsr(), b_eq, b_eq)]
     if row:
@@ -277,8 +347,9 @@ def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings =
         return plan
     x = result.x
     for t, slot in enumerate(inputs):
+        flex_now = sum(x[f[k][t]] for k in range(len(flex)))
         action, power = choose_action(
-            slot.pv_w, slot.load_w, x[c[t]], x[d[t]], settings.action_threshold_w
+            slot.pv_w, slot.load_w + flex_now, x[c[t]], x[d[t]], settings.action_threshold_w
         )
         plan.slots.append(
             PlanSlot(
@@ -295,13 +366,24 @@ def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings =
                 soc_wh=float(x[s[t]]),
                 action=action,
                 action_power_w=power,
+                flex_w={load.name: float(x[f[k][t]]) for k, load in enumerate(flex)},
             )
         )
+    plan.flex = [
+        FlexResult(
+            name=load.name,
+            energy_wh=load.energy_wh,
+            planned_wh=float(sum(x[f[k]]) * DT_H),
+            unmet_wh=float(x[u[k]]),
+        )
+        for k, load in enumerate(flex)
+    ]
     smooth_actions(plan.slots)
     plan.terminal_value = terminal * plan.slots[-1].soc_wh / 1000
     plan.cost = sum(
         (p.price * p.import_w - p.feed_in * p.export_w) * DT_H / 1000 for p in plan.slots
     )
-    plan.baseline_cost, baseline_soc = simulate_self_consumption(inputs, battery)
+    # Without Sunflow flexible loads start right away at full power
+    plan.baseline_cost, baseline_soc = simulate_self_consumption(immediate_flex(inputs, flex), battery)
     plan.baseline_terminal_value = terminal * baseline_soc / 1000
     return plan
