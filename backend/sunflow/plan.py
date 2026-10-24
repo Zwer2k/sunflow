@@ -67,6 +67,8 @@ def battery_spec(
             min_soc_wh=capacity * (params.get("min_soc") or 0) / 100,
             max_charge_w=params.get("max_charge") or 0,
             max_discharge_w=params.get("max_discharge") or 0,
+            efficiency_charge=(params.get("efficiency_pct") or 95) / 100,
+            efficiency_discharge=(params.get("efficiency_pct") or 95) / 100,
         ),
         None,
     )
@@ -179,6 +181,15 @@ async def compute_plan(
                 series.append(await forecast_solar_forecast(client, plane.ref, start, HORIZON_HOURS))
     if not series:
         warnings.append("Keine PV-Prognose – geplant wird ohne PV-Ertrag.")
+    horizon_end = start + timedelta(hours=HORIZON_HOURS)
+    used_planes = [p for p in config.forecast_planes if p.device_id is not None]
+    for plane, points in zip(used_planes, series, strict=False):
+        last = max((p.end for p in points), default=start)
+        if last < horizon_end - timedelta(hours=12):
+            warnings.append(
+                f"PV-Prognose „{plane.name}“ reicht nur bis {last.astimezone(tz):%a %H:%M} – "
+                "danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig)."
+            )
     pv = sum_forecasts(series) if series else []
 
     # Load forecast from the history of the battery inverter's load sensor

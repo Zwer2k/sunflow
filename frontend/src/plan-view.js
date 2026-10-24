@@ -29,6 +29,11 @@ const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digi
 const dayTime = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
 
+/** Energy in Wh of a power column over 15 minute slots. */
+function energy(slots, key) {
+  return slots.reduce((sum, s) => sum + s[key] / 4, 0);
+}
+
 /** Group consecutive slots with the same action. */
 function segments(slots) {
   const result = [];
@@ -251,6 +256,25 @@ class SunflowPlan extends LitElement {
       </section>
 
       <section>
+        <h3>Netzbezug und Einspeisung</h3>
+        <div class="legend">
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Netzbezug</span>
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>Einspeisung</span>
+          <span class="legend-item muted">erwartet: Bezug ${formatValue(energy(slots, "import_w"), "Wh")},
+            Einspeisung ${formatValue(energy(slots, "export_w"), "Wh")}</span>
+        </div>
+        ${lineChart(
+          [
+            { name: "Bezug gemessen", color: SERIES_COLORS[0], points: this._pastGrid((g) => Math.max(g, 0)) },
+            { name: "Bezug erwartet", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "import_w") },
+            { name: "Einspeisung gemessen", color: SERIES_COLORS[1], points: this._pastGrid((g) => Math.max(-g, 0)) },
+            { name: "Einspeisung erwartet", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "export_w") },
+          ],
+          { label: "Netzbezug und Einspeisung, gemessen und erwartet", formatY: (v) => formatValue(v, "W"), now: nowDate },
+        )}
+      </section>
+
+      <section>
         <h3>Bezugspreis <span class="tag">Vorschau</span></h3>
         ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price })), "Bezugspreis im Plan")}
       </section>
@@ -322,6 +346,14 @@ class SunflowPlan extends LitElement {
 
   _past(key) {
     return (this._history?.points ?? []).map((p) => ({ start: p.start, end: p.end, value: p[key] }));
+  }
+
+  _pastGrid(transform) {
+    return (this._history?.points ?? []).map((p) => ({
+      start: p.start,
+      end: p.end,
+      value: p.grid_w === null ? null : transform(p.grid_w),
+    }));
   }
 
   _future(slots, key) {

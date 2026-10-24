@@ -46,6 +46,8 @@ parameters:
   max_charge: {unit: W, default: 20000, min: 0}
   max_discharge: {unit: W, default: 20000, min: 0}
   grid_offset: {unit: W, default: -200, advanced: true}
+  # Per direction; round trip is roughly the square (95 % -> ~90 %)
+  efficiency_pct: {unit: "%", default: 95, min: 50, max: 100, advanced: true}
 
 actions:
   auto: {bat_min: -max_discharge, bat_max: max_charge, grid_target: grid_offset}
