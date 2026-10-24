@@ -71,6 +71,21 @@ def battery_spec(
     )
 
 
+# Export penalty for "pv_absorption": large enough to keep room for PV before sunny days
+PV_ABSORPTION_PENALTY_CT = 5.0
+
+
+def optimizer_settings(config: SunflowConfig, battery: BatterySpec) -> Settings:
+    """Translate the user's planning settings and strategy into optimizer settings."""
+    options = config.optimizer
+    return Settings(
+        wear_ct_per_kwh=options.wear_ct_per_kwh,
+        allow_grid_charge=options.allow_grid_charge,
+        export_penalty_ct_per_kwh=PV_ABSORPTION_PENALTY_CT if options.strategy == "pv_absorption" else 0.0,
+        reserve_wh=battery.capacity_wh * options.backup_reserve_pct / 100 if options.strategy == "backup" else 0.0,
+    )
+
+
 def feed_in_price(config: SunflowConfig, battery_device: DeviceConfig | None) -> float:
     """Feed-in €/kWh: the battery inverter's plant first, else the first configured rate."""
     candidates = ([battery_device] if battery_device else []) + config.devices
@@ -123,7 +138,6 @@ async def compute_plan(
     snapshot: Snapshot,
     start: datetime,
     tz: tzinfo,
-    settings: Settings = Settings(),
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule."""
     warnings: list[str] = []
@@ -182,6 +196,7 @@ async def compute_plan(
     elif load.history_hours < 7 * 24:
         warnings.append(f"Erst {load.history_hours} h Verbrauchshistorie – die Lastprognose wird mit der Zeit genauer.")
 
+    settings = optimizer_settings(config, battery)
     inputs = build_inputs(start, prices, pv, load, feed_in_price(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")

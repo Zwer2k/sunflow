@@ -69,6 +69,8 @@ class OptimizerConfig(BaseModel):
 
     wear_ct_per_kwh: float = 3.0
     allow_grid_charge: bool = True
+    strategy: Literal["balanced", "pv_absorption", "backup"] = "balanced"
+    backup_reserve_pct: float = 30.0
 
 
 class SunflowConfig(BaseModel):

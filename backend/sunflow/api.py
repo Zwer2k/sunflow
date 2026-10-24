@@ -42,7 +42,6 @@ from .ha import HAClient, HAError
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import check_balance, device_entities, preview
 from .settings import Settings
-from .optimizer import Settings as OptimizerSettings
 from .plan import compute_plan
 from .site import device_parameters, site_status
 from .summary import SetupSummary, build_summary
@@ -588,10 +587,6 @@ async def get_plan(request: Request) -> dict[str, Any]:
     """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
     config = request.app.state.store.load()
     snapshot = await _snapshot(request)
-    settings = OptimizerSettings(
-        wear_ct_per_kwh=config.optimizer.wear_ct_per_kwh,
-        allow_grid_charge=config.optimizer.allow_grid_charge,
-    )
     try:
         result = await compute_plan(
             request.app.state.ha,
@@ -600,7 +595,6 @@ async def get_plan(request: Request) -> dict[str, Any]:
             snapshot,
             _slot_start(),
             await _local_tz(request),
-            settings,
         )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err

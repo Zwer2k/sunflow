@@ -78,6 +78,44 @@ export function priceChart(points, label) {
   `;
 }
 
+/**
+ * Lines over time; series: [{name, color, points: [{start, end, value}]}].
+ * Each point is drawn as a level from start to end, joined vertically.
+ */
+export function lineChart(series, { label, formatY, yMax: fixedMax, step = false }) {
+  const all = series.flatMap((s) => s.points);
+  if (!all.length) return nothing;
+  const start = new Date(Math.min(...all.map((p) => new Date(p.start))));
+  const end = new Date(Math.max(...all.map((p) => new Date(p.end))));
+  const yMax = fixedMax ?? niceMax(Math.max(...all.map((p) => p.value)) * 1.1);
+  const { x, y, axes } = frame(start, end, yMax, formatY);
+  const pathOf = (points) =>
+    points
+      .map((p, i) => {
+        const x0 = x(new Date(p.start));
+        const x1 = x(new Date(p.end));
+        const yv = y(p.value);
+        return step ? `${i ? "L" : "M"}${x0},${yv} L${x1},${yv}` : `${i ? "L" : "M"}${(x0 + x1) / 2},${yv}`;
+      })
+      .join(" ");
+  const hits = series[0].points;
+  return svg`
+    <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
+      ${axes}
+      ${series.map(
+        (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"></path>`,
+      )}
+      ${hits.map(
+        (p, i) => svg`<rect x=${x(new Date(p.start))} y=${PAD.top}
+          width=${Math.max(x(new Date(p.end)) - x(new Date(p.start)), 1)} height=${H - PAD.top - PAD.bottom} class="hit">
+          <title>${timeFormat.format(new Date(p.start))}: ${series.map((s) => `${s.name} ${formatY(s.points[i]?.value ?? 0)}`).join(", ")}</title>
+        </rect>`,
+      )}
+    </svg>
+  `;
+}
+
 /** Stacked bars of PV forecasts; series: [{name, color, points: [{start, end, power}]}] in W. */
 export function forecastChart(series, label) {
   const all = series.flatMap((s) => s.points.map((p) => ({ ...p, series: s })));
