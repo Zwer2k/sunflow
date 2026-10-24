@@ -21,6 +21,10 @@
   /* Chart series, validated for CVD separation and contrast on the surface */
   --sf-series-1: #2a78d6;
   --sf-series-2: #eb6834;
+  --sf-series-3: #1baf7a;
+  --sf-series-4: #eda100;
+  --sf-series-5: #e87ba4;
+  --sf-series-6: #6250d6;
   --sf-series-neutral: #8c959f;
   color-scheme: light;
 }
@@ -48,6 +52,10 @@
     --sf-error-bg: #3d1418;
     --sf-series-1: #3987e5;
     --sf-series-2: #d95926;
+    --sf-series-3: #199e70;
+    --sf-series-4: #c98500;
+    --sf-series-5: #d55181;
+    --sf-series-6: #9085e9;
     --sf-series-neutral: #6e7781;
     color-scheme: dark;
   }

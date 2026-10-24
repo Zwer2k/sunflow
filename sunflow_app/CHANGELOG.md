@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- PV forecast chart in the setup wizard: one color per forecast plane (stacked),
+  legend with provider, plane, plant and energy
+
 ## 0.2.2
 
 - Forecast.Solar planes without a specific device name get numbered names

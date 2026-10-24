@@ -1164,13 +1164,15 @@ class SunflowApp extends LitElement {
   _renderForecastSource(sources) {
     const devices = Object.values(this._configDevices);
     const plants = devices.filter((d) => (this._capabilitiesByHaDevice[d.ha_device_id] ?? []).includes("pv"));
-    const colorOf = (deviceId) => {
-      const index = plants.findIndex((p) => p.id === deviceId);
-      return index >= 0 ? SERIES_COLORS[index % SERIES_COLORS.length] : UNASSIGNED_COLOR;
+    // Color follows the plane (its position among all planes), never its rank in the chart
+    const colorOf = (plane) => {
+      const index = sources.forecast_planes.findIndex((p) => p.source === plane.source && p.ref === plane.ref);
+      return index >= 0 && index < SERIES_COLORS.length ? SERIES_COLORS[index] : UNASSIGNED_COLOR;
     };
-    const series = (this._forecastSeries?.plants ?? []).map((p) => ({
-      name: p.name,
-      color: colorOf(p.device_id),
+    const series = (this._forecastSeries?.planes ?? []).map((p) => ({
+      name: `${FORECAST_SOURCES[p.source] ?? p.source} · ${p.name}`,
+      plant: p.plant,
+      color: colorOf(p),
       points: p.points,
       kwh: p.points.reduce((s, x) => s + (x.power * (new Date(x.end) - new Date(x.start))) / 3600_000, 0) / 1000,
     }));
@@ -1206,14 +1208,14 @@ class SunflowApp extends LitElement {
         ${series.length
           ? html`
               <figure>
-                <figcaption class="small muted">PV-Prognose nächste 48 h je Anlage</figcaption>
+                <figcaption class="small muted">PV-Prognose nächste 48 h je Fläche (gestapelt)</figcaption>
                 <div class="legend">
                   ${series.map(
                     (s) => html`<span class="legend-item"><span class="swatch" style="background:${s.color}"></span>
-                      ${s.name} · ${s.kwh.toFixed(1).replace(".", ",")} kWh</span>`,
+                      ${s.name} → ${s.plant} · ${s.kwh.toFixed(1).replace(".", ",")} kWh</span>`,
                   )}
                 </div>
-                ${forecastChart(series, "PV-Prognose je Anlage")}
+                ${forecastChart(series, "PV-Prognose je Fläche")}
               </figure>
             `
           : nothing}
