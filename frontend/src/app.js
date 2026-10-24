@@ -92,6 +92,7 @@ class SunflowApp extends LitElement {
     _summary: { state: true },
     _view: { state: true },
     _nameEdits: { state: true },
+    _efficiency: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
     _fixedPriceMode: { state: true },
@@ -126,6 +127,7 @@ class SunflowApp extends LitElement {
     this._summary = null;
     this._view = null;
     this._nameEdits = {};
+    this._efficiency = {};
     // Sunflow device id -> device test state
     this._tests = {};
     this._testConfirm = new Set();
@@ -349,6 +351,12 @@ class SunflowApp extends LitElement {
     try {
       const results = await Promise.all(devices.map(async (d) => [d.id, await api.parameters(d.id)]));
       this._params = Object.fromEntries(results);
+      const estimates = await Promise.all(
+        devices
+          .filter((d) => this._params[d.id].some((p) => p.name === "efficiency_pct"))
+          .map(async (d) => [d.id, await api.efficiency(d.id).catch(() => null)]),
+      );
+      this._efficiency = Object.fromEntries(estimates);
       this._paramEdits = {};
       this._feedEdits = {};
     } catch (err) {
@@ -934,6 +942,7 @@ class SunflowApp extends LitElement {
             @input=${(e) => this._editParam(device.id, param.name, e.target.value)}>
           <span class="muted">${displayUnit(param.unit)}</span>
         </span>
+        ${param.name === "efficiency_pct" ? this._renderEfficiencyHint(device, param) : nothing}
         <span class="small">
           ${source}
           ${param.stored !== null
@@ -941,6 +950,29 @@ class SunflowApp extends LitElement {
             : nothing}
         </span>
       </label>
+    `;
+  }
+
+  _renderEfficiencyHint(device, param) {
+    const estimate = this._efficiency[device.id];
+    if (estimate === undefined) return nothing;
+    if (estimate === null) return html`<span class="small muted">Noch keine Historie für eine Schätzung.</span>`;
+    const pct = (v) => `${(v * 100).toFixed(1).replace(".", ",")} %`;
+    const value = Math.round(estimate.efficiency * 1000) / 10;
+    return html`
+      <span class="small">
+        aus Historie: <strong>${pct(estimate.efficiency)}</strong> je Richtung (Zyklus ${pct(estimate.round_trip)}),
+        ${estimate.cycles.toFixed(1).replace(".", ",")} Zyklen in ${Math.round(estimate.hours)} h
+        ${estimate.plausible && estimate.reliable
+          ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, String(value).replace(".", ","))}>übernehmen</button>`
+          : nothing}
+      </span>
+      ${!estimate.plausible
+        ? html`<span class="small warn-text">Unplausibel – vermutlich Messungenauigkeit der Batterieleistung, abweichende Kapazität
+            oder Eigenverbrauch im Leerlauf. Wird nicht übernommen.</span>`
+        : !estimate.reliable
+          ? html`<span class="small muted">Vorläufig – belastbar erst ab 2 vollen Zyklen.</span>`
+          : nothing}
     `;
   }
 

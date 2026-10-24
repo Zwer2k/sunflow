@@ -193,3 +193,34 @@ def test_negative_prices_do_not_burn_energy() -> None:
 
     assert plan.slots, plan.status
     assert all(min(s.charge_w, s.discharge_w) < 1 for s in plan.slots)
+
+
+def test_load_forecast_excludes_large_loads_and_scales() -> None:
+    """A one-off EV charge is left out; the daily total follows the configured consumption."""
+    day = datetime(2026, 10, 24, 0, 0, tzinfo=BERLIN)
+    history = [(day + timedelta(hours=h), 400.0) for h in range(24)]
+    history[1] = (history[1][0], 10900.0)  # EV charging 01:00-02:00
+
+    start = datetime(2026, 10, 27, 0, 0, tzinfo=BERLIN)
+    plain = build_load_forecast(history, start, 24, BERLIN)
+    filtered = build_load_forecast(history, start, 24, BERLIN, large_load_w=3500)
+    scaled = build_load_forecast(history, start, 24, BERLIN, large_load_w=3500, daily_kwh=14)
+
+    def daily_kwh(forecast: object) -> float:
+        return sum(p.power for p in forecast.points) / 4 / 1000
+
+    assert daily_kwh(plain) == pytest.approx(23 * 0.4 + 10.9)
+    assert filtered.excluded_hours == 1
+    assert filtered.points[4].power == pytest.approx(400)  # 01:00 falls back to the other hours
+    assert daily_kwh(filtered) == pytest.approx(9.6)
+    assert daily_kwh(scaled) == pytest.approx(14)
+    assert scaled.scaled_to_kwh == 14
+
+
+def test_load_forecast_typical_day_without_history() -> None:
+    """Without history the typical household day is scaled to the configured consumption."""
+    forecast = build_load_forecast([], START, 24, BERLIN, daily_kwh=14)
+
+    assert sum(p.power for p in forecast.points) / 4 / 1000 == pytest.approx(14)
+    evening = max(forecast.points, key=lambda p: p.power)
+    assert evening.start.astimezone(BERLIN).hour in (18, 19)
