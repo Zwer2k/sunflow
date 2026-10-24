@@ -25,8 +25,8 @@ HACS (`hacs.json`).
 3. Start it and open the Sunflow panel; set up devices in the wizard
 
 Updates: the image fetches `main` at build time. A new version number in
-`sunflow_app/config.yaml` triggers the update; "Rebuild" fetches the latest
-`main` without a version change.
+`sunflow_app/config.yaml` triggers the update and a fresh clone; "Rebuild"
+without a version change may reuse the cached clone.
 
 Shadow mode data can be downloaded in the overview ("Daten exportieren") and
 merged into another instance ("Export importieren").
