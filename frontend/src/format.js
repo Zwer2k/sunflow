@@ -58,6 +58,10 @@ const PARAM_LABELS = {
   max_discharge: "Max. Entladeleistung",
   grid_offset: "Einspeise-Puffer (Netz-Zielwert)",
   efficiency_pct: "Wirkungsgrad Laden bzw. Entladen",
+  max_power: "Maximale Leistung",
+  vehicle_capacity_wh: "Akkukapazität Fahrzeug (nutzbar)",
+  charge_efficiency_pct: "Ladewirkungsgrad",
+  tank_l: "Speichervolumen",
 };
 
 export function paramLabel(name) {

@@ -101,6 +101,10 @@
         "min": {"type": "number"},
         "max": {"type": "number"},
         "advanced": {"type": "boolean"},
+        "kind": {
+          "description": "Only shown for devices of this kind (e.g. an evcc loadpoint with a vehicle or a heater).",
+          "enum": ["vehicle", "heater"]
+        },
         "derive": {
           "description": "Suggest a value from sensors: sum of all entities (device and sub-devices) with this key, times factor.",
           "type": "object",

@@ -31,12 +31,24 @@ def derive_parameter(
     return round(total * derive.get("factor", 1)) if found else None
 
 
+def device_kind(profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot) -> str | None:
+    """Return "heater" or "vehicle" for loadpoints (a temperature as SoC means heater)."""
+    if "loadpoint" not in profile["capabilities"]:
+        return None
+    roles = {r.role: r for r in preview(profile, snapshot, device.ha_device_id)}
+    soc = roles.get("vehicle_soc")
+    return "heater" if soc is not None and soc.raw_unit in ("°C", "°F", "K") else "vehicle"
+
+
 def device_parameters(
     profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot
 ) -> list[dict[str, Any]]:
-    """Return every profile parameter with stored, derived and default value."""
+    """Return the profile parameters for this device with stored, derived and default value."""
+    kind = device_kind(profile, device, snapshot)
     result = []
     for name, spec in profile.get("parameters", {}).items():
+        if "kind" in spec and spec["kind"] != kind:
+            continue
         derived = derive_parameter(spec, snapshot, device.ha_device_id)
         stored = device.parameters.get(name)
         default = spec.get("default")

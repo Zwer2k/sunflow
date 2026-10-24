@@ -15,9 +15,9 @@ from .load_forecast import (
     find_load_entity,
     subtract_loads,
 )
-from .optimizer import BatterySpec, Plan, Settings, SlotInput, optimize
+from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
 from .resolver import preview
-from .site import device_parameters
+from .site import device_kind, device_parameters
 from .sources import (
     ForecastPoint,
     PricePoint,
@@ -35,6 +35,118 @@ SLOT = timedelta(minutes=15)
 NOMINAL_PRICE = 0.30
 
 
+# Heating 1 litre of water by 1 K takes 1.163 Wh
+WATER_WH_PER_LITRE_KELVIN = 1.163
+HEATER_DEADLINE = timedelta(hours=24)
+
+
+@dataclass(kw_only=True)
+class FlexInfo:
+    """Need of a loadpoint as seen by the planner, also when it is not planned."""
+
+    device_id: str
+    name: str
+    kind: str
+    current: float | None
+    target: float | None
+    unit: str
+    need_wh: float
+    deadline: datetime | None
+    max_power_w: float
+    reason: str | None = None  # why nothing is planned
+
+
+def flex_loads(
+    config: SunflowConfig,
+    profiles: dict[str, dict[str, Any]],
+    snapshot: Snapshot,
+    slot_starts: list[datetime],
+) -> tuple[list[FlexLoad], list[FlexInfo], list[str]]:
+    """Derive the energy need of every configured loadpoint from its live values."""
+    loads: list[FlexLoad] = []
+    infos: list[FlexInfo] = []
+    warnings: list[str] = []
+    if not slot_starts:
+        return loads, infos, warnings
+    horizon_end = slot_starts[-1] + SLOT
+    for device in config.devices:
+        profile = profiles[device.profile]
+        if "loadpoint" not in profile["capabilities"]:
+            continue
+        roles = {
+            r.role: r
+            for r in preview(
+                profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()}
+            )
+        }
+        params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+        kind = device_kind(profile, device, snapshot) or "vehicle"
+        max_power = params.get("max_power") or 0.0
+        current = roles["vehicle_soc"].value if "vehicle_soc" in roles else None
+        target = roles["limit_soc"].value if "limit_soc" in roles else None
+        info = FlexInfo(
+            device_id=device.id,
+            name=device.name,
+            kind=kind,
+            current=current,
+            target=target,
+            unit="°C" if kind == "heater" else "%",
+            need_wh=0.0,
+            deadline=None,
+            max_power_w=max_power,
+        )
+        infos.append(info)
+
+        if kind == "heater":
+            litres = params.get("tank_l")
+            if not litres:
+                info.reason = "Speichervolumen fehlt in den Kenndaten"
+                warnings.append(f"{device.name}: Speichervolumen fehlt – Warmwasser wird nicht eingeplant.")
+                continue
+            if current is None or target is None:
+                info.reason = "Temperatur oder Ziel nicht lesbar"
+                continue
+            info.need_wh = max(target - current, 0) * litres * WATER_WH_PER_LITRE_KELVIN
+            info.deadline = min(slot_starts[0] + HEATER_DEADLINE, horizon_end)
+        else:
+            if roles.get("connected") is None or roles["connected"].raw_state != "on":
+                info.reason = "Fahrzeug nicht angesteckt"
+                continue
+            capacity = params.get("vehicle_capacity_wh")
+            if not capacity:
+                info.reason = "Akkukapazität fehlt in den Kenndaten"
+                warnings.append(f"{device.name}: Akkukapazität des Fahrzeugs fehlt – Laden wird nicht eingeplant.")
+                continue
+            if current is None:
+                info.reason = "Ladestand des Fahrzeugs unbekannt"
+                continue
+            info.deadline = horizon_end
+            plan_soc = roles["plan_soc"].value if "plan_soc" in roles else None
+            plan_time = roles["plan_time"].raw_state if "plan_time" in roles else None
+            if plan_soc and plan_time and plan_time not in ("unknown", "unavailable"):
+                # A charging plan in evcc sets target and departure
+                try:
+                    info.deadline = min(datetime.fromisoformat(plan_time), horizon_end)
+                    target = info.target = plan_soc
+                except ValueError:
+                    pass
+            efficiency = (params.get("charge_efficiency_pct") or 90) / 100
+            info.need_wh = max((target or 100) - current, 0) / 100 * capacity / efficiency
+
+        if info.need_wh <= 0:
+            info.reason = "Ziel bereits erreicht"
+            continue
+        loads.append(
+            FlexLoad(
+                name=device.name,
+                energy_wh=info.need_wh,
+                max_power_w=max_power,
+                available=[start < info.deadline for start in slot_starts],
+            )
+        )
+    return loads, infos, warnings
+
+
 @dataclass(kw_only=True)
 class PlanResult:
     """Plan with the inputs' provenance and warnings."""
@@ -44,6 +156,7 @@ class PlanResult:
     load: LoadForecast | None = None
     price_source: str = "none"
     pv_planes: int = 0
+    flex: list[FlexInfo] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -247,13 +360,16 @@ async def compute_plan(
     inputs = build_inputs(start, prices, pv, load, feed_in_price(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
+    loads, flex_infos, flex_warnings = flex_loads(config, profiles, snapshot, [i.start for i in inputs])
+    warnings += flex_warnings
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
-    plan = await asyncio.to_thread(optimize, inputs, battery, settings)
+    plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
     return PlanResult(
         plan=plan,
         battery_device=battery_device.id,
         load=load,
         price_source=price_source,
         pv_planes=len(series),
+        flex=flex_infos,
         warnings=warnings,
     )
