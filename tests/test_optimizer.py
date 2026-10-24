@@ -142,3 +142,54 @@ def test_smooth_actions(before: str, after: str) -> None:
     smooth_actions(slots)
 
     assert "".join({v: k for k, v in names.items()}[s.action] for s in slots) == after
+
+
+def test_backup_reserve_is_kept() -> None:
+    """With a backup reserve the battery is never drained below it."""
+    battery = BatterySpec(capacity_wh=20000, soc_wh=15000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(24, price=lambda i: 0.35)
+
+    plan = optimize(inputs, battery, Settings(reserve_wh=6000))
+
+    assert min(s.soc_wh for s in plan.slots) >= 6000 - 1
+    assert min(s.soc_wh for s in optimize(inputs, battery, Settings()).slots) < 6000
+
+
+def test_pv_absorption_exports_less() -> None:
+    """Preferring PV absorption keeps room in the battery: less is exported."""
+    battery = BatterySpec(capacity_wh=10000, soc_wh=1000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    # Night 22-06 cheaper than the feed-in tariff: plain cost optimization fills the battery
+    # from the grid and exports the PV surplus of the following day instead
+    def price(i: int) -> float:
+        return 0.05 if i < 32 else 0.40
+
+    def pv(i: int) -> float:
+        return 1500.0 if 40 <= i < 72 else 0.0
+
+    inputs = _slots(30, price=price, pv=pv)
+    exported = lambda plan: sum(s.export_w for s in plan.slots)  # noqa: E731
+
+    balanced = optimize(inputs, battery, Settings(wear_ct_per_kwh=1))
+    absorbing = optimize(inputs, battery, Settings(wear_ct_per_kwh=1, export_penalty_ct_per_kwh=5))
+
+    assert exported(absorbing) < exported(balanced)
+
+
+def test_import_cheaper_than_feed_in() -> None:
+    """Import below the feed-in tariff must not lead to unbounded grid pass-through."""
+    inputs = _slots(8, price=lambda i: 0.05, pv=lambda i: 2000.0)
+
+    plan = optimize(inputs, BATTERY, Settings())
+
+    assert plan.slots, plan.status
+    assert all(min(s.import_w, s.export_w) < 1 for s in plan.slots)
+
+
+def test_negative_prices_do_not_burn_energy() -> None:
+    """At negative prices the battery is not charged and discharged at the same time."""
+    inputs = _slots(8, price=lambda i: -0.10)
+
+    plan = optimize(inputs, BATTERY, Settings())
+
+    assert plan.slots, plan.status
+    assert all(min(s.charge_w, s.discharge_w) < 1 for s in plan.slots)

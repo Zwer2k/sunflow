@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import "./plan-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import {
   devicePurpose,
@@ -89,6 +90,7 @@ class SunflowApp extends LitElement {
     _priceSeries: { state: true },
     _forecastSeries: { state: true },
     _summary: { state: true },
+    _view: { state: true },
     _nameEdits: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
@@ -122,6 +124,7 @@ class SunflowApp extends LitElement {
     this._priceSeries = null;
     this._forecastSeries = null;
     this._summary = null;
+    this._view = null;
     this._nameEdits = {};
     // Sunflow device id -> device test state
     this._tests = {};
@@ -155,6 +158,8 @@ class SunflowApp extends LitElement {
       );
       this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
       this._overrides = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
+      // Completed setups open on the plan, new ones in the wizard
+      this._view ??= config.setup_completed ? "plan" : "setup";
       this._error = null;
     } catch (err) {
       this._error = `Daten konnten nicht geladen werden: ${err.message}`;
@@ -517,14 +522,37 @@ class SunflowApp extends LitElement {
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"></path></svg>
           <div>
             <div class="title">Sunflow</div>
-            <div class="subtitle">Einrichtung${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
+            <div class="subtitle">${this._view === "plan" ? "Plan" : "Einrichtung"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
           </div>
+        </div>
+        <div class="tabs" role="tablist">
+          ${[
+            ["plan", "Plan"],
+            ["setup", "Einrichtung"],
+          ].map(
+            ([view, label]) => html`<button role="tab" class="tab ${this._view === view ? "active" : ""}"
+              aria-selected=${this._view === view} @click=${() => this._setView(view)}>${label}</button>`,
+          )}
         </div>
         <button class="switch" aria-pressed=${this._advanced} @click=${() => (this._advanced = !this._advanced)}>
           <span class="track ${this._advanced ? "on" : ""}"><span class="knob"></span></span>
           Expertenmodus
         </button>
       </header>
+      ${this._view === "plan"
+        ? html`<div class="layout"><main><sunflow-plan></sunflow-plan></main></div>`
+        : this._renderWizard()}
+    `;
+  }
+
+  _setView(view) {
+    this._view = view;
+    if (view === "plan") this._stopPreview();
+    else this._goTo(this._step);
+  }
+
+  _renderWizard() {
+    return html`
       <div class="layout">
         <nav aria-label="Schritte">
           ${STEPS.map(
@@ -1368,6 +1396,12 @@ class SunflowApp extends LitElement {
     .brand .title { font-weight: 700; font-size: 17px; color: var(--sf-text); }
     .brand .subtitle { font-size: 13px; color: var(--sf-muted); }
 
+    .tabs { display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; }
+    .tab {
+      min-height: 36px; padding: 0 16px; border: 0; border-radius: 8px; background: transparent;
+      cursor: pointer; font-size: 14px; color: var(--sf-muted);
+    }
+    .tab.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
     .switch {
       display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px;
       border: 1px solid var(--sf-border); border-radius: 22px; background: var(--sf-surface); cursor: pointer; font-size: 14px;

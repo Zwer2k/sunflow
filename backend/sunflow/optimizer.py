@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 import numpy as np
-from scipy.optimize import linprog
+from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
 DT_H = 0.25
@@ -39,6 +39,10 @@ class Settings:
 
     wear_ct_per_kwh: float = 3.0
     allow_grid_charge: bool = True
+    # Extra cost per exported kWh so the battery keeps room for PV ("pv_absorption")
+    export_penalty_ct_per_kwh: float = 0.0
+    # Energy that must stay in the battery, e.g. for backup power ("backup")
+    reserve_wh: float = 0.0
     # Below this the battery is considered idle when choosing actions
     action_threshold_w: float = 100.0
 
@@ -183,7 +187,7 @@ def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings =
     cost = np.zeros(count)
     for t, slot in enumerate(inputs):
         cost[gi[t]] = slot.price * DT_H / 1000
-        cost[ge[t]] = -slot.feed_in * DT_H / 1000
+        cost[ge[t]] = (settings.export_penalty_ct_per_kwh / 100 - slot.feed_in) * DT_H / 1000
         # Tie-breakers (max ~0.1 ct/kWh): when the timing does not matter, discharge in the
         # more expensive slots and, at equal prices, earlier, so the plan does not flip
         # between auto and hold every few minutes
@@ -211,24 +215,63 @@ def optimize(inputs: list[SlotInput], battery: BatterySpec, settings: Settings =
         else:
             a_eq[row, s[t - 1]] = -1
 
-    soc_min = min(battery.min_soc_wh, battery.soc_wh)
-    bounds = []
-    for k in range(5):
-        for slot in inputs:
-            match k:
-                case 0:
-                    upper = battery.max_charge_w if settings.allow_grid_charge else min(
-                        battery.max_charge_w, max(slot.pv_w, 0)
-                    )
-                    bounds.append((0, upper))
-                case 1:
-                    bounds.append((0, battery.max_discharge_w))
-                case 2 | 3:
-                    bounds.append((0, None))
-                case _:
-                    bounds.append((soc_min, battery.capacity_wh))
+    # A battery below its floor may stay there but must not be drained further
+    soc_min = min(max(battery.min_soc_wh, settings.reserve_wh), battery.soc_wh)
+    lower = np.zeros(count)
+    upper = np.full(count, np.inf)
+    for t, slot in enumerate(inputs):
+        upper[c[t]] = battery.max_charge_w if settings.allow_grid_charge else min(
+            battery.max_charge_w, max(slot.pv_w, 0)
+        )
+        upper[d[t]] = battery.max_discharge_w
+        # The grid only carries what the house and battery can take or give
+        upper[gi[t]] = max(slot.load_w, 0) + battery.max_charge_w
+        upper[ge[t]] = max(slot.pv_w, 0) + battery.max_discharge_w
+        lower[s[t]] = soc_min
+        upper[s[t]] = battery.capacity_wh
 
-    result = linprog(cost, A_eq=a_eq.tocsr(), b_eq=b_eq, bounds=bounds, method="highs")
+    # Import and export (charge and discharge) at the same time is physically impossible.
+    # A linear model only does it when it pays: import cheaper than export, or negative
+    # prices that reward burning energy in losses. Only those slots get binaries.
+    export_value = [i.feed_in - settings.export_penalty_ct_per_kwh / 100 for i in inputs]
+    grid_binary = [t for t, i in enumerate(inputs) if i.price < export_value[t]]
+    battery_binary = [t for t, i in enumerate(inputs) if i.price < 0 or export_value[t] < 0]
+    z = count + np.arange(len(grid_binary))
+    y = count + len(grid_binary) + np.arange(len(battery_binary))
+    total = count + len(grid_binary) + len(battery_binary)
+    cost = np.concatenate([cost, np.zeros(total - count)])
+    lower = np.concatenate([lower, np.zeros(total - count)])
+    upper = np.concatenate([upper, np.ones(total - count)])
+    integrality = np.zeros(total)
+    integrality[count:] = 1
+
+    a_ub = lil_matrix((2 * (len(grid_binary) + len(battery_binary)), total))
+    b_ub = np.zeros(a_ub.shape[0])
+    row = 0
+    for k, t in enumerate(grid_binary):
+        # import <= M * z, export <= M * (1 - z)
+        a_ub[row, gi[t]], a_ub[row, z[k]] = 1, -upper[gi[t]]
+        a_ub[row + 1, ge[t]], a_ub[row + 1, z[k]] = 1, upper[ge[t]]
+        b_ub[row + 1] = upper[ge[t]]
+        row += 2
+    for k, t in enumerate(battery_binary):
+        a_ub[row, c[t]], a_ub[row, y[k]] = 1, -upper[c[t]]
+        a_ub[row + 1, d[t]], a_ub[row + 1, y[k]] = 1, upper[d[t]]
+        b_ub[row + 1] = upper[d[t]]
+        row += 2
+
+    a_eq_full = lil_matrix((2 * n, total))
+    a_eq_full[:, :count] = a_eq
+    constraints = [LinearConstraint(a_eq_full.tocsr(), b_eq, b_eq)]
+    if row:
+        constraints.append(LinearConstraint(a_ub.tocsr(), -np.inf, b_ub))
+    result = milp(
+        cost,
+        constraints=constraints,
+        integrality=integrality,
+        bounds=Bounds(lower, upper),
+        options={"time_limit": 20},
+    )
     plan = Plan(status=result.message)
     if not result.success:
         return plan
