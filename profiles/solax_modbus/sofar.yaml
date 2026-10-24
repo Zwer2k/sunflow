@@ -22,6 +22,8 @@ roles:
   pv_ext_power: {key: active_power_pv_ext, unit: kW}
   grid_power: {key: active_power_pcc_total, unit: kW, sign: export_positive}
   load_power: {key: active_power_load_sys, unit: kW}
+  # AC output of the inverter (+ = feeding the house); preferred for the balance check
+  inverter_power: {key: active_power_output_total, unit: kW, optional: true}
 
 primitive:
   battery_window:

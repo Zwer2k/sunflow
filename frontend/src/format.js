@@ -5,6 +5,7 @@ const ROLE_LABELS = {
   pv_ext_power: "PV extern",
   grid_power: "Netz",
   load_power: "Hausverbrauch",
+  inverter_power: "WR-Ausgang (AC)",
   ac_power: "PV (AC)",
   daily_yield: "Tagesertrag",
   status: "Status",

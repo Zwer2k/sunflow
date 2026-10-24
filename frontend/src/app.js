@@ -4,6 +4,13 @@ import { formatSigned, formatValue, roleHint, roleLabel, SIGNED_ROLES } from "./
 
 const STEPS = ["Integrationen", "Geräte", "Kenndaten", "Gerätetest", "Bilanzprüfung", "Tarif & Prognose", "Fertig"];
 const PREVIEW_INTERVAL_MS = 5000;
+// Sensors are polled at different times, so single readings can disagree.
+const BALANCE_SAMPLES = 6;
+const BALANCE_MIN_SAMPLES = 3;
+const BALANCE_FORMULAS = {
+  ac: "Netz + WR-Ausgang (AC) + PV extern",
+  dc: "Netz + PV + PV extern − Batterie",
+};
 
 class SunflowApp extends LitElement {
   static properties = {
@@ -30,6 +37,7 @@ class SunflowApp extends LitElement {
     this._error = null;
     this._haConnected = null;
     this._timer = null;
+    this._balanceHistory = {};
   }
 
   connectedCallback() {
@@ -91,6 +99,11 @@ class SunflowApp extends LitElement {
         }
       }),
     );
+    for (const [deviceId, preview] of results) {
+      if (!preview.balance) continue;
+      const history = [...(this._balanceHistory[deviceId] ?? []), preview.balance];
+      this._balanceHistory[deviceId] = history.slice(-BALANCE_SAMPLES);
+    }
     this._previews = Object.fromEntries(results);
   }
 
@@ -240,7 +253,7 @@ class SunflowApp extends LitElement {
         ${preview === undefined ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
         ${preview?.error ? html`<div class="alert error">${preview.error}</div>` : nothing}
         ${preview?.roles ? this._renderTiles(preview) : nothing}
-        ${preview?.balance ? this._renderBalance(preview.balance) : nothing}
+        ${preview?.balance ? this._renderBalance(device.device_id) : nothing}
         ${this._advanced && preview?.roles ? this._renderRoleTable(preview) : nothing}
         ${this._advanced && device.components.length ? this._renderComponents(device) : nothing}
         <div class="actions">
@@ -272,13 +285,29 @@ class SunflowApp extends LitElement {
     `;
   }
 
-  _renderBalance(balance) {
+  _renderBalance(deviceId) {
+    const history = this._balanceHistory[deviceId] ?? [];
+    const latest = history.at(-1);
+    const passed = history.filter((b) => b.plausible).length;
+    let state, text;
+    if (history.length < BALANCE_MIN_SAMPLES) {
+      state = "neutral";
+      text = `Bilanz wird geprüft … (${history.length}/${BALANCE_MIN_SAMPLES} Messungen)`;
+    } else if (passed * 2 > history.length) {
+      state = "ok";
+      text = `✓ Bilanz plausibel (${passed} von ${history.length} Messungen)`;
+    } else {
+      state = "warn";
+      text = `⚠ Bilanz unplausibel (${passed} von ${history.length} Messungen)`;
+    }
     return html`
-      <div class="alert ${balance.plausible ? "ok" : "warn"}">
-        ${balance.plausible ? "✓ Bilanz plausibel" : "⚠ Bilanz unplausibel"}:
-        berechneter Hausverbrauch ${formatValue(balance.computed_load, "W")},
-        gemeldet ${formatValue(balance.reported_load, "W")}
-        (Abweichung ${formatValue(Math.abs(balance.deviation), "W")})
+      <div class="alert ${state}">
+        <div>${text}</div>
+        <div class="small">
+          Letzte Messung: ${BALANCE_FORMULAS[latest.method]} = ${formatValue(latest.computed_load, "W")},
+          Hausverbrauch laut Gerät ${formatValue(latest.reported_load, "W")}
+          (Abweichung ${formatValue(Math.abs(latest.deviation), "W")})
+        </div>
       </div>
     `;
   }
@@ -405,6 +434,7 @@ class SunflowApp extends LitElement {
     .alert.ok { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
     .alert.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }
     .alert.error { background: var(--sf-error-bg); color: var(--sf-error-text); }
+    .alert.neutral { background: var(--sf-neutral-bg); color: var(--sf-neutral-text); }
 
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }
