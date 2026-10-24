@@ -8,7 +8,13 @@ from typing import Any
 from .config_store import DeviceConfig, SunflowConfig
 from .discovery import Snapshot
 from .ha import HAClient
-from .load_forecast import LoadForecast, build_load_forecast, fetch_hourly_means, find_load_entity
+from .load_forecast import (
+    LoadForecast,
+    build_load_forecast,
+    fetch_hourly_means,
+    find_load_entity,
+    subtract_loads,
+)
 from .optimizer import BatterySpec, Plan, Settings, SlotInput, optimize
 from .resolver import preview
 from .site import device_parameters
@@ -202,6 +208,20 @@ async def compute_plan(
     history = []
     if load_entity := find_load_entity(roles):
         history = await fetch_hourly_means(client, load_entity, start)
+    # Loadpoints (wallbox, heater) are part of the measured household load
+    loadpoint_histories = []
+    for device in config.devices:
+        if "loadpoint" not in profiles[device.profile]["capabilities"]:
+            continue
+        lp_roles = preview(
+            profiles[device.profile],
+            snapshot,
+            device.ha_device_id,
+            {k: o.model_dump() for k, o in device.role_overrides.items()},
+        )
+        if entity := next((r.entity_id for r in lp_roles if r.role == "charge_power" and r.entity_id), None):
+            loadpoint_histories.append(await fetch_hourly_means(client, entity, start))
+    history, separated = subtract_loads(history, loadpoint_histories)
     load = build_load_forecast(
         history,
         start,
@@ -210,6 +230,7 @@ async def compute_plan(
         large_load_w=config.optimizer.large_load_threshold_w,
         daily_kwh=config.optimizer.daily_consumption_kwh,
     )
+    load.separated_hours = separated
     if load.history_hours < 7 * 24 and not config.optimizer.daily_consumption_kwh:
         warnings.append(
             f"Erst {load.history_hours} h Verbrauchshistorie – gib deinen durchschnittlichen Tagesverbrauch "

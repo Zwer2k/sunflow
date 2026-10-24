@@ -14,11 +14,16 @@
     },
     "version": {"type": "integer", "minimum": 1},
     "match": {"$ref": "#/$defs/match"},
+    "name_strip": {
+      "description": "Parts removed from the device name to build the display name.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
     "capabilities": {
       "type": "array",
       "uniqueItems": true,
       "items": {
-        "enum": ["pv", "pv_ext", "battery", "grid_meter", "battery_window", "curtail", "switch_off", "ev_charger", "load"]
+        "enum": ["pv", "pv_ext", "battery", "grid_meter", "battery_window", "curtail", "switch_off", "ev_charger", "load", "loadpoint"]
       }
     },
     "watchdog": {

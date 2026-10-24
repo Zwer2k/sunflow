@@ -93,3 +93,23 @@ def test_energy_entity_ids() -> None:
     prefs = {"energy_sources": [{"type": "solar", "stat_energy_from": "sensor.pv", "config_entry_solar_forecast": ["abc"]}]}
 
     assert energy_entity_ids(prefs) == {"sensor.pv"}
+
+
+@pytest.mark.parametrize(
+    ("name", "strip", "expected"),
+    [
+        pytest.param("Inverter", [], "Huawei SUN2000-3KTL-L1", id="generic_name"),
+        pytest.param("Sofar Inverter", [], "Sofar Inverter", id="descriptive_name"),
+        pytest.param("evcc - Loadpoint Wallbox Carport [evcc]", ["evcc - ", "Loadpoint ", " [evcc]"], "Wallbox Carport", id="stripped"),
+    ],
+)
+def test_display_name(name: str, strip: list[str], expected: str) -> None:
+    """New devices get a readable name."""
+    from sunflow.api import display_name
+    from sunflow.discovery import DiscoveredDevice
+
+    device = DiscoveredDevice(
+        device_id="d", name=name, manufacturer="Huawei", model="SUN2000-3KTL-L1", entity_count=1, profile="x/y"
+    )
+
+    assert display_name(device, {"name_strip": strip}) == expected

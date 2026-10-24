@@ -224,3 +224,19 @@ def test_load_forecast_typical_day_without_history() -> None:
     assert sum(p.power for p in forecast.points) / 4 / 1000 == pytest.approx(14)
     evening = max(forecast.points, key=lambda p: p.power)
     assert evening.start.astimezone(BERLIN).hour in (18, 19)
+
+
+def test_subtract_loadpoints() -> None:
+    """Measured loadpoint power is removed from the household load where available."""
+    from sunflow.load_forecast import subtract_loads
+
+    t0 = datetime(2026, 10, 25, 0, 0, tzinfo=UTC)
+    hour = timedelta(hours=1)
+    history = [(t0, 11300.0), (t0 + hour, 400.0), (t0 + 2 * hour, 9000.0)]
+    wallbox = [(t0, 10900.0), (t0 + hour, 0.0)]
+    heater = [(t0, 100.0)]
+
+    base, separated = subtract_loads(history, [wallbox, heater])
+
+    assert base == [(t0, 300.0), (t0 + hour, 400.0), (t0 + 2 * hour, 9000.0)]
+    assert separated == 2

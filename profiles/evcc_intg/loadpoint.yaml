@@ -1,0 +1,22 @@
+# evcc loadpoint via the evcc_intg custom integration (HACS, marq24).
+# A loadpoint may be a wallbox or a heater (then the "vehicle" SoC is a temperature).
+# Its consumption is part of the household load measured by the inverter; Sunflow
+# subtracts it to forecast the base load separately.
+profile: evcc_intg/loadpoint
+version: 1
+match:
+  integration: evcc_intg
+  model: "Loadpoint*"
+  requires: [charge_power, mode]
+
+name_strip: ["evcc - ", "Loadpoint ", " [evcc]"]
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: charge_power, unit: kW}
+  mode: {key: mode}
+  charging: {key: charging, optional: true}
+  connected: {key: connected, optional: true}
+  vehicle_soc: {key: vehicle_soc, optional: true}
+  limit_soc: {key: effective_limit_soc, optional: true}
