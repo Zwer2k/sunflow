@@ -10,6 +10,14 @@ const TODAY_REFRESH_MS = 5 * 60 * 1000;
 const ACTIVE_W = 20;
 const MAX_CONSUMERS = 4;
 const CONSUMER_GAP = 88;
+const DETAIL_DY = 22;
+
+/** Largest font size (SVG units) at which text fits the circle's width at the detail line. */
+function fitFont(text, r) {
+  const chord = 2 * Math.sqrt(r * r - DETAIL_DY * DETAIL_DY) - 8;
+  // Average glyph width is about 0.56 of the font size
+  return Math.max(chord / (String(text).length * 0.56), 6).toFixed(1);
+}
 // Row of PV strings above the diagram
 const STRING_ROW = 110;
 const STRING_Y = 56;
@@ -251,8 +259,11 @@ class SunflowLive extends LitElement {
         <g transform="translate(${x - 11}, ${y - r + 10}) scale(0.92)" class="icon" style="stroke: ${color}">
           <path d=${ICONS[icon]}></path>
         </g>
-        <text x=${x} y=${y + 8} class="value" text-anchor="middle">${value}</text>
-        ${detail ? svg`<text x=${x} y=${y + 26} class="detail" text-anchor="middle">${detail}</text>` : nothing}
+        <text x=${x} y=${y + 6} class="value" text-anchor="middle">${value}</text>
+        ${detail
+          ? svg`<text x=${x} y=${y + DETAIL_DY} class="detail" text-anchor="middle"
+              style="font-size: min(var(--detail-size), ${fitFont(detail, r)}px)">${detail}</text>`
+          : nothing}
         <text x=${x} y=${y + r + 18} class="label" text-anchor="middle">${label}</text>
       </g>
     `;
@@ -284,7 +295,7 @@ class SunflowLive extends LitElement {
       consumer.level !== null && consumer.level !== undefined
         ? `${Math.round(consumer.level)}${consumer.level_unit === "°C" ? " °C" : " %"}`
         : null;
-    const detail = consumer.kind === "vehicle" && consumer.connected === false ? "nicht angesteckt" : level;
+    const detail = consumer.kind === "vehicle" && consumer.connected === false ? "kein Auto" : level;
     return this._node(
       consumer.kind in ICONS ? consumer.kind : "load",
       position,
@@ -347,13 +358,14 @@ class SunflowLive extends LitElement {
     .string-value { fill: var(--sf-text); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .icon path { fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .value { fill: var(--sf-text); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .detail { fill: var(--sf-muted); font-size: 11px; }
+    :host { --detail-size: 11px; }
+    .detail { fill: var(--sf-muted); font-size: var(--detail-size); }
     .label { fill: var(--sf-text); font-size: 13px; font-weight: 500; }
     /* The diagram scales down to about half on phones; larger text keeps it readable */
     @media (max-width: 600px) {
       .string-value { font-size: 18px; }
       .value { font-size: 26px; }
-      .detail { font-size: 17px; }
+      :host { --detail-size: 17px; }
       .label { font-size: 20px; }
       .flow { max-height: none; }
     }

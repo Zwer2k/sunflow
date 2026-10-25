@@ -292,10 +292,53 @@ class PlanResult:
     reserve_wh: float = 0.0
 
 
+# How old the last valid SoC from the history may be when the live value is missing
+SOC_FALLBACK_AGE = timedelta(hours=6)
+
+
+def soc_entity(profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot) -> str | None:
+    """Entity of the battery SoC role."""
+    role = next(
+        (
+            r
+            for r in preview(
+                profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()}
+            )
+            if r.role == "battery_soc"
+        ),
+        None,
+    )
+    return role.entity_id if role else None
+
+
+async def last_valid_value(client: HAClient, entity_id: str | None, age: timedelta) -> tuple[float, datetime] | None:
+    """Last numeric state of an entity within age, with the time it was reported."""
+    if not entity_id:
+        return None
+    end = datetime.now(UTC)
+    result = await client.command(
+        "history/history_during_period",
+        start_time=(end - age).isoformat(),
+        end_time=end.isoformat(),
+        entity_ids=[entity_id],
+        minimal_response=True,
+        no_attributes=True,
+    )
+    for row in reversed(result.get(entity_id, [])):
+        try:
+            return float(row["s"]), datetime.fromtimestamp(row["lu"], UTC)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return None
+
+
 def battery_spec(
-    profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot
+    profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot, soc_fallback: float | None = None
 ) -> tuple[BatterySpec | None, str | None]:
-    """Build the battery spec from parameters and the live SoC; returns (spec, problem)."""
+    """Build the battery spec from parameters and the live SoC; returns (spec, problem).
+
+    soc_fallback (%) stands in when the live SoC cannot be read.
+    """
     params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
     capacity = params.get("capacity_wh")
     if not capacity:
@@ -309,7 +352,10 @@ def battery_spec(
             {k: o.model_dump() for k, o in device.role_overrides.items()},
         )
     }
-    if roles.get("battery_soc") is None:
+    soc = roles.get("battery_soc")
+    if soc is None:
+        soc = soc_fallback
+    if soc is None:
         return None, f"{device.name}: Ladestand nicht lesbar."
     # Battery round trip at its terminals (cells, DC/DC), split evenly between directions;
     # the inverter's AC/DC conversion applies to grid charging and to every discharge
@@ -318,7 +364,7 @@ def battery_spec(
     return (
         BatterySpec(
             capacity_wh=capacity,
-            soc_wh=capacity * roles["battery_soc"] / 100,
+            soc_wh=capacity * soc / 100,
             min_soc_wh=capacity * (params.get("min_soc") or 0) / 100,
             max_charge_w=params.get("max_charge") or 0,
             max_discharge_w=params.get("max_discharge") or 0,
@@ -409,6 +455,18 @@ async def compute_plan(
         return PlanResult(plan=Plan(status="no battery"), warnings=["Kein steuerbarer Speicher übernommen."])
     profile = profiles[battery_device.profile]
     battery, problem = battery_spec(profile, battery_device, snapshot)
+    if battery is None and problem and "Ladestand" in problem:
+        # Inverter integrations drop single reads ("unknown"); the last valid value from
+        # the history is good enough, the SoC changes slowly
+        fallback = await last_valid_value(client, soc_entity(profile, battery_device, snapshot), SOC_FALLBACK_AGE)
+        if fallback is not None:
+            value, since = fallback
+            battery, problem = battery_spec(profile, battery_device, snapshot, soc_fallback=value)
+            if since < datetime.now(UTC) - timedelta(minutes=30):
+                warnings.append(
+                    f"{battery_device.name}: Ladestand seit {since.astimezone(tz).strftime('%H:%M')} nicht lesbar – "
+                    f"geplant mit dem letzten Wert {value:.0f} %."
+                )
     if battery is None:
         return PlanResult(plan=Plan(status="no battery data"), warnings=[problem or ""])
     if not battery.max_charge_w or not battery.max_discharge_w:
