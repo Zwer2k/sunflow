@@ -187,7 +187,42 @@ class SunflowApp extends LitElement {
       .filter((d) => d.profile);
   }
 
-  _goTo(step) {
+  /** Save what the current step has edited but not saved yet; false keeps the user there. */
+  async _savePending() {
+    if (this._step === 1) {
+      const find = (devices) =>
+        devices.flatMap((d) => [d, ...find(d.components ?? [])]);
+      const discovered = find((this._integrations ?? []).flatMap((i) => i.devices ?? []));
+      for (const device of discovered.filter((d) => this._dirty.has(d.device_id) && this._configDevices[d.device_id])) {
+        this._error = null;
+        await this._accept(device);
+        if (this._error) return false;
+      }
+    }
+    if (this._step === 2) {
+      const changed = (d) =>
+        Object.keys(this._paramEdits[d.id] ?? {}).length > 0 ||
+        this._feedEdits[d.id] !== undefined ||
+        this._nameEdits[d.id] !== undefined ||
+        this._flexEdits[d.id] !== undefined;
+      for (const device of Object.values(this._configDevices).filter(changed)) {
+        if (!(await this._saveDevice(device))) return false;
+      }
+    }
+    if (this._step === 5 && this._fixedPriceMode && this._fixedPriceEdit !== undefined) {
+      await this._saveFixedPrice();
+      if (this._fixedPriceEdit !== undefined) return false;
+    }
+    if (this._step === 6) {
+      const standards = this.renderRoot.querySelector("sf-standards");
+      if (standards && !(await standards.saveIfChanged())) return false;
+    }
+    return true;
+  }
+
+  async _goTo(step) {
+    // Moving on keeps the edits of this step instead of dropping them silently
+    if (step !== this._step && !(await this._savePending())) return;
     this._step = step;
     this._stopPreview();
     if (step === 1) this._startPreview();
@@ -416,7 +451,7 @@ class SunflowApp extends LitElement {
       const value = fromDisplay(text, unit);
       if (value === undefined) {
         this._error = `Ungültige Zahl bei „${paramLabel(name)}“.`;
-        return;
+        return false;
       }
       parameters[name] = value;
     }
@@ -426,7 +461,7 @@ class SunflowApp extends LitElement {
       const flex = { ...device.flex, ...this._flexEdits[device.id] };
       if (flex.target === undefined || flex.alternative_cost_ct === undefined) {
         this._error = "Bitte gültige Zahlen bei der Planung eingeben.";
-        return;
+        return false;
       }
       changes.flex = flex;
     }
@@ -435,7 +470,7 @@ class SunflowApp extends LitElement {
       const rate = fromDisplay(feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct"), "ct");
       if (rate === undefined) {
         this._error = "Ungültige Zahl bei der Vergütung.";
-        return;
+        return false;
       }
       changes.feed_in = { model: feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed", rate_ct_per_kwh: rate };
     }
@@ -450,8 +485,10 @@ class SunflowApp extends LitElement {
       this._nameEdits = { ...this._nameEdits, [device.id]: undefined };
       this._flexEdits = { ...this._flexEdits, [device.id]: undefined };
       this._error = null;
+      return true;
     } catch (err) {
       this._error = `Kenndaten konnten nicht gespeichert werden: ${err.message}`;
+      return false;
     } finally {
       this._busy = this._without(this._busy, device.id);
     }
@@ -604,7 +641,9 @@ class SunflowApp extends LitElement {
     `;
   }
 
-  _setView(view) {
+  async _setView(view) {
+    // Leaving the settings keeps their unsaved edits as well
+    if (this._view === "setup" && view !== "setup" && !(await this._savePending())) return;
     this._view = view;
     if (view === "setup") this._goTo(this._step);
     else this._stopPreview();

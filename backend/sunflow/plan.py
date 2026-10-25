@@ -72,8 +72,11 @@ def flex_loads(
     slot_starts: list[datetime],
     tz: tzinfo,
     battery_capacity_wh: float | None = None,
-) -> tuple[list[FlexLoad], list[FlexInfo], list[str]]:
-    """Derive the energy need of every flexible consumer from live values and its settings."""
+) -> tuple[list[FlexLoad], list[FlexInfo], list[str], tuple[tuple[str, float], ...]]:
+    """Derive the energy need of every flexible consumer from live values and its settings.
+
+    Also returns the vehicles (name, Wh) the home battery waits for before charging from PV.
+    """
     loads: list[FlexLoad] = []
     by_device: dict[str, FlexLoad] = {}
     # Per vehicle: current level and target in %, Wh per %
@@ -81,7 +84,7 @@ def flex_loads(
     infos: list[FlexInfo] = []
     warnings: list[str] = []
     if not slot_starts:
-        return loads, infos, warnings
+        return loads, infos, warnings, ()
     horizon_end = slot_starts[-1] + SLOT
     order = config.priority_order()
     battery_rank = order.index(BATTERY_PRIORITY_ID)
@@ -195,7 +198,26 @@ def flex_loads(
         )
         loads.append(load)
     loads = list(with_conditions(config, by_device, vehicles, battery_capacity_wh, slot_starts[0]).values())
-    return loads, infos, warnings
+    return loads, infos, warnings, vehicle_gates(config, BATTERY_PRIORITY_ID, by_device, vehicles)
+
+
+def vehicle_gates(
+    config: SunflowConfig,
+    device_id: str,
+    by_device: dict[str, FlexLoad],
+    vehicles: dict[str, tuple[float, float, float]],
+) -> tuple[tuple[str, float], ...]:
+    """Energy (Wh) the planned vehicles above an entry must get before it is released."""
+    gates = []
+    for condition in config.valid_conditions(device_id):
+        # A vehicle that is not plugged in or not charging does not hold anything back
+        if condition.device_id in vehicles and condition.device_id in by_device:
+            current, target, wh_per_pct = vehicles[condition.device_id]
+            # A condition above the vehicle's target is met once the target is reached
+            required = max(min(condition.min_pct, target) - current, 0) * wh_per_pct
+            if required > 0:
+                gates.append((by_device[condition.device_id].name, required))
+    return tuple(gates)
 
 
 def with_conditions(
@@ -208,24 +230,16 @@ def with_conditions(
     """Apply the priority conditions as gates; vehicles map to (current %, target %, Wh per %)."""
     result = {}
     for device_id, load in by_device.items():
-        battery_wh: float | None = None
-        after: list[tuple[str, float]] = []
         # "Sofort" ignores the conditions
         device = config.device(device_id)
-        conditions = [] if device is None or config.effective_flex(device, now)[0].strategy == "fast" else (
-            config.valid_conditions(device_id)
-        )
-        for condition in conditions:
-            if condition.device_id == BATTERY_PRIORITY_ID:
-                if battery_capacity_wh:
-                    battery_wh = max(battery_wh or 0.0, battery_capacity_wh * condition.min_pct / 100)
-            # A vehicle that is not plugged in or not charging does not hold anything back
-            elif condition.device_id in vehicles and condition.device_id in by_device:
-                current, target, wh_per_pct = vehicles[condition.device_id]
-                # A condition above the vehicle's target is met once the target is reached
-                required = max(min(condition.min_pct, target) - current, 0) * wh_per_pct
-                if required > 0:
-                    after.append((by_device[condition.device_id].name, required))
+        if device is None or config.effective_flex(device, now)[0].strategy == "fast":
+            result[device_id] = load
+            continue
+        battery_wh: float | None = None
+        for condition in config.valid_conditions(device_id):
+            if condition.device_id == BATTERY_PRIORITY_ID and battery_capacity_wh:
+                battery_wh = max(battery_wh or 0.0, battery_capacity_wh * condition.min_pct / 100)
+        after = list(vehicle_gates(config, device_id, by_device, vehicles))
         result[device_id] = replace(load, gate_battery_wh=battery_wh, gate_after=after) if battery_wh or after else load
     return result
 
@@ -476,9 +490,10 @@ async def compute_plan(
     inputs = build_inputs(start, prices, pv, load, feed_in_price(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
-    loads, flex_infos, flex_warnings = flex_loads(
+    loads, flex_infos, flex_warnings, battery_gate = flex_loads(
         config, profiles, snapshot, [i.start for i in inputs], tz, battery_capacity_wh=battery.capacity_wh
     )
+    settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)

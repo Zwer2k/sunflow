@@ -48,6 +48,9 @@ class Settings:
     allow_battery_export: bool = False
     # Below this the battery is considered idle when choosing actions
     action_threshold_w: float = 100.0
+    # The battery only charges from PV once these loads got this much energy (Wh);
+    # until then it may only charge from the grid
+    battery_gate_after: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -379,10 +382,25 @@ def optimize(
                 if upper[f[k][t]] > 0:
                     gates.append((k, t, total))
                     total += 1
+    # Battery gate: one binary per slot while the named loads still need their energy
+    battery_after = [
+        (names[name], required) for name, required in settings.battery_gate_after if name in names and required > 0
+    ]
+    battery_gates: list[tuple[int, int]] = []
+    if battery_after:
+        for t in range(n):
+            battery_gates.append((t, total))
+            total += 1
     cost = np.concatenate([cost, np.zeros(total - count)])
     lower = np.concatenate([lower, np.zeros(total - count)])
     upper = np.concatenate([upper, np.ones(total - count)])
     gate_rows = 0
+    for t, b in battery_gates:
+        gate_rows += 1
+        if t == 0:
+            upper[b] = 0.0
+        else:
+            gate_rows += len(battery_after)
     for k, t, b in gates:
         load = flex[k]
         gate_rows += 1
@@ -460,6 +478,17 @@ def optimize(
                 for k in pv_only:
                     a_ub[row, f[k][t]] = 1
                 b_ub[row] = max(slot.pv_w - slot.load_w, 0.0)
+                row += 1
+        for t, b in battery_gates:
+            # Closed gate: the battery only charges as far as power is imported at the same time
+            a_ub[row, c[t]], a_ub[row, gi[t]], a_ub[row, b] = 1, -1, -battery.max_charge_w
+            row += 1
+            if t == 0:
+                continue
+            for k, required in battery_after:
+                a_ub[row, b] = required
+                for tau in range(t):
+                    a_ub[row, f[k][tau]] = -DT_H
                 row += 1
         for k, t, b in gates:
             load = flex[k]

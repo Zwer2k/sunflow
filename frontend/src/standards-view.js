@@ -66,11 +66,19 @@ class SunflowStandards extends LitElement {
       this._daily = undefined;
       this._largeLoad = undefined;
       await this._load();
+      return true;
     } catch (err) {
       this._error = `Einstellungen konnten nicht gespeichert werden: ${err.message}`;
+      return false;
     } finally {
       this._saving = false;
     }
+  }
+
+  /** Save edited numbers before the wizard moves on; false when they are invalid. */
+  async saveIfChanged() {
+    const changed = [this._wear, this._reserve, this._daily, this._largeLoad].some((v) => v !== undefined);
+    return !changed || this._saveNumbers(this._settings);
   }
 
 
@@ -80,7 +88,7 @@ class SunflowStandards extends LitElement {
       const wear = fromDisplay(this._wear, "ct");
       if (wear === undefined || wear === null || wear < 0) {
         this._error = "Bitte gültige Verschleißkosten eingeben.";
-        return;
+        return false;
       }
       changes.wear_ct_per_kwh = wear;
     }
@@ -88,7 +96,7 @@ class SunflowStandards extends LitElement {
       const daily = fromDisplay(this._daily, "kWh");
       if (daily === undefined || (daily !== null && daily <= 0)) {
         this._error = "Bitte einen gültigen Tagesverbrauch in kWh eingeben oder das Feld leeren.";
-        return;
+        return false;
       }
       changes.daily_consumption_kwh = daily;
     }
@@ -96,7 +104,7 @@ class SunflowStandards extends LitElement {
       const kw = fromDisplay(this._largeLoad, "kW");
       if (kw === undefined || (kw !== null && kw <= 0)) {
         this._error = "Bitte eine gültige Leistung in kW eingeben oder das Feld leeren.";
-        return;
+        return false;
       }
       changes.large_load_threshold_w = kw === null ? null : kw * 1000;
     }
@@ -104,11 +112,11 @@ class SunflowStandards extends LitElement {
       const reserve = fromDisplay(this._reserve, "%");
       if (reserve === undefined || reserve === null || reserve < 0 || reserve > 100) {
         this._error = "Bitte eine Reserve zwischen 0 und 100 % eingeben.";
-        return;
+        return false;
       }
       changes.backup_reserve_pct = reserve;
     }
-    this._saveSettings({ ...settings, ...changes });
+    return this._saveSettings({ ...settings, ...changes });
   }
 
 

@@ -290,7 +290,7 @@ class SunflowControl extends LitElement {
                         .join(", ")}</span>`
                     : nothing}
                 </span>
-                ${p.id !== "battery" && own.length
+                ${own.length
                   ? html`<button class="text" aria-expanded=${editing} ?disabled=${this._busy}
                       @click=${() => (this._editing = editing ? null : p.id)}>Grenzen</button>`
                   : nothing}
@@ -303,7 +303,9 @@ class SunflowControl extends LitElement {
                     e.preventDefault();
                     this._saveConditions(p.id, e.target);
                   }}>
-                    <span class="small muted">${p.name} bekommt PV- und Speicherenergie erst ab:</span>
+                    <span class="small muted">${p.id === "battery"
+                      ? "Der Hausspeicher lädt aus PV erst ab:"
+                      : `${p.name} bekommt PV- und Speicherenergie erst ab:`}</span>
                     ${own.map((s) => {
                       const current = p.conditions.find((c) => c.device_id === s.id);
                       return html`<label class="condition">
