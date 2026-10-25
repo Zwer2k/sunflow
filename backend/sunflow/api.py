@@ -25,6 +25,7 @@ from .config_store import (
     BATTERY_PRIORITY_ID,
     ConfigStore,
     DeviceOverride,
+    PriorityCondition,
     StrategyOverride,
     SunflowConfig,
     DeviceConfig,
@@ -809,7 +810,17 @@ async def get_control(request: Request) -> dict[str, Any]:
             "available": has_battery,
         },
         "devices": devices,
-        "priorities": [{"id": i, "name": names[i]} for i in order],
+        "priorities": [
+            {
+                "id": i,
+                "name": names[i],
+                "conditions": [c.model_dump() for c in config.priority_conditions.get(i, [])],
+            }
+            for i in order
+        ],
+        # Storages a consumer can wait for: the home battery and vehicles
+        "condition_sources": ([{"id": BATTERY_PRIORITY_ID, "name": names[BATTERY_PRIORITY_ID]}] if has_battery else [])
+        + [{"id": d["id"], "name": d["name"]} for d in devices if d["kind"] == "vehicle"],
         "plan_computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
     }
 
@@ -874,6 +885,27 @@ async def set_priorities(request: Request, order: list[str]) -> list[str]:
     store.save(config)
     _replan(request)
     return config.priority_order()
+
+
+@router.put("/control/priorities/{device_id}/conditions")
+async def set_priority_conditions(
+    request: Request, device_id: str, conditions: list[PriorityCondition]
+) -> list[dict[str, Any]]:
+    """Store the levels other storages must reach before a consumer gets PV or battery energy."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if config.device(device_id) is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    known = {d.id for d in config.devices} | {BATTERY_PRIORITY_ID}
+    if invalid := [c.device_id for c in conditions if c.device_id not in known or c.device_id == device_id]:
+        raise HTTPException(status_code=422, detail=f"Invalid condition devices: {invalid}")
+    if conditions:
+        config.priority_conditions[device_id] = conditions
+    else:
+        config.priority_conditions.pop(device_id, None)
+    store.save(config)
+    _replan(request)
+    return [c.model_dump() for c in conditions]
 
 
 @router.get("/history")

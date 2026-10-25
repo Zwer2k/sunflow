@@ -90,6 +90,15 @@ class FlexLoad:
     # Recurring needs (e.g. reheating hot water every day) as (first slot, end slot, Wh);
     # energy_wh then only has to be delivered before the first of them
     later_needs: list[tuple[int, int, float]] = field(default_factory=list)
+    # Released only once the home battery holds this much (Wh at the slot start) and the
+    # named loads got this much energy; until then it may only run on grid power
+    gate_battery_wh: float | None = None
+    gate_after: list[tuple[str, float]] = field(default_factory=list)
+
+    @property
+    def gated(self) -> bool:
+        """Whether the load waits for other storages."""
+        return self.gate_battery_wh is not None or bool(self.gate_after)
 
     def needs(self, n: int) -> list[tuple[int, int, float]]:
         """All needs as (first slot, end slot, Wh), in time order."""
@@ -361,9 +370,34 @@ def optimize(
     z = count + np.arange(len(grid_binary))
     y = count + len(grid_binary) + np.arange(len(battery_binary))
     total = count + len(grid_binary) + len(battery_binary)
+    # Gates: one binary per gated load and slot it may run in (1 = released)
+    names = {load.name: k for k, load in enumerate(flex)}
+    gates: list[tuple[int, int, int]] = []
+    for k, load in enumerate(flex):
+        if load.gated:
+            for t in range(n):
+                if upper[f[k][t]] > 0:
+                    gates.append((k, t, total))
+                    total += 1
     cost = np.concatenate([cost, np.zeros(total - count)])
     lower = np.concatenate([lower, np.zeros(total - count)])
     upper = np.concatenate([upper, np.ones(total - count)])
+    gate_rows = 0
+    for k, t, b in gates:
+        load = flex[k]
+        gate_rows += 1
+        if load.gate_battery_wh is not None:
+            if t == 0:
+                upper[b] = min(upper[b], 1.0 if battery.soc_wh >= load.gate_battery_wh else 0.0)
+            else:
+                gate_rows += 1
+        for name, required in load.gate_after:
+            if name not in names or required <= 0:
+                continue
+            if t == 0:
+                upper[b] = 0.0
+            else:
+                gate_rows += 1
     integrality = np.zeros(total)
     integrality[count:] = 1
     binary_total = total
@@ -392,7 +426,8 @@ def optimize(
                 2 * (len(grid_binary) + len(battery_binary))
                 + 2 * (size - binary_total)
                 + (n if restrict_battery else 0)
-                + (n if len(pv_only) > 1 else 0),
+                + (n if len(pv_only) > 1 else 0)
+                + gate_rows,
                 size,
             )
         )
@@ -425,6 +460,21 @@ def optimize(
                 for k in pv_only:
                     a_ub[row, f[k][t]] = 1
                 b_ub[row] = max(slot.pv_w - slot.load_w, 0.0)
+                row += 1
+        for k, t, b in gates:
+            load = flex[k]
+            # Closed gate: the load only runs as far as power is imported at the same time
+            a_ub[row, f[k][t]], a_ub[row, gi[t]], a_ub[row, b] = 1, -1, -load.max_power_w
+            row += 1
+            if load.gate_battery_wh is not None and t > 0:
+                a_ub[row, b], a_ub[row, s[t - 1]] = load.gate_battery_wh, -1
+                row += 1
+            for name, required in load.gate_after:
+                if name not in names or required <= 0 or t == 0:
+                    continue
+                a_ub[row, b] = required
+                for tau in range(t):
+                    a_ub[row, f[names[name]][tau]] = -DT_H
                 row += 1
         if smooth:
             delta = binary_total

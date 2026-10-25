@@ -494,3 +494,41 @@ def test_daily_needs(hours: int, expected: list[tuple[int, int, float]]) -> None
     """Recurring needs only cover whole 24 h windows inside the horizon."""
     starts = [START + i * SLOT for i in range(hours * 4)]
     assert daily_needs(starts, START + timedelta(hours=24), 3500) == expected
+
+
+def test_gate_waits_for_battery_level() -> None:
+    """A load released at 80 % battery only takes PV once the battery got there."""
+    from sunflow.optimizer import FlexLoad
+
+    battery = BatterySpec(capacity_wh=10000, soc_wh=2000, min_soc_wh=1000, max_charge_w=3000, max_discharge_w=3000)
+    inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 5000.0 if 32 <= i < 72 else 0.0)
+    heater = FlexLoad(
+        name="Warmwasser", energy_wh=4000, max_power_w=3000, available=[True] * 96,
+        unmet_cost=0.12, gate_battery_wh=8000,
+    )
+
+    plan = optimize(inputs, battery, Settings(), [heater])
+
+    running = [t for t, s in enumerate(plan.slots) if s.flex_w["Warmwasser"] > 10]
+    assert running
+    assert all(plan.slots[t - 1].soc_wh >= 8000 - 1 for t in running)
+    assert all(plan.slots[t].import_w >= plan.slots[t].flex_w["Warmwasser"] - 1 for t in running if t < 40)
+
+
+def test_gate_waits_for_vehicle() -> None:
+    """A load released after the vehicle got its energy runs after the car in the PV surplus."""
+    from sunflow.optimizer import FlexLoad
+
+    full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 3500.0 if 40 <= i < 72 else 0.0)
+    car = FlexLoad(name="Auto", energy_wh=6000, max_power_w=3000, available=[True] * 96, unmet_cost=0.12)
+    heater = FlexLoad(
+        name="Warmwasser", energy_wh=3000, max_power_w=3000, available=[True] * 96, unmet_cost=0.12,
+        priority_bonus=0.01, gate_after=[("Auto", 6000)],
+    )
+
+    plan = optimize(inputs, full, Settings(), [car, heater])
+
+    car_done = next(t for t in range(96) if sum(s.flex_w["Auto"] for s in plan.slots[: t + 1]) / 4 >= 6000 - 1)
+    assert all(s.flex_w["Warmwasser"] < 10 for s in plan.slots[: car_done + 1])
+    assert plan.flex[1].planned_wh > 1000

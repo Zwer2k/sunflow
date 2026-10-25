@@ -49,6 +49,8 @@ export const api = {
   setStrategyOverride: (body) => request("PUT", "/control/strategy", body),
   clearStrategyOverride: () => request("DELETE", "/control/strategy"),
   setPriorities: (order) => request("PUT", "/control/priorities", order),
+  setPriorityConditions: (deviceId, conditions) =>
+    request("PUT", `/control/priorities/${encodeURIComponent(deviceId)}/conditions`, conditions),
   live: () => request("GET", "/live"),
   candidates: () => request("GET", "/entities/candidates"),
   addManual: (body) => request("POST", "/config/devices/manual", body),

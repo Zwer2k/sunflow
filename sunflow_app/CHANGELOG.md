@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+- Priority limits: a consumer in the priority list can wait until the home battery
+  and/or a vehicle reached a level (e.g. hot water only from 80 % home battery and
+  90 % car). Until then it gets no PV or battery energy and only runs on grid power
+  if its target requires it. A vehicle only holds others back while it is plugged in
+  and charging; a limit above its target counts as met at the target. "Sofort"
+  ignores the limits
+
 ## 0.5.4
 
 - Steuerung: consumers offer Kostenoptimal, Nur PV, Sofort and Pause; the default from

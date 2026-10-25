@@ -51,6 +51,7 @@ class SunflowControl extends LitElement {
     _error: { state: true },
     _duration: { state: true },
     _busy: { state: true },
+    _editing: { state: true },
   };
 
   constructor() {
@@ -59,6 +60,7 @@ class SunflowControl extends LitElement {
     this._error = null;
     this._duration = "midnight";
     this._busy = false;
+    this._editing = null;
   }
 
   connectedCallback() {
@@ -153,7 +155,7 @@ class SunflowControl extends LitElement {
                 <div class="cards">${this._orderedDevices(data).map((d) => this._renderDevice(d))}</div>
               </section>`
             : html`<p class="muted">Noch keine Verbraucher eingerichtet (Wallbox, Warmwasser, eigene Geräte).</p>`}
-          ${data.priorities.length > 1 ? this._renderPriorities(data.priorities) : nothing}
+          ${data.priorities.length > 1 ? this._renderPriorities(data.priorities, data.condition_sources) : nothing}
         ` : nothing}
     `;
   }
@@ -247,22 +249,69 @@ class SunflowControl extends LitElement {
     `;
   }
 
-  _renderPriorities(priorities) {
+  _saveConditions(deviceId, form) {
+    const conditions = [...form.querySelectorAll("input")]
+      .filter((input) => input.value !== "")
+      .map((input) => ({ device_id: input.name, min_pct: Number(input.value) }));
+    this._editing = null;
+    return this._apply(() => api.setPriorityConditions(deviceId, conditions));
+  }
+
+  _renderPriorities(priorities, sources) {
+    const names = Object.fromEntries(priorities.map((p) => [p.id, p.name]));
+    const vehicles = new Set(sources.filter((s) => s.id !== "battery").map((s) => s.id));
     return html`
       <section class="card">
         <h2>Priorität</h2>
         <p class="small muted">Reicht der PV-Überschuss nicht für alle, bekommt der obere Eintrag zuerst.
-          Verbraucher unterhalb des Hausspeichers erhalten Überschuss erst, wenn der Speicher ihn nicht mehr aufnimmt.</p>
+          Verbraucher unterhalb des Hausspeichers erhalten Überschuss erst, wenn der Speicher ihn nicht mehr aufnimmt.
+          Mit „Grenzen“ wartet ein Verbraucher, bis andere Speicher einen Ladestand erreicht haben – bis dahin nutzt er
+          nur Netzstrom, falls sein Ziel das verlangt.</p>
         <ol class="priorities">
-          ${priorities.map(
-            (p, i) => html`<li class=${p.id === "battery" ? "battery" : ""}>
-              <span class="rank">${i + 1}</span>
-              <span class="name">${p.name}</span>
-              <button aria-label="${p.name} nach oben" ?disabled=${i === 0 || this._busy} @click=${() => this._move(i, -1)}>▲</button>
-              <button aria-label="${p.name} nach unten" ?disabled=${i === priorities.length - 1 || this._busy}
-                @click=${() => this._move(i, 1)}>▼</button>
-            </li>`,
-          )}
+          ${priorities.map((p, i) => {
+            const own = sources.filter((s) => s.id !== p.id);
+            const editing = this._editing === p.id;
+            return html`<li class=${p.id === "battery" ? "battery" : ""}>
+              <div class="entry">
+                <span class="rank">${i + 1}</span>
+                <span class="name">
+                  ${p.name}
+                  ${p.conditions.length
+                    ? html`<span class="small muted">ab ${p.conditions
+                        .map((c) => `${names[c.device_id] ?? c.device_id} ${c.min_pct} %`)
+                        .join(" und ")}</span>`
+                    : nothing}
+                </span>
+                ${p.id !== "battery" && own.length
+                  ? html`<button class="text" aria-expanded=${editing} ?disabled=${this._busy}
+                      @click=${() => (this._editing = editing ? null : p.id)}>Grenzen</button>`
+                  : nothing}
+                <button aria-label="${p.name} nach oben" ?disabled=${i === 0 || this._busy} @click=${() => this._move(i, -1)}>▲</button>
+                <button aria-label="${p.name} nach unten" ?disabled=${i === priorities.length - 1 || this._busy}
+                  @click=${() => this._move(i, 1)}>▼</button>
+              </div>
+              ${editing
+                ? html`<form class="conditions" @submit=${(e) => {
+                    e.preventDefault();
+                    this._saveConditions(p.id, e.target);
+                  }}>
+                    <span class="small muted">${p.name} bekommt PV- und Speicherenergie erst ab:</span>
+                    ${own.map((s) => {
+                      const current = p.conditions.find((c) => c.device_id === s.id);
+                      return html`<label class="condition">
+                        <span>${s.name}${vehicles.has(s.id) ? html` <span class="small muted">(nur wenn angesteckt)</span>` : nothing}</span>
+                        <span class="pct"><input type="number" name=${s.id} min="0" max="100" step="5" placeholder="–"
+                          .value=${current ? String(current.min_pct) : ""}> %</span>
+                      </label>`;
+                    })}
+                    <div class="actions">
+                      <button type="submit" class="primary">Übernehmen</button>
+                      <button type="button" class="text" @click=${() => (this._editing = null)}>Abbrechen</button>
+                    </div>
+                  </form>`
+                : nothing}
+            </li>`;
+          })}
         </ol>
       </section>
     `;
@@ -311,12 +360,24 @@ class SunflowControl extends LitElement {
       text-decoration: underline; cursor: pointer; font-size: 13px;
     }
     .priorities { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-    .priorities li {
-      display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: var(--sf-subtle);
-    }
+    .priorities li { padding: 6px 10px; border-radius: 8px; background: var(--sf-subtle); }
+    .priorities .entry { display: flex; align-items: center; gap: 10px; }
     .priorities li.battery { background: var(--sf-primary-bg); }
     .priorities .rank { width: 24px; font-weight: 600; color: var(--sf-muted); }
-    .priorities .name { flex: 1; }
+    .priorities .name { flex: 1; display: flex; flex-direction: column; }
+    .priorities button.text, .conditions button.text { width: auto; padding: 0 10px; font-size: 13px; }
+    .conditions { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px 34px; }
+    .condition { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+    .condition .pct { display: flex; align-items: center; gap: 6px; }
+    .condition input {
+      width: 80px; min-height: 36px; padding: 0 8px; font: inherit; font-size: 14px; border: 1px solid var(--sf-border-strong);
+      border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
+    }
+    .conditions .actions { display: flex; gap: 8px; }
+    .conditions button {
+      width: auto; height: 36px; border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); cursor: pointer;
+    }
+    .conditions button.primary { padding: 0 14px; background: var(--sf-primary); border-color: var(--sf-primary); color: #fff; }
     .priorities button {
       width: 40px; height: 36px; border: 1px solid var(--sf-border-strong); border-radius: 8px;
       background: var(--sf-surface); cursor: pointer;
