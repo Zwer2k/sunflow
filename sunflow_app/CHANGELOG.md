@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- New "Live" tab: animated power flows between PV, grid, battery (with SoC ring),
+  house and consumers (wallbox, hot water, own consumers), refreshed every 5 s
+- Today: PV, consumption, grid import, export, autarky and self-consumption
+
 ## 0.3.6
 
 - Battery efficiency is now the round trip (charge + discharge), as usually stated;

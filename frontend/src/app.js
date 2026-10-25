@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
 import "./picker.js";
+import "./live-view.js";
 import "./plan-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import {
@@ -169,7 +170,7 @@ class SunflowApp extends LitElement {
       this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
       this._overrides = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
       // Completed setups open on the plan, new ones in the wizard
-      this._view ??= config.setup_completed ? "plan" : "setup";
+      this._view ??= config.setup_completed ? "live" : "setup";
       this._error = null;
     } catch (err) {
       this._error = `Daten konnten nicht geladen werden: ${err.message}`;
@@ -571,11 +572,12 @@ class SunflowApp extends LitElement {
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"></path></svg>
           <div>
             <div class="title">Sunflow</div>
-            <div class="subtitle">${this._view === "plan" ? "Übersicht" : "Einrichtung"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
+            <div class="subtitle">${{ live: "Live", plan: "Übersicht" }[this._view] ?? "Einrichtung"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
           </div>
         </div>
         <div class="tabs" role="tablist">
           ${[
+            ["live", "Live"],
             ["plan", "Übersicht"],
             ["setup", "Einrichtung"],
           ].map(
@@ -588,16 +590,18 @@ class SunflowApp extends LitElement {
           Expertenmodus
         </button>
       </header>
-      ${this._view === "plan"
-        ? html`<div class="layout"><main><sunflow-plan></sunflow-plan></main></div>`
-        : this._renderWizard()}
+      ${this._view === "live"
+        ? html`<div class="layout"><main><sunflow-live></sunflow-live></main></div>`
+        : this._view === "plan"
+          ? html`<div class="layout"><main><sunflow-plan></sunflow-plan></main></div>`
+          : this._renderWizard()}
     `;
   }
 
   _setView(view) {
     this._view = view;
-    if (view === "plan") this._stopPreview();
-    else this._goTo(this._step);
+    if (view === "setup") this._goTo(this._step);
+    else this._stopPreview();
   }
 
   _renderWizard() {

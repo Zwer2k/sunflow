@@ -42,6 +42,7 @@ export const api = {
     request("GET", entityId ? `/tariff/series?entity_id=${encodeURIComponent(entityId)}` : "/tariff/series"),
   forecastSeries: () => request("GET", "/forecast/series"),
   plan: () => request("GET", "/plan"),
+  live: () => request("GET", "/live"),
   candidates: () => request("GET", "/entities/candidates"),
   addManual: (body) => request("POST", "/config/devices/manual", body),
   efficiency: (configDeviceId) => request("GET", `/config/devices/${encodeURIComponent(configDeviceId)}/efficiency`),
