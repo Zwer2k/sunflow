@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1
+
+- Inside Home Assistant (Ingress panel) the own logo and name are hidden: HA's toolbar
+  already shows them. A lost connection is then shown as a hint below the tabs
+- Phone: smaller tabs so all five fit better
+
 ## 0.11.0
 
 - Fix: the Forecast.Solar forecast was one hour late. Its watt_hours_period is the
