@@ -50,7 +50,8 @@ from .executor import (
     plan_setup,
 )
 from .ha import HAClient, HAError
-from .efficiency import estimate_from_history
+from .efficiency import estimate_from_counters, estimate_from_history
+from .energy import energy_balance, energy_sources
 from .history import fetch_history, history_series
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
@@ -1008,7 +1009,20 @@ async def get_efficiency(request: Request, device_id: str, days: int = 10) -> di
     }
     power, soc = roles.get("battery_power"), roles.get("battery_soc")
     params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
-    if power is None or soc is None or not power.entity_id or not soc.entity_id or not params.get("capacity_wh"):
+    if soc is None or not soc.entity_id or not params.get("capacity_wh"):
+        return None
+    charge, discharge = roles.get("battery_charge_energy"), roles.get("battery_discharge_energy")
+    if charge and discharge and charge.entity_id and discharge.entity_id:
+        # The inverter's counters cover more days and miss no peaks
+        try:
+            result = await estimate_from_counters(
+                request.app.state.ha, charge.entity_id, discharge.entity_id, soc.entity_id, params["capacity_wh"]
+            )
+        except HAError as err:
+            raise HTTPException(status_code=502, detail=str(err)) from err
+        if result:
+            return asdict(result)
+    if power is None or not power.entity_id:
         return None
     # The sensor's sign convention applies to its statistics as well
     sign = -1.0 if power.sign is not None and power.sign not in CANONICAL_SIGNS else 1.0
@@ -1024,6 +1038,27 @@ async def get_efficiency(request: Request, device_id: str, days: int = 10) -> di
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     return asdict(result) if result else None
+
+
+ENERGY_PERIODS = {"today": 0, "7d": 7, "30d": 30}
+
+
+@router.get("/energy")
+async def get_energy(request: Request, period: str = "today") -> dict[str, Any]:
+    """Energy balance from the energy counters: today (since local midnight) or the last days."""
+    if period not in ENERGY_PERIODS:
+        raise HTTPException(status_code=422, detail=f"period must be one of {list(ENERGY_PERIODS)}")
+    config = request.app.state.store.load()
+    snapshot = await _snapshot(request)
+    sources = energy_sources(config, _library(request).profiles, snapshot)
+    tz = await _local_tz(request)
+    end = datetime.now(tz)
+    midnight = end.replace(hour=0, minute=0, second=0, microsecond=0)
+    start = midnight - timedelta(days=ENERGY_PERIODS[period])
+    try:
+        return await energy_balance(request.app.state.ha, sources, start, end)
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
 
 
 @router.get("/live")

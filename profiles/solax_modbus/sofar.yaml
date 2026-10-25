@@ -24,6 +24,13 @@ roles:
   load_power: {key: active_power_load_sys, unit: kW}
   # AC output of the inverter (+ = feeding the house); preferred for the balance check
   inverter_power: {key: active_power_output_total, unit: kW, optional: true}
+  # Energy counters: exact balance, autarky and battery efficiency (PV is counted on the DC side)
+  pv_energy: {key: solar_generation_total, unit: kWh, optional: true}
+  load_energy: {key: load_consumption_total, unit: kWh, optional: true}
+  grid_import_energy: {key: import_energy_total, unit: kWh, optional: true}
+  grid_export_energy: {key: export_energy_total, unit: kWh, optional: true}
+  battery_charge_energy: {key: battery_input_energy_total, unit: kWh, optional: true}
+  battery_discharge_energy: {key: battery_output_energy_total, unit: kWh, optional: true}
 
 # Mode in which the primitive takes effect; switching it is an EEPROM write
 control_mode: {key: charger_use_mode, option: "Passive Mode"}

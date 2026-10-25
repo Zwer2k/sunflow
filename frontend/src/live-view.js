@@ -76,6 +76,22 @@ class SunflowLive extends LitElement {
 
   async _loadToday() {
     try {
+      // Energy counters are exact; integrated power means only stand in where counters are missing
+      const energy = await api.energy("today").catch(() => null);
+      const t = energy?.totals;
+      if (t && t.pv !== null && t.grid_import !== null && t.grid_export !== null && energy.consumption !== null) {
+        const kwh = (wh) => wh / 1000;
+        this._today = {
+          pv: kwh(t.pv),
+          consumption: kwh(energy.consumption),
+          imported: kwh(t.grid_import),
+          exported: kwh(t.grid_export),
+          autarky: energy.autarky,
+          selfConsumption: energy.self_consumption,
+          source: "Energiezähler",
+        };
+        return;
+      }
       const history = await api.history(24);
       const midnight = new Date();
       midnight.setHours(0, 0, 0, 0);
@@ -85,7 +101,10 @@ class SunflowLive extends LitElement {
       const consumption = sum((p) => p.load_w);
       const imported = sum((p) => (p.grid_w === null ? 0 : Math.max(p.grid_w, 0)));
       const exported = sum((p) => (p.grid_w === null ? 0 : Math.max(-p.grid_w, 0)));
-      this._today = { pv, consumption, imported, exported, ...dailyRatios({ pv, consumption, imported, exported }) };
+      this._today = {
+        pv, consumption, imported, exported, ...dailyRatios({ pv, consumption, imported, exported }),
+        source: "Leistungsmittelwerte (keine Energiezähler gefunden)",
+      };
     } catch {
       // The daily summary is optional; the live diagram still works
       this._today = null;
@@ -241,7 +260,7 @@ class SunflowLive extends LitElement {
     const kwh = (v) => formatValue(v * 1000, "Wh");
     return html`
       <section>
-        <h2>Heute</h2>
+        <h2>Heute <span class="small muted source">aus ${t.source}</span></h2>
         <div class="tiles">
           <div class="tile"><div class="small muted">PV erzeugt</div><div class="value">${kwh(t.pv)}</div></div>
           <div class="tile"><div class="small muted">Verbraucht</div><div class="value">${kwh(t.consumption)}</div></div>
@@ -285,6 +304,7 @@ class SunflowLive extends LitElement {
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 8px 12px; }
     .tile.highlight { background: var(--sf-primary-bg); }
+    h2 .source { font-weight: 400; }
     .tile .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
   `;
 }
