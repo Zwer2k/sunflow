@@ -1,12 +1,22 @@
 // Relative URLs so the UI works behind Home Assistant Ingress.
 const BASE = "api/v1";
 
+// A hanging request must not block the browser's few connections to Home Assistant
+const TIMEOUT_MS = 60 * 1000;
+
 async function request(method, path, body) {
-  const response = await fetch(`${BASE}${path}`, {
-    method,
-    headers: body === undefined ? {} : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      method,
+      headers: body === undefined ? {} : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err.name === "TimeoutError") throw new Error("Keine Antwort vom Server (Zeitüberschreitung)");
+    throw err;
+  }
   // Server errors may come as plain text ("Internal Server Error")
   const text = response.status === 204 ? "" : await response.text();
   let data = null;

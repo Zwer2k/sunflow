@@ -38,7 +38,7 @@ from .config_store import (
     TariffConfig,
 )
 from .device_test import DeviceTestState, ModeControl, run_device_test, state_response
-from .discovery import Snapshot, discover, fetch_snapshot
+from .discovery import Snapshot, SnapshotCache, discover, fetch_snapshot
 from .executor import (
     ActionResult,
     EepromGuard,
@@ -89,9 +89,9 @@ class AddDevice(BaseModel):
     role_overrides: dict[str, RoleOverride] = {}
 
 
-async def _snapshot(request: Request) -> Snapshot:
+async def _snapshot(request: Request, fresh: bool = False) -> Snapshot:
     try:
-        return await fetch_snapshot(request.app.state.ha)
+        return await request.app.state.snapshots.get(fresh=fresh)
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
 
@@ -152,7 +152,8 @@ async def profiles(request: Request) -> dict[str, Any]:
 @router.get("/discovery")
 async def discovery(request: Request) -> list[dict[str, Any]]:
     """Return integrations and devices found in Home Assistant."""
-    snapshot = await _snapshot(request)
+    # Newly installed integrations must show up right away
+    snapshot = await _snapshot(request, fresh=True)
     return [asdict(i) for i in discover(snapshot, _library(request))]
 
 
@@ -1263,6 +1264,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.profiles_dir, load_schema(settings.schema_dir)
         )
         app.state.ha = HAClient(settings.ha_websocket_url, settings.ha_token)
+        app.state.snapshots = SnapshotCache(app.state.ha)
         app.state.device_tests = {}
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
         shadow = ShadowStore(settings.data_dir)

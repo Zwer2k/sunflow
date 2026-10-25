@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.7
+
+- Much less load on Home Assistant: registries (devices, entities, integrations) are
+  cached for 2 minutes and all states for 4 seconds, shared by all requests. Before,
+  every poll of every open tab fetched several MB from Home Assistant (every 5 s in Live)
+- Views stop polling while the browser tab is hidden and never overlap requests;
+  requests time out after 60 s instead of hanging
+
 ## 0.7.6
 
 - Priority limits pointing to a lower entry are no longer deleted when reordering:
