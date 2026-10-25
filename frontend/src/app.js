@@ -738,24 +738,24 @@ class SunflowApp extends LitElement {
                   <span class="field-label">Name</span>
                   <span class="input-unit"><input placeholder="z. B. E-Bike" .value=${form.name} @input=${(e) => set("name", e.target.value)}></span>
                 </label>
-                <label class="field">
+                <div class="field">
                   <span class="field-label">Schalter</span>
-                  <select @change=${(e) => set("switch_entity", e.target.value)}>
+                  <select aria-label="Schalter" @change=${(e) => set("switch_entity", e.target.value)}>
                     <option value="" ?selected=${!form.switch_entity}>– bitte wählen –</option>
                     ${candidates.switches.map(
                       (c) => html`<option value=${c.entity_id} ?selected=${form.switch_entity === c.entity_id}>${c.name} (${c.entity_id})</option>`,
                     )}
                   </select>
-                </label>
-                <label class="field">
+                </div>
+                <div class="field">
                   <span class="field-label">Leistungsmessung (optional)</span>
-                  <select @change=${(e) => set("power_entity", e.target.value)}>
+                  <select aria-label="Leistungsmessung" @change=${(e) => set("power_entity", e.target.value)}>
                     <option value="" ?selected=${!form.power_entity}>keine</option>
                     ${candidates.power.map(
                       (c) => html`<option value=${c.entity_id} ?selected=${form.power_entity === c.entity_id}>${c.name} (${c.state ?? "–"} ${c.unit ?? ""})</option>`,
                     )}
                   </select>
-                </label>
+                </div>
                 <label class="field">
                   <span class="field-label">Leistung</span>
                   <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
@@ -1034,15 +1034,15 @@ class SunflowApp extends LitElement {
         ${capabilities.includes("pv")
           ? html`
               <div class="fields">
-                <label class="field">
+                <div class="field">
                   <span class="field-label">Vergütung</span>
-                  <select @change=${(e) => this._editFeedIn(device.id, "model", e.target.value)}>
+                  <select aria-label="Vergütung" @change=${(e) => this._editFeedIn(device.id, "model", e.target.value)}>
                     ${Object.entries(FEED_IN_MODELS).map(
                       ([value, label]) => html`<option value=${value}
                         ?selected=${(feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed") === value}>${label}</option>`,
                     )}
                   </select>
-                </label>
+                </div>
                 <label class="field">
                   <span class="field-label">Einspeisevergütung</span>
                   <span class="input-unit">
@@ -1210,9 +1210,9 @@ class SunflowApp extends LitElement {
               <div class="device-title">Zusammenhang der Anlagen</div>
               ${pvOnly.map(
                 (d) => html`
-                  <label class="field wide">
+                  <div class="field wide">
                     <span class="field-label">${d.name} wird zusätzlich gemessen von</span>
-                    <select @change=${(e) => this._setMeasuredBy(d, e.target.value)}>
+                    <select aria-label="${d.name} wird zusätzlich gemessen von" @change=${(e) => this._setMeasuredBy(d, e.target.value)}>
                       <option value="" ?selected=${!d.measured_by}>niemandem (eigene Einspeisung)</option>
                       ${measuring.map(
                         (m) => html`<option value=${m.id} ?selected=${d.measured_by?.device_id === m.id}>
@@ -1220,7 +1220,7 @@ class SunflowApp extends LitElement {
                         </option>`,
                       )}
                     </select>
-                  </label>
+                  </div>
                 `,
               )}
             </section>
@@ -1290,9 +1290,9 @@ class SunflowApp extends LitElement {
           ? html`<p class="small muted">Keine Preis-Entität gefunden (Einheit €/kWh oder ct/kWh) – du kannst einen festen Preis angeben.</p>`
           : nothing}
         ${html`
-              <label class="field wide">
+              <div class="field wide">
                 <span class="field-label">Quelle</span>
-                <select @change=${(e) => this._setTariff(e.target.value)}>
+                <select aria-label="Quelle Bezugspreis" @change=${(e) => this._setTariff(e.target.value)}>
                   <option value="" ?selected=${!selected}>– keine (nur Eigenverbrauch) –</option>
                   <option value=${FIXED_PRICE} ?selected=${selected === FIXED_PRICE}>Fester Preis …</option>
                   ${sources.prices.map(
@@ -1302,7 +1302,7 @@ class SunflowApp extends LitElement {
                     </option>`,
                   )}
                 </select>
-              </label>
+              </div>
             `}
         ${fixed
           ? html`
