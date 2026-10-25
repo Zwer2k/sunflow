@@ -172,3 +172,45 @@ async def test_snapshot_cache_shares_fetches() -> None:
 
     await cache.get(fresh=True)
     assert calls["device_registry"] == 2
+
+
+async def test_snapshot_cache_bridges_short_gaps() -> None:
+    """A briefly unknown value keeps its last valid state; a long outage shows up."""
+    from datetime import UTC, datetime, timedelta
+
+    import sunflow.discovery as discovery
+    from sunflow.discovery import SnapshotCache
+
+    answers = [
+        [{"entity_id": "sensor.soc", "state": "55"}],
+        [{"entity_id": "sensor.soc", "state": "unknown"}],
+        [{"entity_id": "sensor.soc", "state": "unknown"}],
+    ]
+
+    class Client:
+        generation = 1
+
+        async def command(self, msg_type: str, **data: object) -> list:
+            return []
+
+        async def get_config_entries(self) -> list:
+            return []
+
+        async def get_device_registry(self) -> list:
+            return []
+
+        async def get_entity_registry(self) -> list:
+            return []
+
+        async def get_energy_prefs(self) -> None:
+            return None
+
+        async def get_states(self) -> list:
+            return answers.pop(0)
+
+    cache = SnapshotCache(Client(), states_ttl=timedelta(0))
+    assert (await cache.get()).states["sensor.soc"]["state"] == "55"
+    assert (await cache.get()).states["sensor.soc"]["state"] == "55"
+
+    cache._last_good["sensor.soc"] = (cache._last_good["sensor.soc"][0], datetime.now(UTC) - discovery.GAP_BRIDGE * 2)
+    assert (await cache.get()).states["sensor.soc"]["state"] == "unknown"
