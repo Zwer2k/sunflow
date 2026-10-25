@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6
+
+- Battery efficiency is now the round trip (charge + discharge), as usually stated;
+  the planner splits it evenly. Stored values are read as round trip (default 90 %)
+- The history estimate shows and applies the round-trip value
+
 ## 0.3.5
 
 - Shadow mode classifies what the battery did from the grid meter and battery power;

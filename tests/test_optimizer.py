@@ -371,3 +371,27 @@ def test_next_time(after: datetime, hhmm: str, expected: datetime) -> None:
     result = next_time(hhmm, after, BERLIN)
     assert result == expected
     assert result.astimezone(BERLIN).hour == 7
+
+
+def test_round_trip_efficiency_parameter(library: object) -> None:
+    """The efficiency parameter is the round trip and is split evenly per direction."""
+    from types import SimpleNamespace
+
+    from sunflow.config_store import DeviceConfig
+    from sunflow.plan import battery_spec
+
+    device = DeviceConfig(
+        ha_device_id="d_inv", profile="solax_modbus/sofar", profile_version=1, name="Sofar",
+        parameters={"capacity_wh": 20000, "efficiency_pct": 72},
+    )
+    snapshot = SimpleNamespace(
+        devices=[{"id": "d_inv"}],
+        entities=[{"entity_id": "sensor.soc", "unique_id": "x_battery_capacity_total", "device_id": "d_inv"}],
+        states={"sensor.soc": {"state": "50", "attributes": {"unit_of_measurement": "%"}}},
+    )
+
+    spec, problem = battery_spec(library.profiles["solax_modbus/sofar"], device, snapshot)
+
+    assert problem is None
+    assert spec.efficiency_charge * spec.efficiency_discharge == pytest.approx(0.72)
+    assert spec.efficiency_charge == pytest.approx(0.8485, abs=1e-4)
