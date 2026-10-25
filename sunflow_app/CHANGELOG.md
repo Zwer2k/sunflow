@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.2
+
+- "Selbstverbrauch wiederherstellen": the device test stores a marker in /data from
+  its first write until the restore succeeded. If the app crashed, the connection to
+  Home Assistant was lost or the restore failed, every view shows a hint with a button
+  that sets self-consumption and the previous operating mode again (after
+  confirmation; nothing is written automatically)
+
 ## 0.10.1
 
 - Kenndaten: devices can be removed ("Entfernen", with confirmation); overrides,

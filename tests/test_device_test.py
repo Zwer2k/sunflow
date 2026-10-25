@@ -1,12 +1,14 @@
 """Tests for the device test sequence."""
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
 from sunflow.device_test import (
     ModeControl,
     DeviceTestState,
+    RestoreMarker,
     Timings,
     choose_test,
     evaluate,
@@ -214,3 +216,37 @@ def test_choose_and_evaluate() -> None:
     assert evaluate("limit_charge", 300, [420, 410]) == (True, True)
     assert evaluate("limit_charge", 300, [1500, 1600]) == (False, True)
     assert evaluate("force_charge", 500, []) == (False, False)
+
+
+async def test_marker_set_while_device_changed(tmp_path: Path) -> None:
+    """The marker exists from the first write until the restore succeeded."""
+    marker = RestoreMarker(tmp_path)
+    seen: list[dict | None] = []
+    inverter = FakeInverter(2000)
+
+    async def run_action(action: str, runtime: dict[str, float]) -> list[PlannedCall]:
+        seen.append(marker.get())
+        return await inverter.run_action(action, runtime)
+
+    state = DeviceTestState(device_id="sofar")
+    await run_device_test(state, inverter.read, run_action, FAST, mark=marker.set)
+
+    assert seen[0]["device_id"] == "sofar"  # already stored before the test command
+    assert marker.get() is None
+
+
+async def test_marker_kept_when_restore_fails(tmp_path: Path) -> None:
+    """A failed restore leaves the marker so the user can restore later."""
+    marker = RestoreMarker(tmp_path)
+    inverter = FakeInverter(2000)
+
+    async def run_action(action: str, runtime: dict[str, float]) -> list[PlannedCall]:
+        if action == "auto":
+            raise RuntimeError("Not connected")
+        return await inverter.run_action(action, runtime)
+
+    state = DeviceTestState(device_id="sofar")
+    await run_device_test(state, inverter.read, run_action, FAST, mark=marker.set)
+
+    assert state.restored is False
+    assert marker.get()["device_id"] == "sofar"

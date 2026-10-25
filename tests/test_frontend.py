@@ -292,3 +292,21 @@ def test_remove_device_cleans_references(tmp_path: Path) -> None:
     assert config.priorities == ["battery", "ww"]
     assert config.priority_conditions == {}
     assert config.measurement_sources == {}
+
+
+def test_restore_requires_confirmation(tmp_path: Path) -> None:
+    """Restoring writes to the device: only with confirm=true; without a marker nothing is written."""
+    from sunflow.config_store import ConfigStore
+    from sunflow.device_test import RestoreMarker
+
+    app = create_app()
+    app.state.store = ConfigStore(tmp_path)
+    app.state.restore_marker = RestoreMarker(tmp_path)
+    client = TestClient(app)
+
+    assert client.get("/api/v1/device-test/pending-restore").json() is None
+    app.state.restore_marker.set({"device_id": "gone", "started": None, "previous_mode": "Self Use"})
+    assert client.get("/api/v1/device-test/pending-restore").json()["previous_mode"] == "Self Use"
+    assert client.post("/api/v1/device-test/restore").status_code == 400
+    # No battery device configured: nothing to restore with
+    assert client.post("/api/v1/device-test/restore?confirm=true").status_code == 404
