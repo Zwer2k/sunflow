@@ -397,8 +397,12 @@ class SunflowPlan extends LitElement {
     const since = shadow.status.since ? dayTime.format(new Date(shadow.status.since)) : "–";
     const rows = shadow.rows.filter((r) => r.actual_action !== null && r.planned_action !== null);
     const pct = (v) => (v === null ? "–" : `${Math.round(v * 100)} %`);
-    const deviation = (forecast, actual) =>
-      actual > 0.05 ? `${forecast >= actual ? "+" : "−"}${Math.round((Math.abs(forecast - actual) / actual) * 100)} %` : "–";
+    // How far reality was off the forecast: 98 Wh actual vs 162 Wh forecast is "−40 % ggü. Prognose"
+    const deviation = (forecast, actual) => {
+      if (forecast < 0.01) return "–";
+      const pct = Math.round(((actual - forecast) / forecast) * 100);
+      return `${pct > 0 ? "+" : pct < 0 ? "−" : "±"}${Math.abs(pct)} % ggü. Prognose`;
+    };
     const kwh = (v) => formatValue(v * 1000, "Wh");
     return html`
       <section>
