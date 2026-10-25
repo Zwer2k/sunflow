@@ -873,11 +873,9 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
     return plan_response(latest, request.app.state.store.load()) | {
         "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
         # What the battery does right now (Sunflow does not control yet; another system may)
-        "actual": {
-            "battery_w": sample.battery_w,
-            "grid_w": sample.grid_w,
-            "action": actual_action(sample.grid_w, sample.battery_w),
-        }
+        "actual": asdict(sample)
+        | {"time": runner.last_sample_at.isoformat() if runner.last_sample_at else None}
+        | {"action": actual_action(sample.grid_w, sample.battery_w)}
         if sample
         else None,
     }

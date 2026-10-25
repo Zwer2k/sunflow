@@ -18,7 +18,8 @@ const LOAD_QUALITY = {
   mixed: "teils nach Wochentag",
   default: "Standardwert",
 };
-const REFRESH_MS = 5 * 60 * 1000;
+// The plan is kept by the background runner; reloading only fetches it and the statistics
+const REFRESH_MS = 2 * 60 * 1000;
 
 const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 const dayTime = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -365,15 +366,28 @@ class SunflowPlan extends LitElement {
   }
 
   _past(key) {
-    return (this._history?.points ?? []).map((p) => ({ start: p.start, end: p.end, value: p[key] }));
+    const points = (this._history?.points ?? []).map((p) => ({ start: p.start, end: p.end, value: p[key] }));
+    return this._withLive(points, this._plan?.actual?.[key]);
   }
 
   _pastGrid(transform) {
-    return (this._history?.points ?? []).map((p) => ({
+    const points = (this._history?.points ?? []).map((p) => ({
       start: p.start,
       end: p.end,
       value: p.grid_w === null ? null : transform(p.grid_w),
     }));
+    const grid = this._plan?.actual?.grid_w;
+    return this._withLive(points, grid === null || grid === undefined ? null : transform(grid));
+  }
+
+  /** The statistics lag behind by up to a quarter of an hour; the latest reading closes the gap to "now". */
+  _withLive(points, value) {
+    const time = this._plan?.actual?.time;
+    if (value === null || value === undefined || !time) return points;
+    const last = points.at(-1);
+    const start = last ? new Date(last.end) : new Date(new Date(time).getTime() - 15 * 60_000);
+    if (new Date(time) <= start) return points;
+    return [...points, { start, end: new Date(time), value }];
   }
 
   _future(slots, key) {

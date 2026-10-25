@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.3
+
+- Planung: the measured lines (SoC, PV, consumption, grid import and export) reach up
+  to "now": the latest live reading closes the gap left by Home Assistant's statistics,
+  which lag up to a quarter of an hour. The view refreshes every 2 minutes
+
 ## 0.15.2
 
 - Planung: below "Geplante Steuerung jetzt" the tile shows what the battery really does
