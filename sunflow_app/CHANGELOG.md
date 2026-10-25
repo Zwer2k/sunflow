@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- Searchable entity choice (type to filter by name or entity id, keyboard support)
+  for own consumers and for adjusting role mappings
+
 ## 0.3.1
 
 - Dropdowns no longer close right after opening (selects were wrapped in labels)

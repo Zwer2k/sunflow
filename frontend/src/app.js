@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import "./picker.js";
 import "./plan-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import {
@@ -740,21 +741,17 @@ class SunflowApp extends LitElement {
                 </label>
                 <div class="field">
                   <span class="field-label">Schalter</span>
-                  <select aria-label="Schalter" @change=${(e) => set("switch_entity", e.target.value)}>
-                    <option value="" ?selected=${!form.switch_entity}>– bitte wählen –</option>
-                    ${candidates.switches.map(
-                      (c) => html`<option value=${c.entity_id} ?selected=${form.switch_entity === c.entity_id}>${c.name} (${c.entity_id})</option>`,
-                    )}
-                  </select>
+                  <sf-picker label="Schalter" placeholder="Name oder Entität suchen …"
+                    .value=${form.switch_entity}
+                    .options=${candidates.switches.map((c) => ({ value: c.entity_id, label: c.name, detail: c.state }))}
+                    @change=${(e) => set("switch_entity", e.detail.value)}></sf-picker>
                 </div>
                 <div class="field">
                   <span class="field-label">Leistungsmessung (optional)</span>
-                  <select aria-label="Leistungsmessung" @change=${(e) => set("power_entity", e.target.value)}>
-                    <option value="" ?selected=${!form.power_entity}>keine</option>
-                    ${candidates.power.map(
-                      (c) => html`<option value=${c.entity_id} ?selected=${form.power_entity === c.entity_id}>${c.name} (${c.state ?? "–"} ${c.unit ?? ""})</option>`,
-                    )}
-                  </select>
+                  <sf-picker label="Leistungsmessung" empty-label="keine" placeholder="Name oder Entität suchen …"
+                    .value=${form.power_entity}
+                    .options=${candidates.power.map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} ${c.unit ?? ""}` }))}
+                    @change=${(e) => set("power_entity", e.detail.value)}></sf-picker>
                 </div>
                 <label class="field">
                   <span class="field-label">Leistung</span>
@@ -952,17 +949,11 @@ class SunflowApp extends LitElement {
                       ${Object.keys(override).length ? html`<span class="chip warn">angepasst</span>` : nothing}
                     </td>
                     <td>
-                      <select aria-label="Entität für ${roleLabel(r.role)}"
-                        @change=${(e) => this._setOverride(id, r.role, "entity_id", e.target.value)}>
-                        <option value="" ?selected=${!override.entity_id}>
-                          Profil: ${r.profile_entity_id ?? "nicht gefunden"}
-                        </option>
-                        ${sensors.map(
-                          (e) => html`<option value=${e.entity_id} ?selected=${override.entity_id === e.entity_id}>
-                            ${e.entity_id} (${e.state ?? "–"} ${e.unit ?? ""})
-                          </option>`,
-                        )}
-                      </select>
+                      <sf-picker inline label="Entität für ${roleLabel(r.role)}"
+                        empty-label="Profil: ${r.profile_entity_id ?? "nicht gefunden"}"
+                        .value=${override.entity_id ?? ""}
+                        .options=${sensors.map((e) => ({ value: e.entity_id, label: e.name, detail: `${e.state ?? "–"} ${e.unit ?? ""}` }))}
+                        @change=${(e) => this._setOverride(id, r.role, "entity_id", e.detail.value)}></sf-picker>
                     </td>
                     <td>
                       ${r.profile_sign
