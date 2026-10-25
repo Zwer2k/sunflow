@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.10.0
+
+Robustness and safety
+- Commands to Home Assistant time out after 60 s; a malformed message no longer stops
+  the connection reader; a dead connection is detected and re-established; caches are
+  refreshed after a reconnect. Before, one unanswered command could block the whole UI
+- The background runner never stops on unexpected errors, retries a failed replan on
+  the next minute and replans after every settings change
+- Runner, samples and /plan use the shared snapshot cache; without a plan yet, all
+  tabs wait for one shared computation instead of each computing one
+- As a Home Assistant App the API only answers the Ingress proxy (health excepted)
+- The action and setup endpoints only show service calls; real writes remain
+  exclusively in the confirmed device test
+- config.json is written with fsync and keeps config.json.bak; fields of newer versions
+  survive; a broken file gives a clear message; NaN/Infinity are rejected
+- Shadow database access is serialized; unreadable imports give a clear error
+
+Planning
+- New actions "Entladen begrenzt" and "Laden begrenzt": partial discharges were
+  shown as "Speicher halten", which would have left the planned discharge unused
+- Calmer export: no feed-in before the battery is full when that costs nothing
+- Priority limits no longer block the battery for the whole horizon when a car cannot
+  reach its level (e.g. unplugged before); planning with limits takes ~1 s instead of
+  up to 11 s
+- Fair comparison "ohne Sunflow": optional loads (Nur PV, or with an alternative heat
+  source) only use PV surplus there; costs include energy covered by the alternative
+- Warning when the hot water tank has no cost of its usual heating
+- Without grid charging / battery export, limits apply to the surplus over the house load
+- Load forecast scales each calendar day to the daily consumption
+
 ## 0.9.2
 
 - Priority limits can refer to the hot water tank (in °C), e.g. wallbox only from

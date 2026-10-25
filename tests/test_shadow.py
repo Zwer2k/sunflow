@@ -41,6 +41,7 @@ def test_recorder_summary() -> None:
         pytest.param(2500, 2000, "force_charge", id="grid_charging"),
         pytest.param(-800, -1000, "force_discharge", id="battery_exporting"),
         pytest.param(-2000, 1500, "auto", id="pv_surplus_charges_and_exports"),
+        pytest.param(800, -1200, "limit_discharge", id="battery_covers_part_of_deficit"),
         pytest.param(None, 0, None, id="missing"),
     ],
 )

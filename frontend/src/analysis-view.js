@@ -9,6 +9,8 @@ const ACTIONS = {
   hold: { label: "Speicher halten", hint: "Speicher wird geschont, Bedarf kommt aus dem Netz" },
   force_charge: { label: "Laden aus dem Netz", hint: "Speicher wird gezielt geladen" },
   force_discharge: { label: "Entladen ins Netz", hint: "Speicher speist gezielt ein" },
+  limit_discharge: { label: "Entladen begrenzt", hint: "Speicher deckt den Bedarf nur teilweise, der Rest kommt aus dem Netz" },
+  limit_charge: { label: "Laden begrenzt", hint: "Speicher nimmt nur einen Teil des PV-Überschusses auf, der Rest wird eingespeist" },
 };
 const dayTime = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const REFRESH_MS = 5 * 60 * 1000;
@@ -282,6 +284,7 @@ class SunflowAnalysis extends LitElement {
     .seg.auto { border-left-color: var(--sf-ok); }
     .seg.force_charge { border-left-color: var(--sf-primary); }
     .seg.force_discharge { border-left-color: var(--sf-warn-text); }
+    .seg.limit_discharge, .seg.limit_charge { border-left-color: var(--sf-neutral-text); }
     .seg .when { font-variant-numeric: tabular-nums; font-size: 14px; }
     .seg .what { font-weight: 600; }
     @media (max-width: 560px) { .seg { grid-template-columns: 1fr; } }

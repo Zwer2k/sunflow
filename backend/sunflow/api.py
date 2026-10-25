@@ -11,18 +11,21 @@ import json
 import logging
 from pathlib import Path
 import tempfile
-from typing import Any
+from typing import Annotated, Any
+import sqlite3
 import uuid
 import zipfile
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Body, FastAPI, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Query, Request, Response, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field, FiniteFloat
 
 from . import API_VERSION, __version__
 from .config_store import (
     BATTERY_PRIORITY_ID,
+    ConfigError,
     ConfigStore,
     DeviceOverride,
     PriorityCondition,
@@ -261,11 +264,11 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
     """Add a discovered device to the configuration."""
     library = _library(request)
     store: ConfigStore = request.app.state.store
+    snapshot = await _snapshot(request)
+    # Load after the await: a parallel add in the meantime must not be overwritten
     config = store.load()
     if any(d.ha_device_id == body.ha_device_id for d in config.devices):
         raise HTTPException(status_code=409, detail="Device already configured")
-
-    snapshot = await _snapshot(request)
     found = {d.device_id: d for i in discover(snapshot, library) for d in i.devices}
     if (discovered := found.get(body.ha_device_id)) is None:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -282,6 +285,7 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
     )
     config.devices.append(device)
     store.save(config)
+    _replan(request)
     return device.model_dump()
 
 
@@ -291,8 +295,8 @@ class ManualDevice(BaseModel):
     name: str
     switch_entity: str
     power_entity: str | None = None
-    max_power: float = 500
-    daily_energy_wh: float | None = None
+    max_power: FiniteFloat = Field(default=500, gt=0, le=100_000)
+    daily_energy_wh: FiniteFloat | None = Field(default=None, ge=0)
 
 
 MANUAL_PROFILE = "generic/switch"
@@ -366,7 +370,8 @@ class DeviceUpdate(BaseModel):
     """Partial update of a configured device; omitted fields stay unchanged."""
 
     name: str | None = None
-    parameters: dict[str, float | None] | None = None
+    # NaN or Infinity would make config.json unreadable for the UI and break the plan
+    parameters: dict[str, FiniteFloat | None] | None = None
     feed_in: FeedIn | None = None
     measured_by: MeasuredBy | None = None
     clear_measured_by: bool = False
@@ -401,6 +406,7 @@ async def update_device(
             raise HTTPException(status_code=422, detail="Measuring device not configured")
         device.measured_by = body.measured_by
     store.save(config)
+    _replan(request)
     return device.model_dump()
 
 
@@ -464,6 +470,7 @@ async def set_tariff(request: Request, tariff: TariffConfig) -> dict[str, Any]:
     config = store.load()
     config.tariff = tariff
     store.save(config)
+    _replan(request)
     return config.tariff.model_dump()
 
 
@@ -479,12 +486,13 @@ async def set_forecast(
         raise HTTPException(status_code=422, detail="Plant not configured")
     config.forecast_planes = planes
     store.save(config)
+    _replan(request)
     return [p.model_dump() for p in planes]
 
 
 @router.get("/tariff/series")
 async def get_tariff_series(
-    request: Request, entity_id: str | None = None, hours: int = FORECAST_HOURS
+    request: Request, entity_id: str | None = None, hours: Annotated[int, Query(ge=1, le=7 * 24)] = FORECAST_HOURS
 ) -> dict[str, Any]:
     """Return the import price schedule (€/kWh) of the given or configured source."""
     tariff = request.app.state.store.load().tariff
@@ -508,7 +516,7 @@ async def get_tariff_series(
 
 @router.get("/forecast/series")
 async def get_forecast_series(
-    request: Request, hours: int = FORECAST_HOURS
+    request: Request, hours: Annotated[int, Query(ge=1, le=7 * 24)] = FORECAST_HOURS
 ) -> dict[str, Any]:
     """Return the PV forecast per used plane (on a 30 minute grid) and its plant."""
     config = request.app.state.store.load()
@@ -679,6 +687,7 @@ async def set_optimizer(request: Request, body: OptimizerConfig) -> dict[str, An
     config = store.load()
     config.optimizer = body
     store.save(config)
+    _replan(request)
     return body.model_dump()
 
 
@@ -722,6 +731,7 @@ async def set_measurements(request: Request, body: dict[str, str | None]) -> dic
         else:
             raise HTTPException(status_code=422, detail=f"{device_id} cannot measure {quantity}")
     store.save(config)
+    _replan(request)
     return _measurements(config, profiles)
 
 
@@ -742,6 +752,8 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "strategy": config.effective_strategy(datetime.now(UTC)),
         "cost": plan.cost,
         "baseline_cost": plan.baseline_cost,
+        "alternative_cost": plan.alternative_cost,
+        "baseline_alternative_cost": plan.baseline_alternative_cost,
         "terminal_value": plan.terminal_value,
         "baseline_terminal_value": plan.baseline_terminal_value,
         "savings": plan.savings if plan.slots else None,
@@ -767,9 +779,14 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
 async def get_plan(request: Request) -> dict[str, Any]:
     """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
     try:
-        result = await current_plan(request.app.state.ha, request.app.state.store, _library(request))
+        result = await current_plan(
+            request.app.state.ha, request.app.state.store, _library(request), request.app.state.snapshots
+        )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
+    # "Neu berechnen" must not be replaced by an older background plan on the next poll
+    if (runner := getattr(request.app.state, "runner", None)) is not None:
+        runner.latest = result
     return plan_response(result, request.app.state.store.load())
 
 
@@ -777,9 +794,10 @@ async def get_plan(request: Request) -> dict[str, Any]:
 async def get_latest_plan(request: Request) -> dict[str, Any]:
     """Return the plan of the background runner (computed at most 15 minutes ago)."""
     runner: ShadowRunner = request.app.state.runner
-    if runner.latest is None:
-        return await get_plan(request)
-    return plan_response(runner.latest, request.app.state.store.load()) | {
+    # Without a plan yet, all open tabs wait for one shared computation
+    if (latest := await runner.ensure_plan()) is None:
+        raise HTTPException(status_code=503, detail=runner.status.last_error or "Plan wird noch berechnet")
+    return plan_response(latest, request.app.state.store.load()) | {
         "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None
     }
 
@@ -880,7 +898,9 @@ async def get_control(request: Request) -> dict[str, Any]:
 
 
 def _replan(request: Request) -> None:
-    request.app.state.runner.request_replan()
+    # Every change that affects planning shows up in Plan and Steuerung right away
+    if (runner := getattr(request.app.state, "runner", None)) is not None:
+        runner.request_replan()
 
 
 @router.put("/control/devices/{device_id}")
@@ -966,7 +986,7 @@ async def set_priority_conditions(
 
 
 @router.get("/history")
-async def get_history(request: Request, hours: int = 24) -> dict[str, Any]:
+async def get_history(request: Request, hours: Annotated[int, Query(ge=1, le=31 * 24)] = 24) -> dict[str, Any]:
     """Return measured SoC, PV, load and grid of the last hours from HA statistics."""
     hours = max(1, min(hours, 7 * 24))
     snapshot = await _snapshot(request)
@@ -1034,12 +1054,15 @@ async def import_data(request: Request, file: UploadFile) -> dict[str, Any]:
                 archive.extract("shadow.db", tmp)
         except zipfile.BadZipFile as err:
             raise HTTPException(status_code=422, detail="Keine gültige Export-Datei") from err
-        count = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
+        try:
+            count = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
+        except sqlite3.Error as err:
+            raise HTTPException(status_code=422, detail=f"Export-Datei nicht lesbar: {err}") from err
     return {"imported_slots": count}
 
 
 @router.get("/shadow")
-async def get_shadow(request: Request, hours: int = 48) -> dict[str, Any]:
+async def get_shadow(request: Request, hours: Annotated[int, Query(ge=1, le=90 * 24)] = 48) -> dict[str, Any]:
     """Return recorded planned vs actual slots and their evaluation."""
     runner: ShadowRunner = request.app.state.runner
     since = datetime.now(UTC) - timedelta(hours=hours)
@@ -1224,18 +1247,7 @@ async def remove_device(request: Request, device_id: str) -> None:
         raise HTTPException(status_code=404, detail="Device not configured")
     config.devices = [d for d in config.devices if d.id != device_id]
     store.save(config)
-
-
-async def _run(
-    request: Request, calls: list[PlannedCall], profile: dict[str, Any], dry_run: bool
-) -> None:
-    snapshot = await _snapshot(request)
-    try:
-        await execute(
-            request.app.state.ha, calls, snapshot.states, _guard(request, profile), dry_run
-        )
-    except HAError as err:
-        raise HTTPException(status_code=502, detail=str(err)) from err
+    _replan(request)
 
 
 @router.post("/config/devices/{device_id}/actions/{action}")
@@ -1243,12 +1255,12 @@ async def run_action(
     request: Request,
     device_id: str,
     action: str,
-    dry_run: bool = True,
     params: dict[str, float] = Body(default_factory=dict),
 ) -> dict[str, Any]:
-    """Plan and (with dry_run=false) execute a profile action.
+    """Plan a profile action and show the service calls (never executed).
 
-    Runtime parameters such as P (power in W) are passed in the body.
+    Runtime parameters such as P (power in W) are passed in the body. Writing to a
+    device happens only in the device test, which requires an explicit confirmation.
     """
     device = _configured_device(request, device_id)
     profile = _library(request).profiles[device.profile]
@@ -1263,17 +1275,12 @@ async def run_action(
         )
     except ExecutorError as err:
         raise HTTPException(status_code=422, detail=str(err)) from err
-    await _run(request, calls, profile, dry_run)
-    return asdict(
-        ActionResult(action=action, params=resolved, dry_run=dry_run, calls=calls)
-    )
+    return asdict(ActionResult(action=action, params=resolved, dry_run=True, calls=calls))
 
 
 @router.post("/config/devices/{device_id}/setup")
-async def run_setup(
-    request: Request, device_id: str, dry_run: bool = True
-) -> dict[str, Any]:
-    """Plan and (with dry_run=false) execute the profile's setup steps."""
+async def run_setup(request: Request, device_id: str) -> dict[str, Any]:
+    """Plan the profile's setup steps and show the service calls (never executed)."""
     device = _configured_device(request, device_id)
     profile = _library(request).profiles[device.profile]
     snapshot = await _snapshot(request)
@@ -1281,8 +1288,7 @@ async def run_setup(
         calls = plan_setup(profile, device_entities(snapshot, device.ha_device_id))
     except ExecutorError as err:
         raise HTTPException(status_code=422, detail=str(err)) from err
-    await _run(request, calls, profile, dry_run)
-    return asdict(ActionResult(action="setup", params={}, dry_run=dry_run, calls=calls))
+    return asdict(ActionResult(action="setup", params={}, dry_run=True, calls=calls))
 
 
 async def _keep_connected(client: HAClient) -> None:
@@ -1293,13 +1299,17 @@ async def _keep_connected(client: HAClient) -> None:
             try:
                 await client.connect()
                 attempt = 0
-            except HAError as err:
+            except Exception as err:  # noqa: BLE001 - the keeper must never die
                 delay = RECONNECT_DELAYS[min(attempt, len(RECONNECT_DELAYS) - 1)]
                 _LOGGER.warning("%s, retrying in %ss", err, delay)
                 attempt += 1
                 await asyncio.sleep(delay)
                 continue
         await asyncio.sleep(1)
+
+
+# The Supervisor's Ingress proxy, and local calls inside the container
+INGRESS_CLIENTS = {"172.30.32.2", "127.0.0.1"}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -1320,7 +1330,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.device_tests = {}
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
         shadow = ShadowStore(settings.data_dir)
-        app.state.runner = ShadowRunner(app.state.ha, app.state.store, app.state.profiles, shadow)
+        app.state.runner = ShadowRunner(app.state.ha, app.state.store, app.state.profiles, shadow, app.state.snapshots)
         runner_task = asyncio.create_task(app.state.runner.run())
         try:
             yield
@@ -1341,6 +1351,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Sunflow", version=__version__, lifespan=lifespan)
     app.include_router(router)
+
+    @app.exception_handler(HAError)
+    async def ha_error(request: Request, err: HAError) -> JSONResponse:
+        return JSONResponse({"detail": f"Home Assistant: {err}"}, status_code=502)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, err: RequestValidationError) -> JSONResponse:
+        # Leave out the rejected input: NaN or Infinity cannot be serialized as JSON
+        errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in err.errors()]
+        return JSONResponse({"detail": errors}, status_code=422)
+
+    @app.exception_handler(ConfigError)
+    async def config_error(request: Request, err: ConfigError) -> JSONResponse:
+        return JSONResponse({"detail": str(err)}, status_code=503)
+
+    if settings is not None and settings.ingress_only:
+
+        @app.middleware("http")
+        async def ingress_only(request: Request, call_next: Any) -> Any:
+            # Port 8099 is reachable by every container on the hassio network; without
+            # this, any of them could change the configuration or start the device test
+            client = request.client.host if request.client else None
+            if client not in INGRESS_CLIENTS and request.url.path != "/api/v1/health":
+                return JSONResponse({"detail": "Only available through Home Assistant"}, status_code=403)
+            return await call_next(request)
+
     if settings is not None and settings.frontend_dir.is_dir():
         add_frontend(app, settings.frontend_dir)
     return app

@@ -8,7 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .config_store import ConfigStore, DeviceConfig
-from .discovery import fetch_snapshot
+from .discovery import SnapshotCache, fetch_snapshot
 from .ha import HAClient, HAError
 from .plan import PlanResult, compute_plan
 from .profiles import ProfileLibrary
@@ -27,9 +27,12 @@ async def local_timezone(client: HAClient) -> ZoneInfo:
     return ZoneInfo(config["time_zone"])
 
 
-async def current_plan(client: HAClient, store: ConfigStore, library: ProfileLibrary) -> PlanResult:
+async def current_plan(
+    client: HAClient, store: ConfigStore, library: ProfileLibrary, snapshots: SnapshotCache | None = None
+) -> PlanResult:
     """Plan from the current slot on with live data."""
-    snapshot = await fetch_snapshot(client)
+    # Fresh states for the plan, registries from the shared cache
+    snapshot = await snapshots.get() if snapshots else await fetch_snapshot(client)
     return await compute_plan(
         client,
         store.load(),
@@ -40,7 +43,9 @@ async def current_plan(client: HAClient, store: ConfigStore, library: ProfileLib
     )
 
 
-async def take_sample(client: HAClient, store: ConfigStore, library: ProfileLibrary) -> Sample | None:
+async def take_sample(
+    client: HAClient, store: ConfigStore, library: ProfileLibrary, snapshots: SnapshotCache | None = None
+) -> Sample | None:
     """Read SoC, battery, grid and load of the battery inverter and the site PV."""
     config = store.load()
     profiles = library.profiles
@@ -49,7 +54,7 @@ async def take_sample(client: HAClient, store: ConfigStore, library: ProfileLibr
     )
     if device is None:
         return None
-    snapshot = await fetch_snapshot(client)
+    snapshot = await snapshots.get() if snapshots else await fetch_snapshot(client)
 
     def values(source: DeviceConfig | None) -> dict[str, float | None]:
         if source is None:
@@ -90,16 +95,28 @@ class RunnerStatus:
 class ShadowRunner:
     """Samples every minute, records slots and replans at each slot boundary."""
 
-    def __init__(self, client: HAClient, store: ConfigStore, library: ProfileLibrary, shadow: ShadowStore) -> None:
+    def __init__(
+        self,
+        client: HAClient,
+        store: ConfigStore,
+        library: ProfileLibrary,
+        shadow: ShadowStore,
+        snapshots: SnapshotCache | None = None,
+    ) -> None:
         """Initialize."""
         self._client = client
         self._store = store
         self._library = library
         self.shadow = shadow
+        self.snapshots = snapshots
         self.status = RunnerStatus()
         self.latest: PlanResult | None = None
         self._recorder: SlotRecorder | None = None
         self._replan_task: asyncio.Task[None] | None = None
+        # Slot of the last successful plan; a failed replan is retried on the next tick
+        self._planned_slot: datetime | None = None
+        # A change arrived while a replan was running: plan once more afterwards
+        self._replan_again = False
 
     async def run(self) -> None:
         """Run until cancelled."""
@@ -107,7 +124,11 @@ class ShadowRunner:
         self.status.since = datetime.now(UTC)
         try:
             while True:
-                await self._tick()
+                try:
+                    await self._tick()
+                except Exception:
+                    # Never end the loop: a frozen plan until the next restart is worse
+                    _LOGGER.exception("Shadow tick failed unexpectedly")
                 await asyncio.sleep(SAMPLE_SECONDS - datetime.now(UTC).second % SAMPLE_SECONDS)
         finally:
             self.status.running = False
@@ -121,8 +142,9 @@ class ShadowRunner:
             if self._recorder is None or self._recorder.start != start:
                 await self._finish_slot()
                 self._recorder = SlotRecorder(start=start)
+            if self._planned_slot != start:
                 await self._replan(start)
-            if (sample := await take_sample(self._client, self._store, self._library)) is not None:
+            if (sample := await take_sample(self._client, self._store, self._library, self.snapshots)) is not None:
                 self._recorder.samples.append(sample)
             self.status.last_error = None
         except (HAError, KeyError, ValueError) as err:
@@ -137,19 +159,34 @@ class ShadowRunner:
     def request_replan(self) -> None:
         """Replan right away (after a change in the control tab), in the background."""
         if self._replan_task is not None and not self._replan_task.done():
+            self._replan_again = True
             return
         self._replan_task = asyncio.create_task(self._replan_now())
 
+    async def ensure_plan(self) -> PlanResult | None:
+        """Return the latest plan, computing one (shared with other callers) if there is none."""
+        if self.latest is None:
+            self.request_replan()
+            if self._replan_task is not None:
+                await asyncio.shield(self._replan_task)
+        return self.latest
+
     async def _replan_now(self) -> None:
-        try:
-            await self._replan(slot_start(datetime.now(UTC)))
-        except (HAError, KeyError, ValueError) as err:
-            _LOGGER.warning("Replan failed: %s", err)
+        while True:
+            self._replan_again = False
+            try:
+                await self._replan(slot_start(datetime.now(UTC)))
+            except Exception as err:  # noqa: BLE001 - logged, the next tick retries
+                _LOGGER.warning("Replan failed: %s", err)
+                self.status.last_error = str(err)
+            if not self._replan_again:
+                return
 
     async def _replan(self, start: datetime) -> None:
-        result = await current_plan(self._client, self._store, self._library)
+        result = await current_plan(self._client, self._store, self._library, self.snapshots)
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
+        self._planned_slot = start
         if not result.plan.slots:
             return
         first = result.plan.slots[0]

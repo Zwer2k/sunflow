@@ -99,15 +99,19 @@ class SnapshotCache:
         self._registries_at = datetime.min.replace(tzinfo=UTC)
         self._snapshot: Snapshot | None = None
         self._states_at = datetime.min.replace(tzinfo=UTC)
+        self._generation = -1
 
     async def get(self, fresh: bool = False) -> Snapshot:
         """Return a snapshot; fresh refetches registries and states."""
         # One fetch at a time: concurrent requests wait and reuse its result
         async with self._lock:
             now = datetime.now(UTC)
-            if fresh or self._registries is None or now - self._registries_at > self._registry_ttl:
+            # After a reconnect (e.g. Home Assistant restarted) everything may have changed
+            reconnected = getattr(self._client, "generation", 0) != self._generation
+            if fresh or reconnected or self._registries is None or now - self._registries_at > self._registry_ttl:
                 self._registries = await _fetch_registries(self._client)
                 self._registries_at = now
+                self._generation = getattr(self._client, "generation", 0)
                 self._snapshot = None
             if fresh or self._snapshot is None or now - self._states_at > self._states_ttl:
                 states = await self._client.get_states()

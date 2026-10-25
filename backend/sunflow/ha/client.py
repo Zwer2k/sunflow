@@ -10,6 +10,10 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
+# A command without an answer must not block callers forever (e.g. a stalled Core
+# behind a proxy that still answers the heartbeat); large get_states take seconds
+COMMAND_TIMEOUT = 60
+
 type EventCallback = Callable[[dict[str, Any]], None]
 
 
@@ -39,11 +43,18 @@ class HAClient:
         self._reader: asyncio.Task[None] | None = None
         self._closing = False
         self.ha_version: str | None = None
+        # Increases with every successful connect so caches can detect reconnects
+        self.generation = 0
 
     @property
     def connected(self) -> bool:
-        """Return True if the websocket is open."""
-        return self._ws is not None and not self._ws.closed
+        """Return True if the websocket is open and its reader still runs."""
+        return (
+            self._ws is not None
+            and not self._ws.closed
+            and self._reader is not None
+            and not self._reader.done()
+        )
 
     async def connect(self) -> None:
         """Connect and authenticate."""
@@ -58,13 +69,15 @@ class HAClient:
                 raise HAError(f"Unexpected message: {msg['type']}")
             await self._ws.send_json({"type": "auth", "access_token": self._token})
             msg = await self._ws.receive_json()
-        except (aiohttp.ClientError, TimeoutError) as err:
+        except Exception as err:
+            # Also a server closing during auth (receive_json then fails with a type error)
             await self.close()
             raise HAError(f"Cannot connect to {self._url}: {err}") from err
         if msg["type"] != "auth_ok":
             await self.close()
             raise HAError(msg.get("message", "Authentication failed"))
         self.ha_version = msg.get("ha_version")
+        self.generation += 1
         self._reader = asyncio.create_task(self._read_loop())
         _LOGGER.info("Connected to Home Assistant %s", self.ha_version)
 
@@ -89,8 +102,15 @@ class HAClient:
         msg_id = next(self._ids)
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._pending[msg_id] = future
-        await self._ws.send_json({"id": msg_id, "type": msg_type, **data})
-        return await future
+        try:
+            await self._ws.send_json({"id": msg_id, "type": msg_type, **data})
+            return await asyncio.wait_for(future, COMMAND_TIMEOUT)
+        except TimeoutError as err:
+            raise HAError(f"No answer to {msg_type} within {COMMAND_TIMEOUT} s") from err
+        except (aiohttp.ClientError, ConnectionError, RuntimeError) as err:
+            raise HAError(f"Sending {msg_type} failed: {err}") from err
+        finally:
+            self._pending.pop(msg_id, None)
 
     async def subscribe(
         self, callback: EventCallback, msg_type: str = "subscribe_events", **data: Any
@@ -172,11 +192,19 @@ class HAClient:
                     break
                 payload = raw.json()
                 for msg in payload if isinstance(payload, list) else [payload]:
-                    self._dispatch(msg)
+                    try:
+                        self._dispatch(msg)
+                    except Exception:
+                        # One malformed message must not end the reader
+                        _LOGGER.exception("Cannot handle message from Home Assistant")
         finally:
             self._fail_pending(HAError("Connection lost"))
             if not self._closing:
                 _LOGGER.warning("Connection to Home Assistant lost")
+                # Close so connected turns False and the keeper reconnects
+                ws, self._ws = self._ws, None
+                if ws is not None:
+                    await ws.close()
 
     def _dispatch(self, msg: dict[str, Any]) -> None:
         msg_id = msg.get("id")
@@ -188,7 +216,7 @@ class HAClient:
             return
         if future.done():
             return
-        if msg["success"]:
+        if msg.get("success"):
             future.set_result(msg.get("result"))
         else:
             error = msg.get("error", {})

@@ -81,11 +81,18 @@ def test_pv_surplus_is_self_consumption() -> None:
         pytest.param(0, 500, 0, 500, ("auto", None), id="cover_deficit"),
         pytest.param(0, 500, 0, 0, ("hold", None), id="save_for_later"),
         pytest.param(0, 500, 0, 3000, ("force_discharge", 3000), id="export_from_battery"),
+        pytest.param(0, 2000, 0, 800, ("limit_discharge", 800), id="cover_part_of_deficit"),
+        pytest.param(4000, 500, 1000, 0, ("limit_charge", 1000), id="charge_less_and_export"),
     ],
 )
 def test_choose_action(pv: float, load: float, charge: float, discharge: float, expected: tuple) -> None:
     """Optimized flows map to the minimal control action."""
     assert choose_action(pv, load, charge, discharge, 100) == expected
+
+
+def test_choose_action_full_battery() -> None:
+    """A full battery exporting the surplus is plain self-consumption."""
+    assert choose_action(4000, 500, 0, 0, 100, full=True) == ("auto", None)
 
 
 def test_load_forecast() -> None:
@@ -616,3 +623,36 @@ def test_with_conditions_hot_water_tank() -> None:
 
     assert with_conditions(config, loads, storages, 20000.0, START)["ev"].gate_after == [("Warmwasser", 10 * 349.0)]
     assert storage_gates(config, "battery", loads, storages) == (("Warmwasser", 15 * 349.0), ("Auto", 10 * 400.0))
+
+
+def test_baseline_runs_optional_loads_on_pv_only() -> None:
+    """Without Sunflow a heater with district heating only uses surplus; heating covers the rest."""
+    from sunflow.optimizer import FlexLoad
+
+    full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 1500.0 if 40 <= i < 48 else 0.0)
+    heater = FlexLoad(name="Warmwasser", energy_wh=5000, max_power_w=3000, available=[True] * 96, unmet_cost=0.12)
+
+    plan = optimize(inputs, full, Settings(), [heater])
+
+    # 2 h with 1 kW surplus: 2 kWh from PV, 3 kWh by district heating at 12 ct
+    assert plan.baseline_alternative_cost == pytest.approx(3 * 0.12, abs=0.01)
+    assert plan.alternative_cost == pytest.approx(plan.flex[0].unmet_wh / 1000 * 0.12)
+    assert plan.savings >= -0.01
+
+
+def test_load_forecast_scales_each_day() -> None:
+    """With a daily total every calendar day adds up to it, also when day types differ."""
+    monday = datetime(2026, 10, 19, 0, 0, tzinfo=BERLIN)
+    # Weekdays use 400 W, the weekend 800 W: day types with different shapes
+    history = [
+        ((monday + timedelta(days=d, hours=h)).astimezone(UTC), 800.0 if d % 7 >= 5 else 400.0)
+        for d in range(14)
+        for h in range(24)
+    ]
+    start = datetime(2026, 10, 30, 12, 0, tzinfo=BERLIN)  # Friday noon, horizon into the weekend
+
+    forecast = build_load_forecast(history, start, 48, BERLIN, daily_kwh=14)
+
+    saturday = [p.power for p in forecast.points if p.start.date() == datetime(2026, 10, 31).date()]
+    assert sum(saturday) / 4 == pytest.approx(14000, rel=0.01)
