@@ -188,3 +188,33 @@ def test_priority_conditions(tmp_path: Path) -> None:
     assert client.put("/api/v1/control/priorities/battery/conditions", json=[{"device_id": "ev", "min_pct": 80}]).status_code == 200
     client.put("/api/v1/control/priorities", json=["battery", "ev", "ww"])
     assert [c.model_dump() for c in store.load().valid_conditions("ww")] == [{"device_id": "ev", "min_pct": 90.0}]
+
+
+def test_measurement_sources(tmp_path: Path) -> None:
+    """A dedicated grid meter wins automatically; the user can choose another device or go back."""
+    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+    from sunflow.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    store = ConfigStore(tmp_path)
+    store.save(
+        SunflowConfig(
+            devices=[
+                DeviceConfig(id="sofar", ha_device_id="x", profile="solax_modbus/sofar", profile_version=1, name="Sofar"),
+                DeviceConfig(id="pulse", ha_device_id="y", profile="tibber_local/pulse", profile_version=1, name="Pulse"),
+            ]
+        )
+    )
+    app = create_app()
+    app.state.store = store
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    client = TestClient(app)
+
+    grid = client.get("/api/v1/config/measurements").json()["grid"]
+    assert grid["selected"] is None
+    assert grid["effective"] == "pulse"
+    assert [o["id"] for o in grid["options"]] == ["pulse", "sofar"]
+
+    assert client.put("/api/v1/config/measurements", json={"grid": "sofar"}).json()["grid"]["effective"] == "sofar"
+    assert client.put("/api/v1/config/measurements", json={"load": "pulse"}).status_code == 422
+    assert client.put("/api/v1/config/measurements", json={"grid": None}).json()["grid"]["effective"] == "pulse"

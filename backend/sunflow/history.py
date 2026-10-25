@@ -9,7 +9,7 @@ from .config_store import SunflowConfig
 from .discovery import Snapshot
 from .ha import HAClient
 from .resolver import CANONICAL_SIGNS, preview
-from .site import PV_OUTPUT_ROLES, device_parameters
+from .site import PV_OUTPUT_ROLES, device_parameters, measurement_device
 
 # Short-term statistics are kept 10 days by default; above that use hourly
 FIVE_MINUTE_LIMIT = timedelta(days=10)
@@ -27,6 +27,8 @@ class Series:
 def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot) -> list[Series]:
     """Select the statistics for SoC, load and grid of the battery inverter and PV of all plants."""
     series: list[Series] = []
+    grid_device = measurement_device(config, profiles, "grid")
+    load_device = measurement_device(config, profiles, "load")
     for device in config.devices:
         profile = profiles[device.profile]
         roles = {
@@ -50,7 +52,9 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
             if capacity := params.get("capacity_wh"):
                 add("soc_wh", "battery_soc", capacity / 100)
+        if load_device is not None and device.id == load_device.id:
             add("load_w", "load_power")
+        if grid_device is not None and device.id == grid_device.id:
             add("grid_w", "grid_power")
         if "loadpoint" in profile["capabilities"]:
             add("loadpoint_w", "charge_power")

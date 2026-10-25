@@ -92,6 +92,7 @@ class SunflowApp extends LitElement {
     _paramEdits: { state: true },
     _feedEdits: { state: true },
     _site: { state: true },
+    _measurements: { state: true },
     _sources: { state: true },
     _priceSeries: { state: true },
     _forecastSeries: { state: true },
@@ -392,8 +393,50 @@ class SunflowApp extends LitElement {
   }
 
   _startSite() {
+    this._loadMeasurements();
     this._refreshSite();
     this._timer = setInterval(() => this._refreshSite(), PREVIEW_INTERVAL_MS);
+  }
+
+  async _loadMeasurements() {
+    try {
+      this._measurements = await api.measurements();
+    } catch (err) {
+      this._error = `Messquellen konnten nicht geladen werden: ${err.message}`;
+    }
+  }
+
+  async _setMeasurement(quantity, deviceId) {
+    try {
+      this._measurements = await api.setMeasurements({ [quantity]: deviceId || null });
+      this._error = null;
+    } catch (err) {
+      this._error = `Messquelle konnte nicht gespeichert werden: ${err.message}`;
+    }
+  }
+
+  _renderMeasurements(byId) {
+    const entries = Object.entries(this._measurements ?? {}).filter(([, m]) => m.options.length);
+    if (!entries.length) return nothing;
+    return html`
+      <section class="device">
+        <div class="device-title">Messquellen</div>
+        <p class="small muted">Welches Gerät liefert Leistung und Zählerstände? Gilt für Live, Verlauf, Energiebilanz und
+          Schattenbetrieb. „Automatisch“ nimmt einen eigenen Zähler (z. B. am Stromzähler) vor dem Wechselrichter.</p>
+        ${entries.map(([quantity, m]) => {
+          const auto = m.effective && !m.selected ? ` (${byId[m.effective]?.name ?? m.options.find((o) => o.id === m.effective)?.name})` : "";
+          return html`
+            <div class="field wide">
+              <span class="field-label">${m.label}</span>
+              <select aria-label=${m.label} @change=${(e) => this._setMeasurement(quantity, e.target.value)}>
+                <option value="" ?selected=${!m.selected}>Automatisch${auto}</option>
+                ${m.options.map((o) => html`<option value=${o.id} ?selected=${m.selected === o.id}>${o.name}</option>`)}
+              </select>
+            </div>
+          `;
+        })}
+      </section>
+    `;
   }
 
   async _refreshSite() {
@@ -1271,6 +1314,7 @@ class SunflowApp extends LitElement {
             </section>
           `
         : nothing}
+      ${this._renderMeasurements(byId)}
       ${site === null ? html`<p class="muted">Lade Anlagenstatus …</p>` : this._renderSiteStatus(site, byId)}
     `;
   }
