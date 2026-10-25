@@ -827,6 +827,7 @@ class SunflowApp extends LitElement {
   _renderWizard() {
     return html`
       <div class="layout">
+        <aside class="sidebar">
         <nav aria-label="Schritte">
           ${STEPS.map(
             (label, i) => html`
@@ -837,11 +838,12 @@ class SunflowApp extends LitElement {
               </button>
             `,
           )}
-          <button class="switch" aria-pressed=${this._advanced} @click=${() => this._setAdvanced(!this._advanced)}>
-            <span class="track ${this._advanced ? "on" : ""}"><span class="knob"></span></span>
-            Expertenmodus
-          </button>
         </nav>
+        <button class="switch" aria-pressed=${this._advanced} @click=${() => this._setAdvanced(!this._advanced)}>
+          <span class="track ${this._advanced ? "on" : ""}"><span class="knob"></span></span>
+          Expertenmodus
+        </button>
+        </aside>
         <main>
           ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
           ${this._renderStep()}
@@ -1905,9 +1907,8 @@ class SunflowApp extends LitElement {
     }
     .tab.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
     .switch {
-      display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; margin-top: 8px; width: 100%;
-      border: 0; border-top: 1px solid var(--sf-border); background: transparent; cursor: pointer;
-      font-size: 13px; color: var(--sf-muted);
+      display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px;
+      border: 0; background: transparent; cursor: pointer; font-size: 13px; color: var(--sf-muted);
     }
     .track { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--sf-muted); transition: background .15s; }
     .track.on { background: var(--sf-primary); }
@@ -1918,8 +1919,9 @@ class SunflowApp extends LitElement {
       max-width: 1240px; margin: 0 auto; padding: 16px;
       display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;
     }
+    .sidebar { flex: 1 1 220px; max-width: 280px; display: flex; flex-direction: column; gap: 4px; }
     nav {
-      flex: 1 1 220px; max-width: 280px; background: var(--sf-surface);
+      background: var(--sf-surface);
       border: 1px solid var(--sf-border); border-radius: 12px; padding: 8px;
     }
     .step {
@@ -1943,10 +1945,12 @@ class SunflowApp extends LitElement {
       .layout { padding: 6px 8px; gap: 8px; }
       .restore-banner { margin: 8px 8px 0; }
       /* Steps as a compact row; only the current one shows its name */
-      nav { flex-basis: 100%; max-width: none; display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 4px; }
+      .sidebar { flex-basis: 100%; max-width: none; }
+      nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 4px; }
       .step { width: auto; flex: none; min-height: 40px; padding: 4px 6px; }
       .step:not(.active) span:last-child { display: none; }
-      .switch { width: auto; flex: none; margin: 0 0 0 auto; border-top: 0; padding: 0 6px; }
+      /* Own row below the steps, always visible */
+      .switch { align-self: flex-end; padding: 0 4px; }
     }
     .heading { display: flex; flex-direction: column; gap: 6px; }
 
