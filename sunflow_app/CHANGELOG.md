@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.1
+
+- Planning no longer stops with "Ladestand nicht lesbar" when the SoC sensor is
+  briefly "unknown" right after an app start: the last valid value from the Home
+  Assistant history (up to 6 h old) is used; a hint appears only when it is older
+  than 30 minutes
+- Live: details inside the circles ("kein Auto", "ausgeglichen", sums) shrink to fit
+  instead of overlapping the circle
+
 ## 0.15.0
 
 - Live: PV and battery stay in the diagram at 0 W (inverters reporting "unavailable"

@@ -672,3 +672,18 @@ def test_grid_charging_needs_more_spread_than_pv_charging() -> None:
     plan = optimize(inputs, battery, Settings(wear_ct_per_kwh=0))
 
     assert max(s.charge_w for s in plan.slots) < 1
+
+
+async def test_last_valid_value_skips_unknown() -> None:
+    """The newest numeric state wins; "unknown" entries are skipped."""
+    from sunflow.plan import last_valid_value
+
+    class Client:
+        async def command(self, msg_type: str, **data: object) -> dict:
+            return {"sensor.soc": [{"s": "11", "lu": 1000.0}, {"s": "10", "lu": 2000.0}, {"s": "unknown", "lu": 3000.0}]}
+
+    value, since = await last_valid_value(Client(), "sensor.soc", timedelta(hours=6))
+
+    assert value == 10
+    assert since == datetime.fromtimestamp(2000, UTC)
+    assert await last_valid_value(Client(), None, timedelta(hours=6)) is None
