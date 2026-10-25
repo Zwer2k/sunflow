@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.4
+
+- Steuerung: consumers offer Kostenoptimal, Nur PV, Sofort and Pause; the default from
+  the settings is marked "Standard". Before, a device set to "Nur PV" by default could
+  not be switched to cost optimal
+
 ## 0.5.3
 
 - Hot water and daily consumers are planned for every day of the horizon: after the
