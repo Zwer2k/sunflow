@@ -87,6 +87,14 @@ class FlexLoad:
     # Ranked below the home battery: optional energy (PV only, alternative heat) goes
     # to the battery first and only to this load when the battery cannot take it
     below_battery: bool = False
+    # Recurring needs (e.g. reheating hot water every day) as (first slot, end slot, Wh);
+    # energy_wh then only has to be delivered before the first of them
+    later_needs: list[tuple[int, int, float]] = field(default_factory=list)
+
+    def needs(self, n: int) -> list[tuple[int, int, float]]:
+        """All needs as (first slot, end slot, Wh), in time order."""
+        first_end = self.later_needs[0][0] if self.later_needs else n
+        return [(0, first_end, self.energy_wh), *self.later_needs]
 
 
 @dataclass(kw_only=True)
@@ -220,14 +228,15 @@ def immediate_flex(inputs: list[SlotInput], flex: list[FlexLoad]) -> list[SlotIn
     """Add flexible loads as if they ran at full power as soon as possible (no planning)."""
     extra = [0.0] * len(inputs)
     for load in flex:
-        remaining = load.energy_wh
-        for t, available in enumerate(load.available):
-            if remaining <= 0:
-                break
-            if available:
-                power = min(load.max_power_w, remaining / DT_H)
-                extra[t] += power
-                remaining -= power * DT_H
+        for first, end, energy in load.needs(len(inputs)):
+            remaining = energy
+            for t in range(first, end):
+                if remaining <= 0:
+                    break
+                if load.available[t]:
+                    power = min(load.max_power_w, remaining / DT_H)
+                    extra[t] += power
+                    remaining -= power * DT_H
     return [replace(slot, load_w=slot.load_w + extra[t]) for t, slot in enumerate(inputs)]
 
 
@@ -243,11 +252,15 @@ def optimize(
         return Plan(status="no input")
     flex = list(flex)
     # Variable layout: charge, discharge, import, export, soc (each n),
-    # then per flexible load its power per slot and its unmet energy
+    # then per flexible load its power per slot, then the unmet energy of every need
     c, d, gi, ge, s = (np.arange(n) + k * n for k in range(5))
     f = [5 * n + k * n + np.arange(n) for k in range(len(flex))]
-    u = [5 * n + len(flex) * n + k for k in range(len(flex))]
-    count = 5 * n + len(flex) * (n + 1)
+    needs = [load.needs(n) for load in flex]
+    u: list[list[int]] = []
+    for load_needs in needs:
+        first = 5 * n + len(flex) * n + sum(len(x) for x in u)
+        u.append(list(range(first, first + len(load_needs))))
+    count = 5 * n + len(flex) * n + sum(len(x) for x in u)
     eta_c, eta_d = battery.efficiency_charge, battery.efficiency_discharge
     battery = replace(battery, soc_wh=min(max(battery.soc_wh, 0), battery.capacity_wh))
     wear = settings.wear_ct_per_kwh / 100
@@ -281,11 +294,12 @@ def optimize(
         if load.below_battery and optional:
             # Between feed-in and storage value: beats export, loses against charging
             unmet = min(unmet, max((stored_value + mean_feed_in) / 2, mean_feed_in + 0.001))
-        cost[u[k]] = unmet / 1000
+        for index in u[k]:
+            cost[index] = unmet / 1000
         for t in range(n):
             cost[f[k][t]] += (load.urgency * t / n - load.priority_bonus) * DT_H / 1000
 
-    rows = 2 * n + len(flex)
+    rows = 2 * n + sum(len(x) for x in u)
     a_eq = lil_matrix((rows, count))
     b_eq = np.zeros(rows)
     for t, slot in enumerate(inputs):
@@ -306,13 +320,15 @@ def optimize(
             b_eq[row] = battery.soc_wh
         else:
             a_eq[row, s[t - 1]] = -1
-    for k, load in enumerate(flex):
-        # Delivered energy plus unmet rest equals the need
-        row = 2 * n + k
-        for t in range(n):
-            a_eq[row, f[k][t]] = DT_H
-        a_eq[row, u[k]] = 1
-        b_eq[row] = load.energy_wh
+    row = 2 * n
+    for k in range(len(flex)):
+        for (first, end, energy), unmet_index in zip(needs[k], u[k], strict=True):
+            # Energy delivered in the need's window plus unmet rest equals the need
+            for t in range(first, end):
+                a_eq[row, f[k][t]] = DT_H
+            a_eq[row, unmet_index] = 1
+            b_eq[row] = energy
+            row += 1
 
     # A battery below its floor may stay there but must not be drained further
     soc_min = min(max(battery.min_soc_wh, settings.reserve_wh), battery.soc_wh)
@@ -474,9 +490,9 @@ def optimize(
     plan.flex = [
         FlexResult(
             name=load.name,
-            energy_wh=load.energy_wh,
+            energy_wh=sum(energy for _, _, energy in needs[k]),
             planned_wh=float(sum(x[f[k]]) * DT_H),
-            unmet_wh=float(x[u[k]]),
+            unmet_wh=float(sum(x[index] for index in u[k])),
         )
         for k, load in enumerate(flex)
     ]
