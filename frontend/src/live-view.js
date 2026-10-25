@@ -1,5 +1,6 @@
 import { LitElement, html, svg, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import { poll } from "./poll.js";
 import { dailyRatios, splitFlows } from "./flows.js";
 import { formatValue } from "./format.js";
 
@@ -55,14 +56,14 @@ class SunflowLive extends LitElement {
     super.connectedCallback();
     this._loadLive();
     this._loadToday();
-    this._liveTimer = setInterval(() => this._loadLive(), REFRESH_MS);
-    this._todayTimer = setInterval(() => this._loadToday(), TODAY_REFRESH_MS);
+    this._stopLive = poll(() => this._loadLive(), REFRESH_MS);
+    this._stopToday = poll(() => this._loadToday(), TODAY_REFRESH_MS);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    clearInterval(this._liveTimer);
-    clearInterval(this._todayTimer);
+    this._stopLive();
+    this._stopToday();
   }
 
   async _loadLive() {

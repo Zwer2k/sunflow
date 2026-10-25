@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import { poll } from "./poll.js";
 import { formatValue } from "./format.js";
 
 const REFRESH_MS = 30 * 1000;
@@ -66,12 +67,12 @@ class SunflowControl extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._load();
-    this._timer = setInterval(() => this._load(), REFRESH_MS);
+    this._stopPolling = poll(() => this._load(), REFRESH_MS);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    clearInterval(this._timer);
+    this._stopPolling();
   }
 
   async _load() {

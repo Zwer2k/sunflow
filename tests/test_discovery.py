@@ -128,3 +128,47 @@ def test_evcc_loadpoint_in_any_language(library: ProfileLibrary, model: str) -> 
 
     assert match_profile(library, "evcc_intg", device, entities, False) == "evcc_intg/loadpoint"
     assert match_profile(library, "evcc_intg", {"id": "v", "model": "Fahrzeug Fiat 500e [evcc]"}, entities, False) is None
+
+
+async def test_snapshot_cache_shares_fetches() -> None:
+    """Concurrent and repeated requests reuse one fetch; registries live longer than states."""
+    import asyncio
+    from datetime import timedelta
+
+    from sunflow.discovery import SnapshotCache
+
+    calls: dict[str, int] = {}
+
+    class Client:
+        async def command(self, msg_type: str, **data: object) -> list:
+            calls[msg_type] = calls.get(msg_type, 0) + 1
+            return []
+
+        async def get_config_entries(self) -> list:
+            return await self.command("config_entries/get")
+
+        async def get_device_registry(self) -> list:
+            return await self.command("device_registry")
+
+        async def get_entity_registry(self) -> list:
+            return await self.command("entity_registry")
+
+        async def get_energy_prefs(self) -> None:
+            return None
+
+        async def get_states(self) -> list:
+            await asyncio.sleep(0)
+            return await self.command("get_states")
+
+    cache = SnapshotCache(Client(), registry_ttl=timedelta(minutes=2), states_ttl=timedelta(0))
+
+    await asyncio.gather(*(cache.get() for _ in range(5)))
+    assert calls["device_registry"] == 1
+
+    await cache.get()
+    # States expired (ttl 0), registries are reused
+    assert calls["device_registry"] == 1
+    assert calls["get_states"] > 1
+
+    await cache.get(fresh=True)
+    assert calls["device_registry"] == 2

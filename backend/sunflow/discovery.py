@@ -1,7 +1,8 @@
 """Discovery of integrations and devices in Home Assistant."""
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 from fnmatch import fnmatch
 from typing import Any
 
@@ -49,13 +50,11 @@ class Snapshot:
     integration_names: dict[str, str] = field(default_factory=dict)
 
 
-async def fetch_snapshot(client: HAClient) -> Snapshot:
-    """Fetch registries, states and energy preferences."""
-    entries, devices, entities, states, energy_prefs = await asyncio.gather(
+async def _fetch_registries(client: HAClient) -> Snapshot:
+    entries, devices, entities, energy_prefs = await asyncio.gather(
         client.get_config_entries(),
         client.get_device_registry(),
         client.get_entity_registry(),
-        client.get_states(),
         client.get_energy_prefs(),
     )
     manifests = await client.command(
@@ -65,10 +64,56 @@ async def fetch_snapshot(client: HAClient) -> Snapshot:
         entries=entries,
         devices=devices,
         entities=entities,
-        states={s["entity_id"]: s for s in states},
+        states={},
         energy_prefs=energy_prefs,
         integration_names={m["domain"]: m["name"] for m in manifests},
     )
+
+
+async def fetch_snapshot(client: HAClient) -> Snapshot:
+    """Fetch registries, states and energy preferences."""
+    registries, states = await asyncio.gather(_fetch_registries(client), client.get_states())
+    return replace(registries, states={s["entity_id"]: s for s in states})
+
+
+class SnapshotCache:
+    """Shares snapshots between requests to spare Home Assistant.
+
+    Registries and all states are several MB on large installations; fetching them
+    for every poll of every open browser tab slows Home Assistant itself down.
+    Registries change rarely and are reused for longer than the states.
+    """
+
+    def __init__(
+        self,
+        client: HAClient,
+        registry_ttl: timedelta = timedelta(minutes=2),
+        states_ttl: timedelta = timedelta(seconds=4),
+    ) -> None:
+        """Initialize the cache."""
+        self._client = client
+        self._registry_ttl = registry_ttl
+        self._states_ttl = states_ttl
+        self._lock = asyncio.Lock()
+        self._registries: Snapshot | None = None
+        self._registries_at = datetime.min.replace(tzinfo=UTC)
+        self._snapshot: Snapshot | None = None
+        self._states_at = datetime.min.replace(tzinfo=UTC)
+
+    async def get(self, fresh: bool = False) -> Snapshot:
+        """Return a snapshot; fresh refetches registries and states."""
+        # One fetch at a time: concurrent requests wait and reuse its result
+        async with self._lock:
+            now = datetime.now(UTC)
+            if fresh or self._registries is None or now - self._registries_at > self._registry_ttl:
+                self._registries = await _fetch_registries(self._client)
+                self._registries_at = now
+                self._snapshot = None
+            if fresh or self._snapshot is None or now - self._states_at > self._states_ttl:
+                states = await self._client.get_states()
+                self._snapshot = replace(self._registries, states={s["entity_id"]: s for s in states})
+                self._states_at = now
+            return self._snapshot
 
 
 def energy_entity_ids(prefs: dict[str, Any] | None) -> set[str]:
