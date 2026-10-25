@@ -88,6 +88,19 @@ def test_manual_device_and_flex_settings(tmp_path: Path) -> None:
     }
     assert client.patch(f"/api/v1/config/devices/{device['id']}", json={"flex": {"ready_by": "25:00"}}).status_code == 422
 
+    # Edit afterwards: other switch, no power sensor, no daily energy; planning settings stay
+    edited = client.put(
+        f"/api/v1/config/devices/manual/{device['id']}",
+        json={"name": "E-Bike Keller", "switch_entity": "switch.plug_2", "max_power": 300},
+    ).json()
+    assert edited["name"] == "E-Bike Keller"
+    assert edited["role_overrides"] == {"switch": {"entity_id": "switch.plug_2", "unit": None, "sign": None}}
+    assert edited["parameters"] == {"max_power": 300}
+    assert edited["flex"]["strategy"] == "pv_only"
+    assert client.put(
+        f"/api/v1/config/devices/manual/{device['id']}", json={"name": "x", "switch_entity": "sensor.x"}
+    ).status_code == 422
+
 
 def test_combine_batteries() -> None:
     """Several batteries become one node with capacity-weighted SoC."""

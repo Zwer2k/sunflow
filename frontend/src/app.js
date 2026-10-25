@@ -138,6 +138,7 @@ class SunflowApp extends LitElement {
     _flexEdits: { state: true },
     _candidates: { state: true },
     _manual: { state: true },
+    _manualEditId: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
     _fixedPriceMode: { state: true },
@@ -969,15 +970,22 @@ class SunflowApp extends LitElement {
           Shelly oder einer ESPHome-Steckdose. Sunflow plant sie wie Wallbox und Warmwasser ein.</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
-              (d) => html`<li><strong>${d.name}</strong>
+              (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
                 <div class="small muted">${d.role_overrides.switch?.entity_id ?? "–"}${d.role_overrides.power?.entity_id
                   ? ` · Leistung: ${d.role_overrides.power.entity_id}`
-                  : ""} · Strategie und Bedarf in „Kenndaten“</div></li>`,
+                  : ""} · Strategie in „Kenndaten“</div></div>
+                <span class="item-actions">
+                  <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>Bearbeiten</button>
+                  <button class="secondary danger" @click=${() => this._removeDevice(d)}>Entfernen</button>
+                </span></li>`,
             )}</ul>`
           : nothing}
         ${candidates === null
           ? html`<button class="secondary" @click=${() => this._loadCandidates()}>Verbraucher hinzufügen …</button>`
           : html`
+              ${this._manualEditId
+                ? html`<div class="field-label">„${Object.values(this._configDevices).find((d) => d.id === this._manualEditId)?.name ?? ""}“ bearbeiten</div>`
+                : nothing}
               <div class="fields">
                 <label class="field">
                   <span class="field-label">Name</span>
@@ -1009,8 +1017,10 @@ class SunflowApp extends LitElement {
                 </label>
               </div>
               <div class="actions">
-                <button class="ok" ?disabled=${!form.switch_entity || !form.name.trim()} @click=${() => this._addManual()}>Hinzufügen</button>
-                <button class="secondary" @click=${() => (this._candidates = null)}>Abbrechen</button>
+                <button class="ok" ?disabled=${!form.switch_entity || !form.name.trim()} @click=${() => this._addManual()}>
+                  ${this._manualEditId ? "Speichern" : "Hinzufügen"}
+                </button>
+                <button class="secondary" @click=${() => this._closeManualForm()}>Abbrechen</button>
               </div>
             `}
       </section>
@@ -1025,6 +1035,24 @@ class SunflowApp extends LitElement {
     }
   }
 
+  async _editManual(device) {
+    if (this._candidates === null) await this._loadCandidates();
+    this._manualEditId = device.id;
+    this._manual = {
+      name: device.name,
+      switch_entity: device.role_overrides.switch?.entity_id ?? "",
+      power_entity: device.role_overrides.power?.entity_id ?? "",
+      max_power: toDisplay(device.parameters.max_power, "W"),
+      daily_energy: toDisplay(device.parameters.daily_energy_wh, "Wh"),
+    };
+  }
+
+  _closeManualForm() {
+    this._candidates = null;
+    this._manualEditId = null;
+    this._manual = { name: "", switch_entity: "", power_entity: "", max_power: "", daily_energy: "" };
+  }
+
   async _addManual() {
     const form = this._manual;
     const power = fromDisplay(form.max_power || "500", "W");
@@ -1033,20 +1061,20 @@ class SunflowApp extends LitElement {
       this._error = "Bitte gültige Zahlen für Leistung und Energiebedarf eingeben.";
       return;
     }
+    const body = {
+      name: form.name.trim(),
+      switch_entity: form.switch_entity,
+      power_entity: form.power_entity || null,
+      max_power: power,
+      daily_energy_wh: daily === null ? null : daily * 1000,
+    };
     try {
-      const device = await api.addManual({
-        name: form.name.trim(),
-        switch_entity: form.switch_entity,
-        power_entity: form.power_entity || null,
-        max_power: power,
-        daily_energy_wh: daily === null ? null : daily * 1000,
-      });
+      const device = this._manualEditId ? await api.updateManual(this._manualEditId, body) : await api.addManual(body);
       this._configDevices = { ...this._configDevices, [device.ha_device_id]: device };
-      this._manual = { name: "", switch_entity: "", power_entity: "", max_power: "", daily_energy: "" };
-      this._candidates = null;
+      this._closeManualForm();
       this._error = null;
     } catch (err) {
-      this._error = `Verbraucher konnte nicht hinzugefügt werden: ${err.message}`;
+      this._error = `Verbraucher konnte nicht gespeichert werden: ${err.message}`;
     }
   }
 
@@ -2103,6 +2131,8 @@ class SunflowApp extends LitElement {
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     .danger { color: var(--sf-error-text); }
+    .manual-item { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+    .item-actions { display: flex; gap: 8px; }
     .restore-banner {
       display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
       margin: 16px max(16px, calc((100% - 1240px) / 2)) 0; padding: 12px 16px; border-radius: 10px;

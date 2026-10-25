@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.2
+
+- Own consumers can be edited after adding them ("Bearbeiten": name, switch, power
+  sensor, power, daily energy) and removed directly in the list; planning settings
+  stay unchanged. Adding or editing them replans right away
+
 ## 0.14.1
 
 - Short "unknown"/"unavailable" phases of sensors (e.g. single failed Modbus reads of
