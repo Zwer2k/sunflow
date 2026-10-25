@@ -269,10 +269,10 @@ class SunflowControl extends LitElement {
   }
 
   static styles = css`
-    :host { display: flex; flex-direction: column; gap: 20px; }
+    :host { display: flex; flex-direction: column; gap: 16px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
-    h1 { margin: 0; font-size: 24px; }
+    h1 { margin: 0; font-size: 20px; }
     h2 { margin: 0; font-size: 16px; }
     h3 { margin: 0; font-size: 15px; }
     p { margin: 0; }

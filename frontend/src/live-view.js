@@ -96,10 +96,8 @@ class SunflowLive extends LitElement {
     const live = this._live;
     return html`
       <div class="heading">
-        <div>
-          <h1>Live</h1>
-          <p class="muted">Aktuelle Energieflüsse${live ? html` · Stand ${dayFormat.format(new Date(live.time))}` : nothing}</p>
-        </div>
+        <h1>Live</h1>
+        <span class="small muted">Aktuelle Energieflüsse${live ? html` · Stand ${dayFormat.format(new Date(live.time))}` : nothing}</span>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${live === null && !this._error ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
@@ -249,13 +247,11 @@ class SunflowLive extends LitElement {
           <div class="tile"><div class="small muted">Verbraucht</div><div class="value">${kwh(t.consumption)}</div></div>
           <div class="tile"><div class="small muted">Netzbezug</div><div class="value">${kwh(t.imported)}</div></div>
           <div class="tile"><div class="small muted">Eingespeist</div><div class="value">${kwh(t.exported)}</div></div>
-          <div class="tile highlight">
+          <div class="tile highlight" title="Anteil des Verbrauchs ohne Netzbezug">
             <div class="small muted">Autarkie</div><div class="value">${pct(t.autarky)}</div>
-            <div class="small muted">Verbrauch ohne Netzbezug</div>
           </div>
-          <div class="tile highlight">
+          <div class="tile highlight" title="Anteil der PV-Erzeugung, der selbst genutzt wird">
             <div class="small muted">Eigenverbrauch</div><div class="value">${pct(t.selfConsumption)}</div>
-            <div class="small muted">PV selbst genutzt</div>
           </div>
         </div>
       </section>
@@ -263,14 +259,16 @@ class SunflowLive extends LitElement {
   }
 
   static styles = css`
-    :host { display: flex; flex-direction: column; gap: 20px; }
-    h1 { margin: 0; font-size: 24px; }
+    :host { display: flex; flex-direction: column; gap: 16px; }
+    h1 { margin: 0; font-size: 20px; }
     h2 { margin: 0 0 8px; font-size: 16px; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
-    .flow { width: 100%; max-width: 900px; height: auto; display: block; margin: 0 auto; }
+    .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+    /* Header, title and today's tiles stay visible below the diagram without scrolling */
+    .flow { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 330px)); display: block; margin: 0 auto; }
     .edge { fill: none; stroke-linecap: round; }
     .edge.idle { stroke: var(--sf-border); stroke-width: 1.5; }
     .edge.base { opacity: 0.25; }
@@ -284,10 +282,10 @@ class SunflowLive extends LitElement {
     .label { fill: var(--sf-text); font-size: 13px; font-weight: 500; }
     .soc-track { fill: none; stroke: var(--sf-border); stroke-width: 4; }
     .soc-ring { fill: none; stroke-width: 4; stroke-linecap: round; }
-    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-    .tile { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+    .tile { background: var(--sf-subtle); border-radius: 8px; padding: 8px 12px; }
     .tile.highlight { background: var(--sf-primary-bg); }
-    .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .tile .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
   `;
 }
 
