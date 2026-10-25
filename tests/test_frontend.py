@@ -104,3 +104,39 @@ def test_combine_batteries() -> None:
     assert combined["power_w"] == 600
     assert combined["count"] == 2
     assert [p["name"] for p in combined["parts"]] == ["A", "B"]
+
+
+def test_control_overrides_and_priorities(tmp_path: Path) -> None:
+    """Overrides, battery strategy and priorities are stored and trigger a replan."""
+    from datetime import UTC, datetime, timedelta
+
+    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+    from sunflow.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto")]))
+    replans: list[bool] = []
+    app = create_app()
+    app.state.store = store
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: replans.append(True)})()
+    client = TestClient(app)
+
+    until = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
+    assert client.put("/api/v1/control/devices/ev", json={"strategy": "fast", "until": until}).status_code == 200
+    config = store.load()
+    effective, paused = config.effective_flex(config.devices[0], datetime.now(UTC))
+    assert effective.strategy == "fast" and not paused
+
+    assert client.put("/api/v1/control/strategy", json={"strategy": "backup"}).status_code == 200
+    assert store.load().effective_strategy(datetime.now(UTC)) == "backup"
+
+    assert client.put("/api/v1/control/priorities", json=["battery", "ev"]).json() == ["battery", "ev"]
+    assert client.put("/api/v1/control/priorities", json=["nope"]).status_code == 422
+
+    client.delete("/api/v1/control/devices/ev")
+    client.delete("/api/v1/control/strategy")
+    config = store.load()
+    assert config.overrides == {} and config.strategy_override is None
+    assert len(replans) == 5

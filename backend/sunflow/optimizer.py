@@ -82,6 +82,11 @@ class FlexLoad:
     urgency: float = 0.0
     # Whether the home battery may discharge into this load
     uses_battery: bool = True
+    # €/kWh preference over lower-priority loads when they compete for the same energy
+    priority_bonus: float = 0.0
+    # Ranked below the home battery: optional energy (PV only, alternative heat) goes
+    # to the battery first and only to this load when the battery cannot take it
+    below_battery: bool = False
 
 
 @dataclass(kw_only=True)
@@ -267,10 +272,18 @@ def optimize(
         tie += 0.0001 * t / n
         cost[d[t]] = (wear + tie) * DT_H / 1000
     cost[s[-1]] -= terminal / 1000
-    for k in range(len(flex)):
-        cost[u[k]] = flex[k].unmet_cost / 1000
+    # PV stored now is worth this much later; feed-in is what surplus earns otherwise
+    stored_value = terminal * eta_c
+    mean_feed_in = float(np.mean([i.feed_in for i in inputs]))
+    for k, load in enumerate(flex):
+        unmet = load.unmet_cost
+        optional = load.pv_only or unmet < 1.0
+        if load.below_battery and optional:
+            # Between feed-in and storage value: beats export, loses against charging
+            unmet = min(unmet, max((stored_value + mean_feed_in) / 2, mean_feed_in + 0.001))
+        cost[u[k]] = unmet / 1000
         for t in range(n):
-            cost[f[k][t]] += flex[k].urgency * t / n * DT_H / 1000
+            cost[f[k][t]] += (load.urgency * t / n - load.priority_bonus) * DT_H / 1000
 
     rows = 2 * n + len(flex)
     a_eq = lil_matrix((rows, count))
@@ -357,11 +370,13 @@ def optimize(
             integ = np.concatenate([integ, np.zeros(extra)])
 
         restrict_battery = any(not load.uses_battery for load in flex)
+        pv_only = [k for k, load in enumerate(flex) if load.pv_only]
         a_ub = lil_matrix(
             (
                 2 * (len(grid_binary) + len(battery_binary))
                 + 2 * (size - binary_total)
-                + (n if restrict_battery else 0),
+                + (n if restrict_battery else 0)
+                + (n if len(pv_only) > 1 else 0),
                 size,
             )
         )
@@ -387,6 +402,13 @@ def optimize(
                     if load.uses_battery:
                         a_ub[row, f[k][t]] = -1
                 b_ub[row] = slot.load_w
+                row += 1
+        if len(pv_only) > 1:
+            # Together, PV-only loads cannot take more than the surplus
+            for t, slot in enumerate(inputs):
+                for k in pv_only:
+                    a_ub[row, f[k][t]] = 1
+                b_ub[row] = max(slot.pv_w - slot.load_w, 0.0)
                 row += 1
         if smooth:
             delta = binary_total

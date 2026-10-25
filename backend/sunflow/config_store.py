@@ -98,6 +98,36 @@ class OptimizerConfig(BaseModel):
     large_load_threshold_w: float | None = 3500.0
 
 
+Strategy = Literal["balanced", "pv_absorption", "backup"]
+# Position of the home battery in the priority list
+BATTERY_PRIORITY_ID = "battery"
+
+
+class DeviceOverride(BaseModel):
+    """Temporary change of a consumer's planning from the control tab."""
+
+    strategy: Literal["cost", "pv_only", "fast"] | None = None
+    target: float | None = None
+    paused: bool = False
+    # None: until reset
+    until: datetime | None = None
+
+    def active(self, now: datetime) -> bool:
+        """Return True while the override applies."""
+        return self.until is None or self.until > now
+
+
+class StrategyOverride(BaseModel):
+    """Temporary battery strategy from the control tab."""
+
+    strategy: Strategy
+    until: datetime | None = None
+
+    def active(self, now: datetime) -> bool:
+        """Return True while the override applies."""
+        return self.until is None or self.until > now
+
+
 class SunflowConfig(BaseModel):
     """The complete configuration."""
 
@@ -107,10 +137,34 @@ class SunflowConfig(BaseModel):
     forecast_planes: list[ForecastPlane] = Field(default_factory=list)
     optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
     setup_completed: bool = False
+    overrides: dict[str, DeviceOverride] = Field(default_factory=dict)
+    strategy_override: StrategyOverride | None = None
+    # Device ids and BATTERY_PRIORITY_ID, highest priority first
+    priorities: list[str] = Field(default_factory=list)
 
     def device(self, device_id: str) -> DeviceConfig | None:
         """Return a configured device by its Sunflow id."""
         return next((d for d in self.devices if d.id == device_id), None)
+
+    def effective_flex(self, device: DeviceConfig, now: datetime) -> tuple[FlexSettings, bool]:
+        """Return the planning settings with an active override applied, and whether it is paused."""
+        override = self.overrides.get(device.id)
+        if override is None or not override.active(now):
+            return device.flex, False
+        changes = {k: v for k, v in (("strategy", override.strategy), ("target", override.target)) if v is not None}
+        return device.flex.model_copy(update=changes), override.paused
+
+    def effective_strategy(self, now: datetime) -> Strategy:
+        """Return the battery strategy with an active override applied."""
+        if self.strategy_override is not None and self.strategy_override.active(now):
+            return self.strategy_override.strategy
+        return self.optimizer.strategy
+
+    def priority_order(self) -> list[str]:
+        """Return all flexible device ids and the battery in priority order (unlisted ones last)."""
+        known = [d.id for d in self.devices] + [BATTERY_PRIORITY_ID]
+        order = [i for i in self.priorities if i in known]
+        return order + [i for i in known if i not in order]
 
 
 class ConfigStore:

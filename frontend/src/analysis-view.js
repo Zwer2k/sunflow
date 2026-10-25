@@ -1,0 +1,275 @@
+import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
+import { api } from "./api.js";
+import { lineChart, SERIES_COLORS } from "./charts.js";
+import { formatValue } from "./format.js";
+
+const ACTIONS = {
+  auto: { label: "Eigenverbrauch", hint: "Speicher lädt aus PV-Überschuss und deckt den Bedarf" },
+  hold: { label: "Speicher halten", hint: "Speicher wird geschont, Bedarf kommt aus dem Netz" },
+  force_charge: { label: "Laden aus dem Netz", hint: "Speicher wird gezielt geladen" },
+  force_discharge: { label: "Entladen ins Netz", hint: "Speicher speist gezielt ein" },
+};
+const dayTime = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const REFRESH_MS = 5 * 60 * 1000;
+
+/** Shadow mode evaluation: forecasts and decisions against reality, export/import. */
+class SunflowAnalysis extends LitElement {
+  static properties = {
+    _shadow: { state: true },
+    _error: { state: true },
+    _importResult: { state: true },
+  };
+
+  constructor() {
+    super();
+    this._shadow = null;
+    this._error = null;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._load();
+    this._timer = setInterval(() => this._load(), REFRESH_MS);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    clearInterval(this._timer);
+  }
+
+  async _load() {
+    try {
+      this._shadow = await api.shadow();
+      this._error = null;
+    } catch (err) {
+      this._error = `Analyse konnte nicht geladen werden: ${err.message}`;
+    }
+  }
+
+  render() {
+    return html`
+      <div class="heading">
+        <div>
+          <h1>Analyse</h1>
+          <p class="muted">Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?</p>
+        </div>
+      </div>
+      ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
+      ${this._shadow === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
+      ${this._renderShadow()}
+    `;
+  }
+
+  _renderShadow() {
+    const shadow = this._shadow;
+    if (!shadow) return nothing;
+    const e = shadow.evaluation;
+    const since = shadow.status.since ? dayTime.format(new Date(shadow.status.since)) : "–";
+    const rows = shadow.rows.filter((r) => r.actual_action !== null && r.planned_action !== null);
+    const pct = (v) => (v === null ? "–" : `${Math.round(v * 100)} %`);
+    // How far reality was off the forecast: 98 Wh actual vs 162 Wh forecast is "−40 % ggü. Prognose"
+    const deviation = (forecast, actual) => {
+      if (forecast < 0.01) return "–";
+      const pct = Math.round(((actual - forecast) / forecast) * 100);
+      return `${pct > 0 ? "+" : pct < 0 ? "−" : "±"}${Math.abs(pct)} % ggü. Prognose`;
+    };
+    const kwh = (v) => formatValue(v * 1000, "Wh");
+    return html`
+      <section>
+        <h2>Schattenbetrieb</h2>
+        <p class="small muted">
+          Seit ${since} protokolliert Sunflow alle 15 Minuten, was es tun würde und was tatsächlich passiert ist –
+          ${e.compared} vollständige Zeitabschnitte (letzte 48 h).
+          ${shadow.status.last_error ? html`<br><span class="warn-text">Letzter Fehler: ${shadow.status.last_error}</span>` : nothing}
+        </p>
+        <div class="actions">
+          <a class="secondary button-link" href="api/v1/export" download>Daten exportieren</a>
+          <label class="secondary button-link">
+            Export importieren
+            <input type="file" accept=".zip" hidden @change=${(e) => this._import(e)}>
+          </label>
+          ${this._importResult ? html`<span class="small muted">${this._importResult}</span>` : nothing}
+        </div>
+        ${e.compared === 0
+          ? html`<p class="muted">Noch keine abgeschlossenen Zeitabschnitte – der erste erscheint nach dem nächsten Viertelstundenwechsel.</p>`
+          : html`
+              <div class="tiles">
+                <div class="tile">
+                  <div class="small muted">PV-Prognose</div>
+                  <div class="value">${kwh(e.pv_forecast_kwh)}</div>
+                  <div class="small muted">tatsächlich ${kwh(e.pv_actual_kwh)} (${deviation(e.pv_forecast_kwh, e.pv_actual_kwh)})</div>
+                </div>
+                <div class="tile">
+                  <div class="small muted">Lastprognose</div>
+                  <div class="value">${kwh(e.load_forecast_kwh)}</div>
+                  <div class="small muted">tatsächlich ${kwh(e.load_actual_kwh)} (${deviation(e.load_forecast_kwh, e.load_actual_kwh)})</div>
+                </div>
+                <div class="tile">
+                  <div class="small muted">Ladestand-Abweichung</div>
+                  <div class="value">${e.soc_mae_wh === null ? "–" : formatValue(e.soc_mae_wh, "Wh")}</div>
+                  <div class="small muted">mittlerer Abstand Plan zu Ist</div>
+                </div>
+                <div class="tile">
+                  <div class="small muted">Gleiche Entscheidung</div>
+                  <div class="value">${pct(e.agreement)}</div>
+                  <div class="small muted">${e.differing_slots} Abschnitte hätte Sunflow anders gesteuert</div>
+                </div>
+              </div>
+              <div class="legend">
+                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Ladestand tatsächlich</span>
+                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>Ladestand laut Plan</span>
+              </div>
+              ${lineChart(
+                [
+                  { name: "Ist", color: SERIES_COLORS[0], points: rows.map((r) => this._point(r, "actual_soc_wh")) },
+                  { name: "Plan", color: SERIES_COLORS[1], points: rows.map((r) => this._point(r, "planned_soc_wh")) },
+                ],
+                { label: "Ladestand Plan gegen Ist", formatY: (v) => formatValue(v, "Wh") },
+              )}
+              ${this._renderDifferences(rows)}
+            `}
+      </section>
+    `;
+  }
+
+
+  async _import(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const response = await fetch("api/v1/import", { method: "POST", body });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? response.statusText);
+      this._importResult = `${data.imported_slots} Zeitabschnitte importiert.`;
+      this._shadow = await api.shadow();
+    } catch (err) {
+      this._error = `Import fehlgeschlagen: ${err.message}`;
+    }
+    event.target.value = "";
+  }
+
+
+  _point(row, key) {
+    const start = new Date(row.start);
+    return { start: start.toISOString(), end: new Date(start.getTime() + 15 * 60_000).toISOString(), value: row[key] ?? 0 };
+  }
+
+
+  _renderDifferences(rows) {
+    const differing = rows.filter((r) => r.planned_action !== r.actual_action).slice(-12).reverse();
+    if (!differing.length) return html`<p class="small muted">Bisher hätte Sunflow genauso gehandelt wie der Wechselrichter.</p>`;
+    return html`
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Zeit</th><th>Sunflow hätte</th><th>Tatsächlich</th><th>PV / Last (Ist)</th></tr></thead>
+          <tbody>
+            ${differing.map(
+              (r) => html`<tr>
+                <td>${dayTime.format(new Date(r.start))}</td>
+                <td>${ACTIONS[r.planned_action]?.label ?? r.planned_action}${r.planned_power_w ? ` · ${formatValue(r.planned_power_w, "W")}` : ""}</td>
+                <td>${ACTIONS[r.actual_action]?.label ?? r.actual_action}</td>
+                <td>${formatValue(r.actual_pv_w, "W")} / ${formatValue(r.actual_load_w, "W")}</td>
+              </tr>`,
+            )}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  static styles = css`
+    :host { display: flex; flex-direction: column; gap: 20px; }
+    * { box-sizing: border-box; }
+    button { font: inherit; color: inherit; }
+    h1 { margin: 0; font-size: 24px; }
+    h2 { margin: 0 0 8px; font-size: 16px; }
+    p { margin: 0; }
+    .muted { color: var(--sf-muted); }
+    .small { font-size: 13px; }
+    .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
+    .alert { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+    .alert.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }
+    .alert.error { background: var(--sf-error-bg); color: var(--sf-error-text); }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+    .tile { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; }
+    .tile.now { background: var(--sf-primary-bg); }
+    .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .seg {
+      display: grid; grid-template-columns: minmax(150px, auto) 1fr auto; gap: 4px 12px; align-items: baseline;
+      padding: 8px 12px; border-radius: 8px; background: var(--sf-subtle); border-left: 4px solid var(--sf-border);
+    }
+    .seg.hold { border-left-color: var(--sf-muted); }
+    .seg.auto { border-left-color: var(--sf-ok); }
+    .seg.force_charge { border-left-color: var(--sf-primary); }
+    .seg.force_discharge { border-left-color: var(--sf-warn-text); }
+    .seg .when { font-variant-numeric: tabular-nums; font-size: 14px; }
+    .seg .what { font-weight: 600; }
+    @media (max-width: 560px) { .seg { grid-template-columns: 1fr; } }
+    .chart { width: 100%; height: auto; display: block; }
+    .chart .grid { stroke: var(--sf-border); stroke-width: 1; }
+    .chart .axis { fill: var(--sf-muted); font-size: 11px; }
+    .chart .hit { fill: transparent; }
+    .chart .hit:hover { fill: var(--sf-text); fill-opacity: 0.06; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; }
+    .warn-text { color: var(--sf-error-text); }
+    .flex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+    .flex-card { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+    .flex-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .windows { margin: 4px 0 0; padding-left: 18px; }
+    h3 { margin: 0 0 8px; font-size: 15px; }
+    .tag {
+      font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-left: 6px;
+      background: var(--sf-neutral-bg); color: var(--sf-neutral-text); vertical-align: middle;
+    }
+    .section-head { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+    .range { display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; }
+    .range button {
+      min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+      font-size: 13px; color: var(--sf-muted);
+    }
+    .range button.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; }
+    .line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--sf-text); }
+    .line.dashed { border-top-style: dashed; }
+    .chart .now { stroke: var(--sf-text); stroke-width: 1; stroke-dasharray: 2 3; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; margin-top: 10px; }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13px; }
+    th { text-align: left; font-weight: 600; background: var(--sf-subtle); padding: 8px 10px; }
+    td { padding: 6px 10px; border-top: 1px solid var(--sf-border); }
+    .settings { border-top: 1px solid var(--sf-border); padding-top: 16px; display: flex; flex-direction: column; gap: 16px; }
+    .strategy { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+    .strategy legend { margin-bottom: 8px; padding: 0; }
+    .option {
+      display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--sf-border);
+      border-radius: 8px; cursor: pointer;
+    }
+    .option.selected { border-color: var(--sf-primary); background: var(--sf-primary-bg); }
+    .option input { margin-top: 3px; width: 18px; height: 18px; }
+    .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+    .field-label { font-weight: 500; }
+    .input-unit { display: flex; align-items: center; gap: 8px; }
+    .input-unit input {
+      flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; font-size: 15px;
+      border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
+    }
+    .inline { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
+    .inline input { width: 18px; height: 18px; }
+    .actions { display: flex; gap: 10px; margin-top: 12px; }
+    .secondary, .ok { min-height: 44px; padding: 0 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
+    .button-link {
+      display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 8px;
+      text-decoration: none; color: var(--sf-text); cursor: pointer; font-size: 14px;
+    }
+    .ok { border: 0; background: var(--sf-ok); color: #fff; }
+    button:disabled { cursor: not-allowed; opacity: .6; }
+    button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
+  `;
+}
+
+customElements.define("sunflow-analysis", SunflowAnalysis);

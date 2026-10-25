@@ -22,7 +22,11 @@ from pydantic import BaseModel
 
 from . import API_VERSION, __version__
 from .config_store import (
+    BATTERY_PRIORITY_ID,
     ConfigStore,
+    DeviceOverride,
+    StrategyOverride,
+    SunflowConfig,
     DeviceConfig,
     FeedIn,
     FlexSettings,
@@ -675,14 +679,8 @@ async def set_optimizer(request: Request, body: OptimizerConfig) -> dict[str, An
     return body.model_dump()
 
 
-@router.get("/plan")
-async def get_plan(request: Request) -> dict[str, Any]:
-    """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
-    try:
-        result = await current_plan(request.app.state.ha, request.app.state.store, _library(request))
-    except HAError as err:
-        raise HTTPException(status_code=502, detail=str(err)) from err
-    config = request.app.state.store.load()
+def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
+    """Serialize a plan result for the UI."""
     plan = result.plan
     return {
         "status": plan.status,
@@ -695,6 +693,7 @@ async def get_plan(request: Request) -> dict[str, Any]:
         "load_excluded_hours": result.load.excluded_hours if result.load else 0,
         "load_separated_hours": result.load.separated_hours if result.load else 0,
         "settings": config.optimizer.model_dump(),
+        "strategy": config.effective_strategy(datetime.now(UTC)),
         "cost": plan.cost,
         "baseline_cost": plan.baseline_cost,
         "terminal_value": plan.terminal_value,
@@ -709,6 +708,165 @@ async def get_plan(request: Request) -> dict[str, Any]:
         ],
         "slots": [asdict(slot) for slot in plan.slots],
     }
+
+
+@router.get("/plan")
+async def get_plan(request: Request) -> dict[str, Any]:
+    """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
+    try:
+        result = await current_plan(request.app.state.ha, request.app.state.store, _library(request))
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    return plan_response(result, request.app.state.store.load())
+
+
+@router.get("/plan/latest")
+async def get_latest_plan(request: Request) -> dict[str, Any]:
+    """Return the plan of the background runner (computed at most 15 minutes ago)."""
+    runner: ShadowRunner = request.app.state.runner
+    if runner.latest is None:
+        return await get_plan(request)
+    return plan_response(runner.latest, request.app.state.store.load()) | {
+        "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None
+    }
+
+
+def _flex_windows(slots: list[Any], name: str) -> list[dict[str, Any]]:
+    windows: list[dict[str, Any]] = []
+    for slot in slots:
+        power = slot.flex_w.get(name, 0.0)
+        if power < 50:
+            if windows and not windows[-1].get("closed"):
+                windows[-1]["closed"] = True
+            continue
+        if windows and not windows[-1].get("closed"):
+            windows[-1]["end"] = slot.end.isoformat()
+            windows[-1]["energy_wh"] += power / 4
+        else:
+            windows.append({"start": slot.start.isoformat(), "end": slot.end.isoformat(), "energy_wh": power / 4})
+    return [{k: v for k, v in w.items() if k != "closed"} for w in windows]
+
+
+@router.get("/control")
+async def get_control(request: Request) -> dict[str, Any]:
+    """Everything the control tab needs: strategies, overrides, live values, next windows, priorities."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    snapshot = await _snapshot(request)
+    now = datetime.now(UTC)
+    runner: ShadowRunner = request.app.state.runner
+    latest = runner.latest
+    infos = {f.device_id: f for f in latest.flex} if latest else {}
+    names = {BATTERY_PRIORITY_ID: "Hausspeicher"}
+    devices = []
+    for device in config.devices:
+        profile = profiles[device.profile]
+        if "loadpoint" not in profile["capabilities"] and "load" not in profile["capabilities"]:
+            continue
+        names[device.id] = device.name
+        roles = {
+            r.role: r
+            for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+        }
+        effective, paused = config.effective_flex(device, now)
+        override = config.overrides.get(device.id)
+        info = infos.get(device.id)
+        devices.append(
+            {
+                "id": device.id,
+                "name": device.name,
+                "kind": device_kind(profile, device, snapshot) or "load",
+                "default": device.flex.model_dump(),
+                "override": override.model_dump(mode="json") if override and override.active(now) else None,
+                "effective": effective.model_dump(),
+                "paused": paused,
+                "power_w": next((roles[r].value for r in ("charge_power", "power") if r in roles), None),
+                "level": roles["vehicle_soc"].value if "vehicle_soc" in roles else None,
+                "target": info.target if info else None,
+                "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
+                "need_wh": info.need_wh if info else None,
+                "reason": info.reason if info else None,
+                "windows": _flex_windows(latest.plan.slots, device.name) if latest else [],
+            }
+        )
+    has_battery = any("battery_window" in profiles[d.profile]["capabilities"] for d in config.devices)
+    order = [i for i in config.priority_order() if i in names and (i != BATTERY_PRIORITY_ID or has_battery)]
+    strategy_override = config.strategy_override
+    return {
+        "strategy": {
+            "default": config.optimizer.strategy,
+            "override": strategy_override.model_dump(mode="json")
+            if strategy_override and strategy_override.active(now)
+            else None,
+            "effective": config.effective_strategy(now),
+            "available": has_battery,
+        },
+        "devices": devices,
+        "priorities": [{"id": i, "name": names[i]} for i in order],
+        "plan_computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
+    }
+
+
+def _replan(request: Request) -> None:
+    request.app.state.runner.request_replan()
+
+
+@router.put("/control/devices/{device_id}")
+async def set_device_override(request: Request, device_id: str, body: DeviceOverride) -> dict[str, Any]:
+    """Temporarily change how a consumer is planned (strategy, target, pause)."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if config.device(device_id) is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    config.overrides[device_id] = body
+    store.save(config)
+    _replan(request)
+    return body.model_dump(mode="json")
+
+
+@router.delete("/control/devices/{device_id}")
+async def clear_device_override(request: Request, device_id: str) -> None:
+    """Return a consumer to its default planning."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.overrides.pop(device_id, None)
+    store.save(config)
+    _replan(request)
+
+
+@router.put("/control/strategy")
+async def set_strategy_override(request: Request, body: StrategyOverride) -> dict[str, Any]:
+    """Temporarily change the battery strategy."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.strategy_override = body
+    store.save(config)
+    _replan(request)
+    return body.model_dump(mode="json")
+
+
+@router.delete("/control/strategy")
+async def clear_strategy_override(request: Request) -> None:
+    """Return to the default battery strategy."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.strategy_override = None
+    store.save(config)
+    _replan(request)
+
+
+@router.put("/control/priorities")
+async def set_priorities(request: Request, order: list[str]) -> list[str]:
+    """Store the priority order (device ids and "battery"), highest first."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    known = {d.id for d in config.devices} | {BATTERY_PRIORITY_ID}
+    if unknown := [i for i in order if i not in known]:
+        raise HTTPException(status_code=422, detail=f"Unknown ids: {unknown}")
+    config.priorities = order
+    store.save(config)
+    _replan(request)
+    return config.priority_order()
 
 
 @router.get("/history")
