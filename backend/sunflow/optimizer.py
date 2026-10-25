@@ -9,7 +9,7 @@ minimize   sum(price * import - feed_in * export + wear * discharge) * dt / 1000
 
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
@@ -84,6 +84,9 @@ class FlexResult:
 
 # Penalty per unmet kWh of a flexible load: above any price, so needs are met when possible
 UNMET_PENALTY = 2.0
+# Cost per W of change between consecutive slots (import, export, flexible loads): far below
+# any price difference, it only picks the calm solution among equally cheap ones
+SMOOTHING_COST = 5e-8
 
 
 @dataclass(kw_only=True)
@@ -314,34 +317,71 @@ def optimize(
     upper = np.concatenate([upper, np.ones(total - count)])
     integrality = np.zeros(total)
     integrality[count:] = 1
+    binary_total = total
+    smoothed = [gi, ge, *f]
 
-    a_ub = lil_matrix((2 * (len(grid_binary) + len(battery_binary)), total))
-    b_ub = np.zeros(a_ub.shape[0])
-    row = 0
-    for k, t in enumerate(grid_binary):
-        # import <= M * z, export <= M * (1 - z)
-        a_ub[row, gi[t]], a_ub[row, z[k]] = 1, -upper[gi[t]]
-        a_ub[row + 1, ge[t]], a_ub[row + 1, z[k]] = 1, upper[ge[t]]
-        b_ub[row + 1] = upper[ge[t]]
-        row += 2
-    for k, t in enumerate(battery_binary):
-        a_ub[row, c[t]], a_ub[row, y[k]] = 1, -upper[c[t]]
-        a_ub[row + 1, d[t]], a_ub[row + 1, y[k]] = 1, upper[d[t]]
-        b_ub[row + 1] = upper[d[t]]
-        row += 2
+    def solve(smooth: bool, fixed_binaries: np.ndarray | None = None) -> Any:
+        """Solve; smoothing adds delta[t] >= |v[t] - v[t-1]| for grid flows and flexible loads."""
+        lo, up, integ = lower.copy(), upper.copy(), integrality.copy()
+        obj = cost.copy()
+        if fixed_binaries is not None:
+            lo[count:binary_total] = up[count:binary_total] = fixed_binaries
+            integ[count:binary_total] = 0
+        size = binary_total
+        if smooth:
+            size += len(smoothed) * (n - 1)
+            extra = size - binary_total
+            obj = np.concatenate([obj, np.full(extra, SMOOTHING_COST)])
+            lo = np.concatenate([lo, np.zeros(extra)])
+            up = np.concatenate([up, np.full(extra, np.inf)])
+            integ = np.concatenate([integ, np.zeros(extra)])
 
-    a_eq_full = lil_matrix((rows, total))
-    a_eq_full[:, :count] = a_eq
-    constraints = [LinearConstraint(a_eq_full.tocsr(), b_eq, b_eq)]
-    if row:
-        constraints.append(LinearConstraint(a_ub.tocsr(), -np.inf, b_ub))
-    result = milp(
-        cost,
-        constraints=constraints,
-        integrality=integrality,
-        bounds=Bounds(lower, upper),
-        options={"time_limit": 20},
-    )
+        a_ub = lil_matrix((2 * (len(grid_binary) + len(battery_binary)) + 2 * (size - binary_total), size))
+        b_ub = np.zeros(a_ub.shape[0])
+        row = 0
+        for k, t in enumerate(grid_binary):
+            # import <= M * z, export <= M * (1 - z)
+            a_ub[row, gi[t]], a_ub[row, z[k]] = 1, -upper[gi[t]]
+            a_ub[row + 1, ge[t]], a_ub[row + 1, z[k]] = 1, upper[ge[t]]
+            b_ub[row + 1] = upper[ge[t]]
+            row += 2
+        for k, t in enumerate(battery_binary):
+            a_ub[row, c[t]], a_ub[row, y[k]] = 1, -upper[c[t]]
+            a_ub[row + 1, d[t]], a_ub[row + 1, y[k]] = 1, upper[d[t]]
+            b_ub[row + 1] = upper[d[t]]
+            row += 2
+        if smooth:
+            delta = binary_total
+            for series in smoothed:
+                for t in range(1, n):
+                    a_ub[row, series[t]], a_ub[row, series[t - 1]], a_ub[row, delta] = 1, -1, -1
+                    a_ub[row + 1, series[t]], a_ub[row + 1, series[t - 1]], a_ub[row + 1, delta] = -1, 1, -1
+                    row += 2
+                    delta += 1
+
+        a_eq_full = lil_matrix((rows, size))
+        a_eq_full[:, :count] = a_eq
+        constraints = [LinearConstraint(a_eq_full.tocsr(), b_eq, b_eq)]
+        if row:
+            constraints.append(LinearConstraint(a_ub.tocsr(), -np.inf, b_ub))
+        return milp(
+            obj,
+            constraints=constraints,
+            integrality=integ,
+            bounds=Bounds(lo, up),
+            options={"time_limit": 20},
+        )
+
+    if binary_total > count:
+        # Smoothing makes the mixed-integer problem much harder: decide the binaries first,
+        # then smooth the remaining linear problem with them fixed
+        result = solve(smooth=False)
+        if result.success:
+            smoothed_result = solve(smooth=True, fixed_binaries=np.round(result.x[count:binary_total]))
+            if smoothed_result.success:
+                result = smoothed_result
+    else:
+        result = solve(smooth=True)
     plan = Plan(status=result.message)
     if not result.success:
         return plan

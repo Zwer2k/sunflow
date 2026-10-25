@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.6
+
+- Calmer plans: when several schedules cost the same (e.g. full battery, PV surplus
+  split between export and the heater), the smooth one is chosen instead of a zigzag
+
 ## 0.2.5
 
 - Shadow mode: deviation is shown as actual relative to the forecast

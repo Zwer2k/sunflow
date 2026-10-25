@@ -285,3 +285,20 @@ def test_heater_uses_pv_surplus() -> None:
 
     assert sum(s.flex_w["Warmwasser"] for s in plan.slots[40:64]) / 4 == pytest.approx(5600, abs=10)
     assert plan.savings > 0
+
+
+def test_surplus_export_is_smooth() -> None:
+    """With a full battery and a heater, the PV surplus is not split into a zigzag."""
+    from sunflow.optimizer import FlexLoad
+
+    full = BatterySpec(capacity_wh=10000, soc_wh=9900, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    pv = [0.0] * 36 + [2500.0] * 24 + [0.0] * 36
+    inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: pv[i])
+    heater = FlexLoad(name="Warmwasser", energy_wh=2000, max_power_w=3000, available=[True] * 96)
+
+    plan = optimize(inputs, full, Settings(), [heater])
+
+    export = [s.export_w for s in plan.slots]
+    jumps = sum(1 for a, b in zip(export, export[1:], strict=False) if abs(a - b) > 200)
+    # Export starts and ends once, possibly with one change when the heater stops
+    assert jumps <= 3
