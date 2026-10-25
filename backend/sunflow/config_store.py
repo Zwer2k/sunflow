@@ -117,6 +117,14 @@ class DeviceOverride(BaseModel):
         return self.until is None or self.until > now
 
 
+class PriorityCondition(BaseModel):
+    """A consumer only gets PV or battery energy once another storage reached this level."""
+
+    # BATTERY_PRIORITY_ID or the id of a vehicle loadpoint
+    device_id: str
+    min_pct: float = Field(ge=0, le=100)
+
+
 class StrategyOverride(BaseModel):
     """Temporary battery strategy from the control tab."""
 
@@ -141,6 +149,8 @@ class SunflowConfig(BaseModel):
     strategy_override: StrategyOverride | None = None
     # Device ids and BATTERY_PRIORITY_ID, highest priority first
     priorities: list[str] = Field(default_factory=list)
+    # Per consumer id: all conditions must hold before it gets PV or battery energy
+    priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
 
     def device(self, device_id: str) -> DeviceConfig | None:
         """Return a configured device by its Sunflow id."""

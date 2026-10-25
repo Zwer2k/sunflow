@@ -140,3 +140,34 @@ def test_control_overrides_and_priorities(tmp_path: Path) -> None:
     config = store.load()
     assert config.overrides == {} and config.strategy_override is None
     assert len(replans) == 5
+
+
+def test_priority_conditions(tmp_path: Path) -> None:
+    """Conditions are stored per consumer, validated and removed with an empty list."""
+    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+    from sunflow.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    store = ConfigStore(tmp_path)
+    store.save(
+        SunflowConfig(
+            devices=[
+                DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
+                DeviceConfig(id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser"),
+            ]
+        )
+    )
+    app = create_app()
+    app.state.store = store
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: None})()
+    client = TestClient(app)
+    conditions = [{"device_id": "battery", "min_pct": 80.0}, {"device_id": "ev", "min_pct": 90.0}]
+
+    assert client.put("/api/v1/control/priorities/ww/conditions", json=conditions).status_code == 200
+    assert [c.model_dump() for c in store.load().priority_conditions["ww"]] == conditions
+    assert client.put("/api/v1/control/priorities/ww/conditions", json=[{"device_id": "ww", "min_pct": 50}]).status_code == 422
+    assert client.put("/api/v1/control/priorities/ww/conditions", json=[{"device_id": "battery", "min_pct": 120}]).status_code == 422
+
+    assert client.put("/api/v1/control/priorities/ww/conditions", json=[]).status_code == 200
+    assert store.load().priority_conditions == {}
