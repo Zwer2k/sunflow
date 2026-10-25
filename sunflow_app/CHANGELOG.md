@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3
+
+- Chart axes: round steps (1, 2 or 5 x 10^n, up to six intervals), no decimals for
+  whole numbers and values from 10 on
+
 ## 0.3.2
 
 - Searchable entity choice (type to filter by name or entity id, keyboard support)

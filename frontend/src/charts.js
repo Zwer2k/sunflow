@@ -13,10 +13,30 @@ const AXIS_CHAR_WIDTH = 6.6;
 const timeFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 const dayFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
-function niceMax(value) {
-  if (value <= 0) return 1;
-  const magnitude = 10 ** Math.floor(Math.log10(value));
-  return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((m) => m * magnitude).find((m) => m >= value);
+/**
+ * Round axis: the smallest step of 1, 2 or 5 x 10^n that needs at most six intervals,
+ * so tick labels are round ("0, 5, 10, 15, 20, 25 kWh").
+ */
+function niceScale(value) {
+  if (!(value > 0)) return { max: 1, ticks: [0, 0.5, 1] };
+  const magnitude = 10 ** Math.floor(Math.log10(value / 6));
+  const step = [1, 2, 5, 10].map((m) => m * magnitude).find((candidate) => Math.ceil(value / candidate) <= 6);
+  const max = Math.ceil(value / step - 1e-9) * step;
+  const ticks = [];
+  for (let tick = 0; tick <= max + step / 2; tick += step) ticks.push(Math.round(tick / step) * step);
+  return { max, ticks };
+}
+
+/** Axis label: no decimals from 10 on ("18 kWh", not "18,3 kWh"); small values keep them. */
+function axisLabel(value, formatY) {
+  const text = String(formatY(value));
+  const match = text.match(/^(−?-?\d+)(?:,(\d+))?(.*)$/);
+  if (!match) return text;
+  const number = Number(`${match[1].replace("−", "-")}.${match[2] ?? 0}`);
+  if (number === 0) return "0";
+  // Whole numbers and values from 10 on without decimals: "5 kWh", "18 kWh"; keep "0,5 kW"
+  if (Math.abs(number) >= 10 || Number.isInteger(number)) return `${Math.round(number)}${match[3]}`.replace("-", "−");
+  return text;
 }
 
 function timeScale(start, end, left) {
@@ -25,10 +45,10 @@ function timeScale(start, end, left) {
   return (date) => left + ((date.getTime() - t0) / span) * (W - left - PAD.right);
 }
 
-function frame(start, end, yMax, formatY) {
-  const ticks = [0, yMax / 2, yMax];
+function frame(start, end, scale, formatY) {
+  const { max: yMax, ticks } = scale;
   // Left margin fits the widest y label so it is never cut off
-  const left = Math.max(40, Math.max(...ticks.map((v) => String(formatY(v)).length)) * AXIS_CHAR_WIDTH + 12);
+  const left = Math.max(40, Math.max(...ticks.map((v) => axisLabel(v, formatY).length)) * AXIS_CHAR_WIDTH + 12);
   const x = timeScale(start, end, left);
   const y = (v) => H - PAD.bottom - (v / yMax) * (H - PAD.top - PAD.bottom);
   const hours = [];
@@ -45,7 +65,7 @@ function frame(start, end, yMax, formatY) {
       ${ticks.map(
         (v) => svg`
           <line x1=${left} x2=${W - PAD.right} y1=${y(v)} y2=${y(v)} class="grid"></line>
-          <text x=${left - 6} y=${y(v) + 4} text-anchor="end" class="axis">${formatY(v)}</text>
+          <text x=${left - 6} y=${y(v) + 4} text-anchor="end" class="axis">${axisLabel(v, formatY)}</text>
         `,
       )}
       ${hours.map(
@@ -66,8 +86,7 @@ export function priceChart(points, label) {
   const parsed = points.map((p) => ({ start: new Date(p.start), end: new Date(p.end), ct: p.price * 100 }));
   const start = parsed[0].start;
   const end = parsed.at(-1).end;
-  const yMax = niceMax(Math.max(...parsed.map((p) => p.ct)) * 1.1);
-  const { x, y, axes } = frame(start, end, yMax, (v) => `${Math.round(v)} ct`);
+  const { x, y, axes } = frame(start, end, niceScale(Math.max(...parsed.map((p) => p.ct)) * 1.05), (v) => `${Math.round(v)} ct`);
   const path = parsed.map((p, i) => `${i ? "L" : "M"}${x(p.start)},${y(p.ct)} L${x(p.end)},${y(p.ct)}`).join(" ");
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
@@ -93,8 +112,8 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, now = null }
   if (!all.length) return nothing;
   const start = new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
   const end = new Date(Math.max(...series.flatMap((s) => s.points.map((p) => new Date(p.end)))));
-  const yMax = fixedMax ?? niceMax(Math.max(...all.map((p) => p.value)) * 1.1);
-  const { x, y, axes, left } = frame(start, end, yMax, formatY);
+  const scale = niceScale(fixedMax ?? Math.max(...all.map((p) => p.value)) * 1.05);
+  const { x, y, axes, left } = frame(start, end, scale, formatY);
   const pathOf = (points) => {
     let pen = "M";
     return points
@@ -157,9 +176,9 @@ export function forecastChart(series, label) {
   const bars = [...slots.values()].sort((a, b) => a.start - b.start);
   const start = bars[0].start;
   const end = bars.at(-1).end;
-  const yMax = niceMax(Math.max(...bars.map((b) => b.parts.reduce((s, p) => s + p.power, 0))) * 1.1);
+  const scale = niceScale(Math.max(...bars.map((b) => b.parts.reduce((s, p) => s + p.power, 0))) * 1.05);
   const kw = (v) => `${(v / 1000).toFixed(v >= 10000 || v === 0 ? 0 : 1).replace(".", ",")} kW`;
-  const { x, y, axes } = frame(start, end, yMax, kw);
+  const { x, y, axes } = frame(start, end, scale, kw);
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
       ${axes}
