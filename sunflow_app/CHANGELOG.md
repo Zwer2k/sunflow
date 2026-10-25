@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Dropdowns no longer close right after opening (selects were wrapped in labels)
+
 ## 0.3.0
 
 - Planning strategy per loadpoint and consumer: cost-optimal, PV surplus only or
