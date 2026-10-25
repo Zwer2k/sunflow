@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.4
+
+- Steuerung → Priorität: buttons in the limits form ("Übernehmen", "Abbrechen") were
+  cut off to the width of the arrow buttons
+
 ## 0.7.3
 
 - Planung: the price chart uses the same time axis as the charts above (history
