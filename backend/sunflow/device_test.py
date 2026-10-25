@@ -10,7 +10,9 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import json
 import logging
+from pathlib import Path
 from statistics import median
 from typing import Any, Literal
 
@@ -103,6 +105,9 @@ def evaluate(action: str, power: float, settled: list[float]) -> tuple[bool, boo
 
 ReadFn = Callable[[], Awaitable[tuple[float | None, float | None]]]
 RunFn = Callable[[str, dict[str, float]], Awaitable[list[PlannedCall]]]
+# Called with what is needed to undo the test once it has written to the device,
+# and with None once self-consumption (and the previous mode) is restored
+MarkFn = Callable[[dict[str, Any] | None], None]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -122,10 +127,15 @@ async def run_device_test(
     run_action: RunFn,
     timings: Timings = Timings(),
     mode: ModeControl | None = None,
+    mark: MarkFn | None = None,
 ) -> None:
     """Run the test, updating state in place. Cancelling aborts and restores."""
     state.started = datetime.now(UTC)
     commanded = False
+
+    def remember() -> None:
+        if mark is not None:
+            mark({"device_id": state.device_id, "started": state.started.isoformat(), "previous_mode": state.previous_mode})
 
     async def sample_for(phase: Phase, seconds: float) -> list[float]:
         state.phase = phase
@@ -150,6 +160,8 @@ async def run_device_test(
             state.message = f"Schalte zurück in „{state.previous_mode}“ …"
             await mode.set(state.previous_mode)
             state.previous_mode_restored = True
+        if state.restored and mark is not None:
+            mark(None)
 
     try:
         state.message = "Messe Ausgangszustand …"
@@ -159,11 +171,14 @@ async def run_device_test(
         action, power, expectation = choose_test(median(baseline))
         state.test_action, state.test_power, state.expectation = action, power, expectation
 
-        # From here on every exit path restores window and mode
+        # From here on every exit path restores window and mode; the marker survives a
+        # crash of the app so the user can restore later
         commanded = True
+        remember()
         if mode is not None:
             state.message = "Prüfe Betriebsmodus …"
             state.previous_mode = await mode.ensure()
+            remember()
         state.message = f"Testbefehl aktiv: {expectation}"
         state.calls += await run_action(action, {"P": power})
         await sample_for("command", timings.settle)
@@ -230,3 +245,31 @@ def state_response(state: DeviceTestState) -> dict[str, Any]:
         ],
         "error": state.error,
     }
+
+
+class RestoreMarker:
+    """File in the data directory that exists while a device test may have left the device changed."""
+
+    def __init__(self, data_dir: Path) -> None:
+        """Initialize the marker."""
+        self._path = data_dir / "device_test_active.json"
+
+    def get(self) -> dict[str, Any] | None:
+        """Return the pending restore, None if nothing is left to undo."""
+        try:
+            return json.loads(self._path.read_text())
+        except FileNotFoundError:
+            return None
+        except ValueError:
+            # A half written marker still means: restore
+            return {"device_id": None, "started": None, "previous_mode": None}
+
+    def set(self, marker: dict[str, Any] | None) -> None:
+        """Store or clear the marker (written atomically)."""
+        if marker is None:
+            self._path.unlink(missing_ok=True)
+            return
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(marker))
+        tmp.replace(self._path)

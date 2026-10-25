@@ -94,6 +94,8 @@ class SunflowApp extends LitElement {
     _feedEdits: { state: true },
     _site: { state: true },
     _discoveryError: { state: true },
+    _pendingRestore: { state: true },
+    _restoring: { state: true },
     _measurements: { state: true },
     _sources: { state: true },
     _priceSeries: { state: true },
@@ -180,7 +182,50 @@ class SunflowApp extends LitElement {
       this._error = `Daten konnten nicht geladen werden: ${err.message}`;
       return;
     }
+    this._loadPendingRestore();
     await this._loadDiscovery();
+  }
+
+  async _loadPendingRestore() {
+    try {
+      this._pendingRestore = await api.pendingRestore();
+    } catch {
+      // Only a hint; the views report connection problems themselves
+    }
+  }
+
+  async _restoreAfterTest() {
+    const pending = this._pendingRestore;
+    const mode = pending?.previous_mode ? ` und den Betriebsmodus „${pending.previous_mode}“` : "";
+    if (!confirm(`Sunflow stellt jetzt am Wechselrichter den Eigenverbrauch${mode} wieder her. Fortfahren?`)) return;
+    this._restoring = true;
+    try {
+      const result = await api.restoreAfterTest();
+      this._error = result.restored ? null : "Zurücksetzen nicht vollständig – bitte am Wechselrichter prüfen.";
+      await this._loadPendingRestore();
+    } catch (err) {
+      this._error = `Zurücksetzen fehlgeschlagen: ${err.message}`;
+    } finally {
+      this._restoring = false;
+    }
+  }
+
+  _renderPendingRestore() {
+    const pending = this._pendingRestore;
+    if (!pending) return nothing;
+    const since = pending.started ? ` (seit ${new Date(pending.started).toLocaleString("de-DE")})` : "";
+    return html`
+      <div class="restore-banner" role="alert">
+        <div>
+          <strong>Gerätetest wurde unterbrochen${since}.</strong>
+          ${pending.device_name ?? "Der Wechselrichter"} steht möglicherweise noch im Testzustand
+          (z. B. Laden aus dem Netz oder begrenzte Ladung)${pending.previous_mode ? `, Betriebsmodus vorher „${pending.previous_mode}“` : ""}.
+        </div>
+        <button class="primary" ?disabled=${this._restoring} @click=${() => this._restoreAfterTest()}>
+          ${this._restoring ? "Stelle wieder her …" : "Selbstverbrauch wiederherstellen"}
+        </button>
+      </div>
+    `;
   }
 
   async _loadDiscovery() {
@@ -275,6 +320,7 @@ class SunflowApp extends LitElement {
     const finished = entries.some(([id, t]) => t && !t.running && this._tests[id]?.running);
     this._tests = tests;
     if (finished) {
+      this._loadPendingRestore();
       const config = await api.config();
       this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
     }
@@ -734,6 +780,7 @@ class SunflowApp extends LitElement {
           Expertenmodus
         </button>
       </header>
+      ${this._renderPendingRestore()}
       ${{
         live: html`<div class="layout"><main><sunflow-live></sunflow-live></main></div>`,
         control: html`<div class="layout"><main><sunflow-control></sunflow-control></main></div>`,
@@ -1974,6 +2021,12 @@ class SunflowApp extends LitElement {
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     .danger { color: var(--sf-error-text); }
+    .restore-banner {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+      margin: 16px max(16px, calc((100% - 1240px) / 2)) 0; padding: 12px 16px; border-radius: 10px;
+      background: var(--sf-warn-bg); color: var(--sf-warn-text); font-size: 14px;
+    }
+    .restore-banner button { min-height: 40px; padding: 0 16px; border-radius: 8px; cursor: pointer; font: inherit; }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
