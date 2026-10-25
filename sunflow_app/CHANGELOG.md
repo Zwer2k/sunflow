@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4
+
+- Clearer wording for whether the home battery may discharge into a consumer
+
 ## 0.3.3
 
 - Chart axes: round steps (1, 2 or 5 x 10^n, up to six intervals), no decimals for
