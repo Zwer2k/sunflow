@@ -62,6 +62,7 @@ const PARAM_LABELS = {
   vehicle_capacity_wh: "Akkukapazität Fahrzeug (nutzbar)",
   charge_efficiency_pct: "Ladewirkungsgrad",
   tank_l: "Speichervolumen",
+  daily_energy_wh: "Energiebedarf pro Tag",
 };
 
 export function paramLabel(name) {

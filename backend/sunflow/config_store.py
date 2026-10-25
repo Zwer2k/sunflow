@@ -33,6 +33,19 @@ class MeasuredBy(BaseModel):
     role: str
 
 
+class FlexSettings(BaseModel):
+    """How a flexible consumer (EV, heater, switchable load) should be planned."""
+
+    strategy: Literal["cost", "pv_only", "fast"] = "cost"
+    # Overrides the target from evcc (% for vehicles, °C for heaters)
+    target: float | None = None
+    # Daily time ("HH:MM") by which the need has to be met
+    ready_by: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    uses_battery: bool = True
+    # Price of the alternative heat source (district heating, gas) in ct per kWh of heat
+    alternative_cost_ct: float | None = None
+
+
 class DeviceConfig(BaseModel):
     """A device managed by Sunflow."""
 
@@ -46,6 +59,7 @@ class DeviceConfig(BaseModel):
     feed_in: FeedIn | None = None
     measured_by: MeasuredBy | None = None
     test_passed_at: datetime | None = None
+    flex: FlexSettings = Field(default_factory=FlexSettings)
 
 
 class TariffConfig(BaseModel):

@@ -302,3 +302,72 @@ def test_surplus_export_is_smooth() -> None:
     jumps = sum(1 for a, b in zip(export, export[1:], strict=False) if abs(a - b) > 200)
     # Export starts and ends once, possibly with one change when the heater stops
     assert jumps <= 3
+
+
+def _heater(**options: object) -> object:
+    from sunflow.optimizer import FlexLoad
+
+    return FlexLoad(name="Last", energy_wh=4000, max_power_w=2000, available=[True] * 96, **options)
+
+
+def test_pv_only_never_uses_grid() -> None:
+    """A PV-only load runs only in the surplus; the rest stays unmet."""
+    pv = [0.0] * 40 + [1500.0] * 8 + [0.0] * 48  # 2 h with 1 kW surplus = 2 kWh
+    plan = optimize(_slots(24, price=lambda i: 0.10, pv=lambda i: pv[i]), BATTERY, Settings(), [_heater(pv_only=True)])
+
+    assert all(s.flex_w["Last"] <= max(s.pv_w - s.load_w, 0) + 1 for s in plan.slots)
+    assert plan.flex[0].planned_wh == pytest.approx(2000, abs=5)
+    assert plan.flex[0].unmet_wh == pytest.approx(2000, abs=5)
+
+
+def test_urgency_runs_early() -> None:
+    """Fast charging starts right away even though later slots are cheaper."""
+    plan = optimize(
+        _slots(12, price=lambda i: 0.35 if i < 24 else 0.20), BATTERY, Settings(), [_heater(urgency=1.0)]
+    )
+
+    assert sum(s.flex_w["Last"] for s in plan.slots[:8]) / 4 == pytest.approx(4000, abs=5)
+
+
+def test_alternative_heat_is_used_when_cheaper() -> None:
+    """With district heating at 12 ct/kWh, grid power at 30 ct is not used for heating."""
+    full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=10000, max_charge_w=5000, max_discharge_w=5000)
+    pv = [0.0] * 40 + [1500.0] * 8 + [0.0] * 48
+    plan = optimize(
+        _slots(24, price=lambda i: 0.30, pv=lambda i: pv[i]), full, Settings(allow_grid_charge=False),
+        [_heater(unmet_cost=0.12)],
+    )
+
+    # With a full battery the surplus would be exported at 8 ct: heating with it beats 12 ct
+    assert plan.flex[0].planned_wh == pytest.approx(2000, abs=50)
+    assert plan.flex[0].unmet_wh == pytest.approx(2000, abs=50)
+
+
+def test_battery_not_used_for_load() -> None:
+    """Without permission the home battery does not discharge into the load."""
+    full = BatterySpec(capacity_wh=20000, soc_wh=18000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(4, price=lambda i: 0.35)
+
+    allowed = optimize(inputs, full, Settings(), [_heater()])
+    denied = optimize(inputs, full, Settings(), [_heater(uses_battery=False)])
+
+    assert sum(s.import_w for s in allowed.slots) < 100
+    assert all(s.discharge_w <= s.load_w + 1 for s in denied.slots)
+    assert sum(s.import_w for s in denied.slots) / 4 == pytest.approx(4000, abs=10)
+
+
+@pytest.mark.parametrize(
+    ("after", "hhmm", "expected"),
+    [
+        pytest.param(datetime(2026, 10, 24, 22, 0, tzinfo=BERLIN), "07:00", datetime(2026, 10, 25, 7, 0, tzinfo=BERLIN), id="next_morning_over_dst"),
+        pytest.param(datetime(2026, 10, 26, 6, 0, tzinfo=BERLIN), "07:00", datetime(2026, 10, 26, 7, 0, tzinfo=BERLIN), id="same_day"),
+        pytest.param(datetime(2026, 10, 26, 7, 0, tzinfo=BERLIN), "07:00", datetime(2026, 10, 27, 7, 0, tzinfo=BERLIN), id="exactly_now"),
+    ],
+)
+def test_next_time(after: datetime, hhmm: str, expected: datetime) -> None:
+    """Daily ready-by times resolve to the next local wall-clock time."""
+    from sunflow.plan import next_time
+
+    result = next_time(hhmm, after, BERLIN)
+    assert result == expected
+    assert result.astimezone(BERLIN).hour == 7
