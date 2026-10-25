@@ -10,7 +10,7 @@ Unexplained standby consumption lowers the estimate, so it is only
 offered when enough energy has cycled and the result is plausible.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 import math
 
@@ -38,6 +38,10 @@ class EfficiencyEstimate:
     min_cycles: float = MIN_CYCLES
     # "counters" (energy counters of the inverter) or "power" (integrated power means)
     source: str = "power"
+    # Split of the losses into conversion per kWh and a constant standby draw (BMS,
+    # DC/DC converters); None while the history does not allow the split
+    conversion_round_trip: float | None = None
+    standby_w: float | None = None
 
 
 def estimate(
@@ -134,7 +138,7 @@ async def estimate_from_counters(
         return [r for r in rows if first <= r["start"] <= last]
 
     soc_rows = within(soc)
-    return estimate_energy(
+    result = estimate_energy(
         sum(r["change"] for r in within(charge)),
         sum(r["change"] for r in within(discharge)),
         (last - first) / 3_600_000 + 1,
@@ -143,3 +147,64 @@ async def estimate_from_counters(
         capacity_wh,
         source="counters",
     )
+    split = split_losses(daily_balances(within(charge), within(discharge), soc_rows, capacity_wh))
+    if split is None:
+        return result
+    return replace(result, conversion_round_trip=split[0] ** 2, standby_w=split[1])
+
+
+DAY_MS = 24 * 3_600_000
+MIN_DAYS = 7
+
+
+def daily_balances(
+    charge: list[dict], discharge: list[dict], soc: list[dict], capacity_wh: float
+) -> list[tuple[float, float, float]]:
+    """(charged Wh, discharged Wh, stored change Wh) per full 24 h window of hourly rows."""
+    if not soc:
+        return []
+    by_hour_charge = {r["start"]: r["change"] for r in charge}
+    by_hour_discharge = {r["start"]: r["change"] for r in discharge}
+    soc_at = {r["start"]: r["mean"] for r in soc}
+    days = []
+    start = soc[0]["start"]
+    while start + DAY_MS in soc_at:
+        hours = [start + h * 3_600_000 for h in range(24)]
+        if all(h in by_hour_charge and h in by_hour_discharge for h in hours) and start in soc_at:
+            days.append(
+                (
+                    sum(by_hour_charge[h] for h in hours),
+                    sum(by_hour_discharge[h] for h in hours),
+                    capacity_wh * (soc_at[start + DAY_MS] - soc_at[start]) / 100,
+                )
+            )
+        start += DAY_MS
+    return days
+
+
+def split_losses(days: list[tuple[float, float, float]]) -> tuple[float, float] | None:
+    """One-way conversion efficiency and constant standby power (W) from daily balances.
+
+    Per day: stored = eta * charged - discharged / eta - standby * 24 h. Days with
+    different throughput separate the per-kWh losses from the constant draw; the
+    efficiency is searched on a grid, the standby follows in closed form.
+    """
+    if len(days) < MIN_DAYS:
+        return None
+    throughput = [c + d for c, d, _ in days]
+    # Without different amounts cycled per day both loss kinds look alike
+    if max(throughput) - min(throughput) < 0.2 * max(throughput):
+        return None
+    best: tuple[float, float, float] | None = None
+    for step in range(600, 1001):
+        eta = step / 1000
+        residuals = [eta * c - d / eta - s for c, d, s in days]
+        standby = max(sum(residuals) / len(residuals) / 24, 0.0)
+        error = sum((r - standby * 24) ** 2 for r in residuals)
+        if best is None or error < best[2]:
+            best = (eta, standby, error)
+    eta, standby, _ = best
+    # At the bounds the split did not find a real optimum
+    if eta in (0.6, 1.0):
+        return None
+    return eta, standby

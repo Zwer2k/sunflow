@@ -176,3 +176,24 @@ def test_solcast() -> None:
     assert total.power == pytest.approx(2000)
     assert total.power10 == pytest.approx(1000)
     assert total.end - total.start == period
+
+
+def test_forecast_solar_energy_belongs_to_interval_before_timestamp() -> None:
+    """watt_hours_period ends at its timestamp: 160 Wh at 09:00 were produced 08:00-09:00."""
+    from sunflow.sources import period_end_points
+
+    points = period_end_points(
+        {
+            "2026-10-25T07:00:00+01:00": 0,
+            "2026-10-25T08:00:00+01:00": 49,
+            "2026-10-25T09:00:00+01:00": 160,
+            "2026-10-25T09:15:20+01:00": 30,
+        }
+    )
+
+    by_start = {p.start.strftime("%H:%M"): round(p.power) for p in points}
+    assert by_start["07:00"] == 49 and by_start["07:30"] == 49
+    assert by_start["08:00"] == 160 and by_start["08:30"] == 160
+    # The 15 min 20 s tail lies within the 09:00 cell: 30 Wh in half an hour
+    assert by_start["09:00"] == 60
+    assert sum(p.power for p in points) / 2 == pytest.approx(239)

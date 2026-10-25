@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta, tzinfo
+import itertools
 from typing import Any
 
 from .ha import HAClient
@@ -301,22 +302,48 @@ def wh_period_points(wh_period: dict[str, float], period: timedelta) -> list[For
     return points
 
 
+def period_end_points(wh_period: dict[str, float], step: timedelta = timedelta(minutes=30)) -> list[ForecastPoint]:
+    """Convert Forecast.Solar energies to average power on a regular grid.
+
+    The API's watt_hours_period is the energy of the interval that ENDS at the
+    timestamp (it equals the trapezoid of the watts between the previous and this
+    timestamp; verified 2026-10-25). Home Assistant's hourly aggregation files it
+    under the hour that starts there, which shifts the forecast one hour late, so
+    the raw series is spread over the grid here instead.
+    """
+    entries = sorted((datetime.fromisoformat(k), float(v)) for k, v in wh_period.items())
+    energy: dict[datetime, float] = {}
+    for (begin, _), (end, wh) in itertools.pairwise(entries):
+        span = (end - begin).total_seconds()
+        if span <= 0 or wh <= 0:
+            continue
+        # Spread evenly over the grid cells the interval overlaps
+        cell = begin - (begin - begin.replace(minute=0, second=0, microsecond=0)) % step
+        while cell < end:
+            overlap = (min(cell + step, end) - max(cell, begin)).total_seconds()
+            energy[cell] = energy.get(cell, 0.0) + wh * overlap / span
+            cell += step
+    hours = step / timedelta(hours=1)
+    return [ForecastPoint(start=cell, end=cell + step, power=wh / hours) for cell, wh in sorted(energy.items())]
+
+
 async def forecast_solar_forecast(
     client: HAClient, entry_id: str, start: datetime, hours: int
 ) -> list[ForecastPoint]:
-    """Query one Forecast.Solar entry via its get_forecast action (hourly)."""
+    """Query one Forecast.Solar entry via its get_forecast action (raw timestamps)."""
     response = await client.call_service(
         "forecast_solar",
         "get_forecast",
         {
             "config_entry": entry_id,
-            "start": start.isoformat(),
+            # One extra hour so the interval ending at the first timestamp is complete
+            "start": (start - timedelta(hours=1)).isoformat(),
             "end": (start + timedelta(hours=hours)).isoformat(),
-            "resolution": "hourly",
+            "resolution": "raw",
         },
         return_response=True,
     )
-    return wh_period_points(response["response"]["wh_period"], timedelta(hours=1))
+    return [p for p in period_end_points(response["response"]["wh_period"]) if p.end > start]
 
 
 def resample(points: list[ForecastPoint], step: timedelta) -> list[ForecastPoint]:

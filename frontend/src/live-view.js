@@ -300,6 +300,13 @@ class SunflowLive extends LitElement {
     .value { fill: var(--sf-text); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .detail { fill: var(--sf-muted); font-size: 11px; }
     .label { fill: var(--sf-text); font-size: 13px; font-weight: 500; }
+    /* The diagram scales down to about half on phones; larger text keeps it readable */
+    @media (max-width: 600px) {
+      .value { font-size: 26px; }
+      .detail { font-size: 17px; }
+      .label { font-size: 20px; }
+      .flow { max-height: none; }
+    }
     .soc-track { fill: none; stroke: var(--sf-border); stroke-width: 4; }
     .soc-ring { fill: none; stroke-width: 4; stroke-linecap: round; }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.0
+
+- Fix: the Forecast.Solar forecast was one hour late. Its watt_hours_period is the
+  energy of the interval ending at the timestamp; Home Assistant's hourly aggregation
+  files it under the following hour. Sunflow now reads the raw series and spreads each
+  interval onto its 30 minute grid (independent of daylight saving time)
+- Battery efficiency: with at least 7 days of energy counters, the losses are split
+  into conversion (per kWh, used for planning) and the battery's constant standby
+  draw (BMS, DC/DC converters), shown in W
+- Phone layout: no frame around the content, compact header and step row, charts sized
+  to the screen with readable labels, larger text in the Live diagram
+- "Expertenmodus" moved from the header to the end of the setup steps and is
+  remembered in the browser
+
 ## 0.10.2
 
 - "Selbstverbrauch wiederherstellen": the device test stores a marker in /data from
