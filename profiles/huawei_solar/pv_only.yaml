@@ -12,4 +12,7 @@ roles:
   ac_power: {key: active_power, unit: W}
   pv_power: {key: input_power, unit: W}
   daily_yield: {key: daily_yield_energy, unit: kWh}
+  # AC and DC counters: exact yield and inverter efficiency
+  pv_energy: {key: accumulated_yield_energy, unit: kWh, optional: true}
+  pv_dc_energy: {key: total_dc_input_power, unit: kWh, optional: true}
   status: {key: device_status}

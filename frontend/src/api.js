@@ -54,6 +54,7 @@ export const api = {
   live: () => request("GET", "/live"),
   candidates: () => request("GET", "/entities/candidates"),
   addManual: (body) => request("POST", "/config/devices/manual", body),
+  energy: (period) => request("GET", `/energy?period=${encodeURIComponent(period)}`),
   efficiency: (configDeviceId) => request("GET", `/config/devices/${encodeURIComponent(configDeviceId)}/efficiency`),
   history: (hours = 24) => request("GET", `/history?hours=${hours}`),
   shadow: (hours = 48) => request("GET", `/shadow?hours=${hours}`),

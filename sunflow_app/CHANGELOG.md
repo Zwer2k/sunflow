@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+- Energy counters (kWh) are used where available: Sofar PV, consumption, import,
+  export, battery charge/discharge; Huawei AC yield and DC input. Grid counters of
+  the HA energy dashboard (utility meter) take precedence over inverter counters
+- Live "Heute" and the new Analyse section "Energiebilanz" (today, 7 days, 30 days)
+  come from the counters: autarky, self-consumption, battery in/out, inverter
+  efficiency (AC/DC). Integrated power means remain the fallback
+- Battery efficiency suggestion uses the charge/discharge counters of the last 30 days
+
 ## 0.6.0
 
 - Priority limits: a consumer in the priority list can wait until the home battery

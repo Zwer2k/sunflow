@@ -18,12 +18,16 @@ class SunflowAnalysis extends LitElement {
     _shadow: { state: true },
     _error: { state: true },
     _importResult: { state: true },
+    _energy: { state: true },
+    _period: { state: true },
   };
 
   constructor() {
     super();
     this._shadow = null;
     this._error = null;
+    this._energy = null;
+    this._period = "7d";
   }
 
   connectedCallback() {
@@ -37,7 +41,21 @@ class SunflowAnalysis extends LitElement {
     clearInterval(this._timer);
   }
 
+  async _loadEnergy() {
+    try {
+      this._energy = await api.energy(this._period);
+    } catch {
+      this._energy = null;
+    }
+  }
+
+  _setPeriod(period) {
+    this._period = period;
+    this._loadEnergy();
+  }
+
   async _load() {
+    this._loadEnergy();
     try {
       this._shadow = await api.shadow();
       this._error = null;
@@ -55,8 +73,53 @@ class SunflowAnalysis extends LitElement {
         </div>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
+      ${this._renderEnergy()}
       ${this._shadow === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
       ${this._renderShadow()}
+    `;
+  }
+
+  _renderEnergy() {
+    const e = this._energy;
+    const t = e?.totals;
+    if (!t || Object.values(t).every((v) => v === null)) return nothing;
+    const wh = (v) => formatValue(v, "Wh");
+    const pct = (v) => (v === null || v === undefined ? "–" : `${(v * 100).toFixed(1).replace(".", ",")} %`);
+    const tile = (label, value, hint = null, highlight = false) =>
+      value === null || value === undefined || value === "–"
+        ? nothing
+        : html`<div class="tile ${highlight ? "now" : ""}">
+            <div class="small muted">${label}</div><div class="value">${value}</div>
+            ${hint ? html`<div class="small muted">${hint}</div>` : nothing}
+          </div>`;
+    const fromDashboard = Object.entries(e.origin).filter(([, o]) => o === "energy_dashboard").map(([k]) => k);
+    return html`
+      <section>
+        <div class="section-head">
+          <h2>Energiebilanz</h2>
+          <div class="range" role="group" aria-label="Zeitraum">
+            ${[["today", "Heute"], ["7d", "7 Tage"], ["30d", "30 Tage"]].map(
+              ([value, label]) => html`<button class=${this._period === value ? "active" : ""} aria-pressed=${this._period === value}
+                @click=${() => this._setPeriod(value)}>${label}</button>`,
+            )}
+          </div>
+        </div>
+        <p class="small muted">Aus den Energiezählern${fromDashboard.length ? " (Netz aus dem Energie-Dashboard)" : " der Wechselrichter"}
+          seit ${dayTime.format(new Date(e.start))}${e.consumption_origin === "balance" ? "; Verbrauch aus der Bilanz berechnet" : ""}.</p>
+        <div class="tiles">
+          ${tile("Autarkie", pct(e.autarky), "Verbrauch ohne Netzbezug", true)}
+          ${tile("Eigenverbrauch", pct(e.self_consumption), "PV selbst genutzt", true)}
+          ${tile("PV erzeugt", t.pv === null ? null : wh(t.pv))}
+          ${tile("Verbraucht", e.consumption === null ? null : wh(e.consumption))}
+          ${tile("Netzbezug", t.grid_import === null ? null : wh(t.grid_import))}
+          ${tile("Eingespeist", t.grid_export === null ? null : wh(t.grid_export))}
+          ${tile("Speicher geladen", t.battery_charge === null ? null : wh(t.battery_charge))}
+          ${tile("Speicher entladen", t.battery_discharge === null ? null : wh(t.battery_discharge),
+            e.battery_ratio === null ? null : `${pct(e.battery_ratio)} der geladenen Energie (ohne Ladestandsänderung)`)}
+          ${e.inverters.map((i) => tile(`Wirkungsgrad ${i.name}`, pct(i.efficiency),
+            i.dc_wh === null ? null : `${wh(i.ac_wh)} AC aus ${wh(i.dc_wh)} DC`))}
+        </div>
+      </section>
     `;
   }
 
