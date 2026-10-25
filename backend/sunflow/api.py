@@ -7,6 +7,7 @@ from dataclasses import asdict
 import io
 from datetime import UTC, datetime, timedelta
 import hashlib
+import json
 import logging
 from pathlib import Path
 import tempfile
@@ -744,6 +745,20 @@ async def export_data(request: Request) -> Response:
             for name in ("config.json", "eeprom_writes.json"):
                 if (data_dir / name).exists():
                     archive.write(data_dir / name, name)
+            if (latest := runner.latest) is not None:
+                archive.writestr(
+                    "plan.json",
+                    json.dumps(
+                        {
+                            "computed": runner.status.last_plan,
+                            "warnings": latest.warnings,
+                            "flex": [asdict(f) for f in latest.flex],
+                            "plan": asdict(latest.plan),
+                        },
+                        default=str,
+                        indent=1,
+                    ),
+                )
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
     return Response(
         buffer.getvalue(),

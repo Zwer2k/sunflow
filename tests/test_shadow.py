@@ -33,17 +33,20 @@ def test_recorder_summary() -> None:
 
 
 @pytest.mark.parametrize(
-    ("pv", "load", "battery", "expected"),
+    ("grid", "battery", "expected"),
     [
-        pytest.param(0, 500, -500, "auto", id="covers_deficit"),
-        pytest.param(0, 500, 0, "hold", id="idle_with_deficit"),
-        pytest.param(0, 500, 2000, "force_charge", id="grid_charging"),
-        pytest.param(None, 500, 0, None, id="missing"),
+        pytest.param(0, -500, "auto", id="covers_deficit"),
+        pytest.param(10, -364, "auto", id="coarse_pv_reading_is_ignored"),
+        pytest.param(500, 0, "hold", id="idle_while_importing"),
+        pytest.param(2500, 2000, "force_charge", id="grid_charging"),
+        pytest.param(-800, -1000, "force_discharge", id="battery_exporting"),
+        pytest.param(-2000, 1500, "auto", id="pv_surplus_charges_and_exports"),
+        pytest.param(None, 0, None, id="missing"),
     ],
 )
-def test_actual_action(pv: float | None, load: float, battery: float, expected: str | None) -> None:
-    """Measured behaviour is classified like planned actions."""
-    assert actual_action(pv, load, battery) == expected
+def test_actual_action(grid: float | None, battery: float, expected: str | None) -> None:
+    """Measured behaviour is classified from the grid meter and the battery."""
+    assert actual_action(grid, battery) == expected
 
 
 def test_store_and_evaluate(tmp_path: Path) -> None:

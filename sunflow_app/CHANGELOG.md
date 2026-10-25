@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.5
+
+- Shadow mode classifies what the battery did from the grid meter and battery power;
+  coarse DC PV readings caused false "Entladen ins Netz" entries (also for old data)
+- The data export contains the current plan (plan.json) for analysis
+
 ## 0.3.4
 
 - Clearer wording for whether the home battery may discharge into a consumer
