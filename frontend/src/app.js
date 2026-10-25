@@ -913,7 +913,7 @@ class SunflowApp extends LitElement {
     const matched = integration.devices.filter((d) => d.profile);
     const capabilities = matched.flatMap((d) => d.capabilities ?? []);
     let chip;
-    if (!integration.supported) chip = html`<span class="chip warn">Nicht unterstützt – im Expertenmodus manuell</span>`;
+    if (!integration.supported) chip = html`<span class="chip warn">Nicht unterstützt – Schalter oder Steckdosen unten als eigene Verbraucher hinzufügen</span>`;
     else if (matched.length === 0) chip = html`<span class="chip warn">Kein passendes Profil</span>`;
     else if (isControllable(capabilities)) chip = html`<span class="chip ok">Unterstützt · steuerbar</span>`;
     else chip = html`<span class="chip neutral">Unterstützt · nur lesen</span>`;
@@ -1075,9 +1075,11 @@ class SunflowApp extends LitElement {
                 @click=${() => this._accept(device)}>
                 ${configured ? "Anpassungen speichern" : dirty ? "Mit Anpassungen übernehmen" : "Werte passen"}
               </button>`}
-          <button class="secondary" aria-expanded=${editing} @click=${() => this._toggleEdit(device)}>
-            ${editing ? "Anpassen schließen" : "Anpassen"}
-          </button>
+          ${this._advanced || editing || dirty || !preview?.complete
+            ? html`<button class="secondary" aria-expanded=${editing} @click=${() => this._toggleEdit(device)}>
+                ${editing ? "Zuordnung schließen" : "Entitäten zuordnen"}
+              </button>`
+            : nothing}
         </div>
       </section>
     `;

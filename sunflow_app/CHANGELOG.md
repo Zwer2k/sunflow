@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.4
+
+- Expertenmodus only for technical details: battery efficiency, vehicle charging
+  efficiency and daily hot water demand are always visible in Kenndaten. Manual entity
+  assignment ("Entitäten zuordnen"), role table, sub-devices, the grid offset and the
+  device test's service calls stay in expert mode; the assignment is offered anyway
+  when a required value was not found
+
 ## 0.11.3
 
 - "Expertenmodus" switch in its own row below the setup steps, always visible on
