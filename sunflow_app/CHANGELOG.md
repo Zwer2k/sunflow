@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2
+
+- Live view adapts to the configuration: components that are not configured are
+  hidden with their lines (no PV, no battery, no grid measurement)
+- Several batteries are shown as one node (summed power, capacity-weighted SoC)
+  with the single values below
+- Grid and house consumption come from any device that measures them
+
 ## 0.4.1
 
 - Plans fill the battery first and export afterwards (export early only paid off if

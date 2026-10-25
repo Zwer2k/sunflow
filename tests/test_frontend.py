@@ -87,3 +87,20 @@ def test_manual_device_and_flex_settings(tmp_path: Path) -> None:
         "strategy": "pv_only", "target": None, "ready_by": "18:00", "uses_battery": False, "alternative_cost_ct": None
     }
     assert client.patch(f"/api/v1/config/devices/{device['id']}", json={"flex": {"ready_by": "25:00"}}).status_code == 422
+
+
+def test_combine_batteries() -> None:
+    """Several batteries become one node with capacity-weighted SoC."""
+    from sunflow.api import combine_batteries
+
+    assert combine_batteries([]) is None
+    combined = combine_batteries(
+        [
+            {"name": "A", "soc_pct": 80, "capacity_wh": 20000, "power_w": 1000},
+            {"name": "B", "soc_pct": 20, "capacity_wh": 5000, "power_w": -400},
+        ]
+    )
+    assert combined["soc_pct"] == 68
+    assert combined["power_w"] == 600
+    assert combined["count"] == 2
+    assert [p["name"] for p in combined["parts"]] == ["A", "B"]

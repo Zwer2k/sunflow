@@ -831,43 +831,51 @@ async def get_efficiency(request: Request, device_id: str, days: int = 10) -> di
 
 @router.get("/live")
 async def get_live(request: Request) -> dict[str, Any]:
-    """Current power flows: PV per plant, battery, grid, house and consumers (W, + = charge/import)."""
+    """Current power flows (W; battery + = charging, grid + = import).
+
+    Components that are not configured are null or empty, so the view adapts:
+    no PV, no battery, several batteries (combined), grid and load from any
+    device that measures them.
+    """
     config = request.app.state.store.load()
     profiles = _library(request).profiles
     snapshot = await _snapshot(request)
     site = site_status(config.devices, profiles, snapshot)
     by_id = {d.id: d for d in config.devices}
-    result: dict[str, Any] = {
-        "time": datetime.now(UTC).isoformat(),
-        "pv": [],
-        "pv_w": site.pv_total,
-        "battery": None,
-        "grid_w": None,
-        "load_w": None,
-        "consumers": [],
-    }
+    pv: list[dict[str, Any]] = []
+    batteries: list[dict[str, Any]] = []
+    consumers: list[dict[str, Any]] = []
+    grid_w: float | None = None
+    load_w: float | None = None
     for status in site.devices:
         device = by_id[status.device_id]
+        profile = profiles[device.profile]
         roles = {r.role: r for r in status.roles}
-        value = lambda role: roles[role].value if role in roles else None  # noqa: E731
+
+        def value(role: str) -> float | None:
+            return roles[role].value if role in roles else None
+
         capabilities = status.capabilities
         if status.pv_output is not None:
-            result["pv"].append({"name": device.name, "power_w": status.pv_output})
-        if "battery_window" in capabilities:
-            params = {p["name"]: p["effective"] for p in device_parameters(profiles[device.profile], device, snapshot)}
-            soc = value("battery_soc")
-            result["battery"] = {
-                "name": device.name,
-                "soc_pct": soc,
-                "soc_wh": params["capacity_wh"] * soc / 100 if soc is not None and params.get("capacity_wh") else None,
-                "capacity_wh": params.get("capacity_wh"),
-                "power_w": value("battery_power"),
-            }
-            result["grid_w"] = value("grid_power")
-            result["load_w"] = value("load_power")
+            pv.append({"name": device.name, "power_w": status.pv_output})
+        if "battery" in capabilities and value("battery_soc") is not None:
+            params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+            batteries.append(
+                {
+                    "name": device.name,
+                    "soc_pct": value("battery_soc"),
+                    "capacity_wh": params.get("capacity_wh"),
+                    "power_w": value("battery_power"),
+                }
+            )
+        # The first device measuring grid or load wins (usually the hybrid inverter)
+        if grid_w is None and value("grid_power") is not None:
+            grid_w = value("grid_power")
+        if load_w is None and value("load_power") is not None:
+            load_w = value("load_power")
         if "loadpoint" in capabilities or "load" in capabilities:
-            kind = device_kind(profiles[device.profile], device, snapshot) or "load"
-            result["consumers"].append(
+            kind = device_kind(profile, device, snapshot) or "load"
+            consumers.append(
                 {
                     "name": device.name,
                     "kind": kind,
@@ -878,7 +886,31 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
                 }
             )
-    return result
+    return {
+        "time": datetime.now(UTC).isoformat(),
+        "pv": pv,
+        "pv_w": sum(p["power_w"] for p in pv) if pv else None,
+        "battery": combine_batteries(batteries),
+        "grid_w": grid_w,
+        "load_w": load_w,
+        "consumers": consumers,
+    }
+
+
+def combine_batteries(batteries: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """One battery node: summed power, SoC weighted by capacity (equal weights without)."""
+    if not batteries:
+        return None
+    weights = [b["capacity_wh"] or 1.0 for b in batteries]
+    soc = sum(b["soc_pct"] * w for b, w in zip(batteries, weights, strict=True)) / sum(weights)
+    powers = [b["power_w"] for b in batteries if b["power_w"] is not None]
+    return {
+        "name": " + ".join(b["name"] for b in batteries),
+        "count": len(batteries),
+        "soc_pct": soc,
+        "power_w": sum(powers) if powers else None,
+        "parts": batteries if len(batteries) > 1 else [],
+    }
 
 
 @router.get("/site")
