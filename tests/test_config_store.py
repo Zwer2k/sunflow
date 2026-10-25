@@ -27,3 +27,21 @@ def test_roundtrip(tmp_path: Path) -> None:
     assert loaded == config
     assert loaded.device(config.devices[0].id) == config.devices[0]
     assert loaded.device("nope") is None
+
+
+def test_cost_override_beats_pv_only_default() -> None:
+    """A device set to "only PV" by default can be switched to cost optimal temporarily."""
+    from datetime import UTC, datetime
+
+    from sunflow.config_store import DeviceOverride, FlexSettings, SunflowConfig
+
+    device = DeviceConfig(
+        id="ww", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser",
+        flex=FlexSettings(strategy="pv_only"),
+    )
+    config = SunflowConfig(devices=[device], overrides={"ww": DeviceOverride(strategy="cost")})
+
+    effective, paused = config.effective_flex(device, datetime.now(UTC))
+
+    assert effective.strategy == "cost"
+    assert not paused

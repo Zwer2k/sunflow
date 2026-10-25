@@ -12,12 +12,11 @@ const STRATEGIES = {
   backup: "Notstrom",
 };
 const MODES = {
-  default: "Standard",
+  cost: "Kostenoptimal",
   pv_only: "Nur PV",
   fast: "Sofort",
   pause: "Pause",
 };
-const DEFAULT_LABELS = { cost: "kostenoptimal", pv_only: "nur PV", fast: "sofort" };
 const KIND_LABELS = { vehicle: "Fahrzeug", heater: "Warmwasser", load: "Verbraucher" };
 const TARGETS = { vehicle: [50, 80, 100], heater: [45, 55, 60] };
 const DURATIONS = {
@@ -114,7 +113,8 @@ class SunflowControl extends LitElement {
 
   _setMode(device, mode) {
     if (mode === "pause") return this._setDevice(device, { paused: true, strategy: null });
-    return this._setDevice(device, { paused: false, strategy: mode === "default" ? null : mode });
+    // Choosing the default strategy drops the strategy override instead of storing a copy
+    return this._setDevice(device, { paused: false, strategy: mode === device.default.strategy ? null : mode });
   }
 
   _move(index, step) {
@@ -189,7 +189,7 @@ class SunflowControl extends LitElement {
   }
 
   _renderDevice(device) {
-    const mode = device.paused ? "pause" : device.override?.strategy ?? "default";
+    const mode = device.paused ? "pause" : device.override?.strategy ?? device.default.strategy;
     const unit = device.kind === "heater" ? "°C" : "%";
     const targets = TARGETS[device.kind];
     const targetOverride = device.override?.target ?? null;
@@ -211,7 +211,7 @@ class SunflowControl extends LitElement {
           ${Object.entries(MODES).map(
             ([value, label]) => html`<button aria-pressed=${mode === value} ?disabled=${this._busy}
               class=${mode === value ? "on" : ""} @click=${() => this._setMode(device, value)}>
-              ${value === "default" ? `${label} (${DEFAULT_LABELS[device.default.strategy]})` : label}
+              ${label}${value === device.default.strategy ? html`<span class="std">Standard</span>` : nothing}
             </button>`,
           )}
         </div>
@@ -302,6 +302,7 @@ class SunflowControl extends LitElement {
       cursor: pointer; font-size: 14px; color: var(--sf-muted);
     }
     .segmented button.on { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
+    .segmented button .std { display: block; font-size: 11px; font-weight: 400; color: var(--sf-muted); }
     .segmented.small-buttons button { min-height: 36px; font-size: 13px; }
     .row { display: flex; flex-direction: column; gap: 6px; }
     .plan { padding: 8px 10px; border-radius: 8px; background: var(--sf-subtle); }
