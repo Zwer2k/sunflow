@@ -113,3 +113,18 @@ def test_display_name(name: str, strip: list[str], expected: str) -> None:
     )
 
     assert display_name(device, {"name_strip": strip}) == expected
+
+
+@pytest.mark.parametrize("model", ["Loadpoint Wallbox Carport [evcc]", "Ladepunkt Wallbox Carport [evcc]"])
+def test_evcc_loadpoint_in_any_language(library: ProfileLibrary, model: str) -> None:
+    """evcc names devices in the HA language; English and German loadpoints match."""
+    from sunflow.discovery import match_profile
+
+    device = {"id": "lp", "model": model}
+    entities = [
+        {"entity_id": "sensor.evcc_wallbox_carport_charge_power", "unique_id": "evcc_intg.evcc_wallbox_carport_charge_power"},
+        {"entity_id": "select.evcc_wallbox_carport_mode", "unique_id": "evcc_intg.evcc_wallbox_carport_mode"},
+    ]
+
+    assert match_profile(library, "evcc_intg", device, entities, False) == "evcc_intg/loadpoint"
+    assert match_profile(library, "evcc_intg", {"id": "v", "model": "Fahrzeug Fiat 500e [evcc]"}, entities, False) is None

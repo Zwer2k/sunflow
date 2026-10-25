@@ -130,8 +130,11 @@
         },
         "has_battery": {"type": "boolean"},
         "model": {
-          "description": "Glob pattern matched against the device model.",
-          "type": "string"
+          "description": "Glob pattern(s) matched against the device model; any of a list may match (e.g. localized names).",
+          "oneOf": [
+            {"type": "string"},
+            {"type": "array", "items": {"type": "string"}, "minItems": 1}
+          ]
         },
         "manufacturer": {"type": "string"}
       }
