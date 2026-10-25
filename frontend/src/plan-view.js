@@ -291,7 +291,11 @@ class SunflowPlan extends LitElement {
 
       <section>
         <h3>Bezugspreis <span class="tag">Vorschau</span></h3>
-        ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price })), "Bezugspreis im Plan")}
+        ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price })), "Bezugspreis im Plan", {
+          // Same time axis as the charts above (history plus plan)
+          start: history.length ? new Date(history[0].start) : null,
+          now: nowDate,
+        })}
       </section>
 
     `;
