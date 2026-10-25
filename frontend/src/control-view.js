@@ -265,11 +265,13 @@ class SunflowControl extends LitElement {
         <h2>Priorität</h2>
         <p class="small muted">Reicht der PV-Überschuss nicht für alle, bekommt der obere Eintrag zuerst.
           Verbraucher unterhalb des Hausspeichers erhalten Überschuss erst, wenn der Speicher ihn nicht mehr aufnimmt.
-          Mit „Grenzen“ wartet ein Verbraucher, bis andere Speicher einen Ladestand erreicht haben – bis dahin nutzt er
+          Mit „Grenzen“ wartet ein Verbraucher, bis höher eingestufte Speicher einen Ladestand erreicht haben – bis dahin nutzt er
           nur Netzstrom, falls sein Ziel das verlangt.</p>
         <ol class="priorities">
           ${priorities.map((p, i) => {
-            const own = sources.filter((s) => s.id !== p.id);
+            // Limits can only refer to entries ranked higher
+            const above = new Set(priorities.slice(0, i).map((q) => q.id));
+            const own = sources.filter((s) => above.has(s.id));
             const editing = this._editing === p.id;
             return html`<li class=${p.id === "battery" ? "battery" : ""}>
               <div class="entry">
