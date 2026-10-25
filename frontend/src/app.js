@@ -651,8 +651,23 @@ class SunflowApp extends LitElement {
     return html`
       <header>
         <div class="brand">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"></path></svg>
+          <svg width="32" height="32" viewBox="0 0 256 256" aria-hidden="true">
+            <!-- Same mark as brand/sunflow.svg: the sun with three energy flows -->
+            <g stroke="#F59E0B" stroke-width="11" stroke-linecap="round">
+              <line x1="80" y1="12" x2="80" y2="26"></line><line x1="12" y1="80" x2="26" y2="80"></line>
+              <line x1="31.9" y1="31.9" x2="41.8" y2="41.8"></line><line x1="128.1" y1="31.9" x2="118.2" y2="41.8"></line>
+              <line x1="31.9" y1="128.1" x2="41.8" y2="118.2"></line>
+            </g>
+            <g fill="none" stroke-width="15" stroke-linecap="round">
+              <path d="M80 80 C 150 80, 150 62, 212 62" stroke="#10B981"></path>
+              <path d="M80 80 C 140 100, 150 136, 212 136" stroke="#0EA5E9"></path>
+              <path d="M80 80 C 110 150, 140 210, 212 210" stroke="#8B5CF6"></path>
+            </g>
+            <circle cx="80" cy="80" r="40" fill="#F59E0B"></circle>
+            <circle cx="224" cy="62" r="18" fill="#10B981"></circle>
+            <circle cx="224" cy="136" r="18" fill="#0EA5E9"></circle>
+            <circle cx="224" cy="210" r="18" fill="#8B5CF6"></circle>
+          </svg>
           <div>
             <div class="title">Sunflow</div>
             <div class="subtitle">${{ live: "Live", control: "Steuerung", plan: "Planung", analysis: "Analyse" }[this._view] ?? "Einstellungen"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
