@@ -5,8 +5,8 @@ import { svg, nothing } from "../vendor/lit-all.min.js";
 export const SERIES_COLORS = [1, 2, 3, 4, 5, 6].map((i) => `var(--sf-series-${i})`);
 export const UNASSIGNED_COLOR = "var(--sf-series-neutral)";
 
-const W = 720;
-const H = 200;
+const W = 960;
+const H = 220;
 const PAD = { top: 12, right: 12, bottom: 28 };
 // Axis labels use 11px text; this is a safe average glyph width for digits, units and spaces
 const AXIS_CHAR_WIDTH = 6.6;

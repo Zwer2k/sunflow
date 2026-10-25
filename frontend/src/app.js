@@ -1639,7 +1639,7 @@ class SunflowApp extends LitElement {
     :host { display: block; min-height: 100vh; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
-    h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    h1 { margin: 0; font-size: 20px; line-height: 1.25; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
@@ -1647,7 +1647,7 @@ class SunflowApp extends LitElement {
 
     header {
       background: var(--sf-surface); border-bottom: 1px solid var(--sf-border);
-      padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 12px;
+      padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px 12px;
       align-items: center; justify-content: space-between;
     }
     .brand { display: flex; align-items: center; gap: 12px; color: var(--sf-primary); }
@@ -1660,12 +1660,12 @@ class SunflowApp extends LitElement {
     }
     .tab { flex: none; }
     .tab {
-      min-height: 36px; padding: 0 16px; border: 0; border-radius: 8px; background: transparent;
+      min-height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent;
       cursor: pointer; font-size: 14px; color: var(--sf-muted);
     }
     .tab.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
     .switch {
-      display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px;
+      display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px;
       border: 1px solid var(--sf-border); border-radius: 22px; background: var(--sf-surface); cursor: pointer; font-size: 14px;
     }
     .track { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--sf-muted); transition: background .15s; }
@@ -1674,8 +1674,8 @@ class SunflowApp extends LitElement {
     .track.on .knob { left: 18px; }
 
     .layout {
-      max-width: 1240px; margin: 0 auto; padding: 24px 16px;
-      display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start;
+      max-width: 1240px; margin: 0 auto; padding: 16px;
+      display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;
     }
     nav {
       flex: 1 1 220px; max-width: 280px; background: var(--sf-surface);
@@ -1695,7 +1695,7 @@ class SunflowApp extends LitElement {
 
     main {
       flex: 999 1 560px; min-width: 0; background: var(--sf-surface); border: 1px solid var(--sf-border);
-      border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 20px;
+      border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px;
     }
     .heading { display: flex; flex-direction: column; gap: 6px; }
 

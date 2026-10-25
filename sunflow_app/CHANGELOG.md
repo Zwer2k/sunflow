@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2
+
+- Live view fits the window without scrolling: the flow diagram scales to the
+  available height, title and today's tiles are more compact
+- More compact layout everywhere: smaller header, spacing and headings, flatter charts
+
 ## 0.5.1
 
 - Ladestand chart shows the limits: full capacity, discharge limit (min SoC)
