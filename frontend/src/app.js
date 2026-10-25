@@ -1116,11 +1116,13 @@ class SunflowApp extends LitElement {
               </label>`
             : nothing}
           <label class="field">
-            <span class="field-label">Hausspeicher</span>
+            <span class="field-label">Strom aus dem Hausspeicher</span>
             <span class="inline">
               <input type="checkbox" .checked=${flex.uses_battery} @change=${(e) => set("uses_battery", e.target.checked)}>
-              darf mitladen bzw. mitheizen
+              Hausspeicher darf in diesen Verbraucher entladen
             </span>
+            <span class="small muted">Aus: der Speicher versorgt nur das Haus; ${kind === "heater" ? "geheizt" : "geladen"} wird
+              dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.</span>
           </label>
         </div>
       </fieldset>
