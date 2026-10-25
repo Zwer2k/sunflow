@@ -6,14 +6,15 @@ of the energy dashboard win, then a dedicated meter, then an inverter.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
+import math
 from typing import Any
 
 from .config_store import SunflowConfig
 from .discovery import Snapshot
 from .ha import HAClient
 from .resolver import preview
-from .site import measurement_device
+from .site import device_parameters, measurement_device
 
 # Balance keys that belong to one measured quantity: only its device counts
 QUANTITY_KEYS = {"grid_import": "grid", "grid_export": "grid", "load": "load"}
@@ -171,3 +172,122 @@ async def energy_balance(client: HAClient, sources: EnergySources, start: dateti
             for name, (ac, dc) in sources.inverters.items()
         ],
     }
+
+
+@dataclass(frozen=True, kw_only=True)
+class BatteryCounters:
+    """Statistics needed for a battery's daily efficiency."""
+
+    name: str
+    charge: str
+    discharge: str
+    soc: str
+    capacity_wh: float
+
+
+def battery_counters(
+    config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot
+) -> list[BatteryCounters]:
+    """Batteries with charge and discharge counters, SoC and capacity."""
+    result = []
+    for device in config.devices:
+        profile = profiles[device.profile]
+        roles = {
+            r.role: r
+            for r in preview(
+                profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()}
+            )
+        }
+        ids = [roles[r].entity_id if r in roles else None for r in ("battery_charge_energy", "battery_discharge_energy", "battery_soc")]
+        capacity = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}.get("capacity_wh")
+        if all(ids) and capacity:
+            result.append(BatteryCounters(name=device.name, charge=ids[0], discharge=ids[1], soc=ids[2], capacity_wh=capacity))
+    return result
+
+
+# Days with less energy through the device give only measurement noise
+MIN_BATTERY_CYCLE = 0.2
+MIN_INVERTER_WH = 500
+
+
+async def efficiency_history(
+    client: HAClient,
+    batteries: list[BatteryCounters],
+    inverters: dict[str, tuple[str, str]],
+    days: int,
+    tz: tzinfo,
+) -> list[dict[str, Any]]:
+    """Daily efficiency per battery (round trip, SoC corrected) and per inverter (AC / DC)."""
+    end = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = end - timedelta(days=days)
+    # One hour before for the SoC around the first midnight
+    query_start = start - timedelta(hours=1)
+    ids = [s for b in batteries for s in (b.charge, b.discharge, b.soc)] + [s for pair in inverters.values() for s in pair]
+    if not ids:
+        return []
+    result = await client.command(
+        "recorder/statistics_during_period",
+        start_time=query_start.isoformat(),
+        # One hour more for the SoC at the end of the last day
+        end_time=(end + timedelta(hours=1)).isoformat(),
+        statistic_ids=sorted(set(ids)),
+        period="hour",
+        types=["change", "mean"],
+        units={"energy": "Wh"},
+    )
+
+    def hours_in(day: date) -> int:
+        """23, 24 or 25 hours, depending on daylight saving time changes."""
+        midnight = datetime(day.year, day.month, day.day, tzinfo=tz)
+        following = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=tz)
+        return round((following.astimezone(UTC) - midnight.astimezone(UTC)).total_seconds() / 3600)
+
+    def per_day(statistic: str) -> dict[date, float]:
+        """Daily totals of days without gaps (an hour without statistics would miss energy)."""
+        totals: dict[date, float] = {}
+        hours: dict[date, int] = {}
+        for row in result.get(statistic, []):
+            if row.get("change") is not None:
+                day = datetime.fromtimestamp(row["start"] / 1000, tz).date()
+                totals[day] = totals.get(day, 0.0) + row["change"]
+                hours[day] = hours.get(day, 0) + 1
+        return {day: total for day, total in totals.items() if hours[day] >= hours_in(day)}
+
+    def soc_at_midnight(statistic: str) -> dict[date, float]:
+        """SoC at each local midnight from the means of the hour before and after it."""
+        means = {
+            datetime.fromtimestamp(row["start"] / 1000, tz): row["mean"]
+            for row in result.get(statistic, [])
+            if row.get("mean") is not None
+        }
+        values = {}
+        for moment, after in means.items():
+            if moment.hour == 0 and (before := means.get(moment - timedelta(hours=1))) is not None:
+                values[moment.date()] = (before + after) / 2
+        return values
+
+    dates = [(start + timedelta(days=i)).date() for i in range(days)]
+    series = []
+    for battery in batteries:
+        charged, discharged, soc = per_day(battery.charge), per_day(battery.discharge), soc_at_midnight(battery.soc)
+        points = []
+        for day in dates:
+            c, d = charged.get(day), discharged.get(day)
+            begin, finish = soc.get(day), soc.get(day + timedelta(days=1))
+            value = None
+            if c and d is not None and begin is not None and finish is not None and c >= MIN_BATTERY_CYCLE * battery.capacity_wh:
+                stored = battery.capacity_wh * (finish - begin) / 100
+                root = stored * stored + 4 * c * d
+                eta = (stored + math.sqrt(root)) / (2 * c) if root >= 0 else None
+                value = eta * eta if eta else None
+            points.append({"date": day.isoformat(), "value": value, "energy_wh": c})
+        series.append({"name": battery.name, "kind": "battery", "points": points})
+    for name, (ac_id, dc_id) in inverters.items():
+        ac, dc = per_day(ac_id), per_day(dc_id)
+        points = []
+        for day in dates:
+            a, d = ac.get(day), dc.get(day)
+            value = a / d if a is not None and d and d >= MIN_INVERTER_WH else None
+            points.append({"date": day.isoformat(), "value": value, "energy_wh": d})
+        series.append({"name": name, "kind": "inverter", "points": points})
+    return series

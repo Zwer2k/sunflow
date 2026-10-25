@@ -17,7 +17,8 @@ function fit() {
 }
 
 // Hours between time labels: the smallest step that leaves room for a label
-const HOUR_STEPS = [1, 2, 3, 6, 12, 24, 48];
+const HOUR_STEPS = [1, 2, 3, 6, 12, 24, 48, 168, 336, 720];
+const dateFormat = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" });
 const MIN_LABEL_SPACING = 56;
 const PAD = { top: 18, right: 8, bottom: 28 };
 // Value labels sit on their grid lines inside the plot, so no left margin is needed and
@@ -32,14 +33,16 @@ const dayFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
  * Round axis: the smallest step of 1, 2 or 5 x 10^n that needs at most six intervals,
  * so tick labels are round ("0, 5, 10, 15, 20, 25 kWh").
  */
-function niceScale(value) {
-  if (!(value > 0)) return { max: 1, ticks: [0, 0.5, 1] };
-  const magnitude = 10 ** Math.floor(Math.log10(value / 6));
-  const step = [1, 2, 5, 10].map((m) => m * magnitude).find((candidate) => Math.ceil(value / candidate) <= 6);
+function niceScale(value, from = 0) {
+  if (!(value > from)) return { min: from, max: from + 1, ticks: [from, from + 0.5, from + 1] };
+  const span = value - from;
+  const magnitude = 10 ** Math.floor(Math.log10(span / 6));
+  const step = [1, 2, 5, 10].map((m) => m * magnitude).find((candidate) => Math.ceil(span / candidate) <= 6);
+  const min = Math.floor(from / step + 1e-9) * step;
   const max = Math.ceil(value / step - 1e-9) * step;
   const ticks = [];
-  for (let tick = 0; tick <= max + step / 2; tick += step) ticks.push(Math.round(tick / step) * step);
-  return { max, ticks };
+  for (let tick = min; tick <= max + step / 2; tick += step) ticks.push(Math.round(tick / step) * step);
+  return { min, max, ticks };
 }
 
 /** Axis label: no decimals from 10 on ("18 kWh", not "18,3 kWh"); small values keep them. */
@@ -61,20 +64,22 @@ function timeScale(start, end, left) {
 }
 
 function frame(start, end, scale, formatY) {
-  const { max: yMax, ticks } = scale;
+  const { min: yMin = 0, max: yMax, ticks } = scale;
   // Left margin fits the widest y label so it is never cut off
   const left = LEFT;
   const x = timeScale(start, end, left);
-  const y = (v) => H - PAD.bottom - (v / yMax) * (H - PAD.top - PAD.bottom);
+  const y = (v) => H - PAD.bottom - ((v - yMin) / (yMax - yMin)) * (H - PAD.top - PAD.bottom);
   const pxPerHour = (W - left - PAD.right) / Math.max((end - start) / 3600_000, 1);
-  const every = HOUR_STEPS.find((h) => h * pxPerHour >= MIN_LABEL_SPACING) ?? 48;
+  const every = HOUR_STEPS.find((h) => h * pxPerHour >= MIN_LABEL_SPACING) ?? 720;
+  // Whole days since a fixed Monday, so weekly labels fall on Mondays
+  const dayNumber = (t) => Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - new Date(2024, 0, 1)) / 86_400_000);
   const hours = [];
   const first = new Date(start);
   first.setMinutes(0, 0, 0);
   for (let t = new Date(first); t <= end; t = new Date(t.getTime() + 3600_000)) {
     if (t < start) continue;
     // Steps of a day or more label midnights only (every second one for 48 h)
-    const due = every < 24 ? t.getHours() % every === 0 : t.getHours() === 0 && (every === 24 || t.getDate() % 2 === 0);
+    const due = every < 24 ? t.getHours() % every === 0 : t.getHours() === 0 && dayNumber(t) % (every / 24) === 0;
     // Labels centred on the tick must not be cut off at the edges
     if (due && x(t) > 18 && x(t) < W - PAD.right - 18) hours.push(t);
   }
@@ -95,7 +100,7 @@ function frame(start, end, scale, formatY) {
         (t) => svg`
           <line x1=${x(t)} x2=${x(t)} y1=${H - PAD.bottom} y2=${H - PAD.bottom + 4} class="grid"></line>
           <text x=${x(t)} y=${H - 8} text-anchor="middle" class="axis">
-            ${t.getHours() === 0 ? dayFormat.format(t) : timeFormat.format(t)}
+            ${t.getHours() !== 0 ? timeFormat.format(t) : every >= 168 ? dateFormat.format(t) : dayFormat.format(t)}
           </text>
         `,
       )}
@@ -139,13 +144,13 @@ export function priceChart(points, label, { start: rangeStart = null, end: range
  * values (left) from forecasts (right). `limits` ([{value, label}]) draws labeled
  * horizontal reference lines.
  */
-export function lineChart(series, { label, formatY, yMax: fixedMax, now = null, limits = [] }) {
+export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, now = null, limits = [] }) {
   fit();
   const all = series.flatMap((s) => s.points).filter((p) => p.value !== null && p.value !== undefined);
   if (!all.length) return nothing;
   const start = new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
   const end = new Date(Math.max(...series.flatMap((s) => s.points.map((p) => new Date(p.end)))));
-  const scale = niceScale(fixedMax ?? Math.max(...all.map((p) => p.value)) * 1.05);
+  const scale = niceScale(fixedMax ?? Math.max(...all.map((p) => p.value)) * 1.05, yMin);
   const { x, y, axes, left } = frame(start, end, scale, formatY);
   const pathOf = (points) => {
     let pen = "M";
