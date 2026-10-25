@@ -202,7 +202,8 @@ class SunflowLive extends LitElement {
 
         ${hasPv
           ? this._node("pv", NODE.pv, COLOR.pv, "PV", formatValue(live.pv_w, "W"),
-              live.pv.length > 1 ? live.pv.map((p) => formatValue(p.power_w, "W")).join(" + ") : null)
+              // The string row above already shows the parts
+              live.pv.length > 1 && !strings.length ? live.pv.map((p) => formatValue(p.power_w, "W")).join(" + ") : null)
           : nothing}
         ${this._node("grid", NODE.grid, COLOR.grid, "Netz", hasGrid ? formatValue(Math.abs(live.grid_w), "W") : "–",
           !hasGrid ? "keine Messung" : live.grid_w > ACTIVE_W ? "Bezug" : live.grid_w < -ACTIVE_W ? "Einspeisung" : "ausgeglichen")}

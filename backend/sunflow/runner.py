@@ -111,6 +111,8 @@ class ShadowRunner:
         self.snapshots = snapshots
         self.status = RunnerStatus()
         self.latest: PlanResult | None = None
+        # Latest live reading, to show what the battery really does next to the plan
+        self.last_sample: Sample | None = None
         self._recorder: SlotRecorder | None = None
         self._replan_task: asyncio.Task[None] | None = None
         # Slot of the last successful plan; a failed replan is retried on the next tick
@@ -146,6 +148,7 @@ class ShadowRunner:
                 await self._replan(start)
             if (sample := await take_sample(self._client, self._store, self._library, self.snapshots)) is not None:
                 self._recorder.samples.append(sample)
+                self.last_sample = sample
             self.status.last_error = None
         except (HAError, KeyError, ValueError) as err:
             _LOGGER.warning("Shadow tick failed: %s", err)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.2
+
+- Planung: below "Geplante Steuerung jetzt" the tile shows what the battery really does
+  ("lädt 2,9 kW aus dem Netz"); when that differs from the plan, a hint says that
+  another control is active (Sunflow only plans so far)
+- Live: no "0 W + 0 W" in the PV node when the string row is shown
+
 ## 0.15.1
 
 - Planning no longer stops with "Ladestand nicht lesbar" when the SoC sensor is

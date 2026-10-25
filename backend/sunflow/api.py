@@ -60,7 +60,7 @@ from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .settings import Settings
 from .runner import ShadowRunner, current_plan
-from .shadow import ShadowStore, evaluate as evaluate_shadow
+from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
 from .site import MEASUREMENTS, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
 from .summary import SetupSummary, build_summary
 from .sources import (
@@ -869,8 +869,17 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
     # Without a plan yet, all open tabs wait for one shared computation
     if (latest := await runner.ensure_plan()) is None:
         raise HTTPException(status_code=503, detail=runner.status.last_error or "Plan wird noch berechnet")
+    sample = runner.last_sample
     return plan_response(latest, request.app.state.store.load()) | {
-        "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None
+        "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
+        # What the battery does right now (Sunflow does not control yet; another system may)
+        "actual": {
+            "battery_w": sample.battery_w,
+            "grid_w": sample.grid_w,
+            "action": actual_action(sample.grid_w, sample.battery_w),
+        }
+        if sample
+        else None,
     }
 
 
