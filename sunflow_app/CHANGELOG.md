@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5
+
+- Shadow mode: deviation is shown as actual relative to the forecast
+  (e.g. "−40 % ggü. Prognose" when less was produced than forecast)
+
 ## 0.2.4
 
 - Chart y-axis labels are no longer cut off on the left
