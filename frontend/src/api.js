@@ -7,8 +7,18 @@ async function request(method, path, body) {
     headers: body === undefined ? {} : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = response.status === 204 ? null : await response.json();
+  // Server errors may come as plain text ("Internal Server Error")
+  const text = response.status === 204 ? "" : await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    if (response.ok) throw new Error("Ungültige Antwort vom Server");
+  }
   if (!response.ok) {
+    if (response.status >= 500 && !data?.detail) {
+      throw new Error(`Serverfehler (${response.status}) – Details im Log der App`);
+    }
     throw new Error(data?.detail ?? `${response.status} ${response.statusText}`);
   }
   return data;

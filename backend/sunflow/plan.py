@@ -2,7 +2,7 @@
 
 import asyncio
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any
 
@@ -194,22 +194,40 @@ def flex_loads(
             )
         )
         loads.append(load)
+    loads = list(with_conditions(config, by_device, vehicles, battery_capacity_wh, slot_starts[0]).values())
+    return loads, infos, warnings
+
+
+def with_conditions(
+    config: SunflowConfig,
+    by_device: dict[str, FlexLoad],
+    vehicles: dict[str, tuple[float, float, float]],
+    battery_capacity_wh: float | None,
+    now: datetime,
+) -> dict[str, FlexLoad]:
+    """Apply the priority conditions as gates; vehicles map to (current %, target %, Wh per %)."""
+    result = {}
     for device_id, load in by_device.items():
+        battery_wh: float | None = None
+        after: list[tuple[str, float]] = []
         # "Sofort" ignores the conditions
-        if config.effective_flex(config.device(device_id), slot_starts[0])[0].strategy == "fast":
-            continue
-        for condition in config.priority_conditions.get(device_id, []):
+        device = config.device(device_id)
+        conditions = [] if device is None or config.effective_flex(device, now)[0].strategy == "fast" else (
+            config.priority_conditions.get(device_id, [])
+        )
+        for condition in conditions:
             if condition.device_id == BATTERY_PRIORITY_ID:
                 if battery_capacity_wh:
-                    load.gate_battery_wh = max(load.gate_battery_wh or 0.0, battery_capacity_wh * condition.min_pct / 100)
+                    battery_wh = max(battery_wh or 0.0, battery_capacity_wh * condition.min_pct / 100)
             # A vehicle that is not plugged in or not charging does not hold anything back
             elif condition.device_id in vehicles and condition.device_id in by_device:
                 current, target, wh_per_pct = vehicles[condition.device_id]
                 # A condition above the vehicle's target is met once the target is reached
                 required = max(min(condition.min_pct, target) - current, 0) * wh_per_pct
                 if required > 0:
-                    load.gate_after.append((by_device[condition.device_id].name, required))
-    return loads, infos, warnings
+                    after.append((by_device[condition.device_id].name, required))
+        result[device_id] = replace(load, gate_battery_wh=battery_wh, gate_after=after) if battery_wh or after else load
+    return result
 
 
 def daily_needs(slot_starts: list[datetime], first_deadline: datetime, daily_wh: float) -> list[tuple[int, int, float]]:
