@@ -52,7 +52,7 @@ from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .settings import Settings
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, evaluate as evaluate_shadow
-from .site import device_parameters, site_status
+from .site import device_kind, device_parameters, site_status
 from .summary import SetupSummary, build_summary
 from .sources import (
     ForecastPoint,
@@ -827,6 +827,58 @@ async def get_efficiency(request: Request, device_id: str, days: int = 10) -> di
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     return asdict(result) if result else None
+
+
+@router.get("/live")
+async def get_live(request: Request) -> dict[str, Any]:
+    """Current power flows: PV per plant, battery, grid, house and consumers (W, + = charge/import)."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    snapshot = await _snapshot(request)
+    site = site_status(config.devices, profiles, snapshot)
+    by_id = {d.id: d for d in config.devices}
+    result: dict[str, Any] = {
+        "time": datetime.now(UTC).isoformat(),
+        "pv": [],
+        "pv_w": site.pv_total,
+        "battery": None,
+        "grid_w": None,
+        "load_w": None,
+        "consumers": [],
+    }
+    for status in site.devices:
+        device = by_id[status.device_id]
+        roles = {r.role: r for r in status.roles}
+        value = lambda role: roles[role].value if role in roles else None  # noqa: E731
+        capabilities = status.capabilities
+        if status.pv_output is not None:
+            result["pv"].append({"name": device.name, "power_w": status.pv_output})
+        if "battery_window" in capabilities:
+            params = {p["name"]: p["effective"] for p in device_parameters(profiles[device.profile], device, snapshot)}
+            soc = value("battery_soc")
+            result["battery"] = {
+                "name": device.name,
+                "soc_pct": soc,
+                "soc_wh": params["capacity_wh"] * soc / 100 if soc is not None and params.get("capacity_wh") else None,
+                "capacity_wh": params.get("capacity_wh"),
+                "power_w": value("battery_power"),
+            }
+            result["grid_w"] = value("grid_power")
+            result["load_w"] = value("load_power")
+        if "loadpoint" in capabilities or "load" in capabilities:
+            kind = device_kind(profiles[device.profile], device, snapshot) or "load"
+            result["consumers"].append(
+                {
+                    "name": device.name,
+                    "kind": kind,
+                    "power_w": value("charge_power") if "loadpoint" in capabilities else value("power"),
+                    "level": value("vehicle_soc"),
+                    "level_unit": {"heater": "°C", "vehicle": "%"}.get(kind),
+                    "charging": roles["charging"].raw_state == "on" if "charging" in roles else None,
+                    "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
+                }
+            )
+    return result
 
 
 @router.get("/site")
