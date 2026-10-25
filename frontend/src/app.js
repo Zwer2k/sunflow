@@ -23,6 +23,9 @@ import {
   toDisplay,
 } from "./format.js";
 
+// Inside Home Assistant (Ingress panel) HA's own toolbar already shows name and icon
+const EMBEDDED = window.self !== window.top || window.location.pathname.includes("/api/hassio_ingress/");
+
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const ADVANCED_KEY = "sunflow.advanced";
 
@@ -764,7 +767,7 @@ class SunflowApp extends LitElement {
   render() {
     return html`
       <header>
-        <div class="brand">
+        ${EMBEDDED ? nothing : html`<div class="brand">
           <svg width="32" height="32" viewBox="0 0 256 256" aria-hidden="true">
             <!-- Same mark as brand/sunflow.svg: the sun with three energy flows -->
             <g stroke="#F59E0B" stroke-width="11" stroke-linecap="round">
@@ -786,7 +789,7 @@ class SunflowApp extends LitElement {
             <div class="title">Sunflow</div>
             <div class="subtitle">${{ live: "Live", control: "Steuerung", plan: "Planung", analysis: "Analyse" }[this._view] ?? "Einstellungen"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
           </div>
-        </div>
+        </div>`}
         <div class="tabs" role="tablist">
           ${[
             ["live", "Live"],
@@ -800,6 +803,9 @@ class SunflowApp extends LitElement {
           )}
         </div>
       </header>
+      ${EMBEDDED && this._haConnected === false
+        ? html`<div class="restore-banner" role="alert">Keine Verbindung zu Home Assistant – Werte sind evtl. veraltet.</div>`
+        : nothing}
       ${this._renderPendingRestore()}
       ${{
         live: html`<div class="layout"><main><sunflow-live></sunflow-live></main></div>`,
@@ -1933,6 +1939,7 @@ class SunflowApp extends LitElement {
     @media (max-width: 700px) {
       header { padding: 6px 12px; }
       .brand .subtitle { display: none; }
+      .tab { padding: 0 10px; font-size: 13px; }
       .layout { padding: 12px 16px; gap: 12px; }
       /* Steps as a compact row; only the current one shows its name */
       nav { flex-basis: 100%; max-width: none; display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 4px; }
