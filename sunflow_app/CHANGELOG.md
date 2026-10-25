@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.3
+
+- Planung: the price chart uses the same time axis as the charts above (history
+  plus plan) and marks "now"; all charts share the same left margin so the time
+  axes line up
+
 ## 0.7.2
 
 - Fix: planning failed with an internal error as soon as a priority limit on the

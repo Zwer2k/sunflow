@@ -10,6 +10,8 @@ const H = 220;
 const PAD = { top: 12, right: 12, bottom: 28 };
 // Axis labels use 11px text; this is a safe average glyph width for digits, units and spaces
 const AXIS_CHAR_WIDTH = 6.6;
+// Same plot area in charts stacked below each other, unless a label needs more room
+const MIN_LEFT = 72;
 const timeFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 const dayFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
@@ -48,7 +50,7 @@ function timeScale(start, end, left) {
 function frame(start, end, scale, formatY) {
   const { max: yMax, ticks } = scale;
   // Left margin fits the widest y label so it is never cut off
-  const left = Math.max(40, Math.max(...ticks.map((v) => axisLabel(v, formatY).length)) * AXIS_CHAR_WIDTH + 12);
+  const left = Math.max(MIN_LEFT, Math.max(...ticks.map((v) => axisLabel(v, formatY).length)) * AXIS_CHAR_WIDTH + 12);
   const x = timeScale(start, end, left);
   const y = (v) => H - PAD.bottom - (v / yMax) * (H - PAD.top - PAD.bottom);
   const hours = [];
@@ -80,17 +82,24 @@ function frame(start, end, scale, formatY) {
   };
 }
 
-/** Step line of prices; points: [{start, end, price}] in €/kWh, shown in ct/kWh. */
-export function priceChart(points, label) {
+/**
+ * Step line of prices; points: [{start, end, price}] in €/kWh, shown in ct/kWh.
+ * `start`/`end` widen the time axis to match other charts; `now` draws a marker.
+ */
+export function priceChart(points, label, { start: rangeStart = null, end: rangeEnd = null, now = null } = {}) {
   if (!points.length) return nothing;
   const parsed = points.map((p) => ({ start: new Date(p.start), end: new Date(p.end), ct: p.price * 100 }));
-  const start = parsed[0].start;
-  const end = parsed.at(-1).end;
-  const { x, y, axes } = frame(start, end, niceScale(Math.max(...parsed.map((p) => p.ct)) * 1.05), (v) => `${Math.round(v)} ct`);
+  const start = rangeStart && rangeStart < parsed[0].start ? rangeStart : parsed[0].start;
+  const end = rangeEnd && rangeEnd > parsed.at(-1).end ? rangeEnd : parsed.at(-1).end;
+  const { x, y, axes, left } = frame(start, end, niceScale(Math.max(...parsed.map((p) => p.ct)) * 1.05), (v) => `${Math.round(v)} ct`);
+  const nowX = now ? x(now) : null;
   const path = parsed.map((p, i) => `${i ? "L" : "M"}${x(p.start)},${y(p.ct)} L${x(p.end)},${y(p.ct)}`).join(" ");
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
       ${axes}
+      ${nowX !== null && nowX > left && nowX < W - PAD.right
+        ? svg`<line x1=${nowX} x2=${nowX} y1=${PAD.top} y2=${H - PAD.bottom} class="now"></line>`
+        : nothing}
       <path d=${path} fill="none" style="stroke: ${SERIES_COLORS[0]}" stroke-width="2" stroke-linejoin="round"></path>
       ${parsed.map(
         (p) => svg`<rect x=${x(p.start)} y=${PAD.top} width=${Math.max(x(p.end) - x(p.start), 1)}
