@@ -512,6 +512,21 @@ class SunflowApp extends LitElement {
     this._feedEdits = { ...this._feedEdits, [deviceId]: { ...(this._feedEdits[deviceId] ?? {}), [field]: value } };
   }
 
+  async _removeDevice(device) {
+    if (!confirm(`„${device.name}“ aus Sunflow entfernen? Planung, Live und Steuerung berücksichtigen es dann nicht mehr. In Home Assistant bleibt das Gerät unverändert.`)) {
+      return;
+    }
+    try {
+      await api.removeDevice(device.id);
+      const remaining = { ...this._configDevices };
+      delete remaining[device.ha_device_id];
+      this._configDevices = remaining;
+      this._error = null;
+    } catch (err) {
+      this._error = `Gerät konnte nicht entfernt werden: ${err.message}`;
+    }
+  }
+
   async _saveDevice(device) {
     const params = this._params[device.id] ?? [];
     const parameters = {};
@@ -866,7 +881,7 @@ class SunflowApp extends LitElement {
       <section class="device">
         <div class="device-title">Eigene Verbraucher</div>
         <p class="small muted">Schaltbare Geräte, die Sunflow nicht automatisch erkennt – z. B. ein E-Bike-Ladegerät an einem
-          Shelly oder einer ESPHome-Steckdose. Sunflow plant sie wie die Ladepunkte ein.</p>
+          Shelly oder einer ESPHome-Steckdose. Sunflow plant sie wie Wallbox und Warmwasser ein.</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
               (d) => html`<li><strong>${d.name}</strong>
@@ -1200,6 +1215,10 @@ class SunflowApp extends LitElement {
             Speichern
           </button>
           ${!changed ? html`<span class="muted small">Keine ungespeicherten Änderungen</span>` : nothing}
+          <span class="spacer"></span>
+          <button class="secondary danger" ?disabled=${this._busy.has(device.id)} @click=${() => this._removeDevice(device)}>
+            Entfernen
+          </button>
         </div>
       </section>
     `;
@@ -1524,7 +1543,7 @@ class SunflowApp extends LitElement {
                 ${sources.forecast_planes.map(
                   (plane) => html`
                     <div class="field">
-                      <span class="field-label">${FORECAST_SOURCES[plane.source] ?? plane.source} · ${plane.name}${plane.capacity_kw ? ` (${plane.capacity_kw} kW)` : ""}</span>
+                      <span class="field-label">${FORECAST_SOURCES[plane.source] ?? plane.source} · ${plane.name}${plane.capacity_kw ? ` (${formatValue(plane.capacity_kw * 1000, "W")})` : ""}</span>
                       <span class="small muted">${plane.today_kwh !== null ? `heute ${toDisplay(Math.round(plane.today_kwh * 10) / 10, "kWh")} kWh` : "keine Tagesprognose lesbar"}</span>
                       <span class="input-unit">
                         <input aria-label="Name der Fläche" placeholder=${plane.detected_name} .value=${plane.custom_name ?? ""}
@@ -1692,7 +1711,7 @@ class SunflowApp extends LitElement {
         <h1>${summary.completed ? "Einrichtung abgeschlossen" : "Fast fertig"}</h1>
         <p class="muted">
           ${summary.completed
-            ? "Sunflow ist eingerichtet. Die Planung folgt im nächsten Ausbauschritt."
+            ? "Sunflow ist eingerichtet und plant im Hintergrund. Ergebnisse siehst du unter Live, Steuerung und Planung."
             : counts.error
               ? "Bitte behebe die markierten Punkte, dann kannst du die Einrichtung abschließen."
               : "Prüfe die Übersicht und schließe die Einrichtung ab."}
@@ -1749,7 +1768,7 @@ class SunflowApp extends LitElement {
     const details = [];
     const p = device.parameters;
     if (p.capacity_wh) details.push(`${toDisplay(p.capacity_wh, "Wh")} kWh`);
-    if (p.min_soc !== undefined) details.push(`min. ${p.min_soc} %`);
+    if (p.min_soc !== undefined) details.push(`min. ${formatValue(p.min_soc, "%")}`);
     if (p.max_charge) details.push(`Laden ≤ ${formatValue(p.max_charge, "W")}`);
     if (p.max_discharge) details.push(`Entladen ≤ ${formatValue(p.max_discharge, "W")}`);
     if (device.feed_in) {
@@ -1954,6 +1973,7 @@ class SunflowApp extends LitElement {
     }
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
+    .danger { color: var(--sf-error-text); }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
