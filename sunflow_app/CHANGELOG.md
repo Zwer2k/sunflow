@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0
+
+- Main menu with icons: on the PC at the top with icon and text, stays in view while
+  scrolling; on phones a fixed icon bar at the bottom (names as tooltip and for
+  screen readers)
+
 ## 0.11.4
 
 - Expertenmodus only for technical details: battery efficiency, vehicle charging

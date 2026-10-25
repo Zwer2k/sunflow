@@ -23,6 +23,15 @@ import {
   toDisplay,
 } from "./format.js";
 
+// Main menu: view, label, icon (24 px line icon)
+const VIEWS = [
+  ["live", "Live", "M3 12h4l3-8 4 16 3-8h4"],
+  ["control", "Steuerung", "M8 6h8a6 6 0 0 1 0 12H8A6 6 0 0 1 8 6zM16 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
+  ["plan", "Planung", "M3 3v18h18M7 15l4-4 3 3 5-6"],
+  ["analysis", "Analyse", "M5 20V11M11 20V5M17 20v-7M3 20h18"],
+  ["setup", "Einstellungen", "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M16 4v4M10 10v4M18 16v4"],
+];
+
 // Inside Home Assistant (Ingress panel) HA's own toolbar already shows name and icon
 const EMBEDDED = window.self !== window.top || window.location.pathname.includes("/api/hassio_ingress/");
 
@@ -766,7 +775,7 @@ class SunflowApp extends LitElement {
 
   render() {
     return html`
-      <header>
+      <header class=${EMBEDDED ? "bare" : ""}>
         ${EMBEDDED ? nothing : html`<div class="brand">
           <svg width="32" height="32" viewBox="0 0 256 256" aria-hidden="true">
             <!-- Same mark as brand/sunflow.svg: the sun with three energy flows -->
@@ -790,18 +799,15 @@ class SunflowApp extends LitElement {
             <div class="subtitle">${{ live: "Live", control: "Steuerung", plan: "Planung", analysis: "Analyse" }[this._view] ?? "Einstellungen"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
           </div>
         </div>`}
-        <div class="tabs" role="tablist">
-          ${[
-            ["live", "Live"],
-            ["control", "Steuerung"],
-            ["plan", "Planung"],
-            ["analysis", "Analyse"],
-            ["setup", "Einstellungen"],
-          ].map(
-            ([view, label]) => html`<button role="tab" class="tab ${this._view === view ? "active" : ""}"
-              aria-selected=${this._view === view} @click=${() => this._setView(view)}>${label}</button>`,
+        <nav class="tabs" aria-label="Hauptmenü">
+          ${VIEWS.map(
+            ([view, label, icon]) => html`<button class="tab ${this._view === view ? "active" : ""}" title=${label}
+              aria-label=${label} aria-current=${this._view === view ? "page" : "false"} @click=${() => this._setView(view)}>
+              <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon}></path></svg>
+              <span class="tab-label">${label}</span>
+            </button>`,
           )}
-        </div>
+        </nav>
       </header>
       ${EMBEDDED && this._haConnected === false
         ? html`<div class="restore-banner" role="alert">Keine Verbindung zu Home Assistant – Werte sind evtl. veraltet.</div>`
@@ -1889,7 +1895,9 @@ class SunflowApp extends LitElement {
     .small { font-size: 13px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 
+    /* The main menu stays in view while scrolling */
     header {
+      position: sticky; top: 0; z-index: 10;
       background: var(--sf-surface); border-bottom: 1px solid var(--sf-border);
       padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px 12px;
       align-items: center; justify-content: space-between;
@@ -1902,11 +1910,13 @@ class SunflowApp extends LitElement {
       display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px;
       max-width: 100%; overflow-x: auto;
     }
-    .tab { flex: none; }
     .tab {
-      min-height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent;
+      flex: none; display: flex; align-items: center; gap: 6px;
+      min-height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent;
       cursor: pointer; font-size: 14px; color: var(--sf-muted);
     }
+    .tab-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .tab:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
     .tab.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
     .switch {
       display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px;
@@ -1941,9 +1951,22 @@ class SunflowApp extends LitElement {
     /* No frame around the content: on small screens every pixel of width counts */
     main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
     @media (max-width: 700px) {
-      header { padding: 4px 8px; }
+      /* Without the own brand (inside Home Assistant) the header is only the bottom bar */
+      header { position: static; padding: 4px 8px; border-bottom: 0; }
+      header.bare { padding: 0; }
       .brand .subtitle { display: none; }
-      .tab { padding: 0 10px; font-size: 13px; }
+      /* Phones: icon bar fixed at the bottom, within thumb reach */
+      .tabs {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; border-radius: 0; gap: 0;
+        justify-content: space-around; padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+        background: var(--sf-surface); border-top: 1px solid var(--sf-border); box-shadow: 0 -2px 8px rgb(0 0 0 / 0.08);
+      }
+      .tab { flex: 1; justify-content: center; min-height: 48px; padding: 0; }
+      .tab-icon { width: 24px; height: 24px; }
+      .tab-label { display: none; }
+      .tab.active { box-shadow: none; background: var(--sf-primary-bg); color: var(--sf-primary-text); }
+      /* Room for the bottom bar */
+      :host { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
       .layout { padding: 6px 8px; gap: 8px; }
       .restore-banner { margin: 8px 8px 0; }
       /* Steps as a compact row; only the current one shows its name */
