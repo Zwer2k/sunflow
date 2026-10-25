@@ -54,7 +54,7 @@ parameters:
   max_discharge: {unit: W, default: 20000, min: 0}
   grid_offset: {unit: W, default: -200, advanced: true}
   # Round trip (charge and discharge); the planner splits it evenly between both directions
-  efficiency_pct: {unit: "%", default: 90, min: 40, max: 100, advanced: true}
+  efficiency_pct: {unit: "%", default: 90, min: 40, max: 100}
 
 actions:
   auto: {bat_min: -max_discharge, bat_max: max_charge, grid_target: grid_offset}
