@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.1
+
+- Short "unknown"/"unavailable" phases of sensors (e.g. single failed Modbus reads of
+  the Sofar SoC, every ~20 minutes) are bridged with the last valid value for up to
+  15 minutes, so the plan no longer fails with "Ladestand nicht lesbar"
+- Live: the battery stays in the diagram when only its SoC is missing; consumers
+  always fit into the diagram (it grows without a battery row); today's figures sit
+  at the bottom of the screen
+- PC: main menu centred
+
 ## 0.14.0
 
 - Analyse: new chart "Wirkungsgrade" (30 days, 90 days, 1 year) with one value per

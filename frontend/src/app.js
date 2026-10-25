@@ -1899,9 +1899,11 @@ class SunflowApp extends LitElement {
     header {
       position: sticky; top: 0; z-index: 10;
       background: var(--sf-surface); border-bottom: 1px solid var(--sf-border);
-      padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px 12px;
-      align-items: center; justify-content: space-between;
+      /* Menu centred, the brand (outside Home Assistant) on the left */
+      padding: 8px 16px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px 12px; align-items: center;
     }
+    .brand { grid-column: 1; }
+    .tabs { grid-column: 2; }
     .brand { display: flex; align-items: center; gap: 12px; color: var(--sf-primary); }
     .brand .title { font-weight: 700; font-size: 17px; color: var(--sf-text); }
     .brand .subtitle { font-size: 13px; color: var(--sf-muted); }
@@ -1953,7 +1955,7 @@ class SunflowApp extends LitElement {
     main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
     @media (max-width: 700px) {
       /* Without the own brand (inside Home Assistant) the header is only the bottom bar */
-      header { position: static; padding: 4px 8px; border-bottom: 0; }
+      header { position: static; display: flex; padding: 4px 8px; border-bottom: 0; }
       header.bare { padding: 0; }
       .brand .subtitle { display: none; }
       /* Phones: icon bar fixed at the bottom, within thumb reach */

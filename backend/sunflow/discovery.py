@@ -76,6 +76,11 @@ async def fetch_snapshot(client: HAClient) -> Snapshot:
     return replace(registries, states={s["entity_id"]: s for s in states})
 
 
+GAP_STATES = {"unknown", "unavailable"}
+# Inverter integrations report single failed reads as "unknown"; longer outages stay visible
+GAP_BRIDGE = timedelta(minutes=15)
+
+
 class SnapshotCache:
     """Shares snapshots between requests to spare Home Assistant.
 
@@ -100,6 +105,8 @@ class SnapshotCache:
         self._snapshot: Snapshot | None = None
         self._states_at = datetime.min.replace(tzinfo=UTC)
         self._generation = -1
+        # Last valid state per entity, to bridge short "unknown" phases (e.g. Modbus read errors)
+        self._last_good: dict[str, tuple[dict[str, Any], datetime]] = {}
 
     async def get(self, fresh: bool = False) -> Snapshot:
         """Return a snapshot; fresh refetches registries and states."""
@@ -115,9 +122,21 @@ class SnapshotCache:
                 self._snapshot = None
             if fresh or self._snapshot is None or now - self._states_at > self._states_ttl:
                 states = await self._client.get_states()
-                self._snapshot = replace(self._registries, states={s["entity_id"]: s for s in states})
+                self._snapshot = replace(self._registries, states=self._bridge_gaps(states, now))
                 self._states_at = now
             return self._snapshot
+
+    def _bridge_gaps(self, states: list[dict[str, Any]], now: datetime) -> dict[str, dict[str, Any]]:
+        """States by entity; a briefly unavailable value keeps its last valid state."""
+        result = {}
+        for state in states:
+            entity_id = state["entity_id"]
+            if state.get("state") not in GAP_STATES:
+                self._last_good[entity_id] = (state, now)
+            elif (good := self._last_good.get(entity_id)) is not None and now - good[1] <= GAP_BRIDGE:
+                state = good[0]
+            result[entity_id] = state
+        return result
 
 
 def energy_entity_ids(prefs: dict[str, Any] | None) -> set[str]:

@@ -9,6 +9,7 @@ const TODAY_REFRESH_MS = 5 * 60 * 1000;
 // Below this a flow is drawn as idle
 const ACTIVE_W = 20;
 const MAX_CONSUMERS = 4;
+const CONSUMER_GAP = 88;
 
 // Identity colors (validated categorical slots); values and labels stay in text colors
 const COLOR = {
@@ -132,16 +133,21 @@ class SunflowLive extends LitElement {
     const consumers = live.consumers.slice(0, MAX_CONSUMERS);
     const consumerPower = consumers.reduce((s, c) => s + Math.max(c.power_w ?? 0, 0), 0);
     const homeBase = Math.max(flows.house - consumerPower, 0);
-    const consumerY = (i) =>
-      consumers.length === 1 ? NODE.home[1] : 90 + (i * (264 / Math.max(consumers.length - 1, 1)));
-    const width = consumers.length ? 760 : 600;
     // Only configured components are drawn, together with the lines between them
     const hasPv = live.pv.length > 0;
     const hasBattery = Boolean(battery);
+    // Consumers keep at least CONSUMER_GAP apart; without a battery row the diagram grows for them
+    const spread = Math.max((consumers.length - 1) * CONSUMER_GAP, hasBattery ? 264 : 0);
+    const height = Math.max(hasBattery ? 444 : 300, 90 + spread + 90);
+    const consumerY = (i) =>
+      consumers.length === 1 ? NODE.home[1] : 90 + (i * (spread / Math.max(consumers.length - 1, 1)));
+    const width = consumers.length ? 760 : 600;
     const hasGrid = live.grid_w !== null && live.grid_w !== undefined;
     const summary = [
       hasPv ? `PV ${formatValue(live.pv_w, "W")}` : null,
-      battery ? `Batterie ${formatValue(battery.power_w, "W")} bei ${Math.round(battery.soc_pct ?? 0)} %` : null,
+      battery
+        ? `Batterie ${formatValue(battery.power_w, "W")}${battery.soc_pct === null ? "" : ` bei ${Math.round(battery.soc_pct)} %`}`
+        : null,
       hasGrid ? `Netz ${formatValue(live.grid_w, "W")}` : null,
       `Haus ${formatValue(flows.house, "W")}`,
       ...consumers.map((c) => `${c.name} ${formatValue(c.power_w, "W")}`),
@@ -150,7 +156,7 @@ class SunflowLive extends LitElement {
       .join(", ");
 
     return html`
-      <svg viewBox="0 0 ${width} ${hasBattery ? 444 : 300}" class="flow" role="img" aria-label="Energiefluss: ${summary}">
+      <svg viewBox="0 0 ${width} ${height}" class="flow" role="img" aria-label="Energiefluss: ${summary}">
         ${hasPv ? this._edge("M300,118 C300,190 400,222 454,222", flows.pvToHome, COLOR.pv) : nothing}
         ${hasPv && hasGrid ? this._edge("M300,118 C300,190 200,222 146,222", flows.pvToGrid, COLOR.pv) : nothing}
         ${hasPv && hasBattery ? this._edge("M300,118 L300,326", flows.pvToBattery, COLOR.pv) : nothing}
@@ -177,7 +183,7 @@ class SunflowLive extends LitElement {
       </svg>
       ${battery?.parts?.length
         ? html`<p class="small muted">Speicher: ${battery.parts
-            .map((b) => `${b.name} ${Math.round(b.soc_pct)} % · ${formatValue(b.power_w ?? 0, "W")}`)
+            .map((b) => `${b.name} ${b.soc_pct === null ? "–" : `${Math.round(b.soc_pct)} %`} · ${formatValue(b.power_w, "W")}`)
             .join(" · ")}</p>`
         : nothing}
       ${live.consumers.length > MAX_CONSUMERS
@@ -260,7 +266,7 @@ class SunflowLive extends LitElement {
     if (!t) return nothing;
     const kwh = (v) => formatValue(v * 1000, "Wh");
     return html`
-      <section>
+      <section class="today">
         <h2>Heute <span class="small muted source">aus ${t.source}</span></h2>
         <div class="tiles">
           <div class="tile"><div class="small muted">PV erzeugt</div><div class="value">${kwh(t.pv)}</div></div>
@@ -279,7 +285,13 @@ class SunflowLive extends LitElement {
   }
 
   static styles = css`
-    :host { display: flex; flex-direction: column; gap: 16px; }
+    /* Fills the screen: the diagram on top, today's figures at the bottom */
+    :host { display: flex; flex-direction: column; gap: 16px; min-height: calc(100dvh - 110px); }
+    .today { margin-top: auto; }
+    @media (max-width: 700px) {
+      /* Below the content sits the fixed menu bar */
+      :host { min-height: calc(100dvh - 96px - env(safe-area-inset-bottom)); }
+    }
     h1 { margin: 0; font-size: 20px; }
     h2 { margin: 0 0 8px; font-size: 16px; }
     p { margin: 0; }

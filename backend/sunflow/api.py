@@ -1236,7 +1236,8 @@ async def get_live(request: Request) -> dict[str, Any]:
         capabilities = status.capabilities
         if status.pv_output is not None:
             pv.append({"name": device.name, "power_w": status.pv_output})
-        if "battery" in capabilities and value("battery_soc") is not None:
+        # The node stays when only the SoC is missing (power still shows the flows)
+        if "battery" in capabilities and (value("battery_soc") is not None or value("battery_power") is not None):
             params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
             batteries.append(
                 {
@@ -1278,8 +1279,9 @@ def combine_batteries(batteries: list[dict[str, Any]]) -> dict[str, Any] | None:
     """One battery node: summed power, SoC weighted by capacity (equal weights without)."""
     if not batteries:
         return None
-    weights = [b["capacity_wh"] or 1.0 for b in batteries]
-    soc = sum(b["soc_pct"] * w for b, w in zip(batteries, weights, strict=True)) / sum(weights)
+    known = [b for b in batteries if b["soc_pct"] is not None]
+    weights = [b["capacity_wh"] or 1.0 for b in known]
+    soc = sum(b["soc_pct"] * w for b, w in zip(known, weights, strict=True)) / sum(weights) if known else None
     powers = [b["power_w"] for b in batteries if b["power_w"] is not None]
     return {
         "name": " + ".join(b["name"] for b in batteries),
