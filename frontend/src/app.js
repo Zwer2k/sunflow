@@ -1190,7 +1190,7 @@ class SunflowApp extends LitElement {
         ? html`<span class="small warn-text">Unplausibel – vermutlich Messfehler der Batterieleistung oder falsche Kapazität.
             Wird nicht angeboten.</span>`
         : !estimate.reliable
-          ? html`<span class="small muted">Vorläufig – belastbar erst ab 2 vollen Zyklen. Enthält auch den Eigenverbrauch des Speichers.</span>`
+          ? html`<span class="small muted">Vorläufig – belastbar erst ab ${estimate.min_cycles} vollen Zyklen. Enthält auch den Eigenverbrauch des Speichers.</span>`
           : html`<span class="small muted">Enthält auch den Eigenverbrauch des Speichers (z. B. DC/DC-Wandler der Module).</span>`}
     `;
   }

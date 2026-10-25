@@ -16,7 +16,8 @@ import math
 
 from .ha import HAClient
 
-MIN_CYCLES = 2.0
+# Fewer cycles leave the result dominated by standby losses and SoC reading errors
+MIN_CYCLES = 10.0
 # Batteries with DC/DC converters in each module (e.g. Sofar BTS) lose noticeably more
 PLAUSIBLE = (0.70, 0.995)
 
@@ -34,6 +35,7 @@ class EfficiencyEstimate:
     cycles: float
     reliable: bool
     plausible: bool
+    min_cycles: float = MIN_CYCLES
     # "counters" (energy counters of the inverter) or "power" (integrated power means)
     source: str = "power"
 
@@ -105,7 +107,7 @@ async def estimate_from_history(
 
 
 async def estimate_from_counters(
-    client: HAClient, charge_id: str, discharge_id: str, soc_id: str, capacity_wh: float, days: int = 30
+    client: HAClient, charge_id: str, discharge_id: str, soc_id: str, capacity_wh: float, days: int = 90
 ) -> EfficiencyEstimate | None:
     """Estimate from the inverter's charge and discharge counters (long-term statistics)."""
     end = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)

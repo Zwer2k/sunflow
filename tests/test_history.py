@@ -74,11 +74,13 @@ def test_efficiency_estimate() -> None:
 
     eta = 0.95
     capacity = 20000.0
-    # Charge 40 kWh, discharge 36 kWh measured at the terminals over 1 h steps
-    charged, discharged = 40000.0, 36000.0
+    # Charge 200 kWh (10 cycles), discharge 180 kWh measured at the terminals over 1 h steps
+    charged, discharged = 200000.0, 180000.0
     stored = eta * charged - discharged / eta
     power = [charged] + [-discharged]
     result = estimate(power, 1.0, 50, 50 + stored / capacity * 100, capacity)
+    # Two cycles are not enough: standby losses and SoC errors still dominate
+    assert not estimate([40000.0, -36000.0], 1.0, 50, 50, capacity).reliable
 
     assert result.efficiency == pytest.approx(eta)
     assert result.round_trip == pytest.approx(eta * eta)

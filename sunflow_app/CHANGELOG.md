@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+
+- Battery efficiency suggestion counts as reliable only from 10 full cycles (was 2);
+  the counter based estimate looks back 90 days instead of 30
+
 ## 0.7.0
 
 - Energy counters (kWh) are used where available: Sofar PV, consumption, import,
