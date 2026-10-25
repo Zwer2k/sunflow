@@ -169,6 +169,7 @@ class SunflowPlan extends LitElement {
           <div class="small muted">Geplante Steuerung jetzt (bis ${time.format(new Date(now.end))})</div>
           <div class="value">${ACTIONS[now.action].label}</div>
           <div class="small muted">${ACTIONS[now.action].hint}</div>
+          ${this._renderActual(plan, now)}
         </div>
         <div class="tile">
           <div class="small muted">Erwartete Ersparnis (nächste ${Math.round(slots.length / 4)} h)</div>
@@ -347,6 +348,22 @@ class SunflowPlan extends LitElement {
     `;
   }
 
+  _renderActual(plan, now) {
+    const actual = plan.actual;
+    if (!actual || actual.battery_w === null || actual.battery_w === undefined) return nothing;
+    const power = formatValue(Math.abs(actual.battery_w), "W");
+    const what =
+      actual.battery_w > 100 ? `lädt ${power}${(actual.grid_w ?? 0) > 100 ? " aus dem Netz" : " aus PV"}`
+      : actual.battery_w < -100 ? `entlädt ${power}`
+      : "ruht";
+    // Limits count as their basic behaviour; the measurement cannot tell them apart
+    const planned = { limit_charge: "auto", limit_discharge: "limit_discharge" }[now.action] ?? now.action;
+    const differs = actual.action && actual.action !== planned;
+    return html`<div class="small ${differs ? "warn-text" : "muted"}">
+      Tatsächlich: Speicher ${what}${differs ? " – nicht von Sunflow, eine andere Steuerung ist aktiv (Sunflow plant nur)" : ""}
+    </div>`;
+  }
+
   _past(key) {
     return (this._history?.points ?? []).map((p) => ({ start: p.start, end: p.end, value: p[key] }));
   }
@@ -410,7 +427,7 @@ class SunflowPlan extends LitElement {
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }
-    .warn-text { color: var(--sf-error-text); }
+    .warn-text { color: var(--sf-warn-text); }
     .flex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
     .flex-card { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
     .flex-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
