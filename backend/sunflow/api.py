@@ -1258,10 +1258,18 @@ async def get_live(request: Request) -> dict[str, Any]:
             return roles[role].value if role in roles else None
 
         capabilities = status.capabilities
-        if status.pv_output is not None:
-            pv.append({"name": device.name, "power_w": status.pv_output})
-        # The node stays when only the SoC is missing (power still shows the flows)
-        if "battery" in capabilities and (value("battery_soc") is not None or value("battery_power") is not None):
+        if "pv" in capabilities:
+            # Kept at night: inverters without sun often report "unavailable", that is 0 W
+            pv.append(
+                {
+                    "name": device.name,
+                    "power_w": status.pv_output or 0.0,
+                    "available": status.pv_output is not None,
+                    "strings": pv_strings(roles),
+                }
+            )
+        # The node stays without readings, e.g. while the inverter restarts
+        if "battery" in capabilities:
             params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
             batteries.append(
                 {
@@ -1297,6 +1305,28 @@ async def get_live(request: Request) -> dict[str, Any]:
         "load_w": load_w,
         "consumers": consumers,
     }
+
+
+MAX_STRINGS = 4
+
+
+def pv_strings(roles: dict[str, Any]) -> list[dict[str, Any]]:
+    """DC power per string: measured, or voltage times current; missing values count as 0 W."""
+    strings = []
+    for index in range(1, MAX_STRINGS + 1):
+        # A role without entity means the device has no such string
+        power, voltage, current = (
+            role if (role := roles.get(f"pv{index}_{kind}")) is not None and role.entity_id else None
+            for kind in ("power", "voltage", "current")
+        )
+        if power is None and (voltage is None or current is None):
+            continue
+        if power is not None:
+            value = power.value
+        else:
+            value = voltage.value * current.value if voltage.value is not None and current.value is not None else None
+        strings.append({"name": f"String {index}", "power_w": max(value or 0.0, 0.0)})
+    return strings
 
 
 def combine_batteries(batteries: list[dict[str, Any]]) -> dict[str, Any] | None:

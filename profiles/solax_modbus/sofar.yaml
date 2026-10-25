@@ -19,6 +19,9 @@ roles:
   battery_soc: {key: battery_capacity_total, unit: "%"}
   battery_power: {key: battery_power_total, unit: kW, sign: charge_positive}
   pv_power: {key: pv_power_total, unit: kW}
+  # Per MPPT string (DC), shown in the Live diagram
+  pv1_power: {key: pv_power_1, unit: kW, optional: true}
+  pv2_power: {key: pv_power_2, unit: kW, optional: true}
   pv_ext_power: {key: active_power_pv_ext, unit: kW}
   grid_power: {key: active_power_pcc_total, unit: kW, sign: export_positive}
   load_power: {key: active_power_load_sys, unit: kW}

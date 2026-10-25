@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0
+
+- Live: PV and battery stay in the diagram at 0 W (inverters reporting "unavailable"
+  at night count as 0 W)
+- Live: PV per string as a row of small nodes flowing into the PV total (Sofar: power
+  per MPPT; Huawei: voltage x current per string; DC values)
+
 ## 0.14.2
 
 - Own consumers can be edited after adding them ("Bearbeiten": name, switch, power

@@ -10,6 +10,11 @@ const TODAY_REFRESH_MS = 5 * 60 * 1000;
 const ACTIVE_W = 20;
 const MAX_CONSUMERS = 4;
 const CONSUMER_GAP = 88;
+// Row of PV strings above the diagram
+const STRING_ROW = 110;
+const STRING_Y = 56;
+const STRING_R = 32;
+const STRING_GAP = 100;
 
 // Identity colors (validated categorical slots); values and labels stay in text colors
 const COLOR = {
@@ -142,6 +147,16 @@ class SunflowLive extends LitElement {
     const consumerY = (i) =>
       consumers.length === 1 ? NODE.home[1] : 90 + (i * (spread / Math.max(consumers.length - 1, 1)));
     const width = consumers.length ? 760 : 600;
+    // PV strings as a row of small nodes above the PV node, flowing into it
+    const strings = live.pv.flatMap((plant) =>
+      (plant.strings ?? []).map((string) => ({
+        ...string,
+        label: live.pv.length > 1 ? `${plant.name.split(" ")[0]} ${string.name.replace("String ", "S")}` : string.name,
+      })),
+    );
+    const top = strings.length ? STRING_ROW : 0;
+    const stringX = (i) =>
+      Math.min(Math.max(NODE.pv[0] + (i - (strings.length - 1) / 2) * STRING_GAP, 40), width - 40);
     const hasGrid = live.grid_w !== null && live.grid_w !== undefined;
     const summary = [
       hasPv ? `PV ${formatValue(live.pv_w, "W")}` : null,
@@ -156,7 +171,16 @@ class SunflowLive extends LitElement {
       .join(", ");
 
     return html`
-      <svg viewBox="0 0 ${width} ${height}" class="flow" role="img" aria-label="Energiefluss: ${summary}">
+      <svg viewBox="0 0 ${width} ${height + top}" class="flow" role="img" aria-label="Energiefluss: ${summary}">
+        ${strings.map((string, i) =>
+          this._edge(
+            `M${stringX(i)},${STRING_Y + STRING_R} C${stringX(i)},${top} ${NODE.pv[0]},${top - 10} ${NODE.pv[0]},${top + NODE.pv[1] - R}`,
+            string.power_w,
+            COLOR.pv,
+          ),
+        )}
+        ${strings.map((string, i) => this._stringNode(string, stringX(i)))}
+        <g transform="translate(0, ${top})">
         ${hasPv ? this._edge("M300,118 C300,190 400,222 454,222", flows.pvToHome, COLOR.pv) : nothing}
         ${hasPv && hasGrid ? this._edge("M300,118 C300,190 200,222 146,222", flows.pvToGrid, COLOR.pv) : nothing}
         ${hasPv && hasBattery ? this._edge("M300,118 L300,326", flows.pvToBattery, COLOR.pv) : nothing}
@@ -180,6 +204,7 @@ class SunflowLive extends LitElement {
         ${this._node("home", NODE.home, COLOR.home, "Haus", formatValue(homeBase, "W"),
           consumers.length ? `gesamt ${formatValue(flows.house, "W")}` : null)}
         ${consumers.map((c, i) => this._consumerNode(c, [680, consumerY(i)], COLOR.consumers[i]))}
+        </g>
       </svg>
       ${battery?.parts?.length
         ? html`<p class="small muted">Speicher: ${battery.parts
@@ -206,6 +231,16 @@ class SunflowLive extends LitElement {
       <path d=${path} class="edge flow" style="stroke: ${color}; stroke-width: ${width}; animation-duration: ${duration}s">
         <title>${formatValue(power, "W")}</title>
       </path>
+    `;
+  }
+
+  _stringNode(string, x) {
+    return svg`
+      <g class="node">
+        <circle cx=${x} cy=${STRING_Y} r=${STRING_R} class="disc thin" style="stroke: ${COLOR.pv}"></circle>
+        <text x=${x} y=${STRING_Y + 5} class="string-value" text-anchor="middle">${formatValue(string.power_w, "W")}</text>
+        <text x=${x} y=${STRING_Y - STRING_R - 6} class="detail" text-anchor="middle">${string.label}</text>
+      </g>
     `;
   }
 
@@ -308,12 +343,15 @@ class SunflowLive extends LitElement {
     @keyframes flow { to { stroke-dashoffset: -32; } }
     @media (prefers-reduced-motion: reduce) { .edge.flow { animation: none; stroke-dasharray: none; opacity: 0.8; } }
     .disc { fill: var(--sf-surface); stroke-width: 3; }
+    .disc.thin { stroke-width: 2; }
+    .string-value { fill: var(--sf-text); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .icon path { fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .value { fill: var(--sf-text); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .detail { fill: var(--sf-muted); font-size: 11px; }
     .label { fill: var(--sf-text); font-size: 13px; font-weight: 500; }
     /* The diagram scales down to about half on phones; larger text keeps it readable */
     @media (max-width: 600px) {
+      .string-value { font-size: 18px; }
       .value { font-size: 26px; }
       .detail { font-size: 17px; }
       .label { font-size: 20px; }
