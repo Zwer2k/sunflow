@@ -5,8 +5,20 @@ import { svg, nothing } from "../vendor/lit-all.min.js";
 export const SERIES_COLORS = [1, 2, 3, 4, 5, 6].map((i) => `var(--sf-series-${i})`);
 export const UNASSIGNED_COLOR = "var(--sf-series-neutral)";
 
-const W = 960;
-const H = 220;
+// Chart size in SVG units follows the screen, so 11px text stays about 11px on phones
+let W = 960;
+let H = 220;
+
+function fit() {
+  const width = typeof window === "undefined" ? 960 : window.innerWidth - 32;
+  W = Math.round(Math.min(960, Math.max(320, width)));
+  // Phones: relatively taller, the plot would otherwise be a thin strip
+  H = W < 640 ? 240 : 220;
+}
+
+// Hours between time labels: the smallest step that leaves room for a label
+const HOUR_STEPS = [1, 2, 3, 6, 12, 24, 48];
+const MIN_LABEL_SPACING = 56;
 const PAD = { top: 12, right: 12, bottom: 28 };
 // Axis labels use 11px text; this is a safe average glyph width for digits, units and spaces
 const AXIS_CHAR_WIDTH = 6.6;
@@ -53,11 +65,16 @@ function frame(start, end, scale, formatY) {
   const left = Math.max(MIN_LEFT, Math.max(...ticks.map((v) => axisLabel(v, formatY).length)) * AXIS_CHAR_WIDTH + 12);
   const x = timeScale(start, end, left);
   const y = (v) => H - PAD.bottom - (v / yMax) * (H - PAD.top - PAD.bottom);
+  const pxPerHour = (W - left - PAD.right) / Math.max((end - start) / 3600_000, 1);
+  const every = HOUR_STEPS.find((h) => h * pxPerHour >= MIN_LABEL_SPACING) ?? 48;
   const hours = [];
   const first = new Date(start);
   first.setMinutes(0, 0, 0);
   for (let t = new Date(first); t <= end; t = new Date(t.getTime() + 3600_000)) {
-    if (t >= start && t.getHours() % 6 === 0) hours.push(t);
+    if (t < start) continue;
+    // Steps of a day or more label midnights only (every second one for 48 h)
+    const due = every < 24 ? t.getHours() % every === 0 : t.getHours() === 0 && (every === 24 || t.getDate() % 2 === 0);
+    if (due) hours.push(t);
   }
   return {
     x,
@@ -87,6 +104,7 @@ function frame(start, end, scale, formatY) {
  * `start`/`end` widen the time axis to match other charts; `now` draws a marker.
  */
 export function priceChart(points, label, { start: rangeStart = null, end: rangeEnd = null, now = null } = {}) {
+  fit();
   if (!points.length) return nothing;
   const parsed = points.map((p) => ({ start: new Date(p.start), end: new Date(p.end), ct: p.price * 100 }));
   const start = rangeStart && rangeStart < parsed[0].start ? rangeStart : parsed[0].start;
@@ -118,6 +136,7 @@ export function priceChart(points, label, { start: rangeStart = null, end: range
  * horizontal reference lines.
  */
 export function lineChart(series, { label, formatY, yMax: fixedMax, now = null, limits = [] }) {
+  fit();
   const all = series.flatMap((s) => s.points).filter((p) => p.value !== null && p.value !== undefined);
   if (!all.length) return nothing;
   const start = new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
@@ -181,6 +200,7 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, now = null, 
 
 /** Stacked bars of PV forecasts; series: [{name, color, points: [{start, end, power}]}] in W. */
 export function forecastChart(series, label) {
+  fit();
   const all = series.flatMap((s) => s.points.map((p) => ({ ...p, series: s })));
   if (!all.length) return nothing;
   const slots = new Map();

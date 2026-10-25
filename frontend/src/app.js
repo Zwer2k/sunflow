@@ -23,6 +23,25 @@ import {
   toDisplay,
 } from "./format.js";
 
+// Remembered per browser; storage may be unavailable (private mode, previews)
+const ADVANCED_KEY = "sunflow.advanced";
+
+function readSetting(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSetting(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Not remembered, the switch still works for this visit
+  }
+}
+
 const STEPS = ["Integrationen", "Geräte", "Kenndaten", "Gerätetest", "Bilanzprüfung", "Tarif & Prognose", "Standards", "Fertig"];
 const PREVIEW_INTERVAL_MS = 5000;
 // Sensors are polled at different times, so single readings can disagree.
@@ -119,7 +138,7 @@ class SunflowApp extends LitElement {
   constructor() {
     super();
     this._step = 0;
-    this._advanced = false;
+    this._advanced = readSetting(ADVANCED_KEY) === "1";
     this._integrations = null;
     this._selected = new Set();
     this._previews = {};
@@ -184,6 +203,11 @@ class SunflowApp extends LitElement {
     }
     this._loadPendingRestore();
     await this._loadDiscovery();
+  }
+
+  _setAdvanced(on) {
+    this._advanced = on;
+    writeSetting(ADVANCED_KEY, on ? "1" : "0");
   }
 
   async _loadPendingRestore() {
@@ -775,10 +799,6 @@ class SunflowApp extends LitElement {
               aria-selected=${this._view === view} @click=${() => this._setView(view)}>${label}</button>`,
           )}
         </div>
-        <button class="switch" aria-pressed=${this._advanced} @click=${() => (this._advanced = !this._advanced)}>
-          <span class="track ${this._advanced ? "on" : ""}"><span class="knob"></span></span>
-          Expertenmodus
-        </button>
       </header>
       ${this._renderPendingRestore()}
       ${{
@@ -811,6 +831,10 @@ class SunflowApp extends LitElement {
               </button>
             `,
           )}
+          <button class="switch" aria-pressed=${this._advanced} @click=${() => this._setAdvanced(!this._advanced)}>
+            <span class="track ${this._advanced ? "on" : ""}"><span class="knob"></span></span>
+            Expertenmodus
+          </button>
         </nav>
         <main>
           ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
@@ -1375,9 +1399,18 @@ class SunflowApp extends LitElement {
     if (estimate === undefined) return nothing;
     if (estimate === null) return html`<span class="small muted">Noch keine Historie für eine Schätzung.</span>`;
     const pct = (v) => `${(v * 100).toFixed(1).replace(".", ",")} %`;
-    // The parameter is the round trip
-    const value = Math.round(estimate.round_trip * 1000) / 10;
+    // The parameter is the round trip of the conversion; a constant standby draw does not
+    // depend on how much is cycled and is left out when the history allows the split
+    const split = estimate.conversion_round_trip !== null && estimate.conversion_round_trip !== undefined;
+    const value = Math.round((split ? estimate.conversion_round_trip : estimate.round_trip) * 1000) / 10;
     return html`
+      ${split
+        ? html`<span class="small">
+            Aufgeteilt: Umwandlung <strong>${pct(estimate.conversion_round_trip)}</strong> Zyklus und Eigenverbrauch der
+            Batterie etwa <strong>${formatValue(estimate.standby_w, "W")}</strong> (unabhängig vom Laden) –
+            für die Planung zählt die Umwandlung.
+          </span>`
+        : nothing}
       <span class="small">
         ${estimate.source === "counters" ? "aus Energiezählern" : "aus Historie"}: <strong>${pct(estimate.round_trip)}</strong> Zyklus (je Richtung ${pct(estimate.efficiency)}),
         ${estimate.cycles.toFixed(1).replace(".", ",")} Zyklen in ${Math.round(estimate.hours)} h
@@ -1866,8 +1899,9 @@ class SunflowApp extends LitElement {
     }
     .tab.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
     .switch {
-      display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px;
-      border: 1px solid var(--sf-border); border-radius: 22px; background: var(--sf-surface); cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; margin-top: 8px; width: 100%;
+      border: 0; border-top: 1px solid var(--sf-border); background: transparent; cursor: pointer;
+      font-size: 13px; color: var(--sf-muted);
     }
     .track { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--sf-muted); transition: background .15s; }
     .track.on { background: var(--sf-primary); }
@@ -1894,9 +1928,17 @@ class SunflowApp extends LitElement {
     .step.active .dot { background: var(--sf-primary); color: var(--sf-on-primary); }
     .dot.done { background: var(--sf-ok); color: var(--sf-on-ok); }
 
-    main {
-      flex: 999 1 560px; min-width: 0; background: var(--sf-surface); border: 1px solid var(--sf-border);
-      border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px;
+    /* No frame around the content: on small screens every pixel of width counts */
+    main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+    @media (max-width: 700px) {
+      header { padding: 6px 12px; }
+      .brand .subtitle { display: none; }
+      .layout { padding: 12px 16px; gap: 12px; }
+      /* Steps as a compact row; only the current one shows its name */
+      nav { flex-basis: 100%; max-width: none; display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 4px; }
+      .step { width: auto; flex: none; min-height: 40px; padding: 4px 6px; }
+      .step:not(.active) span:last-child { display: none; }
+      .switch { width: auto; flex: none; margin: 0 0 0 auto; border-top: 0; padding: 0 6px; }
     }
     .heading { display: flex; flex-direction: column; gap: 6px; }
 

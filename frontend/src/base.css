@@ -69,7 +69,8 @@
 
 html, body {
   margin: 0;
-  background: var(--sf-bg);
+  /* Content sits directly on the page (no frame); tiles use --sf-subtle against it */
+  background: var(--sf-surface);
   color: var(--sf-text);
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;

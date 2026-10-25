@@ -124,3 +124,27 @@ async def test_battery_efficiency_from_counters() -> None:
     assert estimate.source == "counters"
     assert estimate.round_trip == pytest.approx(0.72)
     assert estimate.hours == 48
+
+
+def test_split_losses_separates_standby() -> None:
+    """Days with different throughput separate 85 % conversion per direction and 60 W standby."""
+    from sunflow.efficiency import split_losses
+
+    eta, standby = 0.85, 60.0
+    days = []
+    for charged in (5000, 12000, 8000, 15000, 3000, 10000, 7000, 14000):
+        discharged = charged * 0.6
+        days.append((charged, discharged, eta * charged - discharged / eta - standby * 24))
+
+    found_eta, found_standby = split_losses(days)
+
+    assert found_eta == pytest.approx(eta, abs=0.002)
+    assert found_standby == pytest.approx(standby, abs=2)
+
+
+def test_split_losses_needs_enough_varied_days() -> None:
+    """Too few days or always the same cycle give no split."""
+    from sunflow.efficiency import split_losses
+
+    assert split_losses([(10000, 6000, -500)] * 3) is None
+    assert split_losses([(10000, 6000, -500)] * 10) is None
