@@ -362,10 +362,10 @@ class SunflowPlan extends LitElement {
               <div class="flex-card">
                 <div class="flex-head">
                   <strong>${f.name}</strong>
-                  <span class="small muted">${f.kind === "heater" ? "Warmwasser" : "Fahrzeug"}</span>
+                  <span class="small muted">${{ heater: "Warmwasser", vehicle: "Fahrzeug" }[f.kind] ?? "Verbraucher"}</span>
                 </div>
                 <div class="small">
-                  ${fmt(f.current, f.unit)} → ${fmt(f.target, f.unit)}
+                  ${f.kind === "load" ? nothing : html`${fmt(f.current, f.unit)} → ${fmt(f.target, f.unit)}`}
                   ${f.need_wh > 0 ? html` · Bedarf ${formatValue(f.need_wh, "Wh")}` : nothing}
                   ${f.deadline ? html` · bis ${dayTime.format(new Date(f.deadline))}` : nothing}
                 </div>

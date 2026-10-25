@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+- Planning strategy per loadpoint and consumer: cost-optimal, PV surplus only or
+  as fast as possible; own target, daily ready-by time, home battery allowed or not
+- Alternative heat source (district heating, gas) for hot water: electric heating
+  only when cheaper than the alternative
+- Own consumers (Shelly, ESPHome, any switch) with daily energy need, planned like
+  loadpoints; their measured power is separated from the base load
+
 ## 0.2.6
 
 - Calmer plans: when several schedules cost the same (e.g. full battery, PV surplus

@@ -70,6 +70,15 @@ class FlexLoad:
     energy_wh: float
     max_power_w: float
     available: list[bool]
+    # €/kWh for energy that is not delivered: high for a must-have need, the price of an
+    # alternative (e.g. district heating) when the need can be covered otherwise
+    unmet_cost: float = 2.0
+    # Only PV surplus, never grid or battery
+    pv_only: bool = False
+    # €/kWh added from the first to the last slot: makes the load run as early as possible
+    urgency: float = 0.0
+    # Whether the home battery may discharge into this load
+    uses_battery: bool = True
 
 
 @dataclass(kw_only=True)
@@ -82,8 +91,6 @@ class FlexResult:
     unmet_wh: float
 
 
-# Penalty per unmet kWh of a flexible load: above any price, so needs are met when possible
-UNMET_PENALTY = 2.0
 # Cost per W of change between consecutive slots (import, export, flexible loads): far below
 # any price difference, it only picks the calm solution among equally cheap ones
 SMOOTHING_COST = 5e-8
@@ -253,7 +260,9 @@ def optimize(
         cost[d[t]] = (wear + tie) * DT_H / 1000
     cost[s[-1]] -= terminal / 1000
     for k in range(len(flex)):
-        cost[u[k]] = UNMET_PENALTY / 1000
+        cost[u[k]] = flex[k].unmet_cost / 1000
+        for t in range(n):
+            cost[f[k][t]] += flex[k].urgency * t / n * DT_H / 1000
 
     rows = 2 * n + len(flex)
     a_eq = lil_matrix((rows, count))
@@ -301,7 +310,10 @@ def optimize(
         lower[s[t]] = soc_min
         upper[s[t]] = battery.capacity_wh
         for k, load in enumerate(flex):
-            upper[f[k][t]] = load.max_power_w if load.available[t] else 0.0
+            limit = load.max_power_w if load.available[t] else 0.0
+            if load.pv_only:
+                limit = min(limit, max(slot.pv_w - slot.load_w, 0.0))
+            upper[f[k][t]] = limit
 
     # Import and export (charge and discharge) at the same time is physically impossible.
     # A linear model only does it when it pays: import cheaper than export, or negative
@@ -336,7 +348,15 @@ def optimize(
             up = np.concatenate([up, np.full(extra, np.inf)])
             integ = np.concatenate([integ, np.zeros(extra)])
 
-        a_ub = lil_matrix((2 * (len(grid_binary) + len(battery_binary)) + 2 * (size - binary_total), size))
+        restrict_battery = any(not load.uses_battery for load in flex)
+        a_ub = lil_matrix(
+            (
+                2 * (len(grid_binary) + len(battery_binary))
+                + 2 * (size - binary_total)
+                + (n if restrict_battery else 0),
+                size,
+            )
+        )
         b_ub = np.zeros(a_ub.shape[0])
         row = 0
         for k, t in enumerate(grid_binary):
@@ -350,6 +370,16 @@ def optimize(
             a_ub[row + 1, d[t]], a_ub[row + 1, y[k]] = 1, upper[d[t]]
             b_ub[row + 1] = upper[d[t]]
             row += 2
+        if restrict_battery:
+            # The battery only serves the house, allowed loads and export
+            for t, slot in enumerate(inputs):
+                a_ub[row, d[t]] = 1
+                a_ub[row, ge[t]] = -1
+                for k, load in enumerate(flex):
+                    if load.uses_battery:
+                        a_ub[row, f[k][t]] = -1
+                b_ub[row] = slot.load_w
+                row += 1
         if smooth:
             delta = binary_total
             for series in smoothed:

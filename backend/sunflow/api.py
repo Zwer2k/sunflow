@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 import tempfile
 from typing import Any
+import uuid
 import zipfile
 from zoneinfo import ZoneInfo
 
@@ -23,6 +24,7 @@ from .config_store import (
     ConfigStore,
     DeviceConfig,
     FeedIn,
+    FlexSettings,
     ForecastPlane,
     MeasuredBy,
     OptimizerConfig,
@@ -275,6 +277,69 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
     return device.model_dump()
 
 
+class ManualDevice(BaseModel):
+    """A switchable consumer added by hand (Shelly, ESPHome, smart plug ...)."""
+
+    name: str
+    switch_entity: str
+    power_entity: str | None = None
+    max_power: float = 500
+    daily_energy_wh: float | None = None
+
+
+MANUAL_PROFILE = "generic/switch"
+SWITCH_DOMAINS = ("switch.", "input_boolean.")
+
+
+@router.get("/entities/candidates")
+async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]:
+    """Entities that can switch a consumer, and power sensors to measure it."""
+    snapshot = await _snapshot(request)
+    switches, power = [], []
+    for entity_id, state in sorted(snapshot.states.items()):
+        attributes = state.get("attributes", {})
+        item = {
+            "entity_id": entity_id,
+            "name": attributes.get("friendly_name") or entity_id,
+            "state": state.get("state"),
+            "unit": attributes.get("unit_of_measurement"),
+        }
+        if entity_id.startswith(SWITCH_DOMAINS):
+            switches.append(item)
+        elif entity_id.startswith("sensor.") and attributes.get("device_class") == "power":
+            power.append(item)
+    return {"switches": switches, "power": power}
+
+
+@router.post("/config/devices/manual")
+async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, Any]:
+    """Add a switchable consumer that is not found by discovery."""
+    library = _library(request)
+    if MANUAL_PROFILE not in library.profiles:
+        raise HTTPException(status_code=500, detail="Generic profile missing")
+    if not body.switch_entity.startswith(SWITCH_DOMAINS):
+        raise HTTPException(status_code=422, detail="Switch entity must be a switch or input_boolean")
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    overrides = {"switch": RoleOverride(entity_id=body.switch_entity)}
+    if body.power_entity:
+        overrides["power"] = RoleOverride(entity_id=body.power_entity)
+    parameters = {"max_power": body.max_power}
+    if body.daily_energy_wh is not None:
+        parameters["daily_energy_wh"] = body.daily_energy_wh
+    device = DeviceConfig(
+        ha_device_id=f"manual:{uuid.uuid4().hex}",
+        profile=MANUAL_PROFILE,
+        profile_version=library.profiles[MANUAL_PROFILE]["version"],
+        name=body.name.strip() or body.switch_entity,
+        parameters=parameters,
+        role_overrides=overrides,
+    )
+    config.devices.append(device)
+    store.save(config)
+    return device.model_dump(mode="json")
+
+
 @router.put("/config/devices/{device_id}/role_overrides")
 async def set_role_overrides(
     request: Request, device_id: str, overrides: dict[str, RoleOverride] = Body(...)
@@ -297,6 +362,7 @@ class DeviceUpdate(BaseModel):
     feed_in: FeedIn | None = None
     measured_by: MeasuredBy | None = None
     clear_measured_by: bool = False
+    flex: FlexSettings | None = None
 
 
 @router.patch("/config/devices/{device_id}")
@@ -318,6 +384,8 @@ async def update_device(
                 device.parameters[name] = value
     if body.feed_in is not None:
         device.feed_in = body.feed_in
+    if body.flex is not None:
+        device.flex = body.flex
     if body.clear_measured_by:
         device.measured_by = None
     elif body.measured_by is not None:

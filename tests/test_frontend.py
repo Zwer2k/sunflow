@@ -52,3 +52,38 @@ def test_asset_outside_frontend_is_rejected(tmp_path: Path) -> None:
 
     assert client.get("/assets/x/%2E%2E/secret.txt").status_code == 404
     assert client.get("/assets/x/missing.js").status_code == 404
+
+
+def test_manual_device_and_flex_settings(tmp_path: Path) -> None:
+    """A switchable consumer can be added and its planning strategy stored."""
+    from sunflow.config_store import ConfigStore
+    from sunflow.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    app = create_app()
+    app.state.store = ConfigStore(tmp_path)
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/config/devices/manual",
+        json={"name": "E-Bike", "switch_entity": "switch.shelly_ebike", "power_entity": "sensor.shelly_ebike_power",
+              "max_power": 250, "daily_energy_wh": 500},
+    )
+    assert response.status_code == 200
+    device = response.json()
+    assert device["profile"] == "generic/switch"
+    assert device["role_overrides"]["switch"]["entity_id"] == "switch.shelly_ebike"
+    assert device["parameters"] == {"max_power": 250, "daily_energy_wh": 500}
+
+    bad = client.post("/api/v1/config/devices/manual", json={"name": "x", "switch_entity": "sensor.x"})
+    assert bad.status_code == 422
+
+    update = client.patch(
+        f"/api/v1/config/devices/{device['id']}",
+        json={"flex": {"strategy": "pv_only", "ready_by": "18:00", "uses_battery": False}},
+    )
+    assert update.json()["flex"] == {
+        "strategy": "pv_only", "target": None, "ready_by": "18:00", "uses_battery": False, "alternative_cost_ct": None
+    }
+    assert client.patch(f"/api/v1/config/devices/{device['id']}", json={"flex": {"ready_by": "25:00"}}).status_code == 422

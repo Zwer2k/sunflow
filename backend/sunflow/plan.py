@@ -35,6 +35,9 @@ SLOT = timedelta(minutes=15)
 NOMINAL_PRICE = 0.30
 
 
+# €/kWh for needs that must be met (above any price) and for "as fast as possible"
+MUST_HAVE_COST = 2.0
+FAST_URGENCY = 1.0
 # Heating 1 litre of water by 1 K takes 1.163 Wh
 WATER_WH_PER_LITRE_KELVIN = 1.163
 HEATER_DEADLINE = timedelta(hours=24)
@@ -61,8 +64,9 @@ def flex_loads(
     profiles: dict[str, dict[str, Any]],
     snapshot: Snapshot,
     slot_starts: list[datetime],
+    tz: tzinfo,
 ) -> tuple[list[FlexLoad], list[FlexInfo], list[str]]:
-    """Derive the energy need of every configured loadpoint from its live values."""
+    """Derive the energy need of every flexible consumer from live values and its settings."""
     loads: list[FlexLoad] = []
     infos: list[FlexInfo] = []
     warnings: list[str] = []
@@ -71,8 +75,10 @@ def flex_loads(
     horizon_end = slot_starts[-1] + SLOT
     for device in config.devices:
         profile = profiles[device.profile]
-        if "loadpoint" not in profile["capabilities"]:
+        if "loadpoint" not in profile["capabilities"] and "load" not in profile["capabilities"]:
             continue
+        settings = device.flex
+        ready_by = next_time(settings.ready_by, slot_starts[0], tz) if settings.ready_by else None
         roles = {
             r.role: r
             for r in preview(
@@ -80,17 +86,19 @@ def flex_loads(
             )
         }
         params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
-        kind = device_kind(profile, device, snapshot) or "vehicle"
+        kind = device_kind(profile, device, snapshot) or ("load" if "load" in profile["capabilities"] else "vehicle")
         max_power = params.get("max_power") or 0.0
         current = roles["vehicle_soc"].value if "vehicle_soc" in roles else None
         target = roles["limit_soc"].value if "limit_soc" in roles else None
+        if settings.target is not None:
+            target = settings.target
         info = FlexInfo(
             device_id=device.id,
             name=device.name,
             kind=kind,
             current=current,
             target=target,
-            unit="°C" if kind == "heater" else "%",
+            unit={"heater": "°C", "vehicle": "%"}.get(kind, ""),
             need_wh=0.0,
             deadline=None,
             max_power_w=max_power,
@@ -107,7 +115,14 @@ def flex_loads(
                 info.reason = "Temperatur oder Ziel nicht lesbar"
                 continue
             info.need_wh = max(target - current, 0) * litres * WATER_WH_PER_LITRE_KELVIN
-            info.deadline = min(slot_starts[0] + HEATER_DEADLINE, horizon_end)
+            info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
+        elif kind == "load":
+            daily = params.get("daily_energy_wh")
+            if not daily:
+                info.reason = "Energiebedarf pro Tag fehlt"
+                continue
+            info.need_wh = daily
+            info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
         else:
             if roles.get("connected") is None or roles["connected"].raw_state != "on":
                 info.reason = "Fahrzeug nicht angesteckt"
@@ -120,7 +135,7 @@ def flex_loads(
             if current is None:
                 info.reason = "Ladestand des Fahrzeugs unbekannt"
                 continue
-            info.deadline = horizon_end
+            info.deadline = min(ready_by, horizon_end) if ready_by else horizon_end
             plan_soc = roles["plan_soc"].value if "plan_soc" in roles else None
             plan_time = roles["plan_time"].raw_state if "plan_time" in roles else None
             if plan_soc and plan_time and plan_time not in ("unknown", "unavailable"):
@@ -142,9 +157,28 @@ def flex_loads(
                 energy_wh=info.need_wh,
                 max_power_w=max_power,
                 available=[start < info.deadline for start in slot_starts],
+                # With an alternative heat source the need is optional at that price
+                unmet_cost=settings.alternative_cost_ct / 100
+                if settings.alternative_cost_ct is not None
+                else MUST_HAVE_COST,
+                pv_only=settings.strategy == "pv_only",
+                urgency=FAST_URGENCY if settings.strategy == "fast" else 0.0,
+                uses_battery=settings.uses_battery,
             )
         )
     return loads, infos, warnings
+
+
+def next_time(hhmm: str, after: datetime, tz: tzinfo) -> datetime:
+    """Return the next local wall-clock time hh:mm after the given moment."""
+    hour, minute = (int(x) for x in hhmm.split(":"))
+    local = after.astimezone(tz)
+    candidate = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= local:
+        # Build tomorrow's time from the date so DST changes keep the wall clock
+        tomorrow = (local + timedelta(days=1)).date()
+        candidate = datetime(tomorrow.year, tomorrow.month, tomorrow.day, hour, minute, tzinfo=tz)
+    return candidate
 
 
 @dataclass(kw_only=True)
@@ -324,7 +358,8 @@ async def compute_plan(
     # Loadpoints (wallbox, heater) are part of the measured household load
     loadpoint_histories = []
     for device in config.devices:
-        if "loadpoint" not in profiles[device.profile]["capabilities"]:
+        capabilities = profiles[device.profile]["capabilities"]
+        if "loadpoint" not in capabilities and "load" not in capabilities:
             continue
         lp_roles = preview(
             profiles[device.profile],
@@ -332,7 +367,9 @@ async def compute_plan(
             device.ha_device_id,
             {k: o.model_dump() for k, o in device.role_overrides.items()},
         )
-        if entity := next((r.entity_id for r in lp_roles if r.role == "charge_power" and r.entity_id), None):
+        if entity := next(
+            (r.entity_id for r in lp_roles if r.role in ("charge_power", "power") and r.entity_id), None
+        ):
             loadpoint_histories.append(await fetch_hourly_means(client, entity, start))
     history, separated = subtract_loads(history, loadpoint_histories)
     load = build_load_forecast(
@@ -360,7 +397,7 @@ async def compute_plan(
     inputs = build_inputs(start, prices, pv, load, feed_in_price(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
-    loads, flex_infos, flex_warnings = flex_loads(config, profiles, snapshot, [i.start for i in inputs])
+    loads, flex_infos, flex_warnings = flex_loads(config, profiles, snapshot, [i.start for i in inputs], tz)
     warnings += flex_warnings
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
