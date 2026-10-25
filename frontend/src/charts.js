@@ -105,9 +105,10 @@ export function priceChart(points, label) {
 /**
  * Lines over time; series: [{name, color, dashed?, points: [{start, end, value}]}].
  * Points with value null leave a gap. `now` draws a marker separating measured
- * values (left) from forecasts (right).
+ * values (left) from forecasts (right). `limits` ([{value, label}]) draws labeled
+ * horizontal reference lines.
  */
-export function lineChart(series, { label, formatY, yMax: fixedMax, now = null }) {
+export function lineChart(series, { label, formatY, yMax: fixedMax, now = null, limits = [] }) {
   const all = series.flatMap((s) => s.points).filter((p) => p.value !== null && p.value !== undefined);
   if (!all.length) return nothing;
   const start = new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
@@ -149,6 +150,12 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, now = null }
             <text x=${nowX + 4} y=${PAD.top + 10} text-anchor="start" class="axis">Prognose</text>
           `
         : nothing}
+      ${limits.map(
+        (l) => svg`
+          <line x1=${left} x2=${W - PAD.right} y1=${y(l.value)} y2=${y(l.value)} class="limit"></line>
+          <text x=${W - PAD.right - 4} y=${y(l.value) - 4} text-anchor="end" class="axis limit-label">${l.label}</text>
+        `,
+      )}
       ${series.map(
         (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width="2"
           stroke-dasharray=${s.dashed ? "5 4" : "none"} stroke-linejoin="round" stroke-linecap="round"></path>`,

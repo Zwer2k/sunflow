@@ -5,9 +5,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from sunflow.api import plan_response
+from sunflow.config_store import SunflowConfig
 from sunflow.load_forecast import build_load_forecast
-from sunflow.optimizer import BatterySpec, PlanSlot, Settings, SlotInput, choose_action, optimize, smooth_actions
-from sunflow.plan import build_inputs
+from sunflow.optimizer import BatterySpec, Plan, PlanSlot, Settings, SlotInput, choose_action, optimize, smooth_actions
+from sunflow.plan import PlanResult, build_inputs
 from sunflow.sources import ForecastPoint, PricePoint
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -440,3 +442,22 @@ def test_battery_position_in_priorities(below_battery: bool, load_gets: float) -
     )
 
     assert plan.flex[0].planned_wh == pytest.approx(load_gets, abs=10)
+
+
+@pytest.mark.parametrize(
+    ("reserve_wh", "expected"),
+    [
+        pytest.param(0.0, 0.0, id="no-reserve"),
+        pytest.param(6000.0, 6000.0, id="backup-reserve"),
+    ],
+)
+def test_plan_response_battery_limits(reserve_wh: float, expected: float) -> None:
+    """The plan reports capacity, discharge limit and reserve for the SoC chart."""
+
+    battery = BatterySpec(capacity_wh=20000, soc_wh=10000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    result = PlanResult(plan=Plan(status="optimal"), battery=battery, reserve_wh=reserve_wh)
+    assert plan_response(result, SunflowConfig())["battery"] == {
+        "capacity_wh": 20000,
+        "min_soc_wh": 2000,
+        "reserve_wh": expected,
+    }

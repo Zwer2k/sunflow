@@ -699,6 +699,13 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "terminal_value": plan.terminal_value,
         "baseline_terminal_value": plan.baseline_terminal_value,
         "savings": plan.savings if plan.slots else None,
+        "battery": {
+            "capacity_wh": result.battery.capacity_wh,
+            "min_soc_wh": result.battery.min_soc_wh,
+            "reserve_wh": result.reserve_wh,
+        }
+        if result.battery
+        else None,
         "flex": [
             asdict(info) | next(
                 ({"planned_wh": r.planned_wh, "unmet_wh": r.unmet_wh} for r in plan.flex if r.name == info.name),
