@@ -349,6 +349,30 @@ async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, A
     )
     config.devices.append(device)
     store.save(config)
+    _replan(request)
+    return device.model_dump(mode="json")
+
+
+@router.put("/config/devices/manual/{device_id}")
+async def update_manual_device(request: Request, device_id: str, body: ManualDevice) -> dict[str, Any]:
+    """Change name, entities, power and daily energy of a consumer added by hand."""
+    if not body.switch_entity.startswith(SWITCH_DOMAINS):
+        raise HTTPException(status_code=422, detail="Switch entity must be a switch or input_boolean")
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if (device := config.device(device_id)) is None or device.profile != MANUAL_PROFILE:
+        raise HTTPException(status_code=404, detail="Manual device not configured")
+    device.name = body.name.strip() or body.switch_entity
+    device.role_overrides = {"switch": RoleOverride(entity_id=body.switch_entity)}
+    if body.power_entity:
+        device.role_overrides["power"] = RoleOverride(entity_id=body.power_entity)
+    device.parameters["max_power"] = body.max_power
+    if body.daily_energy_wh is None:
+        device.parameters.pop("daily_energy_wh", None)
+    else:
+        device.parameters["daily_energy_wh"] = body.daily_energy_wh
+    store.save(config)
+    _replan(request)
     return device.model_dump(mode="json")
 
 

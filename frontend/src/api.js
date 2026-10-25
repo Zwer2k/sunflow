@@ -76,6 +76,8 @@ export const api = {
   live: () => request("GET", "/live"),
   candidates: () => request("GET", "/entities/candidates"),
   addManual: (body) => request("POST", "/config/devices/manual", body),
+  updateManual: (configDeviceId, body) =>
+    request("PUT", `/config/devices/manual/${encodeURIComponent(configDeviceId)}`, body),
   measurements: () => request("GET", "/config/measurements"),
   setMeasurements: (choices) => request("PUT", "/config/measurements", choices),
   pendingRestore: () => request("GET", "/device-test/pending-restore"),
