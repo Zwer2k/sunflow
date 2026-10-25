@@ -43,6 +43,9 @@ class Settings:
     export_penalty_ct_per_kwh: float = 0.0
     # Energy that must stay in the battery, e.g. for backup power ("backup")
     reserve_wh: float = 0.0
+    # A fixed feed-in tariff only pays for PV; exporting stored grid energy is not
+    # remunerated, so export is limited to the current PV unless allowed explicitly
+    allow_battery_export: bool = False
     # Below this the battery is considered idle when choosing actions
     action_threshold_w: float = 100.0
 
@@ -91,6 +94,7 @@ class FlexResult:
     unmet_wh: float
 
 
+SOLVER_TIME_LIMIT = 15
 # Cost per W of change between consecutive slots (import, export, flexible loads): far below
 # any price difference, it only picks the calm solution among equally cheap ones
 SMOOTHING_COST = 5e-8
@@ -251,7 +255,11 @@ def optimize(
     cost = np.zeros(count)
     for t, slot in enumerate(inputs):
         cost[gi[t]] = slot.price * DT_H / 1000
-        cost[ge[t]] = (settings.export_penalty_ct_per_kwh / 100 - slot.feed_in) * DT_H / 1000
+        # Risk premium (max 0.2 ct/kWh): export late, after the battery is full. Equally
+        # cheap if the forecast holds, but robust when PV falls short and like
+        # self-consumption mode; must outweigh the smoothing of a flat export
+        export_tie = 0.002 * (1 - t / n)
+        cost[ge[t]] = (settings.export_penalty_ct_per_kwh / 100 - slot.feed_in + export_tie) * DT_H / 1000
         # Tie-breakers (max ~0.1 ct/kWh): when the timing does not matter, discharge in the
         # more expensive slots and, at equal prices, earlier, so the plan does not flip
         # between auto and hold every few minutes
@@ -306,7 +314,7 @@ def optimize(
         upper[gi[t]] = max(slot.load_w, 0) + battery.max_charge_w + sum(
             load.max_power_w for load in flex if load.available[t]
         )
-        upper[ge[t]] = max(slot.pv_w, 0) + battery.max_discharge_w
+        upper[ge[t]] = max(slot.pv_w, 0) + (battery.max_discharge_w if settings.allow_battery_export else 0.0)
         lower[s[t]] = soc_min
         upper[s[t]] = battery.capacity_wh
         for k, load in enumerate(flex):
@@ -319,7 +327,7 @@ def optimize(
     # A linear model only does it when it pays: import cheaper than export, or negative
     # prices that reward burning energy in losses. Only those slots get binaries.
     export_value = [i.feed_in - settings.export_penalty_ct_per_kwh / 100 for i in inputs]
-    grid_binary = [t for t, i in enumerate(inputs) if i.price < export_value[t]]
+    grid_binary = [t for t, i in enumerate(inputs) if i.price < export_value[t] and upper[ge[t]] > 0]
     battery_binary = [t for t, i in enumerate(inputs) if i.price < 0 or export_value[t] < 0]
     z = count + np.arange(len(grid_binary))
     y = count + len(grid_binary) + np.arange(len(battery_binary))
@@ -399,21 +407,23 @@ def optimize(
             constraints=constraints,
             integrality=integ,
             bounds=Bounds(lo, up),
-            options={"time_limit": 20},
+            # Stop at 0.1 % from the optimum: the many equally cheap variants are not worth proving
+            options={"time_limit": SOLVER_TIME_LIMIT, "mip_rel_gap": 1e-3},
         )
 
     if binary_total > count:
         # Smoothing makes the mixed-integer problem much harder: decide the binaries first,
         # then smooth the remaining linear problem with them fixed
         result = solve(smooth=False)
-        if result.success:
+        if result.x is not None:
             smoothed_result = solve(smooth=True, fixed_binaries=np.round(result.x[count:binary_total]))
             if smoothed_result.success:
                 result = smoothed_result
     else:
         result = solve(smooth=True)
     plan = Plan(status=result.message)
-    if not result.success:
+    # On the time limit the best solution found so far is still a valid plan
+    if result.x is None:
         return plan
     x = result.x
     for t, slot in enumerate(inputs):

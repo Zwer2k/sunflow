@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- Plans fill the battery first and export afterwards (export early only paid off if
+  the PV forecast held; a small risk premium now prefers late export)
+- Export is limited to the current PV: a fixed feed-in tariff does not pay for
+  stored grid energy. This also removes a slow solver case with cheap night prices
+- Solver stops at 0.1 % from the optimum and keeps the best plan on its time limit
+
 ## 0.4.0
 
 - New "Live" tab: animated power flows between PV, grid, battery (with SoC ring),
