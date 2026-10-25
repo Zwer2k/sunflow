@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.3
+
+- "Expertenmodus" switch in its own row below the setup steps, always visible on
+  phones (was at the end of the scrolling step row)
+
 ## 0.11.2
 
 - Charts: value labels sit on their grid lines inside the plot, so there is no empty
