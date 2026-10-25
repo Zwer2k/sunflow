@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from sunflow.config_store import ConfigStore, DeviceConfig, RoleOverride
+from sunflow.config_store import ConfigStore, DeviceConfig, RoleOverride, SunflowConfig
 
 
 def test_roundtrip(tmp_path: Path) -> None:
@@ -45,3 +45,30 @@ def test_cost_override_beats_pv_only_default() -> None:
 
     assert effective.strategy == "cost"
     assert not paused
+
+
+def test_save_keeps_backup_and_unknown_fields(tmp_path: Path) -> None:
+    """Saving keeps the previous file; fields of a newer version survive a load/save cycle."""
+    import json
+
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig())
+    raw = json.loads((tmp_path / "config.json").read_text())
+    raw["future_feature"] = {"on": True}
+    (tmp_path / "config.json").write_text(json.dumps(raw))
+
+    store.save(store.load())
+
+    assert json.loads((tmp_path / "config.json").read_text())["future_feature"] == {"on": True}
+    assert (tmp_path / "config.json.bak").exists()
+
+
+def test_invalid_config_raises_config_error(tmp_path: Path) -> None:
+    """A broken file gives a clear error instead of a validation traceback."""
+    import pytest
+
+    from sunflow.config_store import ConfigError
+
+    (tmp_path / "config.json").write_text('{"devices": "broken"}')
+    with pytest.raises(ConfigError, match="ungültig"):
+        ConfigStore(tmp_path).load()

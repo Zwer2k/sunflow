@@ -218,3 +218,46 @@ def test_measurement_sources(tmp_path: Path) -> None:
     assert client.put("/api/v1/config/measurements", json={"grid": "sofar"}).json()["grid"]["effective"] == "sofar"
     assert client.put("/api/v1/config/measurements", json={"load": "pulse"}).status_code == 422
     assert client.put("/api/v1/config/measurements", json={"grid": None}).json()["grid"]["effective"] == "pulse"
+
+
+def test_ingress_only(tmp_path: Path) -> None:
+    """As an App only the Ingress proxy may use the API; health stays open for the integration."""
+    settings = Settings(
+        ha_url="http://localhost:8123",
+        ha_token="x",
+        port=0,
+        data_dir=tmp_path,
+        profiles_dir=tmp_path,
+        schema_dir=tmp_path,
+        frontend_dir=tmp_path / "missing",
+        ingress_only=True,
+    )
+    from sunflow.config_store import ConfigStore
+
+    app = create_app(settings)
+    app.state.store = ConfigStore(tmp_path)
+    other = TestClient(app, client=("172.30.33.5", 50000))
+    ingress = TestClient(app, client=("172.30.32.2", 50000))
+
+    assert other.get("/api/v1/config").status_code == 403
+    assert other.post("/api/v1/config/devices/x/test?confirm=true").status_code == 403
+    assert other.get("/api/v1/health").status_code == 200
+    assert ingress.get("/api/v1/config").status_code == 200
+
+
+def test_rejects_nan_parameters(tmp_path: Path) -> None:
+    """NaN must not reach config.json, where it would break every later request."""
+    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[DeviceConfig(id="d", ha_device_id="x", profile="solax_modbus/sofar", profile_version=1, name="S")]))
+    app = create_app()
+    app.state.store = store
+    client = TestClient(app)
+
+    response = client.patch(
+        "/api/v1/config/devices/d", content='{"parameters": {"capacity_wh": NaN}}', headers={"content-type": "application/json"}
+    )
+
+    assert response.status_code == 422
+    assert store.load().devices[0].parameters == {}

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import sqlite3
+import threading
 from statistics import fmean
 from typing import Any
 
@@ -95,6 +96,9 @@ def actual_action(grid: float | None, battery: float | None) -> str | None:
         return "force_charge"
     if abs(battery) <= threshold and grid > threshold:
         return "hold"
+    if battery < -threshold and grid > threshold:
+        # The battery covers only part of the deficit
+        return "limit_discharge"
     return "auto"
 
 
@@ -105,79 +109,97 @@ class ShadowStore:
         """Open (and create) the database."""
         data_dir.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(data_dir / "shadow.db", check_same_thread=False)
+        # The connection is shared by worker threads (runner, export, import); sqlite3
+        # leaves serializing writes to the caller
+        self._lock = threading.Lock()
         self._db.execute(SCHEMA)
         self._db.commit()
 
     def close(self) -> None:
         """Close the database."""
-        self._db.close()
+        with self._lock:
+            self._db.close()
 
     def store_planned(self, start: datetime, planned: dict[str, Any]) -> None:
         """Store what Sunflow would do in the slot starting at start."""
-        self._db.execute(
-            """
-            INSERT INTO slots (start, planned_action, planned_power_w, planned_soc_wh,
-                               planned_pv_w, planned_load_w, planned_price)
-            VALUES (:start, :action, :power, :soc, :pv, :load, :price)
-            ON CONFLICT(start) DO UPDATE SET
-                planned_action = excluded.planned_action,
-                planned_power_w = excluded.planned_power_w,
-                planned_soc_wh = excluded.planned_soc_wh,
-                planned_pv_w = excluded.planned_pv_w,
-                planned_load_w = excluded.planned_load_w,
-                planned_price = excluded.planned_price
-            """,
-            {"start": start.isoformat(), **planned},
-        )
-        self._db.commit()
+        with self._lock:
+            self._db.execute(
+                """
+                INSERT INTO slots (start, planned_action, planned_power_w, planned_soc_wh,
+                                   planned_pv_w, planned_load_w, planned_price)
+                VALUES (:start, :action, :power, :soc, :pv, :load, :price)
+                ON CONFLICT(start) DO UPDATE SET
+                    planned_action = excluded.planned_action,
+                    planned_power_w = excluded.planned_power_w,
+                    planned_soc_wh = excluded.planned_soc_wh,
+                    planned_pv_w = excluded.planned_pv_w,
+                    planned_load_w = excluded.planned_load_w,
+                    planned_price = excluded.planned_price
+                """,
+                {"start": start.isoformat(), **planned},
+            )
+            self._db.commit()
 
     def store_actual(self, start: datetime, actual: dict[str, Any]) -> None:
         """Store the measured averages of a finished slot."""
-        columns = ", ".join(actual)
-        updates = ", ".join(f"{k} = excluded.{k}" for k in actual)
-        self._db.execute(
-            f"INSERT INTO slots (start, {columns}) VALUES (:start, {', '.join(':' + k for k in actual)}) "  # noqa: S608
-            f"ON CONFLICT(start) DO UPDATE SET {updates}",
-            {"start": start.isoformat(), **actual},
-        )
-        self._db.commit()
+        with self._lock:
+            columns = ", ".join(actual)
+            updates = ", ".join(f"{k} = excluded.{k}" for k in actual)
+            self._db.execute(
+                f"INSERT INTO slots (start, {columns}) VALUES (:start, {', '.join(':' + k for k in actual)}) "  # noqa: S608
+                f"ON CONFLICT(start) DO UPDATE SET {updates}",
+                {"start": start.isoformat(), **actual},
+            )
+            self._db.commit()
 
     def backup_to(self, path: Path) -> None:
         """Write a consistent copy of the database to path."""
-        target = sqlite3.connect(path)
-        try:
-            self._db.backup(target)
-        finally:
-            target.close()
+        with self._lock:
+            target = sqlite3.connect(path)
+            try:
+                self._db.backup(target)
+            finally:
+                target.close()
 
     def merge_from(self, path: Path) -> int:
         """Merge slots of another shadow database; existing slots are replaced. Returns the count."""
-        other = sqlite3.connect(path)
-        try:
-            cursor = other.execute("SELECT * FROM slots")
-            names = [c[0] for c in cursor.description]
-            rows = cursor.fetchall()
-        finally:
-            other.close()
-        placeholders = ", ".join("?" for _ in names)
-        self._db.executemany(
-            f"INSERT OR REPLACE INTO slots ({', '.join(names)}) VALUES ({placeholders})", rows  # noqa: S608
-        )
-        self._db.commit()
-        return len(rows)
+        with self._lock:
+            other = sqlite3.connect(path)
+            try:
+                cursor = other.execute("SELECT * FROM slots")
+                names = [c[0] for c in cursor.description]
+                rows = cursor.fetchall()
+            finally:
+                other.close()
+            placeholders = ", ".join("?" for _ in names)
+            self._db.executemany(
+                f"INSERT OR REPLACE INTO slots ({', '.join(names)}) VALUES ({placeholders})", rows  # noqa: S608
+            )
+            self._db.commit()
+            return len(rows)
 
     def rows(self, since: datetime) -> list[dict[str, Any]]:
         """Return all slots starting at or after since, oldest first."""
-        cursor = self._db.execute(
-            "SELECT * FROM slots WHERE start >= ? ORDER BY start", (since.astimezone(UTC).isoformat(),)
-        )
-        names = [c[0] for c in cursor.description]
-        rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
-        # Classify from the stored values so older rows follow the current rules
-        for row in rows:
-            if row["actual_grid_w"] is not None and row["actual_battery_w"] is not None:
-                row["actual_action"] = actual_action(row["actual_grid_w"], row["actual_battery_w"])
-        return rows
+        with self._lock:
+            cursor = self._db.execute(
+                "SELECT * FROM slots WHERE start >= ? ORDER BY start", (since.astimezone(UTC).isoformat(),)
+            )
+            names = [c[0] for c in cursor.description]
+            rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+            # Classify from the stored values so older rows follow the current rules
+            for row in rows:
+                if row["actual_grid_w"] is not None and row["actual_battery_w"] is not None:
+                    row["actual_action"] = actual_action(row["actual_grid_w"], row["actual_battery_w"])
+            return rows
+
+
+def comparable(planned: str) -> str:
+    """Planned action as the measurement can tell it.
+
+    Charging while exporting looks the same for a limited charge and for a battery
+    charging at its maximum power, so both count as self-consumption.
+    """
+    return "auto" if planned == "limit_charge" else planned
 
 
 def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -191,7 +213,7 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         pairs = [(r[planned], r[actual]) for r in complete if r[planned] is not None and r[actual] is not None]
         return fmean(abs(p - a) for p, a in pairs) if pairs else None
 
-    differing = [r for r in complete if r["planned_action"] != r["actual_action"]]
+    differing = [r for r in complete if comparable(r["planned_action"]) != r["actual_action"]]
     return {
         "slots": len(rows),
         "compared": len(complete),

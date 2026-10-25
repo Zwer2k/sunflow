@@ -29,7 +29,8 @@ async function request(method, path, body) {
     if (response.status >= 500 && !data?.detail) {
       throw new Error(`Serverfehler (${response.status}) – Details im Log der App`);
     }
-    throw new Error(data?.detail ?? `${response.status} ${response.statusText}`);
+    const detail = Array.isArray(data?.detail) ? data.detail.map((e) => e.msg).join("; ") : data?.detail;
+    throw new Error(detail ?? `${response.status} ${response.statusText}`);
   }
   return data;
 }

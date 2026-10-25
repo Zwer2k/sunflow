@@ -130,12 +130,18 @@ def build_load_forecast(
             return overall, "all_days"
         return typical_w * TYPICAL_DAY[local.hour], "default"
 
-    factor = 1.0
-    if daily_kwh:
-        # Scale so that one day of the (all days) shape adds up to daily_kwh
-        reference = start.astimezone(tz).replace(minute=0, second=0, microsecond=0)
-        day_wh = sum(hour_value(reference + timedelta(hours=h))[0] for h in range(24))
-        factor = daily_kwh * 1000 / day_wh if day_wh > 0 else 1.0
+    factors: dict[Any, float] = {}
+
+    def factor(local: datetime) -> float:
+        """Scale each calendar day on its own so it adds up to daily_kwh (day types differ)."""
+        if not daily_kwh:
+            return 1.0
+        day = local.date()
+        if day not in factors:
+            midnight = datetime(day.year, day.month, day.day, tzinfo=tz)
+            day_wh = sum(hour_value((midnight + timedelta(hours=h)).astimezone(tz))[0] for h in range(24))
+            factors[day] = daily_kwh * 1000 / day_wh if day_wh > 0 else 1.0
+        return factors[day]
 
     used: set[str] = set()
     points = []
@@ -145,7 +151,7 @@ def build_load_forecast(
         power, kind = hour_value(local)
         used.add(kind)
         points.append(
-            LoadPoint(start=local, end=(moment + SLOT).astimezone(tz), power=power * factor)
+            LoadPoint(start=local, end=(moment + SLOT).astimezone(tz), power=power * factor(local))
         )
         moment += SLOT
 

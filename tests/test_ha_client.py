@@ -36,6 +36,11 @@ async def _fake_ha(request: web.Request) -> web.WebSocketResponse:
             case "subscribe_events":
                 await ws.send_json({"id": msg_id, "type": "result", "success": True, "result": None})
                 await ws.send_json({"id": msg_id, "type": "event", "event": {"event_type": "state_changed"}})
+            case "stall":
+                # Core stalled: never answers
+                pass
+            case "malformed":
+                await ws.send_json({"id": msg_id, "type": "result"})
             case "call_service":
                 await ws.send_json({"id": msg_id, "type": "result", "success": True, "result": {"echo": msg}})
             case _:
@@ -114,3 +119,20 @@ async def test_large_message(server: TestServer) -> None:
         assert ha.connected
     finally:
         await ha.close()
+
+
+async def test_unanswered_command_times_out(client: HAClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A command without an answer fails instead of blocking every later request."""
+    from sunflow.ha import client as client_module
+
+    monkeypatch.setattr(client_module, "COMMAND_TIMEOUT", 0.2)
+    with pytest.raises(HAError, match="No answer"):
+        await client.command("stall")
+    assert client.connected
+
+
+async def test_malformed_result_keeps_reader(client: HAClient) -> None:
+    """A result without "success" fails that command; the connection keeps working."""
+    with pytest.raises(HAError):
+        await client.command("malformed")
+    assert (await client.get_states())[0]["entity_id"] == "sun.sun"

@@ -2,11 +2,13 @@
 
 from datetime import datetime
 import json
+import os
 from pathlib import Path
+import shutil
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 CONFIG_VERSION = 1
 
@@ -22,6 +24,8 @@ class RoleOverride(BaseModel):
 class FeedIn(BaseModel):
     """Feed-in remuneration of a PV plant."""
 
+    model_config = ConfigDict(allow_inf_nan=False)
+
     model: Literal["eeg_fixed", "solar_peak", "direct"] = "eeg_fixed"
     rate_ct_per_kwh: float | None = None
 
@@ -36,6 +40,8 @@ class MeasuredBy(BaseModel):
 class FlexSettings(BaseModel):
     """How a flexible consumer (EV, heater, switchable load) should be planned."""
 
+    model_config = ConfigDict(allow_inf_nan=False)
+
     strategy: Literal["cost", "pv_only", "fast"] = "cost"
     # Overrides the target from evcc (% for vehicles, °C for heaters)
     target: float | None = None
@@ -48,6 +54,8 @@ class FlexSettings(BaseModel):
 
 class DeviceConfig(BaseModel):
     """A device managed by Sunflow."""
+
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     ha_device_id: str
@@ -64,6 +72,8 @@ class DeviceConfig(BaseModel):
 
 class TariffConfig(BaseModel):
     """Where the import price comes from: an entity, else a fixed price."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
 
     import_entity_id: str | None = None
     fixed_price_ct: float | None = None
@@ -88,6 +98,8 @@ class ForecastPlane(BaseModel):
 class OptimizerConfig(BaseModel):
     """User settings for planning."""
 
+    model_config = ConfigDict(allow_inf_nan=False)
+
     wear_ct_per_kwh: float = 3.0
     allow_grid_charge: bool = True
     strategy: Literal["balanced", "pv_absorption", "backup"] = "balanced"
@@ -106,6 +118,8 @@ BATTERY_PRIORITY_ID = "battery"
 class DeviceOverride(BaseModel):
     """Temporary change of a consumer's planning from the control tab."""
 
+    model_config = ConfigDict(allow_inf_nan=False)
+
     strategy: Literal["cost", "pv_only", "fast"] | None = None
     target: float | None = None
     paused: bool = False
@@ -120,6 +134,8 @@ class DeviceOverride(BaseModel):
 class PriorityCondition(BaseModel):
     """A consumer only gets PV or battery energy once another storage reached this level."""
 
+    model_config = ConfigDict(allow_inf_nan=False)
+
     # BATTERY_PRIORITY_ID or the id of a vehicle or hot water loadpoint
     device_id: str
     # % for battery and vehicles, °C for hot water tanks (name kept for stored configs)
@@ -128,6 +144,8 @@ class PriorityCondition(BaseModel):
 
 class StrategyOverride(BaseModel):
     """Temporary battery strategy from the control tab."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
 
     strategy: Strategy
     until: datetime | None = None
@@ -139,6 +157,9 @@ class StrategyOverride(BaseModel):
 
 class SunflowConfig(BaseModel):
     """The complete configuration."""
+
+    # Fields of a newer version survive a downgrade instead of being dropped on save
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
 
     version: int = CONFIG_VERSION
     devices: list[DeviceConfig] = Field(default_factory=list)
@@ -198,6 +219,10 @@ class SunflowConfig(BaseModel):
         return [c for c in self.priority_conditions.get(device_id, []) if c.device_id not in above]
 
 
+class ConfigError(Exception):
+    """The stored configuration cannot be read."""
+
+
 class ConfigStore:
     """Load and save the configuration as JSON in the data directory."""
 
@@ -209,11 +234,32 @@ class ConfigStore:
         """Return the stored configuration or an empty one."""
         if not self._path.exists():
             return SunflowConfig()
-        return SunflowConfig.model_validate_json(self._path.read_text())
+        try:
+            return SunflowConfig.model_validate_json(self._path.read_text())
+        except ValueError as err:
+            raise ConfigError(
+                f"Konfiguration {self._path} ist ungültig ({err.__class__.__name__}); "
+                f"die vorige Fassung liegt in {self._backup.name}"
+            ) from err
+
+    @property
+    def _backup(self) -> Path:
+        return self._path.with_suffix(".json.bak")
 
     def save(self, config: SunflowConfig) -> None:
-        """Write the configuration atomically."""
+        """Write the configuration atomically and durably, keeping the previous version."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(config.model_dump(mode="json"), indent=2))
+        with tmp.open("w") as file:
+            file.write(json.dumps(config.model_dump(mode="json"), indent=2))
+            file.flush()
+            # Without fsync a power loss on SD cards can leave an empty config.json
+            os.fsync(file.fileno())
+        if self._path.exists():
+            shutil.copy2(self._path, self._backup)
         tmp.replace(self._path)
+        directory = os.open(self._path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)

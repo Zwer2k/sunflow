@@ -9,6 +9,8 @@ const ACTIONS = {
   hold: { label: "Speicher halten", hint: "Speicher wird geschont, Bedarf kommt aus dem Netz" },
   force_charge: { label: "Laden aus dem Netz", hint: "Speicher wird gezielt geladen" },
   force_discharge: { label: "Entladen ins Netz", hint: "Speicher speist gezielt ein" },
+  limit_discharge: { label: "Entladen begrenzt", hint: "Speicher deckt den Bedarf nur teilweise, der Rest kommt aus dem Netz" },
+  limit_charge: { label: "Laden begrenzt", hint: "Speicher nimmt nur einen Teil des PV-Überschusses auf, der Rest wird eingespeist" },
 };
 const LOAD_QUALITY = {
   day_type: "nach Wochentag",
@@ -174,9 +176,11 @@ class SunflowPlan extends LitElement {
           <div class="small muted">gegenüber reinem Eigenverbrauch</div>
         </div>
         <div class="tile">
-          <div class="small muted">Erwartete Stromkosten</div>
+          <div class="small muted">${plan.alternative_cost || plan.baseline_alternative_cost ? "Erwartete Energiekosten" : "Erwartete Stromkosten"}</div>
           <div class="value">${euro.format(plan.cost)}</div>
-          <div class="small muted">ohne Sunflow ${euro.format(plan.baseline_cost)}</div>
+          <div class="small muted">ohne Sunflow ${euro.format(plan.baseline_cost)}${plan.alternative_cost || plan.baseline_alternative_cost
+            ? html` · inkl. Ersatzheizung ${euro.format(plan.alternative_cost)} bzw. ${euro.format(plan.baseline_alternative_cost)}`
+            : nothing}</div>
         </div>
         <div class="tile">
           <div class="small muted">Erwarteter Ladestand am Ende</div>
@@ -394,6 +398,7 @@ class SunflowPlan extends LitElement {
     .seg.auto { border-left-color: var(--sf-ok); }
     .seg.force_charge { border-left-color: var(--sf-primary); }
     .seg.force_discharge { border-left-color: var(--sf-warn-text); }
+    .seg.limit_discharge, .seg.limit_charge { border-left-color: var(--sf-neutral-text); }
     .seg .when { font-variant-numeric: tabular-nums; font-size: 14px; }
     .seg .what { font-weight: 600; }
     @media (max-width: 560px) { .seg { grid-template-columns: 1fr; } }

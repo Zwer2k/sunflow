@@ -135,6 +135,11 @@ def flex_loads(
             info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
             info.daily_wh = params.get("daily_energy_wh") or HEATER_DAILY_DROP_K * litres * WATER_WH_PER_LITRE_KELVIN
             storages[device.id] = (current, target, litres * WATER_WH_PER_LITRE_KELVIN)
+            if settings.alternative_cost_ct is None:
+                warnings.append(
+                    f"{device.name}: Kosten der üblichen Heizung (z. B. Fernwärme) fehlen – Sunflow heizt im "
+                    "Zweifel mit Netzstrom. Preis unter Kenndaten → Planung eintragen."
+                )
         elif kind == "load":
             daily = params.get("daily_energy_wh")
             if not daily:
