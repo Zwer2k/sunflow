@@ -12,7 +12,7 @@ import sqlite3
 from statistics import fmean
 from typing import Any
 
-from .optimizer import Settings, choose_action
+from .optimizer import Settings
 
 SLOT = timedelta(minutes=15)
 
@@ -76,20 +76,26 @@ class SlotRecorder:
             "actual_load_w": mean("load_w"),
             "samples": len(self.samples),
         }
-        result["actual_action"] = actual_action(
-            result["actual_pv_w"], result["actual_load_w"], result["actual_battery_w"]
-        )
+        result["actual_action"] = actual_action(result["actual_grid_w"], result["actual_battery_w"])
         return result
 
 
-def actual_action(pv: float | None, load: float | None, battery: float | None) -> str | None:
-    """Classify what the battery actually did with the same rules as the plan."""
-    if pv is None or load is None or battery is None:
+def actual_action(grid: float | None, battery: float | None) -> str | None:
+    """Classify what the battery actually did from grid (+ import) and battery (+ charge).
+
+    The grid meter is the reliable reference: PV readings of hybrid inverters are
+    often coarse DC values that do not balance with the AC load.
+    """
+    if grid is None or battery is None:
         return None
-    action, _ = choose_action(
-        pv, load, max(battery, 0), max(-battery, 0), Settings().action_threshold_w
-    )
-    return action
+    threshold = Settings().action_threshold_w
+    if battery < -threshold and grid < -threshold:
+        return "force_discharge"
+    if battery > threshold and grid > threshold:
+        return "force_charge"
+    if abs(battery) <= threshold and grid > threshold:
+        return "hold"
+    return "auto"
 
 
 class ShadowStore:
@@ -166,7 +172,12 @@ class ShadowStore:
             "SELECT * FROM slots WHERE start >= ? ORDER BY start", (since.astimezone(UTC).isoformat(),)
         )
         names = [c[0] for c in cursor.description]
-        return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+        rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+        # Classify from the stored values so older rows follow the current rules
+        for row in rows:
+            if row["actual_grid_w"] is not None and row["actual_battery_w"] is not None:
+                row["actual_action"] = actual_action(row["actual_grid_w"], row["actual_battery_w"])
+        return rows
 
 
 def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
