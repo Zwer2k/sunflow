@@ -365,7 +365,7 @@ class SunflowControl extends LitElement {
     .priorities li.battery { background: var(--sf-primary-bg); }
     .priorities .rank { width: 24px; font-weight: 600; color: var(--sf-muted); }
     .priorities .name { flex: 1; display: flex; flex-direction: column; }
-    .priorities button.text, .conditions button.text { width: auto; padding: 0 10px; font-size: 13px; }
+    .priorities .entry button.text, .conditions button.text { width: auto; padding: 0 10px; font-size: 13px; }
     .conditions { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px 34px; }
     .condition { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
     .condition .pct { display: flex; align-items: center; gap: 6px; }
@@ -378,7 +378,7 @@ class SunflowControl extends LitElement {
       width: auto; height: 36px; border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); cursor: pointer;
     }
     .conditions button.primary { padding: 0 14px; background: var(--sf-primary); border-color: var(--sf-primary); color: #fff; }
-    .priorities button {
+    .priorities .entry button {
       width: 40px; height: 36px; border: 1px solid var(--sf-border-strong); border-radius: 8px;
       background: var(--sf-surface); cursor: pointer;
     }
