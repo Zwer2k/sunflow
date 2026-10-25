@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.3
+
+- Hot water and daily consumers are planned for every day of the horizon: after the
+  first need, each further 24 h window gets its own daily need. Before, a tank heated
+  on the first day got no PV surplus on the second day although energy was exported
+- New advanced heater parameter "Energiebedarf pro Tag" (default: tank cools by 10 K
+  per day, about 3.5 kWh for 300 l)
+
 ## 0.5.2
 
 - Live view fits the window without scrolling: the flow diagram scales to the

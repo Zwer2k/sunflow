@@ -9,7 +9,7 @@ from sunflow.api import plan_response
 from sunflow.config_store import SunflowConfig
 from sunflow.load_forecast import build_load_forecast
 from sunflow.optimizer import BatterySpec, Plan, PlanSlot, Settings, SlotInput, choose_action, optimize, smooth_actions
-from sunflow.plan import PlanResult, build_inputs
+from sunflow.plan import PlanResult, build_inputs, daily_needs
 from sunflow.sources import ForecastPoint, PricePoint
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -461,3 +461,36 @@ def test_plan_response_battery_limits(reserve_wh: float, expected: float) -> Non
         "min_soc_wh": 2000,
         "reserve_wh": expected,
     }
+
+
+def test_heater_reheats_every_day() -> None:
+    """A heater heated on day one still uses the PV surplus of day two for that day's need."""
+    from sunflow.optimizer import FlexLoad
+
+    full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    sunny = lambda i: 4000.0 if 40 <= i % 96 < 64 else 0.0  # noqa: E731
+    inputs = _slots(48, price=lambda i: 0.30, pv=sunny)
+    heater = FlexLoad(
+        name="Warmwasser", energy_wh=5000, max_power_w=3000, available=[True] * 192, later_needs=[(96, 192, 3500)]
+    )
+
+    plan = optimize(inputs, full, Settings(), [heater])
+
+    assert sum(s.flex_w["Warmwasser"] for s in plan.slots[:96]) / 4 == pytest.approx(5000, abs=10)
+    assert sum(s.flex_w["Warmwasser"] for s in plan.slots[136:160]) / 4 == pytest.approx(3500, abs=10)
+    assert plan.flex[0].energy_wh == 8500
+    assert plan.flex[0].unmet_wh == pytest.approx(0, abs=1)
+
+
+@pytest.mark.parametrize(
+    ("hours", "expected"),
+    [
+        pytest.param(48, [(96, 192, 3500)], id="second-day-fits"),
+        pytest.param(40, [], id="second-day-cut-off"),
+        pytest.param(72, [(96, 192, 3500), (192, 288, 3500)], id="two-more-days"),
+    ],
+)
+def test_daily_needs(hours: int, expected: list[tuple[int, int, float]]) -> None:
+    """Recurring needs only cover whole 24 h windows inside the horizon."""
+    starts = [START + i * SLOT for i in range(hours * 4)]
+    assert daily_needs(starts, START + timedelta(hours=24), 3500) == expected

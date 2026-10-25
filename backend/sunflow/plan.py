@@ -43,6 +43,8 @@ FAST_URGENCY = 1.0
 # Heating 1 litre of water by 1 K takes 1.163 Wh
 WATER_WH_PER_LITRE_KELVIN = 1.163
 HEATER_DEADLINE = timedelta(hours=24)
+# Without a configured daily need the tank is assumed to cool down by this much per day
+HEATER_DAILY_DROP_K = 10
 
 
 @dataclass(kw_only=True)
@@ -58,6 +60,8 @@ class FlexInfo:
     need_wh: float
     deadline: datetime | None
     max_power_w: float
+    # Need in every following 24 h window (hot water used, daily consumption)
+    daily_wh: float = 0.0
     reason: str | None = None  # why nothing is planned
 
 
@@ -121,6 +125,7 @@ def flex_loads(
                 continue
             info.need_wh = max(target - current, 0) * litres * WATER_WH_PER_LITRE_KELVIN
             info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
+            info.daily_wh = params.get("daily_energy_wh") or HEATER_DAILY_DROP_K * litres * WATER_WH_PER_LITRE_KELVIN
         elif kind == "load":
             daily = params.get("daily_energy_wh")
             if not daily:
@@ -128,6 +133,7 @@ def flex_loads(
                 continue
             info.need_wh = daily
             info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
+            info.daily_wh = daily
         else:
             if roles.get("connected") is None or roles["connected"].raw_state != "on":
                 info.reason = "Fahrzeug nicht angesteckt"
@@ -153,19 +159,22 @@ def flex_loads(
             efficiency = (params.get("charge_efficiency_pct") or 90) / 100
             info.need_wh = max((target or 100) - current, 0) / 100 * capacity / efficiency
 
-        if info.need_wh <= 0:
+        later_needs = daily_needs(slot_starts, info.deadline, info.daily_wh) if info.daily_wh else []
+        if info.need_wh <= 0 and not later_needs:
             info.reason = "Ziel bereits erreicht"
             continue
         if paused:
             info.reason = "pausiert"
             continue
         rank = flex_ids.index(device.id) if device.id in flex_ids else len(flex_ids)
+        end = slot_starts[later_needs[-1][1] - 1] + SLOT if later_needs else info.deadline
         loads.append(
             FlexLoad(
                 name=device.name,
                 energy_wh=info.need_wh,
+                later_needs=later_needs,
                 max_power_w=max_power,
-                available=[start < info.deadline for start in slot_starts],
+                available=[start < end for start in slot_starts],
                 # With an alternative heat source the need is optional at that price
                 unmet_cost=settings.alternative_cost_ct / 100
                 if settings.alternative_cost_ct is not None
@@ -180,6 +189,20 @@ def flex_loads(
             )
         )
     return loads, infos, warnings
+
+
+def daily_needs(slot_starts: list[datetime], first_deadline: datetime, daily_wh: float) -> list[tuple[int, int, float]]:
+    """Recurring 24 h needs after the first deadline, as long as a whole window fits the horizon."""
+    needs = []
+    window_start = first_deadline
+    while True:
+        window_end = window_start + timedelta(hours=24)
+        if window_end > slot_starts[-1] + SLOT:
+            return needs
+        first = sum(1 for start in slot_starts if start < window_start)
+        end = sum(1 for start in slot_starts if start < window_end)
+        needs.append((first, end, daily_wh))
+        window_start = window_end
 
 
 def next_time(hhmm: str, after: datetime, tz: tzinfo) -> datetime:

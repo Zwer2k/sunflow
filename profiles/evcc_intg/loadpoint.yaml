@@ -30,3 +30,5 @@ parameters:
   vehicle_capacity_wh: {unit: Wh, min: 0, kind: vehicle}
   charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100, kind: vehicle, advanced: true}
   tank_l: {unit: L, min: 0, kind: heater}
+  # Reheating per day (hot water used plus standby losses); default: tank cools by 10 K
+  daily_energy_wh: {unit: Wh, min: 0, kind: heater, advanced: true}
