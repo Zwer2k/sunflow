@@ -18,6 +18,9 @@
   --sf-neutral-bg: #eef1f4;
   --sf-error-text: #a40e26;
   --sf-error-bg: #ffebe9;
+  /* Text on filled primary/ok buttons, dots and phases */
+  --sf-on-primary: #ffffff;
+  --sf-on-ok: #ffffff;
   /* Chart series, validated for CVD separation and contrast on the surface */
   --sf-series-1: #2a78d6;
   --sf-series-2: #eb6834;
@@ -50,6 +53,9 @@
     --sf-neutral-bg: #262e37;
     --sf-error-text: #ffa198;
     --sf-error-bg: #3d1418;
+    /* The light dark-mode fills need dark text for 4.5:1 contrast */
+    --sf-on-primary: #0f1419;
+    --sf-on-ok: #0f1419;
     --sf-series-1: #3987e5;
     --sf-series-2: #d95926;
     --sf-series-3: #199e70;

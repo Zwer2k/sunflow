@@ -457,7 +457,7 @@ class SunflowPlan extends LitElement {
       display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 8px;
       text-decoration: none; color: var(--sf-text); cursor: pointer; font-size: 14px;
     }
-    .ok { border: 0; background: var(--sf-ok); color: #fff; }
+    .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
   `;

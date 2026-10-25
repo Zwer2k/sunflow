@@ -588,3 +588,31 @@ def test_battery_gate_waits_for_vehicle() -> None:
     car_done = next(t for t in range(96) if sum(s.flex_w["Auto"] for s in plan.slots[: t + 1]) / 4 >= 6000 - 1)
     assert all(s.charge_w <= s.import_w + 1 for s in plan.slots[: car_done + 1])
     assert max(s.soc_wh for s in plan.slots) > 3000
+
+
+def test_with_conditions_hot_water_tank() -> None:
+    """The car can wait for the hot water tank (°C); the battery for both."""
+    from sunflow.config_store import DeviceConfig, PriorityCondition
+    from sunflow.optimizer import FlexLoad
+    from sunflow.plan import storage_gates, with_conditions
+
+    config = SunflowConfig(
+        devices=[
+            DeviceConfig(id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser"),
+            DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
+        ],
+        priorities=["ww", "ev", "battery"],
+        priority_conditions={
+            "ev": [PriorityCondition(device_id="ww", min_pct=55)],
+            "battery": [PriorityCondition(device_id="ww", min_pct=60), PriorityCondition(device_id="ev", min_pct=80)],
+        },
+    )
+    loads = {
+        "ww": FlexLoad(name="Warmwasser", energy_wh=5000, max_power_w=2800, available=[True] * 4),
+        "ev": FlexLoad(name="Auto", energy_wh=10000, max_power_w=11000, available=[True] * 4),
+    }
+    # Tank at 45 °C of 60 °C with 349 Wh per K; car at 70 % of 90 % with 400 Wh per %
+    storages = {"ww": (45.0, 60.0, 349.0), "ev": (70.0, 90.0, 400.0)}
+
+    assert with_conditions(config, loads, storages, 20000.0, START)["ev"].gate_after == [("Warmwasser", 10 * 349.0)]
+    assert storage_gates(config, "battery", loads, storages) == (("Warmwasser", 15 * 349.0), ("Auto", 10 * 400.0))
