@@ -12,6 +12,11 @@ roles:
   ac_power: {key: active_power, unit: W}
   pv_power: {key: input_power, unit: W}
   daily_yield: {key: daily_yield_energy, unit: kWh}
+  # Per string only voltage and current (DC); the Live diagram multiplies them
+  pv1_voltage: {key: pv_01_voltage, unit: V, optional: true}
+  pv1_current: {key: pv_01_current, unit: A, optional: true}
+  pv2_voltage: {key: pv_02_voltage, unit: V, optional: true}
+  pv2_current: {key: pv_02_current, unit: A, optional: true}
   # AC and DC counters: exact yield and inverter efficiency
   pv_energy: {key: accumulated_yield_energy, unit: kWh, optional: true}
   pv_dc_energy: {key: total_dc_input_power, unit: kWh, optional: true}

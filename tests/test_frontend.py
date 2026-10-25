@@ -323,3 +323,22 @@ def test_restore_requires_confirmation(tmp_path: Path) -> None:
     assert client.post("/api/v1/device-test/restore").status_code == 400
     # No battery device configured: nothing to restore with
     assert client.post("/api/v1/device-test/restore?confirm=true").status_code == 404
+
+
+def test_pv_strings() -> None:
+    """String power is measured or voltage x current; strings without entities are left out."""
+    from types import SimpleNamespace
+
+    from sunflow.api import pv_strings
+
+    def role(value: float | None, entity: str | None = "sensor.x") -> SimpleNamespace:
+        return SimpleNamespace(value=value, entity_id=entity)
+
+    sofar = {"pv1_power": role(1200.0), "pv2_power": role(None)}
+    huawei = {
+        "pv1_voltage": role(400.0), "pv1_current": role(2.5),
+        "pv2_voltage": role(None, entity=None), "pv2_current": role(None, entity=None),
+    }
+
+    assert pv_strings(sofar) == [{"name": "String 1", "power_w": 1200.0}, {"name": "String 2", "power_w": 0.0}]
+    assert pv_strings(huawei) == [{"name": "String 1", "power_w": 1000.0}]
