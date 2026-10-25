@@ -174,9 +174,13 @@ def test_priority_conditions(tmp_path: Path) -> None:
     assert client.put("/api/v1/control/priorities/ev/conditions", json=[{"device_id": "ww", "min_pct": 50}]).status_code == 422
     assert client.put("/api/v1/control/priorities/battery/conditions", json=[]).status_code == 404
 
-    # Moving the car below the hot water drops the limit that now points downwards
+    # Moving the car below the hot water hides its limit but keeps it stored
     client.put("/api/v1/control/priorities", json=["battery", "ww", "ev"])
-    assert [c.device_id for c in store.load().priority_conditions["ww"]] == ["battery"]
+    config = store.load()
+    assert [c.device_id for c in config.valid_conditions("ww")] == ["battery"]
+    assert [c.device_id for c in config.hidden_conditions("ww")] == ["ev"]
 
+    # Clearing the visible limits keeps the hidden one; moving the car up again restores it
     assert client.put("/api/v1/control/priorities/ww/conditions", json=[]).status_code == 200
-    assert store.load().priority_conditions == {}
+    client.put("/api/v1/control/priorities", json=["battery", "ev", "ww"])
+    assert [c.model_dump() for c in store.load().valid_conditions("ww")] == [{"device_id": "ev", "min_pct": 90.0}]

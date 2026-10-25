@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.6
+
+- Priority limits pointing to a lower entry are no longer deleted when reordering:
+  they are hidden, not used, and apply again once the entry moves up
+
 ## 0.7.5
 
 - Priority limits only refer to higher entries: the top entry has none, the second
