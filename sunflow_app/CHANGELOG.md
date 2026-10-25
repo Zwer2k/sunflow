@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1
+
+- New icon: the sun with three energy flows to storage, house and car. Used for the
+  app, the integration (local brand folder, no brands repository entry needed) and
+  the header of the UI
+
 ## 0.9.0
 
 - New profile: Tibber Pulse via the tibber_local integration (grid power 16.7.0,

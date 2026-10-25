@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFD15C"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="f1" gradientUnits="userSpaceOnUse" x1="90" y1="0" x2="214" y2="0">
+      <stop offset="0" stop-color="#F59E0B"/><stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="f2" gradientUnits="userSpaceOnUse" x1="90" y1="0" x2="214" y2="0">
+      <stop offset="0" stop-color="#F59E0B"/><stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <linearGradient id="f3" gradientUnits="userSpaceOnUse" x1="90" y1="0" x2="214" y2="0">
+      <stop offset="0" stop-color="#F59E0B"/><stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#F59E0B" stroke-width="11" stroke-linecap="round">
+    <line x1="80" y1="12" x2="80" y2="26"/>
+    <line x1="12" y1="80" x2="26" y2="80"/>
+    <line x1="31.9" y1="31.9" x2="41.8" y2="41.8"/>
+    <line x1="128.1" y1="31.9" x2="118.2" y2="41.8"/>
+    <line x1="31.9" y1="128.1" x2="41.8" y2="118.2"/>
+  </g>
+  <g fill="none" stroke-width="15" stroke-linecap="round">
+    <path d="M80 80 C 150 80, 150 62, 212 62" stroke="url(#f1)"/>
+    <path d="M80 80 C 140 100, 150 136, 212 136" stroke="url(#f2)"/>
+    <path d="M80 80 C 110 150, 140 210, 212 210" stroke="url(#f3)"/>
+  </g>
+  <circle cx="80" cy="80" r="40" fill="url(#sun)"/>
+  <circle cx="224" cy="62" r="18" fill="#10B981"/>
+  <circle cx="224" cy="136" r="18" fill="#0EA5E9"/>
+  <circle cx="224" cy="210" r="18" fill="#8B5CF6"/>
+</svg>
