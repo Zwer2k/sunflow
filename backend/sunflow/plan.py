@@ -75,12 +75,13 @@ def flex_loads(
 ) -> tuple[list[FlexLoad], list[FlexInfo], list[str], tuple[tuple[str, float], ...]]:
     """Derive the energy need of every flexible consumer from live values and its settings.
 
-    Also returns the vehicles (name, Wh) the home battery waits for before charging from PV.
+    Also returns the storages (name, Wh) the home battery waits for before charging from PV.
     """
     loads: list[FlexLoad] = []
     by_device: dict[str, FlexLoad] = {}
     # Per vehicle: current level and target in %, Wh per %
-    vehicles: dict[str, tuple[float, float, float]] = {}
+    # Per vehicle or hot water tank: current level and target (% or °C), Wh per unit
+    storages: dict[str, tuple[float, float, float]] = {}
     infos: list[FlexInfo] = []
     warnings: list[str] = []
     if not slot_starts:
@@ -133,6 +134,7 @@ def flex_loads(
             info.need_wh = max(target - current, 0) * litres * WATER_WH_PER_LITRE_KELVIN
             info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
             info.daily_wh = params.get("daily_energy_wh") or HEATER_DAILY_DROP_K * litres * WATER_WH_PER_LITRE_KELVIN
+            storages[device.id] = (current, target, litres * WATER_WH_PER_LITRE_KELVIN)
         elif kind == "load":
             daily = params.get("daily_energy_wh")
             if not daily:
@@ -165,7 +167,7 @@ def flex_loads(
                     pass
             efficiency = (params.get("charge_efficiency_pct") or 90) / 100
             info.need_wh = max((target or 100) - current, 0) / 100 * capacity / efficiency
-            vehicles[device.id] = (current, target or 100, capacity / efficiency / 100)
+            storages[device.id] = (current, target or 100, capacity / efficiency / 100)
 
         later_needs = daily_needs(slot_starts, info.deadline, info.daily_wh) if info.daily_wh else []
         if info.need_wh <= 0 and not later_needs:
@@ -197,24 +199,24 @@ def flex_loads(
             )
         )
         loads.append(load)
-    loads = list(with_conditions(config, by_device, vehicles, battery_capacity_wh, slot_starts[0]).values())
-    return loads, infos, warnings, vehicle_gates(config, BATTERY_PRIORITY_ID, by_device, vehicles)
+    loads = list(with_conditions(config, by_device, storages, battery_capacity_wh, slot_starts[0]).values())
+    return loads, infos, warnings, storage_gates(config, BATTERY_PRIORITY_ID, by_device, storages)
 
 
-def vehicle_gates(
+def storage_gates(
     config: SunflowConfig,
     device_id: str,
     by_device: dict[str, FlexLoad],
-    vehicles: dict[str, tuple[float, float, float]],
+    storages: dict[str, tuple[float, float, float]],
 ) -> tuple[tuple[str, float], ...]:
-    """Energy (Wh) the planned vehicles above an entry must get before it is released."""
+    """Energy (Wh) the planned vehicles and tanks above an entry must get before it is released."""
     gates = []
     for condition in config.valid_conditions(device_id):
-        # A vehicle that is not plugged in or not charging does not hold anything back
-        if condition.device_id in vehicles and condition.device_id in by_device:
-            current, target, wh_per_pct = vehicles[condition.device_id]
-            # A condition above the vehicle's target is met once the target is reached
-            required = max(min(condition.min_pct, target) - current, 0) * wh_per_pct
+        # A vehicle not plugged in or a storage that is not planned does not hold anything back
+        if condition.device_id in storages and condition.device_id in by_device:
+            current, target, wh_per_unit = storages[condition.device_id]
+            # A condition above the storage's target is met once the target is reached
+            required = max(min(condition.min_pct, target) - current, 0) * wh_per_unit
             if required > 0:
                 gates.append((by_device[condition.device_id].name, required))
     return tuple(gates)
@@ -223,11 +225,11 @@ def vehicle_gates(
 def with_conditions(
     config: SunflowConfig,
     by_device: dict[str, FlexLoad],
-    vehicles: dict[str, tuple[float, float, float]],
+    storages: dict[str, tuple[float, float, float]],
     battery_capacity_wh: float | None,
     now: datetime,
 ) -> dict[str, FlexLoad]:
-    """Apply the priority conditions as gates; vehicles map to (current %, target %, Wh per %)."""
+    """Apply the priority conditions as gates; storages map to (current, target, Wh per unit)."""
     result = {}
     for device_id, load in by_device.items():
         # "Sofort" ignores the conditions
@@ -239,7 +241,7 @@ def with_conditions(
         for condition in config.valid_conditions(device_id):
             if condition.device_id == BATTERY_PRIORITY_ID and battery_capacity_wh:
                 battery_wh = max(battery_wh or 0.0, battery_capacity_wh * condition.min_pct / 100)
-        after = list(vehicle_gates(config, device_id, by_device, vehicles))
+        after = list(storage_gates(config, device_id, by_device, storages))
         result[device_id] = replace(load, gate_battery_wh=battery_wh, gate_after=after) if battery_wh or after else load
     return result
 

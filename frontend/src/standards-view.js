@@ -61,14 +61,17 @@ class SunflowStandards extends LitElement {
     this._saving = true;
     try {
       await api.setOptimizer({ ...this._settings, ...changes });
-      this._wear = undefined;
-      this._reserve = undefined;
-      this._daily = undefined;
-      this._largeLoad = undefined;
+      // Only the saved fields drop their edit; numbers typed elsewhere stay
+      if ("wear_ct_per_kwh" in changes) this._wear = undefined;
+      if ("backup_reserve_pct" in changes) this._reserve = undefined;
+      if ("daily_consumption_kwh" in changes) this._daily = undefined;
+      if ("large_load_threshold_w" in changes) this._largeLoad = undefined;
       await this._load();
       return true;
     } catch (err) {
       this._error = `Einstellungen konnten nicht gespeichert werden: ${err.message}`;
+      // Radios and checkboxes show the stored value again
+      this.requestUpdate();
       return false;
     } finally {
       this._saving = false;
@@ -284,7 +287,7 @@ class SunflowStandards extends LitElement {
       display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 8px;
       text-decoration: none; color: var(--sf-text); cursor: pointer; font-size: 14px;
     }
-    .ok { border: 0; background: var(--sf-ok); color: #fff; }
+    .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
   `;

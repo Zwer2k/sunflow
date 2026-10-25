@@ -120,8 +120,9 @@ class DeviceOverride(BaseModel):
 class PriorityCondition(BaseModel):
     """A consumer only gets PV or battery energy once another storage reached this level."""
 
-    # BATTERY_PRIORITY_ID or the id of a vehicle loadpoint
+    # BATTERY_PRIORITY_ID or the id of a vehicle or hot water loadpoint
     device_id: str
+    # % for battery and vehicles, °C for hot water tanks (name kept for stored configs)
     min_pct: float = Field(ge=0, le=100)
 
 

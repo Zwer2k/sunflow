@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import { poll } from "./poll.js";
 import "./picker.js";
 import "./live-view.js";
 import "./plan-view.js";
@@ -92,6 +93,7 @@ class SunflowApp extends LitElement {
     _paramEdits: { state: true },
     _feedEdits: { state: true },
     _site: { state: true },
+    _discoveryError: { state: true },
     _measurements: { state: true },
     _sources: { state: true },
     _priceSeries: { state: true },
@@ -164,20 +166,33 @@ class SunflowApp extends LitElement {
   }
 
   async _load() {
+    // Health and config decide the view and work without Home Assistant; discovery needs it
     try {
-      const [health, integrations, config] = await Promise.all([api.health(), api.discovery(), api.config()]);
+      const [health, config] = await Promise.all([api.health(), api.config()]);
       this._haConnected = health.ha_connected;
+      this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
+      this._overrides = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
+      // Completed setups open on Live, new ones in the wizard
+      this._view ??= config.setup_completed ? "live" : "setup";
+      this._error = null;
+    } catch (err) {
+      this._view ??= "live";
+      this._error = `Daten konnten nicht geladen werden: ${err.message}`;
+      return;
+    }
+    await this._loadDiscovery();
+  }
+
+  async _loadDiscovery() {
+    this._discoveryError = null;
+    try {
+      const integrations = await api.discovery();
       this._integrations = integrations;
       this._selected = new Set(
         integrations.filter((i) => i.supported && i.devices.some((d) => d.profile)).map((i) => i.entry_id),
       );
-      this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
-      this._overrides = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
-      // Completed setups open on the plan, new ones in the wizard
-      this._view ??= config.setup_completed ? "live" : "setup";
-      this._error = null;
     } catch (err) {
-      this._error = `Daten konnten nicht geladen werden: ${err.message}`;
+      this._discoveryError = `Home Assistant nicht erreichbar: ${err.message}`;
     }
   }
 
@@ -242,7 +257,7 @@ class SunflowApp extends LitElement {
 
   _startTestPolling() {
     this._refreshTests();
-    this._timer = setInterval(() => this._refreshTests(), 2000);
+    this._stopTimer = poll(() => this._refreshTests(), 2000);
   }
 
   async _refreshTests() {
@@ -348,8 +363,8 @@ class SunflowApp extends LitElement {
       this._error = "Bitte einen gültigen Preis in ct/kWh eingeben.";
       return;
     }
-    await this._saveTariff({ import_entity_id: null, fixed_price_ct: value });
-    this._fixedPriceEdit = undefined;
+    // Keep the typed price when saving fails, so it is neither lost nor skipped by "Weiter"
+    if (await this._saveTariff({ import_entity_id: null, fixed_price_ct: value })) this._fixedPriceEdit = undefined;
   }
 
   async _saveTariff(body) {
@@ -357,8 +372,11 @@ class SunflowApp extends LitElement {
       const tariff = await api.setTariff(body);
       this._sources = { ...this._sources, tariff };
       await this._loadPriceSeries();
+      return true;
     } catch (err) {
       this._error = `Preisquelle konnte nicht gespeichert werden: ${err.message}`;
+      this.requestUpdate();
+      return false;
     }
   }
 
@@ -372,9 +390,18 @@ class SunflowApp extends LitElement {
   }
 
   async _savePlanes(plane, changes) {
+    // Apply locally first and save one after another, so a rename followed quickly by an
+    // assignment does not overwrite the rename with the older list
     const planes = this._sources.forecast_planes.map((p) =>
       p.ref === plane.ref && p.source === plane.source ? { ...p, ...changes } : p,
     );
+    this._sources = { ...this._sources, forecast_planes: planes };
+    this._planeSave = (this._planeSave ?? Promise.resolve()).then(() => this._storePlanes());
+    return this._planeSave;
+  }
+
+  async _storePlanes() {
+    const planes = this._sources.forecast_planes;
     try {
       await api.setForecast(
         planes.map(({ source, ref, detected_name, device_id, custom_name }) => ({
@@ -385,7 +412,6 @@ class SunflowApp extends LitElement {
           custom_name,
         })),
       );
-      this._sources = { ...this._sources, forecast_planes: planes };
       await this._loadForecastSeries();
     } catch (err) {
       this._error = `Prognoseflächen konnten nicht gespeichert werden: ${err.message}`;
@@ -395,7 +421,7 @@ class SunflowApp extends LitElement {
   _startSite() {
     this._loadMeasurements();
     this._refreshSite();
-    this._timer = setInterval(() => this._refreshSite(), PREVIEW_INTERVAL_MS);
+    this._stopTimer = poll(() => this._refreshSite(), PREVIEW_INTERVAL_MS);
   }
 
   async _loadMeasurements() {
@@ -551,15 +577,17 @@ class SunflowApp extends LitElement {
   _startPreview() {
     this._stopPreview();
     this._refreshPreviews();
-    this._timer = setInterval(() => this._refreshPreviews(), PREVIEW_INTERVAL_MS);
+    this._stopTimer = poll(() => this._refreshPreviews(), PREVIEW_INTERVAL_MS);
   }
 
   _stopPreview() {
-    if (this._timer) clearInterval(this._timer);
-    this._timer = null;
+    this._stopTimer?.();
+    this._stopTimer = null;
   }
 
   async _refreshPreviews() {
+    // Edits and the timer both refresh; an older, slower response must not win
+    const sequence = (this._previewSequence = (this._previewSequence ?? 0) + 1);
     const results = await Promise.all(
       this._devices.map(async (d) => {
         try {
@@ -569,6 +597,7 @@ class SunflowApp extends LitElement {
         }
       }),
     );
+    if (sequence !== this._previewSequence) return;
     for (const [deviceId, preview] of results) {
       if (!preview.balance) continue;
       const history = [...(this._balanceHistory[deviceId] ?? []), preview.balance];
@@ -763,7 +792,13 @@ class SunflowApp extends LitElement {
   }
 
   _renderIntegrations() {
-    if (this._integrations === null) return html`<h1>Gefundene Integrationen</h1><p class="muted">Suche in Home Assistant …</p>`;
+    if (this._integrations === null) {
+      return html`<h1>Gefundene Integrationen</h1>
+        ${this._discoveryError
+          ? html`<div class="alert error" role="alert">${this._discoveryError}</div>
+              <button class="secondary" @click=${() => this._loadDiscovery()}>Erneut versuchen</button>`
+          : html`<p class="muted">Suche in Home Assistant …</p>`}`;
+    }
     return html`
       <div class="heading">
         <h1>Gefundene Integrationen</h1>
@@ -992,11 +1027,13 @@ class SunflowApp extends LitElement {
     return html`
       <div class="alert ${state}">
         <div>${text}</div>
-        <div class="small">
+        ${latest
+          ? html`<div class="small">
           Letzte Messung: ${BALANCE_FORMULAS[latest.method]} = ${formatValue(latest.computed_load, "W")},
           Hausverbrauch laut Gerät ${formatValue(latest.reported_load, "W")}
           (Abweichung ${formatValue(Math.abs(latest.deviation), "W")})
-        </div>
+        </div>`
+          : nothing}
       </div>
     `;
   }
@@ -1788,8 +1825,8 @@ class SunflowApp extends LitElement {
       flex: none; width: 26px; height: 26px; border-radius: 13px; display: flex; align-items: center; justify-content: center;
       font-size: 13px; font-weight: 600; background: var(--sf-neutral-bg); color: var(--sf-neutral-text);
     }
-    .step.active .dot { background: var(--sf-primary); color: #fff; }
-    .dot.done { background: var(--sf-ok); color: #fff; }
+    .step.active .dot { background: var(--sf-primary); color: var(--sf-on-primary); }
+    .dot.done { background: var(--sf-ok); color: var(--sf-on-ok); }
 
     main {
       flex: 999 1 560px; min-width: 0; background: var(--sf-surface); border: 1px solid var(--sf-border);
@@ -1812,7 +1849,7 @@ class SunflowApp extends LitElement {
       flex: none; width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
       border: 1.5px solid var(--sf-muted); font-size: 14px; font-weight: 700;
     }
-    .check.on { background: var(--sf-primary); border-color: var(--sf-primary); color: #fff; }
+    .check.on { background: var(--sf-primary); border-color: var(--sf-primary); color: var(--sf-on-primary); }
 
     .chip {
       display: inline-block; flex: none; align-self: flex-start; line-height: 1.4;
@@ -1899,7 +1936,7 @@ class SunflowApp extends LitElement {
     .confirm { white-space: normal; font-size: 14px; }
     .phases { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
     .phases li { padding: 4px 10px; border-radius: 12px; background: var(--sf-neutral-bg); color: var(--sf-neutral-text); }
-    .phases li.active { background: var(--sf-primary); color: #fff; }
+    .phases li.active { background: var(--sf-primary); color: var(--sf-on-primary); }
     .phases li.done { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
     .results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
     .warn-text { color: var(--sf-error-text); }
@@ -1915,8 +1952,8 @@ class SunflowApp extends LitElement {
     .primary, .secondary, .ok {
       min-height: 44px; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: 600;
     }
-    .primary { border: 0; background: var(--sf-primary); color: #fff; }
-    .ok { border: 0; background: var(--sf-ok); color: #fff; }
+    .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
+    .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }

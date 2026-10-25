@@ -73,6 +73,7 @@ class SunflowControl extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopPolling();
+    clearTimeout(this._replanTimer);
   }
 
   async _load() {
@@ -88,10 +89,11 @@ class SunflowControl extends LitElement {
     this._busy = true;
     try {
       await action();
+      this._error = null;
       await this._load();
       // Show the windows of the new plan once the background replan is done
-      setTimeout(() => this._load(), REPLAN_DELAY_MS);
-      this._error = null;
+      clearTimeout(this._replanTimer);
+      this._replanTimer = setTimeout(() => this._load(), REPLAN_DELAY_MS);
     } catch (err) {
       this._error = `Änderung fehlgeschlagen: ${err.message}`;
     } finally {
@@ -197,7 +199,7 @@ class SunflowControl extends LitElement {
     const targets = TARGETS[device.kind];
     const targetOverride = device.override?.target ?? null;
     const status = [
-      formatValue(device.power_w ?? 0, "W"),
+      formatValue(device.power_w, "W"),
       device.level !== null && device.level !== undefined ? `${Math.round(device.level)} ${unit}` : null,
       device.kind === "vehicle" && device.connected === false ? "nicht angesteckt" : null,
     ].filter(Boolean);
@@ -260,13 +262,14 @@ class SunflowControl extends LitElement {
 
   _renderPriorities(priorities, sources) {
     const names = Object.fromEntries(priorities.map((p) => [p.id, p.name]));
-    const vehicles = new Set(sources.filter((s) => s.id !== "battery").map((s) => s.id));
+    const units = Object.fromEntries(sources.map((s) => [s.id, s.unit ?? "%"]));
+    const limit = (c) => `${names[c.device_id] ?? c.device_id} ${String(c.min_pct).replace(".", ",")} ${units[c.device_id] ?? "%"}`;
     return html`
       <section class="card">
         <h2>Priorität</h2>
         <p class="small muted">Reicht der PV-Überschuss nicht für alle, bekommt der obere Eintrag zuerst.
           Verbraucher unterhalb des Hausspeichers erhalten Überschuss erst, wenn der Speicher ihn nicht mehr aufnimmt.
-          Mit „Grenzen“ wartet ein Verbraucher, bis höher eingestufte Speicher einen Ladestand erreicht haben – bis dahin nutzt er
+          Mit „Grenzen“ wartet ein Eintrag, bis höher eingestufte Speicher (Hausspeicher, Auto, Warmwasser) einen Stand erreicht haben – bis dahin nutzt er
           nur Netzstrom, falls sein Ziel das verlangt.</p>
         <ol class="priorities">
           ${priorities.map((p, i) => {
@@ -280,14 +283,10 @@ class SunflowControl extends LitElement {
                 <span class="name">
                   ${p.name}
                   ${p.conditions.length
-                    ? html`<span class="small muted">ab ${p.conditions
-                        .map((c) => `${names[c.device_id] ?? c.device_id} ${c.min_pct} %`)
-                        .join(" und ")}</span>`
+                    ? html`<span class="small muted">ab ${p.conditions.map(limit).join(" und ")}</span>`
                     : nothing}
                   ${p.hidden_conditions?.length
-                    ? html`<span class="small muted">ausgeblendet (steht tiefer): ${p.hidden_conditions
-                        .map((c) => `${names[c.device_id] ?? c.device_id} ${c.min_pct} %`)
-                        .join(", ")}</span>`
+                    ? html`<span class="small muted">ausgeblendet (steht tiefer): ${p.hidden_conditions.map(limit).join(", ")}</span>`
                     : nothing}
                 </span>
                 ${own.length
@@ -309,9 +308,14 @@ class SunflowControl extends LitElement {
                     ${own.map((s) => {
                       const current = p.conditions.find((c) => c.device_id === s.id);
                       return html`<label class="condition">
-                        <span>${s.name}${vehicles.has(s.id) ? html` <span class="small muted">(nur wenn angesteckt)</span>` : nothing}</span>
-                        <span class="pct"><input type="number" name=${s.id} min="0" max="100" step="5" placeholder="–"
-                          .value=${current ? String(current.min_pct) : ""}> %</span>
+                        <span>${s.name}${s.kind === "vehicle"
+                          ? html` <span class="small muted">(nur wenn angesteckt)</span>`
+                          : s.kind === "heater"
+                            ? html` <span class="small muted">(Wassertemperatur)</span>`
+                            : nothing}</span>
+                        <span class="pct"><input type="number" name=${s.id} min="0" max="100" step=${s.unit === "°C" ? 1 : 5}
+                          placeholder="–" aria-label="${s.name} in ${s.unit ?? "%"}"
+                          .value=${current ? String(current.min_pct) : ""}> ${s.unit ?? "%"}</span>
                       </label>`;
                     })}
                     <div class="actions">
@@ -345,7 +349,7 @@ class SunflowControl extends LitElement {
     }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     section { display: flex; flex-direction: column; gap: 10px; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 12px; }
     .card {
       border: 1px solid var(--sf-border); border-radius: 10px; padding: 14px 16px;
       display: flex; flex-direction: column; gap: 12px;
@@ -387,7 +391,7 @@ class SunflowControl extends LitElement {
     .conditions button {
       width: auto; height: 36px; border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); cursor: pointer;
     }
-    .conditions button.primary { padding: 0 14px; background: var(--sf-primary); border-color: var(--sf-primary); color: #fff; }
+    .conditions button.primary { padding: 0 14px; background: var(--sf-primary); border-color: var(--sf-primary); color: var(--sf-on-primary); }
     .priorities .entry button {
       width: 40px; height: 36px; border: 1px solid var(--sf-border-strong); border-radius: 8px;
       background: var(--sf-surface); cursor: pointer;

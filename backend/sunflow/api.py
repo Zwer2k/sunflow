@@ -864,9 +864,17 @@ async def get_control(request: Request) -> dict[str, Any]:
             }
             for i in order
         ],
-        # Storages a consumer can wait for: the home battery and vehicles
-        "condition_sources": ([{"id": BATTERY_PRIORITY_ID, "name": names[BATTERY_PRIORITY_ID]}] if has_battery else [])
-        + [{"id": d["id"], "name": d["name"]} for d in devices if d["kind"] == "vehicle"],
+        # Storages a consumer can wait for: home battery (%), vehicles (%) and hot water tanks (°C)
+        "condition_sources": (
+            [{"id": BATTERY_PRIORITY_ID, "name": names[BATTERY_PRIORITY_ID], "unit": "%", "kind": "battery"}]
+            if has_battery
+            else []
+        )
+        + [
+            {"id": d["id"], "name": d["name"], "unit": "°C" if d["kind"] == "heater" else "%", "kind": d["kind"]}
+            for d in devices
+            if d["kind"] in ("vehicle", "heater")
+        ],
         "plan_computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
     }
 

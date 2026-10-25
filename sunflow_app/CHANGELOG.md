@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.2
+
+- Priority limits can refer to the hot water tank (in °C), e.g. wallbox only from
+  55 °C hot water, home battery only from 60 °C hot water and 80 % car
+- Setup opens even when Home Assistant is unreachable, with "Erneut versuchen"
+- Fixed: a failed fixed-price save lost the typed price and "Weiter" moved on;
+  renaming a forecast plane could be overwritten by a quick assignment; typed numbers
+  in Standards were reverted when changing the strategy; the device step could fail
+  to render after changing a role; older previews could overwrite newer ones
+- Analyse: period switch keeps the selected period, errors are shown, import is a
+  keyboard reachable button with progress
+- Steuerung: cards fit phone width, unknown power shows "–", errors are kept
+- Dark mode: text on filled buttons and step dots has sufficient contrast
+- Wizard timers pause in hidden tabs like the views
+
 ## 0.9.1
 
 - New icon: the sun with three energy flows to storage, house and car. Used for the

@@ -21,6 +21,8 @@ class SunflowAnalysis extends LitElement {
     _importResult: { state: true },
     _energy: { state: true },
     _period: { state: true },
+    _energyError: { state: true },
+    _importing: { state: true },
   };
 
   constructor() {
@@ -43,10 +45,16 @@ class SunflowAnalysis extends LitElement {
   }
 
   async _loadEnergy() {
+    const period = this._period;
     try {
-      this._energy = await api.energy(this._period);
-    } catch {
-      this._energy = null;
+      const energy = await api.energy(period);
+      // A slower answer for a period that is no longer selected must not win
+      if (period === this._period) {
+        this._energy = energy;
+        this._energyError = null;
+      }
+    } catch (err) {
+      if (period === this._period) this._energyError = `Energiebilanz nicht verfügbar: ${err.message}`;
     }
   }
 
@@ -83,7 +91,7 @@ class SunflowAnalysis extends LitElement {
   _renderEnergy() {
     const e = this._energy;
     const t = e?.totals;
-    if (!t || Object.values(t).every((v) => v === null)) return nothing;
+    if (!this._energyError && (!t || Object.values(t).every((v) => v === null))) return nothing;
     const wh = (v) => formatValue(v, "Wh");
     const pct = (v) => (v === null || v === undefined ? "–" : `${(v * 100).toFixed(1).replace(".", ",")} %`);
     const tile = (label, value, hint = null, highlight = false) =>
@@ -93,7 +101,7 @@ class SunflowAnalysis extends LitElement {
             <div class="small muted">${label}</div><div class="value">${value}</div>
             ${hint ? html`<div class="small muted">${hint}</div>` : nothing}
           </div>`;
-    const fromDashboard = Object.entries(e.origin).filter(([, o]) => o === "energy_dashboard").map(([k]) => k);
+    const fromDashboard = Object.entries(e?.origin ?? {}).filter(([, o]) => o === "energy_dashboard").map(([k]) => k);
     return html`
       <section>
         <div class="section-head">
@@ -105,7 +113,8 @@ class SunflowAnalysis extends LitElement {
             )}
           </div>
         </div>
-        <p class="small muted">Aus den Energiezählern${fromDashboard.length ? " (Netz aus dem Energie-Dashboard)" : " der Wechselrichter"}
+        ${this._energyError ? html`<div class="alert error" role="alert">${this._energyError}</div>` : nothing}
+        ${t ? html`<p class="small muted">Aus den Energiezählern${fromDashboard.length ? " (Netz aus dem Energie-Dashboard)" : " der Wechselrichter"}
           seit ${dayTime.format(new Date(e.start))}${e.consumption_origin === "balance" ? "; Verbrauch aus der Bilanz berechnet" : ""}.</p>
         <div class="tiles">
           ${tile("Autarkie", pct(e.autarky), "Verbrauch ohne Netzbezug", true)}
@@ -119,7 +128,7 @@ class SunflowAnalysis extends LitElement {
             e.battery_ratio === null ? null : `${pct(e.battery_ratio)} der geladenen Energie (ohne Ladestandsänderung)`)}
           ${e.inverters.map((i) => tile(`Wirkungsgrad ${i.name}`, pct(i.efficiency),
             i.dc_wh === null ? null : `${wh(i.ac_wh)} AC aus ${wh(i.dc_wh)} DC`))}
-        </div>
+        </div>` : nothing}
       </section>
     `;
   }
@@ -148,10 +157,11 @@ class SunflowAnalysis extends LitElement {
         </p>
         <div class="actions">
           <a class="secondary button-link" href="api/v1/export" download>Daten exportieren</a>
-          <label class="secondary button-link">
-            Export importieren
-            <input type="file" accept=".zip" hidden @change=${(e) => this._import(e)}>
-          </label>
+          <button class="secondary button-link" ?disabled=${this._importing}
+            @click=${(e) => e.currentTarget.nextElementSibling.click()}>
+            ${this._importing ? "Importiere …" : "Export importieren"}
+          </button>
+          <input type="file" accept=".zip" hidden @change=${(e) => this._import(e)}>
           ${this._importResult ? html`<span class="small muted">${this._importResult}</span>` : nothing}
         </div>
         ${e.compared === 0
@@ -202,6 +212,7 @@ class SunflowAnalysis extends LitElement {
     if (!file) return;
     const body = new FormData();
     body.append("file", file);
+    this._importing = true;
     try {
       const response = await fetch("api/v1/import", { method: "POST", body });
       const data = await response.json();
@@ -210,6 +221,8 @@ class SunflowAnalysis extends LitElement {
       this._shadow = await api.shadow();
     } catch (err) {
       this._error = `Import fehlgeschlagen: ${err.message}`;
+    } finally {
+      this._importing = false;
     }
     event.target.value = "";
   }
@@ -330,7 +343,7 @@ class SunflowAnalysis extends LitElement {
       display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 8px;
       text-decoration: none; color: var(--sf-text); cursor: pointer; font-size: 14px;
     }
-    .ok { border: 0; background: var(--sf-ok); color: #fff; }
+    .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
   `;
