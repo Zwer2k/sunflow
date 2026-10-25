@@ -299,9 +299,10 @@ def test_surplus_export_is_smooth() -> None:
     plan = optimize(inputs, full, Settings(), [heater])
 
     export = [s.export_w for s in plan.slots]
-    jumps = sum(1 for a, b in zip(export, export[1:], strict=False) if abs(a - b) > 200)
-    # Export starts and ends once, possibly with one change when the heater stops
-    assert jumps <= 3
+    steps = [b - a for a, b in zip(export, export[1:], strict=False) if abs(b - a) > 50]
+    reversals = sum(1 for a, b in zip(steps, steps[1:], strict=False) if (a > 0) != (b > 0))
+    # Export rises while the battery fills and falls once in the evening: no zigzag
+    assert reversals <= 1
 
 
 def _heater(**options: object) -> object:
@@ -395,3 +396,15 @@ def test_round_trip_efficiency_parameter(library: object) -> None:
     assert problem is None
     assert spec.efficiency_charge * spec.efficiency_discharge == pytest.approx(0.72)
     assert spec.efficiency_charge == pytest.approx(0.8485, abs=1e-4)
+
+
+def test_battery_fills_before_export() -> None:
+    """With more PV surplus than room, the battery is charged first and the rest exported later."""
+    battery = BatterySpec(capacity_wh=10000, soc_wh=5000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    pv = [0.0] * 32 + [2500.0] * 32 + [0.0] * 32  # 8 h with 2 kW surplus = 16 kWh, room 5 kWh
+    plan = optimize(_slots(24, price=lambda i: 0.326, pv=lambda i: pv[i]), battery, Settings())
+
+    first_hours = plan.slots[32:40]
+    assert sum(s.export_w for s in first_hours) < 50
+    assert all(s.charge_w > 1900 for s in first_hours)
+    assert max(s.soc_wh for s in plan.slots) == pytest.approx(10000, abs=10)
