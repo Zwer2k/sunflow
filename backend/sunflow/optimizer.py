@@ -2,7 +2,7 @@
 
 Per 15 minute slot t (powers in W, energy in Wh):
     pv + import + discharge = load + charge + export
-    soc[t] = soc[t-1] + (charge * eta_c - discharge / eta_d) * dt
+    soc[t] = soc[t-1] + (charge * eta_c - grid_charge * (eta_c - eta_g) - discharge / eta_d) * dt
 minimize   sum(price * import - feed_in * export + wear * discharge) * dt / 1000
            - value of the energy left at the end
 """
@@ -29,8 +29,11 @@ class BatterySpec:
     min_soc_wh: float
     max_charge_w: float
     max_discharge_w: float
+    # Charging from PV (DC side of a hybrid inverter), from the grid (through the
+    # inverter, AC to DC) and discharging to the house (DC to AC); None: as from PV
     efficiency_charge: float = 0.95
     efficiency_discharge: float = 0.95
+    efficiency_charge_grid: float | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -304,6 +307,13 @@ def optimize(
         u.append(list(range(first, first + len(load_needs))))
     count = 5 * n + len(flex) * n + sum(len(x) for x in u)
     eta_c, eta_d = battery.efficiency_charge, battery.efficiency_discharge
+    eta_g = battery.efficiency_charge_grid or eta_c
+    # Grid charging loses more than PV charging: the share of the charge coming from the
+    # grid gets its own variable (only when the efficiencies differ)
+    split_grid = eta_g < eta_c - 1e-9
+    cg = count + np.arange(n) if split_grid else None
+    if split_grid:
+        count += n
     battery = replace(battery, soc_wh=min(max(battery.soc_wh, 0), battery.capacity_wh))
     wear = settings.wear_ct_per_kwh / 100
     mean_price = float(np.mean([i.price for i in inputs]))
@@ -358,6 +368,8 @@ def optimize(
         a_eq[row, s[t]] = 1
         a_eq[row, c[t]] = -eta_c * DT_H
         a_eq[row, d[t]] = DT_H / eta_d
+        if split_grid:
+            a_eq[row, cg[t]] = (eta_c - eta_g) * DT_H
         if t == 0:
             b_eq[row] = battery.soc_wh
         else:
@@ -382,6 +394,8 @@ def optimize(
             battery.max_charge_w, max(slot.pv_w - slot.load_w, 0)
         )
         upper[d[t]] = battery.max_discharge_w
+        if split_grid:
+            upper[cg[t]] = battery.max_charge_w if settings.allow_grid_charge else 0.0
         # The grid only carries what the house, loads and battery can take or give
         upper[gi[t]] = max(slot.load_w, 0) + battery.max_charge_w + sum(
             load.max_power_w for load in flex if load.available[t]
@@ -499,6 +513,7 @@ def optimize(
                 + 2 * (size - binary_total)
                 + (n if restrict_battery else 0)
                 + (n if len(pv_only) > 1 else 0)
+                + (2 * n if split_grid else 0)
                 + len(gate_rows),
                 size,
             )
@@ -533,6 +548,13 @@ def optimize(
                     a_ub[row, f[k][t]] = 1
                 b_ub[row] = max(slot.pv_w - slot.load_w, 0.0)
                 row += 1
+        if split_grid:
+            for t, slot in enumerate(inputs):
+                # The grid share is part of the charge; the rest cannot exceed the PV surplus
+                a_ub[row, cg[t]], a_ub[row, c[t]] = 1, -1
+                a_ub[row + 1, c[t]], a_ub[row + 1, cg[t]] = 1, -1
+                b_ub[row + 1] = max(slot.pv_w - slot.load_w, 0.0)
+                row += 2
         for coefficients, bound in gate_rows:
             for index, value in coefficients.items():
                 a_ub[row, index] = value

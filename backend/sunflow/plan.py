@@ -311,6 +311,10 @@ def battery_spec(
     }
     if roles.get("battery_soc") is None:
         return None, f"{device.name}: Ladestand nicht lesbar."
+    # Battery round trip at its terminals (cells, DC/DC), split evenly between directions;
+    # the inverter's AC/DC conversion applies to grid charging and to every discharge
+    battery_way = math.sqrt((params.get("efficiency_pct") or 90) / 100)
+    inverter = (params.get("inverter_efficiency_pct") or 100) / 100
     return (
         BatterySpec(
             capacity_wh=capacity,
@@ -318,9 +322,9 @@ def battery_spec(
             min_soc_wh=capacity * (params.get("min_soc") or 0) / 100,
             max_charge_w=params.get("max_charge") or 0,
             max_discharge_w=params.get("max_discharge") or 0,
-            # The parameter is the round trip; split evenly between charging and discharging
-            efficiency_charge=math.sqrt((params.get("efficiency_pct") or 90) / 100),
-            efficiency_discharge=math.sqrt((params.get("efficiency_pct") or 90) / 100),
+            efficiency_charge=battery_way,
+            efficiency_charge_grid=battery_way * inverter,
+            efficiency_discharge=battery_way * inverter,
         ),
         None,
     )

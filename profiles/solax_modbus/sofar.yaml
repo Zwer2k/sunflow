@@ -53,8 +53,12 @@ parameters:
   max_charge: {unit: W, default: 20000, min: 0}
   max_discharge: {unit: W, default: 20000, min: 0}
   grid_offset: {unit: W, default: -200, advanced: true}
-  # Round trip (charge and discharge); the planner splits it evenly between both directions
-  efficiency_pct: {unit: "%", default: 90, min: 40, max: 100}
+  # Battery round trip at its terminals (cells and DC/DC converters), as the battery
+  # energy counters measure it; split evenly between both directions
+  efficiency_pct: {unit: "%", default: 93, min: 40, max: 100}
+  # AC/DC conversion of the inverter, per direction: grid charging and discharging to
+  # the house pass it, PV charging on the DC side does not
+  inverter_efficiency_pct: {unit: "%", default: 96.5, min: 80, max: 100}
 
 actions:
   auto: {bat_min: -max_discharge, bat_max: max_charge, grid_target: grid_offset}
