@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Ladestand chart shows the limits: full capacity, discharge limit (min SoC)
+  and the backup reserve while the backup strategy is active
+
 ## 0.5.0
 
 - New tab layout: Live | Steuerung | Planung | Analyse | Einstellungen

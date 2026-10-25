@@ -52,6 +52,20 @@ function flexWindows(slots, name) {
 }
 
 /** Group consecutive slots with the same action. */
+/** Reference lines for the SoC chart: full, backup reserve (if active) and discharge limit. */
+function socLimits(battery) {
+  if (!battery) return [];
+  const pct = (wh) => `${Math.round((wh / battery.capacity_wh) * 100)} %`;
+  const limits = [{ value: battery.capacity_wh, label: `voll · ${formatValue(battery.capacity_wh, "Wh")}` }];
+  if (battery.reserve_wh > battery.min_soc_wh) {
+    limits.push({ value: battery.reserve_wh, label: `Notstromreserve ${pct(battery.reserve_wh)}` });
+  }
+  if (battery.min_soc_wh > 0) {
+    limits.push({ value: battery.min_soc_wh, label: `Entladegrenze ${pct(battery.min_soc_wh)}` });
+  }
+  return limits;
+}
+
 function segments(slots) {
   const result = [];
   for (const slot of slots) {
@@ -140,7 +154,8 @@ class SunflowPlan extends LitElement {
     const segs = segments(slots);
     const now = segs[0];
     const history = this._history?.points ?? [];
-    const capacity = Math.max(...slots.map((s) => s.soc_wh), ...history.map((p) => p.soc_wh ?? 0)) || 1;
+    const capacity =
+      plan.battery?.capacity_wh || Math.max(...slots.map((s) => s.soc_wh), ...history.map((p) => p.soc_wh ?? 0)) || 1;
     const nowDate = new Date(slots[0].start);
     const hasLoadpoints =
       history.some((p) => p.loadpoint_w !== null && p.loadpoint_w !== undefined) || Boolean(plan.flex?.length);
@@ -211,7 +226,13 @@ class SunflowPlan extends LitElement {
             { name: "Gemessen", color: SERIES_COLORS[0], points: this._past("soc_wh") },
             { name: "Erwartet", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "soc_wh") },
           ],
-          { label: "Ladestand gemessen und erwartet", formatY: (v) => formatValue(v, "Wh"), yMax: capacity * 1.05, now: nowDate },
+          {
+            label: "Ladestand gemessen und erwartet",
+            formatY: (v) => formatValue(v, "Wh"),
+            yMax: capacity * 1.05,
+            now: nowDate,
+            limits: socLimits(plan.battery),
+          },
         )}
       </section>
 
@@ -398,6 +419,8 @@ class SunflowPlan extends LitElement {
     .line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--sf-text); }
     .line.dashed { border-top-style: dashed; }
     .chart .now { stroke: var(--sf-text); stroke-width: 1; stroke-dasharray: 2 3; }
+    .chart .limit { stroke: var(--sf-muted); stroke-width: 1; stroke-dasharray: 6 4; }
+    .chart .limit-label { paint-order: stroke; stroke: var(--sf-surface); stroke-width: 3px; }
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; margin-top: 10px; }
     table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13px; }
     th { text-align: left; font-weight: 600; background: var(--sf-subtle); padding: 8px 10px; }

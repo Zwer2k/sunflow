@@ -205,6 +205,8 @@ class PlanResult:
     pv_planes: int = 0
     flex: list[FlexInfo] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    battery: BatterySpec | None = None
+    reserve_wh: float = 0.0
 
 
 def battery_spec(
@@ -424,4 +426,6 @@ async def compute_plan(
         pv_planes=len(series),
         flex=flex_infos,
         warnings=warnings,
+        battery=battery,
+        reserve_wh=settings.reserve_wh,
     )
