@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from .config_store import DeviceConfig
+from .config_store import DeviceConfig, SunflowConfig
 from .discovery import Snapshot, entity_has_key
 from .resolver import Balance, RoleValue, check_balance, device_entities, preview
 
@@ -110,6 +110,33 @@ def pv_output(roles: list[RoleValue]) -> float | None:
     """Return the AC output of a PV plant from its roles."""
     by_role = {r.role: r.value for r in roles}
     return next((by_role[r] for r in PV_OUTPUT_ROLES if by_role.get(r) is not None), None)
+
+
+# Measured quantities the user can assign to a device; a device qualifies when its
+# profile has one of the roles
+MEASUREMENTS: dict[str, tuple[str, ...]] = {
+    "grid": ("grid_power", "grid_import_energy", "grid_export_energy"),
+    "load": ("load_power", "load_energy"),
+}
+
+
+def measurement_candidates(
+    devices: list[DeviceConfig], profiles: dict[str, dict[str, Any]], quantity: str
+) -> list[DeviceConfig]:
+    """Devices whose profile can measure the quantity, best automatic choice first."""
+    roles = MEASUREMENTS[quantity]
+    candidates = [d for d in devices if any(r in profiles[d.profile]["roles"] for r in roles)]
+    # A dedicated meter (e.g. at the utility meter) is more exact than an inverter's own measurement
+    return sorted(candidates, key=lambda d: bool({"pv", "battery"} & set(profiles[d.profile]["capabilities"])))
+
+
+def measurement_device(
+    config: SunflowConfig, profiles: dict[str, dict[str, Any]], quantity: str
+) -> DeviceConfig | None:
+    """The device chosen for a quantity, or the automatic choice."""
+    candidates = measurement_candidates(config.devices, profiles, quantity)
+    chosen = config.measurement_sources.get(quantity)
+    return next((d for d in candidates if d.id == chosen), candidates[0] if candidates else None)
 
 
 def site_status(

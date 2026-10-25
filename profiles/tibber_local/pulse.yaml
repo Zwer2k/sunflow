@@ -1,0 +1,17 @@
+# Tibber Pulse read locally via the tibber_local custom integration (HACS, marq24).
+# Reads the utility meter's optical interface: the reference for grid import and
+# export, preferred over the inverter's own grid measurement.
+profile: tibber_local/pulse
+version: 1
+match:
+  integration: tibber_local
+  requires: ["0100100700ff"]
+
+capabilities: [grid_meter]
+
+roles:
+  # OBIS 16.7.0: sum of active power, + = import, - = export
+  grid_power: {key: "0100100700ff", unit: W, sign: import_positive}
+  # OBIS 1.8.0 / 2.8.0 meter readings
+  grid_import_energy: {key: "0100010800ff_in_k", unit: kWh, optional: true}
+  grid_export_energy: {key: "0100020800ff_in_k", unit: kWh, optional: true}

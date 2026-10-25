@@ -74,6 +74,8 @@ export const api = {
   live: () => request("GET", "/live"),
   candidates: () => request("GET", "/entities/candidates"),
   addManual: (body) => request("POST", "/config/devices/manual", body),
+  measurements: () => request("GET", "/config/measurements"),
+  setMeasurements: (choices) => request("PUT", "/config/measurements", choices),
   energy: (period) => request("GET", `/energy?period=${encodeURIComponent(period)}`),
   efficiency: (configDeviceId) => request("GET", `/config/devices/${encodeURIComponent(configDeviceId)}/efficiency`),
   history: (hours = 24) => request("GET", `/history?hours=${hours}`),

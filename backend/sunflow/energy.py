@@ -1,8 +1,8 @@
 """Energy balance of the site from energy counters (kWh) in Home Assistant's statistics.
 
-Counters are exact where integrated power means miss short peaks. Grid counters
-of the energy dashboard (usually the utility meter) win over inverter counters;
-otherwise the devices' counters are used.
+Counters are exact where integrated power means miss short peaks. Grid and load
+come from the device chosen under "Messquellen"; on "automatic" the grid counters
+of the energy dashboard win, then a dedicated meter, then an inverter.
 """
 
 from dataclasses import dataclass, field
@@ -13,6 +13,10 @@ from .config_store import SunflowConfig
 from .discovery import Snapshot
 from .ha import HAClient
 from .resolver import preview
+from .site import measurement_device
+
+# Balance keys that belong to one measured quantity: only its device counts
+QUANTITY_KEYS = {"grid_import": "grid", "grid_export": "grid", "load": "load"}
 
 # Profile role -> balance key
 ENERGY_ROLES = {
@@ -66,6 +70,7 @@ def energy_sources(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
     """Pick the counters for every balance key."""
     devices: dict[str, list[str]] = {}
     sources = EnergySources()
+    chosen = {quantity: measurement_device(config, profiles, quantity) for quantity in set(QUANTITY_KEYS.values())}
     for device in config.devices:
         profile = profiles[device.profile]
         roles = {
@@ -75,6 +80,9 @@ def energy_sources(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             )
         }
         for role, key in ENERGY_ROLES.items():
+            quantity = QUANTITY_KEYS.get(key)
+            if quantity and (chosen[quantity] is None or chosen[quantity].id != device.id):
+                continue
             if role in roles and roles[role].entity_id:
                 devices.setdefault(key, []).append(roles[role].entity_id)
         ac, dc = roles.get("pv_energy"), roles.get("pv_dc_energy")
@@ -82,8 +90,8 @@ def energy_sources(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             sources.inverters[device.name] = (ac.entity_id, dc.entity_id)
     dashboard = _dashboard_statistics(snapshot.energy_prefs)
     for key in ENERGY_ROLES.values():
-        # The utility meter is the reference for the grid; devices know their own split otherwise
-        prefer_dashboard = key in ("grid_import", "grid_export")
+        # On automatic the energy dashboard's grid (usually the utility meter) is the reference
+        prefer_dashboard = QUANTITY_KEYS.get(key) == "grid" and "grid" not in config.measurement_sources
         first, second = (dashboard, devices) if prefer_dashboard else (devices, dashboard)
         if key in first:
             sources.statistics[key] = first[key]

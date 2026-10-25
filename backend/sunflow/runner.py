@@ -7,14 +7,14 @@ import logging
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .config_store import ConfigStore
+from .config_store import ConfigStore, DeviceConfig
 from .discovery import fetch_snapshot
 from .ha import HAClient, HAError
 from .plan import PlanResult, compute_plan
 from .profiles import ProfileLibrary
 from .resolver import preview
 from .shadow import Sample, ShadowStore, SlotRecorder, slot_start
-from .site import device_parameters, site_status
+from .site import device_parameters, measurement_device, site_status
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,24 +50,30 @@ async def take_sample(client: HAClient, store: ConfigStore, library: ProfileLibr
     if device is None:
         return None
     snapshot = await fetch_snapshot(client)
-    roles = {
-        r.role: r.value
-        for r in preview(
-            profiles[device.profile],
-            snapshot,
-            device.ha_device_id,
-            {k: o.model_dump() for k, o in device.role_overrides.items()},
-        )
-    }
+
+    def values(source: DeviceConfig | None) -> dict[str, float | None]:
+        if source is None:
+            return {}
+        return {
+            r.role: r.value
+            for r in preview(
+                profiles[source.profile],
+                snapshot,
+                source.ha_device_id,
+                {k: o.model_dump() for k, o in source.role_overrides.items()},
+            )
+        }
+
+    roles = values(device)
     params = {p["name"]: p["effective"] for p in device_parameters(profiles[device.profile], device, snapshot)}
     capacity = params.get("capacity_wh")
     soc = roles.get("battery_soc")
     return Sample(
         soc_wh=capacity * soc / 100 if capacity and soc is not None else None,
         battery_w=roles.get("battery_power"),
-        grid_w=roles.get("grid_power"),
+        grid_w=values(measurement_device(config, profiles, "grid")).get("grid_power"),
         pv_w=site_status(config.devices, profiles, snapshot).pv_total,
-        load_w=roles.get("load_power"),
+        load_w=values(measurement_device(config, profiles, "load")).get("load_power"),
     )
 
 

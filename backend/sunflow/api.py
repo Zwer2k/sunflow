@@ -58,7 +58,7 @@ from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .settings import Settings
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, evaluate as evaluate_shadow
-from .site import device_kind, device_parameters, site_status
+from .site import MEASUREMENTS, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
 from .summary import SetupSummary, build_summary
 from .sources import (
     ForecastPoint,
@@ -682,6 +682,49 @@ async def set_optimizer(request: Request, body: OptimizerConfig) -> dict[str, An
     return body.model_dump()
 
 
+MEASUREMENT_LABELS = {"grid": "Netz (Bezug und Einspeisung)", "load": "Hausverbrauch"}
+
+
+def _measurements(config: SunflowConfig, profiles: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    result = {}
+    for quantity in MEASUREMENTS:
+        candidates = measurement_candidates(config.devices, profiles, quantity)
+        effective = measurement_device(config, profiles, quantity)
+        result[quantity] = {
+            "label": MEASUREMENT_LABELS.get(quantity, quantity),
+            # None: automatic
+            "selected": config.measurement_sources.get(quantity),
+            "effective": effective.id if effective else None,
+            "options": [{"id": d.id, "name": d.name} for d in candidates],
+        }
+    return result
+
+
+@router.get("/config/measurements")
+async def get_measurements(request: Request) -> dict[str, Any]:
+    """Which device measures grid and load, with the choices per quantity."""
+    return _measurements(request.app.state.store.load(), _library(request).profiles)
+
+
+@router.put("/config/measurements")
+async def set_measurements(request: Request, body: dict[str, str | None]) -> dict[str, Any]:
+    """Choose the device per quantity; null returns to the automatic choice."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    profiles = _library(request).profiles
+    for quantity, device_id in body.items():
+        if quantity not in MEASUREMENTS:
+            raise HTTPException(status_code=422, detail=f"Unknown quantity: {quantity}")
+        if device_id is None:
+            config.measurement_sources.pop(quantity, None)
+        elif device_id in {d.id for d in measurement_candidates(config.devices, profiles, quantity)}:
+            config.measurement_sources[quantity] = device_id
+        else:
+            raise HTTPException(status_code=422, detail=f"{device_id} cannot measure {quantity}")
+    store.save(config)
+    return _measurements(config, profiles)
+
+
 def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
     """Serialize a plan result for the UI."""
     plan = result.plan
@@ -1079,6 +1122,8 @@ async def get_live(request: Request) -> dict[str, Any]:
     snapshot = await _snapshot(request)
     site = site_status(config.devices, profiles, snapshot)
     by_id = {d.id: d for d in config.devices}
+    grid_device = measurement_device(config, profiles, "grid")
+    load_device = measurement_device(config, profiles, "load")
     pv: list[dict[str, Any]] = []
     batteries: list[dict[str, Any]] = []
     consumers: list[dict[str, Any]] = []
@@ -1105,10 +1150,9 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "power_w": value("battery_power"),
                 }
             )
-        # The first device measuring grid or load wins (usually the hybrid inverter)
-        if grid_w is None and value("grid_power") is not None:
+        if grid_device is not None and device.id == grid_device.id:
             grid_w = value("grid_power")
-        if load_w is None and value("load_power") is not None:
+        if load_device is not None and device.id == load_device.id:
             load_w = value("load_power")
         if "loadpoint" in capabilities or "load" in capabilities:
             kind = device_kind(profile, device, snapshot) or "load"

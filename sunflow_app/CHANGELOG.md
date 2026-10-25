@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0
+
+- New profile: Tibber Pulse via the tibber_local integration (grid power 16.7.0,
+  meter readings 1.8.0 / 2.8.0)
+- Messquellen (setup step "Bilanzprüfung"): choose which device measures the grid and
+  the house consumption. "Automatisch" prefers a dedicated meter over the inverter.
+  Applies to Live, history, energy balance and shadow mode. Before, grid counters of
+  several devices would have been added up in the energy balance
+
 ## 0.8.0
 
 - The home battery can have priority limits too: ranked below a vehicle, it only

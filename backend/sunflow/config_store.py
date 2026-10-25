@@ -149,6 +149,8 @@ class SunflowConfig(BaseModel):
     strategy_override: StrategyOverride | None = None
     # Device ids and BATTERY_PRIORITY_ID, highest priority first
     priorities: list[str] = Field(default_factory=list)
+    # Measured quantity ("grid", "load") -> device id; missing means automatic
+    measurement_sources: dict[str, str] = Field(default_factory=dict)
     # Per consumer id: all conditions must hold before it gets PV or battery energy
     priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
 
