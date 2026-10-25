@@ -1,6 +1,7 @@
 """Collect forecasts, prices and battery state and run the optimizer."""
 
 import asyncio
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, tzinfo
 from typing import Any
@@ -220,8 +221,9 @@ def battery_spec(
             min_soc_wh=capacity * (params.get("min_soc") or 0) / 100,
             max_charge_w=params.get("max_charge") or 0,
             max_discharge_w=params.get("max_discharge") or 0,
-            efficiency_charge=(params.get("efficiency_pct") or 95) / 100,
-            efficiency_discharge=(params.get("efficiency_pct") or 95) / 100,
+            # The parameter is the round trip; split evenly between charging and discharging
+            efficiency_charge=math.sqrt((params.get("efficiency_pct") or 90) / 100),
+            efficiency_discharge=math.sqrt((params.get("efficiency_pct") or 90) / 100),
         ),
         None,
     )

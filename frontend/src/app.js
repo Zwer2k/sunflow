@@ -1163,10 +1163,11 @@ class SunflowApp extends LitElement {
     if (estimate === undefined) return nothing;
     if (estimate === null) return html`<span class="small muted">Noch keine Historie für eine Schätzung.</span>`;
     const pct = (v) => `${(v * 100).toFixed(1).replace(".", ",")} %`;
-    const value = Math.round(estimate.efficiency * 1000) / 10;
+    // The parameter is the round trip
+    const value = Math.round(estimate.round_trip * 1000) / 10;
     return html`
       <span class="small">
-        aus Historie: <strong>${pct(estimate.efficiency)}</strong> je Richtung (Zyklus ${pct(estimate.round_trip)}),
+        aus Historie: <strong>${pct(estimate.round_trip)}</strong> Zyklus (je Richtung ${pct(estimate.efficiency)}),
         ${estimate.cycles.toFixed(1).replace(".", ",")} Zyklen in ${Math.round(estimate.hours)} h
         ${estimate.plausible
           ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, String(value).replace(".", ","))}>
