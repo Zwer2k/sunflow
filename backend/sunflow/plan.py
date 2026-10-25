@@ -213,7 +213,7 @@ def with_conditions(
         # "Sofort" ignores the conditions
         device = config.device(device_id)
         conditions = [] if device is None or config.effective_flex(device, now)[0].strategy == "fast" else (
-            config.priority_conditions.get(device_id, [])
+            config.valid_conditions(device_id)
         )
         for condition in conditions:
             if condition.device_id == BATTERY_PRIORITY_ID:

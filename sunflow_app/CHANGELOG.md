@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.5
+
+- Priority limits only refer to higher entries: the top entry has none, the second
+  can wait for the first, and so on. Reordering drops limits that would point to a
+  lower entry
+
 ## 0.7.4
 
 - Steuerung → Priorität: buttons in the limits form ("Übernehmen", "Abbrechen") were

@@ -154,7 +154,8 @@ def test_priority_conditions(tmp_path: Path) -> None:
             devices=[
                 DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
                 DeviceConfig(id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser"),
-            ]
+            ],
+            priorities=["battery", "ev", "ww"],
         )
     )
     app = create_app()
@@ -168,6 +169,14 @@ def test_priority_conditions(tmp_path: Path) -> None:
     assert [c.model_dump() for c in store.load().priority_conditions["ww"]] == conditions
     assert client.put("/api/v1/control/priorities/ww/conditions", json=[{"device_id": "ww", "min_pct": 50}]).status_code == 422
     assert client.put("/api/v1/control/priorities/ww/conditions", json=[{"device_id": "battery", "min_pct": 120}]).status_code == 422
+
+    # Only higher entries: the car (2nd) cannot wait for the hot water (3rd), the battery (1st) has no limits
+    assert client.put("/api/v1/control/priorities/ev/conditions", json=[{"device_id": "ww", "min_pct": 50}]).status_code == 422
+    assert client.put("/api/v1/control/priorities/battery/conditions", json=[]).status_code == 404
+
+    # Moving the car below the hot water drops the limit that now points downwards
+    client.put("/api/v1/control/priorities", json=["battery", "ww", "ev"])
+    assert [c.device_id for c in store.load().priority_conditions["ww"]] == ["battery"]
 
     assert client.put("/api/v1/control/priorities/ww/conditions", json=[]).status_code == 200
     assert store.load().priority_conditions == {}

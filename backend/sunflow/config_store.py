@@ -176,6 +176,20 @@ class SunflowConfig(BaseModel):
         order = [i for i in self.priorities if i in known]
         return order + [i for i in known if i not in order]
 
+    def valid_conditions(self, device_id: str) -> list[PriorityCondition]:
+        """Conditions of a consumer that refer to entries ranked above it."""
+        order = self.priority_order()
+        if device_id not in order:
+            return []
+        above = set(order[: order.index(device_id)])
+        return [c for c in self.priority_conditions.get(device_id, []) if c.device_id in above]
+
+    def prune_conditions(self) -> None:
+        """Drop conditions that no longer refer to a higher entry (after reordering)."""
+        self.priority_conditions = {
+            device_id: kept for device_id in self.priority_conditions if (kept := self.valid_conditions(device_id))
+        }
+
 
 class ConfigStore:
     """Load and save the configuration as JSON in the data directory."""

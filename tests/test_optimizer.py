@@ -560,6 +560,7 @@ def test_with_conditions(
     ]
     config = SunflowConfig(
         devices=devices,
+        priorities=["battery", "ev", "ww"],
         priority_conditions={"ww": [PriorityCondition(device_id=d, min_pct=p) for d, p in conditions]},
     )
     loads = {
