@@ -117,10 +117,14 @@ class SunflowLive extends LitElement {
     const consumerY = (i) =>
       consumers.length === 1 ? NODE.home[1] : 90 + (i * (264 / Math.max(consumers.length - 1, 1)));
     const width = consumers.length ? 760 : 600;
+    // Only configured components are drawn, together with the lines between them
+    const hasPv = live.pv.length > 0;
+    const hasBattery = Boolean(battery);
+    const hasGrid = live.grid_w !== null && live.grid_w !== undefined;
     const summary = [
-      `PV ${formatValue(live.pv_w, "W")}`,
+      hasPv ? `PV ${formatValue(live.pv_w, "W")}` : null,
       battery ? `Batterie ${formatValue(battery.power_w, "W")} bei ${Math.round(battery.soc_pct ?? 0)} %` : null,
-      `Netz ${formatValue(live.grid_w, "W")}`,
+      hasGrid ? `Netz ${formatValue(live.grid_w, "W")}` : null,
       `Haus ${formatValue(flows.house, "W")}`,
       ...consumers.map((c) => `${c.name} ${formatValue(c.power_w, "W")}`),
     ]
@@ -128,22 +132,24 @@ class SunflowLive extends LitElement {
       .join(", ");
 
     return html`
-      <svg viewBox="0 0 ${width} 444" class="flow" role="img" aria-label="Energiefluss: ${summary}">
-        ${this._edge("M300,118 C300,190 400,222 454,222", flows.pvToHome, COLOR.pv)}
-        ${this._edge("M300,118 C300,190 200,222 146,222", flows.pvToGrid, COLOR.pv)}
-        ${this._edge("M300,118 L300,326", flows.pvToBattery, COLOR.pv)}
-        ${this._edge("M146,222 L454,222", flows.gridToHome, COLOR.grid)}
-        ${this._edge("M146,222 C200,222 300,260 300,326", flows.gridToBattery, COLOR.grid)}
-        ${this._edge("M300,326 C300,260 400,222 454,222", flows.batteryToHome, COLOR.battery)}
-        ${this._edge("M300,326 C300,260 200,222 146,222", flows.batteryToGrid, COLOR.battery)}
+      <svg viewBox="0 0 ${width} ${hasBattery ? 444 : 300}" class="flow" role="img" aria-label="Energiefluss: ${summary}">
+        ${hasPv ? this._edge("M300,118 C300,190 400,222 454,222", flows.pvToHome, COLOR.pv) : nothing}
+        ${hasPv && hasGrid ? this._edge("M300,118 C300,190 200,222 146,222", flows.pvToGrid, COLOR.pv) : nothing}
+        ${hasPv && hasBattery ? this._edge("M300,118 L300,326", flows.pvToBattery, COLOR.pv) : nothing}
+        ${hasGrid ? this._edge("M146,222 L454,222", flows.gridToHome, COLOR.grid) : nothing}
+        ${hasGrid && hasBattery ? this._edge("M146,222 C200,222 300,260 300,326", flows.gridToBattery, COLOR.grid) : nothing}
+        ${hasBattery ? this._edge("M300,326 C300,260 400,222 454,222", flows.batteryToHome, COLOR.battery) : nothing}
+        ${hasBattery && hasGrid ? this._edge("M300,326 C300,260 200,222 146,222", flows.batteryToGrid, COLOR.battery) : nothing}
         ${consumers.map((c, i) =>
           this._edge(`M546,222 C610,222 600,${consumerY(i)} 636,${consumerY(i)}`, c.power_w, COLOR.consumers[i]),
         )}
 
-        ${this._node("pv", NODE.pv, COLOR.pv, "PV", formatValue(live.pv_w, "W"),
-          live.pv.length > 1 ? live.pv.map((p) => formatValue(p.power_w, "W")).join(" + ") : null)}
-        ${this._node("grid", NODE.grid, COLOR.grid, "Netz", formatValue(Math.abs(live.grid_w ?? 0), "W"),
-          live.grid_w === null ? null : live.grid_w > ACTIVE_W ? "Bezug" : live.grid_w < -ACTIVE_W ? "Einspeisung" : "ausgeglichen")}
+        ${hasPv
+          ? this._node("pv", NODE.pv, COLOR.pv, "PV", formatValue(live.pv_w, "W"),
+              live.pv.length > 1 ? live.pv.map((p) => formatValue(p.power_w, "W")).join(" + ") : null)
+          : nothing}
+        ${this._node("grid", NODE.grid, COLOR.grid, "Netz", hasGrid ? formatValue(Math.abs(live.grid_w), "W") : "–",
+          !hasGrid ? "keine Messung" : live.grid_w > ACTIVE_W ? "Bezug" : live.grid_w < -ACTIVE_W ? "Einspeisung" : "ausgeglichen")}
         ${battery
           ? this._batteryNode(battery)
           : nothing}
@@ -151,6 +157,11 @@ class SunflowLive extends LitElement {
           consumers.length ? `gesamt ${formatValue(flows.house, "W")}` : null)}
         ${consumers.map((c, i) => this._consumerNode(c, [680, consumerY(i)], COLOR.consumers[i]))}
       </svg>
+      ${battery?.parts?.length
+        ? html`<p class="small muted">Speicher: ${battery.parts
+            .map((b) => `${b.name} ${Math.round(b.soc_pct)} % · ${formatValue(b.power_w ?? 0, "W")}`)
+            .join(" · ")}</p>`
+        : nothing}
       ${live.consumers.length > MAX_CONSUMERS
         ? html`<p class="small muted">Weitere Verbraucher: ${live.consumers
             .slice(MAX_CONSUMERS)
@@ -202,7 +213,7 @@ class SunflowLive extends LitElement {
         "battery",
         [x, y],
         COLOR.battery,
-        `Batterie ${battery.soc_pct === null ? "" : `${Math.round(battery.soc_pct)} %`}`,
+        `${battery.count > 1 ? `${battery.count} Speicher` : "Batterie"} ${battery.soc_pct === null ? "" : `${Math.round(battery.soc_pct)} %`}`,
         formatValue(Math.abs(power), "W"),
         state,
       )}
