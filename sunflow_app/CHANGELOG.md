@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0
+
+- The home battery can have priority limits too: ranked below a vehicle, it only
+  charges from PV once the car reached the set level (grid charging stays possible)
+- Settings: "Weiter", "Zurück", the step list and leaving the tab save unsaved
+  edits of the current step (Geräte, Kenndaten, fixed price, Standards). Invalid
+  values keep you on the step with an error message
+
 ## 0.7.7
 
 - Much less load on Home Assistant: registries (devices, entities, integrations) are

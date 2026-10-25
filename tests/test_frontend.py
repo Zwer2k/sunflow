@@ -172,7 +172,8 @@ def test_priority_conditions(tmp_path: Path) -> None:
 
     # Only higher entries: the car (2nd) cannot wait for the hot water (3rd), the battery (1st) has no limits
     assert client.put("/api/v1/control/priorities/ev/conditions", json=[{"device_id": "ww", "min_pct": 50}]).status_code == 422
-    assert client.put("/api/v1/control/priorities/battery/conditions", json=[]).status_code == 404
+    # The battery has no entry above it in this order
+    assert client.put("/api/v1/control/priorities/battery/conditions", json=[{"device_id": "ev", "min_pct": 80}]).status_code == 422
 
     # Moving the car below the hot water hides its limit but keeps it stored
     client.put("/api/v1/control/priorities", json=["battery", "ww", "ev"])
@@ -182,5 +183,8 @@ def test_priority_conditions(tmp_path: Path) -> None:
 
     # Clearing the visible limits keeps the hidden one; moving the car up again restores it
     assert client.put("/api/v1/control/priorities/ww/conditions", json=[]).status_code == 200
+    # Below the car, the battery can wait for it
+    client.put("/api/v1/control/priorities", json=["ev", "battery", "ww"])
+    assert client.put("/api/v1/control/priorities/battery/conditions", json=[{"device_id": "ev", "min_pct": 80}]).status_code == 200
     client.put("/api/v1/control/priorities", json=["battery", "ev", "ww"])
     assert [c.model_dump() for c in store.load().valid_conditions("ww")] == [{"device_id": "ev", "min_pct": 90.0}]

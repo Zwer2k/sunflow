@@ -573,3 +573,18 @@ def test_with_conditions(
     assert result["ww"].gate_battery_wh == battery_wh
     assert result["ww"].gate_after == after
     assert not result["ev"].gated
+
+
+def test_battery_gate_waits_for_vehicle() -> None:
+    """A battery ranked below the car only charges from PV once the car got its energy."""
+    from sunflow.optimizer import FlexLoad
+
+    battery = BatterySpec(capacity_wh=10000, soc_wh=1000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 4000.0 if 40 <= i < 72 else 0.0)
+    car = FlexLoad(name="Auto", energy_wh=6000, max_power_w=3000, available=[True] * 96, unmet_cost=0.12)
+
+    plan = optimize(inputs, battery, Settings(battery_gate_after=(("Auto", 6000.0),)), [car])
+
+    car_done = next(t for t in range(96) if sum(s.flex_w["Auto"] for s in plan.slots[: t + 1]) / 4 >= 6000 - 1)
+    assert all(s.charge_w <= s.import_w + 1 for s in plan.slots[: car_done + 1])
+    assert max(s.soc_wh for s in plan.slots) > 3000

@@ -897,7 +897,7 @@ async def set_priority_conditions(
     """Store the levels other storages must reach before a consumer gets PV or battery energy."""
     store: ConfigStore = request.app.state.store
     config = store.load()
-    if config.device(device_id) is None:
+    if device_id != BATTERY_PRIORITY_ID and config.device(device_id) is None:
         raise HTTPException(status_code=404, detail="Device not configured")
     # Only entries ranked higher can hold a consumer back
     above = config.ranked_above(device_id)
