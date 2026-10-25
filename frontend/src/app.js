@@ -3,6 +3,9 @@ import { api } from "./api.js";
 import "./picker.js";
 import "./live-view.js";
 import "./plan-view.js";
+import "./control-view.js";
+import "./analysis-view.js";
+import "./standards-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import {
   devicePurpose,
@@ -19,7 +22,7 @@ import {
   toDisplay,
 } from "./format.js";
 
-const STEPS = ["Integrationen", "Geräte", "Kenndaten", "Gerätetest", "Bilanzprüfung", "Tarif & Prognose", "Fertig"];
+const STEPS = ["Integrationen", "Geräte", "Kenndaten", "Gerätetest", "Bilanzprüfung", "Tarif & Prognose", "Standards", "Fertig"];
 const PREVIEW_INTERVAL_MS = 5000;
 // Sensors are polled at different times, so single readings can disagree.
 const BALANCE_SAMPLES = 6;
@@ -191,7 +194,7 @@ class SunflowApp extends LitElement {
     if (step === 2) this._loadParameters();
     if (step === 4) this._startSite();
     if (step === 5) this._loadSources();
-    if (step === 6) this._loadSummary();
+    if (step === 7) this._loadSummary();
     if (step === 3) this._startTestPolling();
   }
 
@@ -572,14 +575,16 @@ class SunflowApp extends LitElement {
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"></path></svg>
           <div>
             <div class="title">Sunflow</div>
-            <div class="subtitle">${{ live: "Live", plan: "Übersicht" }[this._view] ?? "Einrichtung"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
+            <div class="subtitle">${{ live: "Live", control: "Steuerung", plan: "Planung", analysis: "Analyse" }[this._view] ?? "Einstellungen"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
           </div>
         </div>
         <div class="tabs" role="tablist">
           ${[
             ["live", "Live"],
-            ["plan", "Übersicht"],
-            ["setup", "Einrichtung"],
+            ["control", "Steuerung"],
+            ["plan", "Planung"],
+            ["analysis", "Analyse"],
+            ["setup", "Einstellungen"],
           ].map(
             ([view, label]) => html`<button role="tab" class="tab ${this._view === view ? "active" : ""}"
               aria-selected=${this._view === view} @click=${() => this._setView(view)}>${label}</button>`,
@@ -590,11 +595,12 @@ class SunflowApp extends LitElement {
           Expertenmodus
         </button>
       </header>
-      ${this._view === "live"
-        ? html`<div class="layout"><main><sunflow-live></sunflow-live></main></div>`
-        : this._view === "plan"
-          ? html`<div class="layout"><main><sunflow-plan></sunflow-plan></main></div>`
-          : this._renderWizard()}
+      ${{
+        live: html`<div class="layout"><main><sunflow-live></sunflow-live></main></div>`,
+        control: html`<div class="layout"><main><sunflow-control></sunflow-control></main></div>`,
+        plan: html`<div class="layout"><main><sunflow-plan></sunflow-plan></main></div>`,
+        analysis: html`<div class="layout"><main><sunflow-analysis></sunflow-analysis></main></div>`,
+      }[this._view] ?? this._renderWizard()}
     `;
   }
 
@@ -646,6 +652,8 @@ class SunflowApp extends LitElement {
       case 5:
         return this._renderSources();
       case 6:
+        return html`<sf-standards></sf-standards>`;
+      case 7:
         return this._renderSummary();
       case 3:
         return this._renderDeviceTest();
@@ -1646,7 +1654,11 @@ class SunflowApp extends LitElement {
     .brand .title { font-weight: 700; font-size: 17px; color: var(--sf-text); }
     .brand .subtitle { font-size: 13px; color: var(--sf-muted); }
 
-    .tabs { display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; }
+    .tabs {
+      display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px;
+      max-width: 100%; overflow-x: auto;
+    }
+    .tab { flex: none; }
     .tab {
       min-height: 36px; padding: 0 16px; border: 0; border-radius: 8px; background: transparent;
       cursor: pointer; font-size: 14px; color: var(--sf-muted);

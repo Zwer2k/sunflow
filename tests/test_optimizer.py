@@ -408,3 +408,35 @@ def test_battery_fills_before_export() -> None:
     assert sum(s.export_w for s in first_hours) < 50
     assert all(s.charge_w > 1900 for s in first_hours)
     assert max(s.soc_wh for s in plan.slots) == pytest.approx(10000, abs=10)
+
+
+def test_priority_between_loads() -> None:
+    """With limited PV surplus the higher-priority load gets the energy."""
+    full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=10000, max_charge_w=5000, max_discharge_w=5000)
+    pv = [0.0] * 40 + [1500.0] * 8 + [0.0] * 48  # 2 kWh surplus
+    inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: pv[i])
+    from sunflow.optimizer import FlexLoad
+
+    def load(name: str, bonus: float) -> FlexLoad:
+        return FlexLoad(name=name, energy_wh=2000, max_power_w=2000, available=[True] * 96, pv_only=True, priority_bonus=bonus)
+
+    plan = optimize(inputs, full, Settings(), [load("A", 0.0), load("B", 0.001)])
+
+    results = {r.name: r.planned_wh for r in plan.flex}
+    assert results["B"] == pytest.approx(2000, abs=5)
+    assert results["A"] == pytest.approx(0, abs=5)
+
+
+@pytest.mark.parametrize(("below_battery", "load_gets"), [(False, 2000), (True, 0)])
+def test_battery_position_in_priorities(below_battery: bool, load_gets: float) -> None:
+    """A PV-only load ranked below the battery only gets surplus the battery cannot take."""
+    from sunflow.optimizer import FlexLoad
+
+    room = BatterySpec(capacity_wh=10000, soc_wh=5000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    pv = [0.0] * 40 + [1500.0] * 8 + [0.0] * 48  # 2 kWh surplus, battery has room for it
+    plan = optimize(
+        _slots(24, price=lambda i: 0.30, pv=lambda i: pv[i]), room, Settings(),
+        [FlexLoad(name="E-Bike", energy_wh=2000, max_power_w=2000, available=[True] * 96, pv_only=True, below_battery=below_battery)],
+    )
+
+    assert plan.flex[0].planned_wh == pytest.approx(load_gets, abs=10)

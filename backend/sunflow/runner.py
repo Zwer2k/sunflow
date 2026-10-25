@@ -93,6 +93,7 @@ class ShadowRunner:
         self.status = RunnerStatus()
         self.latest: PlanResult | None = None
         self._recorder: SlotRecorder | None = None
+        self._replan_task: asyncio.Task[None] | None = None
 
     async def run(self) -> None:
         """Run until cancelled."""
@@ -126,6 +127,18 @@ class ShadowRunner:
         if self._recorder is None or not self._recorder.samples:
             return
         await asyncio.to_thread(self.shadow.store_actual, self._recorder.start, self._recorder.summary())
+
+    def request_replan(self) -> None:
+        """Replan right away (after a change in the control tab), in the background."""
+        if self._replan_task is not None and not self._replan_task.done():
+            return
+        self._replan_task = asyncio.create_task(self._replan_now())
+
+    async def _replan_now(self) -> None:
+        try:
+            await self._replan(slot_start(datetime.now(UTC)))
+        except (HAError, KeyError, ValueError) as err:
+            _LOGGER.warning("Replan failed: %s", err)
 
     async def _replan(self, start: datetime) -> None:
         result = await current_plan(self._client, self._store, self._library)

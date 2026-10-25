@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0
+
+- New tab layout: Live | Steuerung | Planung | Analyse | Einstellungen
+- Steuerung: switch the battery strategy and each consumer (Standard, Nur PV,
+  Sofort, Pause) or its target with one click, for today, 4 hours or until
+  further notice; the plan is recomputed right away
+- Priorities: order consumers and the home battery; consumers below the battery
+  only get surplus the battery cannot take
+- Defaults for strategy, wear, grid charging, backup reserve and consumption moved
+  to the new setup step "Standards"
+- Analyse holds the shadow mode comparison and data export/import
+- Planung shows the last computed plan instantly instead of recomputing on open
+
 ## 0.4.3
 
 - evcc loadpoints are recognized when Home Assistant runs in German: the evcc

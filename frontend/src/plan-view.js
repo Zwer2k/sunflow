@@ -1,21 +1,13 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
 import { lineChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
-import { formatValue, fromDisplay, toDisplay } from "./format.js";
+import { formatValue, toDisplay } from "./format.js";
 
 const ACTIONS = {
   auto: { label: "Eigenverbrauch", hint: "Speicher lädt aus PV-Überschuss und deckt den Bedarf" },
   hold: { label: "Speicher halten", hint: "Speicher wird geschont, Bedarf kommt aus dem Netz" },
   force_charge: { label: "Laden aus dem Netz", hint: "Speicher wird gezielt geladen" },
   force_discharge: { label: "Entladen ins Netz", hint: "Speicher speist gezielt ein" },
-};
-const STRATEGIES = {
-  balanced: { label: "Ausgewogen", hint: "Geringste Stromkosten über den Planungszeitraum." },
-  pv_absorption: {
-    label: "Möglichst viel PV aufnehmen",
-    hint: "Hält Platz für Solarstrom frei und lädt vor sonnigen Tagen nicht aus dem Netz – sinnvoll bei Einspeisebegrenzung.",
-  },
-  backup: { label: "Notstrom sicherstellen", hint: "Hält eine Reserve für Stromausfälle (EPS) im Speicher." },
 };
 const LOAD_QUALITY = {
   day_type: "nach Wochentag",
@@ -79,15 +71,8 @@ class SunflowPlan extends LitElement {
     _plan: { state: true },
     _loading: { state: true },
     _error: { state: true },
-    _wear: { state: true },
-    _reserve: { state: true },
-    _daily: { state: true },
-    _largeLoad: { state: true },
-    _shadow: { state: true },
     _history: { state: true },
     _historyHours: { state: true },
-    _importResult: { state: true },
-    _saving: { state: true },
   };
 
   constructor() {
@@ -95,12 +80,8 @@ class SunflowPlan extends LitElement {
     this._plan = null;
     this._loading = false;
     this._error = null;
-    this._wear = undefined;
-    this._reserve = undefined;
-    this._shadow = null;
     this._history = null;
     this._historyHours = 24;
-    this._saving = false;
     this._timer = null;
   }
 
@@ -115,12 +96,11 @@ class SunflowPlan extends LitElement {
     clearInterval(this._timer);
   }
 
-  async _load() {
+  async _load(fresh = false) {
     this._loading = true;
     try {
-      [this._plan, this._shadow, this._history] = await Promise.all([
-        api.plan(),
-        api.shadow(),
+      [this._plan, this._history] = await Promise.all([
+        fresh ? api.plan() : api.latestPlan(),
         api.history(this._historyHours),
       ]);
       this._error = null;
@@ -131,69 +111,17 @@ class SunflowPlan extends LitElement {
     }
   }
 
-  async _saveSettings(changes) {
-    this._saving = true;
-    try {
-      await api.setOptimizer({ ...this._plan.settings, ...changes });
-      this._wear = undefined;
-      this._reserve = undefined;
-      this._daily = undefined;
-      this._largeLoad = undefined;
-      await this._load();
-    } catch (err) {
-      this._error = `Einstellungen konnten nicht gespeichert werden: ${err.message}`;
-    } finally {
-      this._saving = false;
-    }
-  }
-
-  _saveNumbers(settings) {
-    const changes = {};
-    if (this._wear !== undefined) {
-      const wear = fromDisplay(this._wear, "ct");
-      if (wear === undefined || wear === null || wear < 0) {
-        this._error = "Bitte gültige Verschleißkosten eingeben.";
-        return;
-      }
-      changes.wear_ct_per_kwh = wear;
-    }
-    if (this._daily !== undefined) {
-      const daily = fromDisplay(this._daily, "kWh");
-      if (daily === undefined || (daily !== null && daily <= 0)) {
-        this._error = "Bitte einen gültigen Tagesverbrauch in kWh eingeben oder das Feld leeren.";
-        return;
-      }
-      changes.daily_consumption_kwh = daily;
-    }
-    if (this._largeLoad !== undefined) {
-      const kw = fromDisplay(this._largeLoad, "kW");
-      if (kw === undefined || (kw !== null && kw <= 0)) {
-        this._error = "Bitte eine gültige Leistung in kW eingeben oder das Feld leeren.";
-        return;
-      }
-      changes.large_load_threshold_w = kw === null ? null : kw * 1000;
-    }
-    if (this._reserve !== undefined) {
-      const reserve = fromDisplay(this._reserve, "%");
-      if (reserve === undefined || reserve === null || reserve < 0 || reserve > 100) {
-        this._error = "Bitte eine Reserve zwischen 0 und 100 % eingeben.";
-        return;
-      }
-      changes.backup_reserve_pct = reserve;
-    }
-    this._saveSettings({ ...settings, ...changes });
-  }
-
   render() {
     const plan = this._plan;
     return html`
       <div class="heading">
         <div>
-          <h1>Übersicht</h1>
+          <h1>Planung</h1>
           <p class="muted">Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung.
-            Sunflow steuert noch nichts – die Planung zeigt, was es tun würde.</p>
+            Sunflow steuert noch nichts – die Planung zeigt, was es tun würde. Eingriffe im Tab „Steuerung“,
+            Voreinstellungen unter „Einstellungen → Standards“.</p>
         </div>
-        <button class="secondary" ?disabled=${this._loading} @click=${() => this._load()}>
+        <button class="secondary" ?disabled=${this._loading} @click=${() => this._load(true)}>
           ${this._loading ? "Berechne …" : "Neu berechnen"}
         </button>
       </div>
@@ -345,8 +273,6 @@ class SunflowPlan extends LitElement {
         ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price })), "Bezugspreis im Plan")}
       </section>
 
-      ${this._renderShadow()}
-      ${this._renderSettings(plan.settings)}
     `;
   }
 
@@ -390,78 +316,6 @@ class SunflowPlan extends LitElement {
     `;
   }
 
-  _renderShadow() {
-    const shadow = this._shadow;
-    if (!shadow) return nothing;
-    const e = shadow.evaluation;
-    const since = shadow.status.since ? dayTime.format(new Date(shadow.status.since)) : "–";
-    const rows = shadow.rows.filter((r) => r.actual_action !== null && r.planned_action !== null);
-    const pct = (v) => (v === null ? "–" : `${Math.round(v * 100)} %`);
-    // How far reality was off the forecast: 98 Wh actual vs 162 Wh forecast is "−40 % ggü. Prognose"
-    const deviation = (forecast, actual) => {
-      if (forecast < 0.01) return "–";
-      const pct = Math.round(((actual - forecast) / forecast) * 100);
-      return `${pct > 0 ? "+" : pct < 0 ? "−" : "±"}${Math.abs(pct)} % ggü. Prognose`;
-    };
-    const kwh = (v) => formatValue(v * 1000, "Wh");
-    return html`
-      <section>
-        <h2>Schattenbetrieb: Prognose vs. Wirklichkeit</h2>
-        <p class="small muted">
-          Seit ${since} protokolliert Sunflow alle 15 Minuten, was es tun würde und was tatsächlich passiert ist –
-          ${e.compared} vollständige Zeitabschnitte (letzte 48 h).
-          ${shadow.status.last_error ? html`<br><span class="warn-text">Letzter Fehler: ${shadow.status.last_error}</span>` : nothing}
-        </p>
-        <div class="actions">
-          <a class="secondary button-link" href="api/v1/export" download>Daten exportieren</a>
-          <label class="secondary button-link">
-            Export importieren
-            <input type="file" accept=".zip" hidden @change=${(e) => this._import(e)}>
-          </label>
-          ${this._importResult ? html`<span class="small muted">${this._importResult}</span>` : nothing}
-        </div>
-        ${e.compared === 0
-          ? html`<p class="muted">Noch keine abgeschlossenen Zeitabschnitte – der erste erscheint nach dem nächsten Viertelstundenwechsel.</p>`
-          : html`
-              <div class="tiles">
-                <div class="tile">
-                  <div class="small muted">PV-Prognose</div>
-                  <div class="value">${kwh(e.pv_forecast_kwh)}</div>
-                  <div class="small muted">tatsächlich ${kwh(e.pv_actual_kwh)} (${deviation(e.pv_forecast_kwh, e.pv_actual_kwh)})</div>
-                </div>
-                <div class="tile">
-                  <div class="small muted">Lastprognose</div>
-                  <div class="value">${kwh(e.load_forecast_kwh)}</div>
-                  <div class="small muted">tatsächlich ${kwh(e.load_actual_kwh)} (${deviation(e.load_forecast_kwh, e.load_actual_kwh)})</div>
-                </div>
-                <div class="tile">
-                  <div class="small muted">Ladestand-Abweichung</div>
-                  <div class="value">${e.soc_mae_wh === null ? "–" : formatValue(e.soc_mae_wh, "Wh")}</div>
-                  <div class="small muted">mittlerer Abstand Plan zu Ist</div>
-                </div>
-                <div class="tile">
-                  <div class="small muted">Gleiche Entscheidung</div>
-                  <div class="value">${pct(e.agreement)}</div>
-                  <div class="small muted">${e.differing_slots} Abschnitte hätte Sunflow anders gesteuert</div>
-                </div>
-              </div>
-              <div class="legend">
-                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Ladestand tatsächlich</span>
-                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>Ladestand laut Plan</span>
-              </div>
-              ${lineChart(
-                [
-                  { name: "Ist", color: SERIES_COLORS[0], points: rows.map((r) => this._point(r, "actual_soc_wh")) },
-                  { name: "Plan", color: SERIES_COLORS[1], points: rows.map((r) => this._point(r, "planned_soc_wh")) },
-                ],
-                { label: "Ladestand Plan gegen Ist", formatY: (v) => formatValue(v, "Wh") },
-              )}
-              ${this._renderDifferences(rows)}
-            `}
-      </section>
-    `;
-  }
-
   _past(key) {
     return (this._history?.points ?? []).map((p) => ({ start: p.start, end: p.end, value: p[key] }));
   }
@@ -485,127 +339,6 @@ class SunflowPlan extends LitElement {
     } catch (err) {
       this._error = `Verlauf konnte nicht geladen werden: ${err.message}`;
     }
-  }
-
-  async _import(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const body = new FormData();
-    body.append("file", file);
-    try {
-      const response = await fetch("api/v1/import", { method: "POST", body });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail ?? response.statusText);
-      this._importResult = `${data.imported_slots} Zeitabschnitte importiert.`;
-      this._shadow = await api.shadow();
-    } catch (err) {
-      this._error = `Import fehlgeschlagen: ${err.message}`;
-    }
-    event.target.value = "";
-  }
-
-  _point(row, key) {
-    const start = new Date(row.start);
-    return { start: start.toISOString(), end: new Date(start.getTime() + 15 * 60_000).toISOString(), value: row[key] ?? 0 };
-  }
-
-  _renderDifferences(rows) {
-    const differing = rows.filter((r) => r.planned_action !== r.actual_action).slice(-12).reverse();
-    if (!differing.length) return html`<p class="small muted">Bisher hätte Sunflow genauso gehandelt wie der Wechselrichter.</p>`;
-    return html`
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Zeit</th><th>Sunflow hätte</th><th>Tatsächlich</th><th>PV / Last (Ist)</th></tr></thead>
-          <tbody>
-            ${differing.map(
-              (r) => html`<tr>
-                <td>${dayTime.format(new Date(r.start))}</td>
-                <td>${ACTIONS[r.planned_action]?.label ?? r.planned_action}${r.planned_power_w ? ` · ${formatValue(r.planned_power_w, "W")}` : ""}</td>
-                <td>${ACTIONS[r.actual_action]?.label ?? r.actual_action}</td>
-                <td>${formatValue(r.actual_pv_w, "W")} / ${formatValue(r.actual_load_w, "W")}</td>
-              </tr>`,
-            )}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  _renderSettings(settings) {
-    return html`
-      <section class="settings">
-        <h2>Einstellungen</h2>
-        <fieldset class="strategy">
-          <legend class="field-label">Strategie</legend>
-          ${Object.entries(STRATEGIES).map(
-            ([value, { label, hint }]) => html`
-              <label class="option ${settings.strategy === value ? "selected" : ""}">
-                <input type="radio" name="strategy" .checked=${settings.strategy === value} ?disabled=${this._saving}
-                  @change=${() => this._saveSettings({ strategy: value })}>
-                <span><strong>${label}</strong><br><span class="small muted">${hint}</span></span>
-              </label>
-            `,
-          )}
-        </fieldset>
-        <div class="fields">
-          ${settings.strategy === "backup"
-            ? html`<label class="field">
-                <span class="field-label">Notstrom-Reserve</span>
-                <span class="input-unit">
-                  <input inputmode="decimal" .value=${this._reserve ?? toDisplay(settings.backup_reserve_pct, "%")}
-                    @input=${(e) => (this._reserve = e.target.value)}>
-                  <span class="muted">%</span>
-                </span>
-                <span class="small muted">Wird nie unterschritten – zusätzlich zum Mindest-Ladestand.</span>
-              </label>`
-            : nothing}
-          <label class="field">
-            <span class="field-label">Durchschnittlicher Hausverbrauch</span>
-            <span class="input-unit">
-              <input inputmode="decimal" placeholder="z. B. 14"
-                .value=${this._daily ?? toDisplay(settings.daily_consumption_kwh, "kWh")}
-                @input=${(e) => (this._daily = e.target.value)}>
-              <span class="muted">kWh/Tag</span>
-            </span>
-            <span class="small muted">Die Tagesform kommt aus der Historie, die Summe aus diesem Wert. Leer lassen = nur Historie.</span>
-          </label>
-          <label class="field">
-            <span class="field-label">Großverbraucher ausklammern ab</span>
-            <span class="input-unit">
-              <input inputmode="decimal"
-                .value=${this._largeLoad ?? toDisplay(settings.large_load_threshold_w === null ? null : settings.large_load_threshold_w / 1000, "kW")}
-                @input=${(e) => (this._largeLoad = e.target.value)}>
-              <span class="muted">kW</span>
-            </span>
-            <span class="small muted">Stunden darüber (z. B. Wallbox) zählen nicht zur Lastprognose. Leer = nichts ausklammern.</span>
-          </label>
-          <label class="field">
-            <span class="field-label">Verschleißkosten Speicher</span>
-            <span class="input-unit">
-              <input inputmode="decimal" .value=${this._wear ?? toDisplay(settings.wear_ct_per_kwh, "ct")}
-                @input=${(e) => (this._wear = e.target.value)}>
-              <span class="muted">ct/kWh</span>
-            </span>
-            <span class="small muted">Je entladener kWh – verhindert Zyklen für Kleinstbeträge.</span>
-          </label>
-          <label class="field">
-            <span class="field-label">Laden aus dem Netz</span>
-            <span class="inline">
-              <input type="checkbox" .checked=${settings.allow_grid_charge} ?disabled=${this._saving}
-                @change=${(e) => this._saveSettings({ allow_grid_charge: e.target.checked })}>
-              erlaubt, wenn es sich rechnet
-            </span>
-          </label>
-        </div>
-        ${this._wear !== undefined || this._reserve !== undefined || this._daily !== undefined || this._largeLoad !== undefined
-          ? html`<div class="actions">
-              <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
-                Speichern und neu planen
-              </button>
-            </div>`
-          : html`<p class="small muted">Strategie und Netzladen gelten sofort. Zahlenwerte werden nach einer Änderung mit „Speichern und neu planen“ übernommen.</p>`}
-      </section>
-    `;
   }
 
   static styles = css`

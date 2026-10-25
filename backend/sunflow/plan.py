@@ -3,10 +3,10 @@
 import asyncio
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any
 
-from .config_store import DeviceConfig, SunflowConfig
+from .config_store import BATTERY_PRIORITY_ID, DeviceConfig, SunflowConfig
 from .discovery import Snapshot
 from .ha import HAClient
 from .load_forecast import (
@@ -36,6 +36,7 @@ SLOT = timedelta(minutes=15)
 NOMINAL_PRICE = 0.30
 
 
+PRIORITY_STEP = 0.001
 # €/kWh for needs that must be met (above any price) and for "as fast as possible"
 MUST_HAVE_COST = 2.0
 FAST_URGENCY = 1.0
@@ -74,11 +75,14 @@ def flex_loads(
     if not slot_starts:
         return loads, infos, warnings
     horizon_end = slot_starts[-1] + SLOT
+    order = config.priority_order()
+    battery_rank = order.index(BATTERY_PRIORITY_ID)
+    flex_ids = [i for i in order if i != BATTERY_PRIORITY_ID]
     for device in config.devices:
         profile = profiles[device.profile]
         if "loadpoint" not in profile["capabilities"] and "load" not in profile["capabilities"]:
             continue
-        settings = device.flex
+        settings, paused = config.effective_flex(device, slot_starts[0])
         ready_by = next_time(settings.ready_by, slot_starts[0], tz) if settings.ready_by else None
         roles = {
             r.role: r
@@ -152,6 +156,10 @@ def flex_loads(
         if info.need_wh <= 0:
             info.reason = "Ziel bereits erreicht"
             continue
+        if paused:
+            info.reason = "pausiert"
+            continue
+        rank = flex_ids.index(device.id) if device.id in flex_ids else len(flex_ids)
         loads.append(
             FlexLoad(
                 name=device.name,
@@ -164,7 +172,11 @@ def flex_loads(
                 else MUST_HAVE_COST,
                 pv_only=settings.strategy == "pv_only",
                 urgency=FAST_URGENCY if settings.strategy == "fast" else 0.0,
-                uses_battery=settings.uses_battery,
+                # "Only PV surplus" excludes the home battery as a source
+                uses_battery=settings.uses_battery and settings.strategy != "pv_only",
+                # 0.1 ct/kWh per rank: decides only when loads compete for the same energy
+                priority_bonus=PRIORITY_STEP * (len(flex_ids) - rank),
+                below_battery=order.index(device.id) > battery_rank if device.id in order else True,
             )
         )
     return loads, infos, warnings
@@ -236,11 +248,12 @@ PV_ABSORPTION_PENALTY_CT = 5.0
 def optimizer_settings(config: SunflowConfig, battery: BatterySpec) -> Settings:
     """Translate the user's planning settings and strategy into optimizer settings."""
     options = config.optimizer
+    strategy = config.effective_strategy(datetime.now(UTC))
     return Settings(
         wear_ct_per_kwh=options.wear_ct_per_kwh,
         allow_grid_charge=options.allow_grid_charge,
-        export_penalty_ct_per_kwh=PV_ABSORPTION_PENALTY_CT if options.strategy == "pv_absorption" else 0.0,
-        reserve_wh=battery.capacity_wh * options.backup_reserve_pct / 100 if options.strategy == "backup" else 0.0,
+        export_penalty_ct_per_kwh=PV_ABSORPTION_PENALTY_CT if strategy == "pv_absorption" else 0.0,
+        reserve_wh=battery.capacity_wh * options.backup_reserve_pct / 100 if strategy == "backup" else 0.0,
     )
 
 
