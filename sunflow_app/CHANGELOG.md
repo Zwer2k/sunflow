@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13.0
+
+- New parameter "Wirkungsgrad Wechselrichter" (per direction, default 96,5 %). Grid
+  charging and discharging to the house pass the inverter's AC/DC conversion, PV
+  charging on the DC side of a hybrid inverter does not, so the plan now tells PV
+  charging and grid charging apart
+- "Wirkungsgrad Speicher" now means the battery at its terminals (cells and DC/DC),
+  exactly what the battery energy counters measure; the suggestion from the counters
+  can be taken over as is. Check the value after the update: a value entered as
+  overall round trip before now counts the inverter twice
+
 ## 0.12.1
 
 - Fix: the "Expertenmodus" switch text was cut off when the step list needed much

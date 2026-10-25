@@ -384,7 +384,7 @@ def test_next_time(after: datetime, hhmm: str, expected: datetime) -> None:
 
 
 def test_round_trip_efficiency_parameter(library: object) -> None:
-    """The efficiency parameter is the round trip and is split evenly per direction."""
+    """Battery round trip is split per direction; the inverter adds to grid charging and discharging."""
     from types import SimpleNamespace
 
     from sunflow.config_store import DeviceConfig
@@ -392,7 +392,7 @@ def test_round_trip_efficiency_parameter(library: object) -> None:
 
     device = DeviceConfig(
         ha_device_id="d_inv", profile="solax_modbus/sofar", profile_version=1, name="Sofar",
-        parameters={"capacity_wh": 20000, "efficiency_pct": 72},
+        parameters={"capacity_wh": 20000, "efficiency_pct": 93.7, "inverter_efficiency_pct": 96.5},
     )
     snapshot = SimpleNamespace(
         devices=[{"id": "d_inv"}],
@@ -403,8 +403,10 @@ def test_round_trip_efficiency_parameter(library: object) -> None:
     spec, problem = battery_spec(library.profiles["solax_modbus/sofar"], device, snapshot)
 
     assert problem is None
-    assert spec.efficiency_charge * spec.efficiency_discharge == pytest.approx(0.72)
-    assert spec.efficiency_charge == pytest.approx(0.8485, abs=1e-4)
+    # PV -> battery -> house: battery round trip and one inverter pass
+    assert spec.efficiency_charge * spec.efficiency_discharge == pytest.approx(0.937 * 0.965)
+    # Grid -> battery -> house: two inverter passes
+    assert spec.efficiency_charge_grid * spec.efficiency_discharge == pytest.approx(0.937 * 0.965**2)
 
 
 def test_battery_fills_before_export() -> None:
@@ -656,3 +658,17 @@ def test_load_forecast_scales_each_day() -> None:
 
     saturday = [p.power for p in forecast.points if p.start.date() == datetime(2026, 10, 31).date()]
     assert sum(saturday) / 4 == pytest.approx(14000, rel=0.01)
+
+
+def test_grid_charging_needs_more_spread_than_pv_charging() -> None:
+    """With inverter losses on grid charging, a spread that pays for PV storage does not pay from the grid."""
+    battery = BatterySpec(
+        capacity_wh=10000, soc_wh=1000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000,
+        efficiency_charge=0.97, efficiency_charge_grid=0.97 * 0.9, efficiency_discharge=0.97 * 0.9,
+    )
+    # Cheap 0.25 at night, 0.30 in the evening: 0.25 / (0.97 * 0.9 * 0.97 * 0.9) = 0.33 > 0.30
+    inputs = _slots(24, price=lambda i: 0.25 if i < 20 else 0.30)
+
+    plan = optimize(inputs, battery, Settings(wear_ct_per_kwh=0))
+
+    assert max(s.charge_w for s in plan.slots) < 1

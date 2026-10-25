@@ -1424,7 +1424,7 @@ class SunflowApp extends LitElement {
         ? html`<span class="small">
             Aufgeteilt: Umwandlung <strong>${pct(estimate.conversion_round_trip)}</strong> Zyklus und Eigenverbrauch der
             Batterie etwa <strong>${formatValue(estimate.standby_w, "W")}</strong> (unabhängig vom Laden) –
-            für die Planung zählt die Umwandlung.
+            für die Planung zählt die Umwandlung. Die Wandlung im Wechselrichter ist ein eigener Wert.
           </span>`
         : nothing}
       <span class="small">
