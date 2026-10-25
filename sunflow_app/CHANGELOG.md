@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2
+
+- Charts: value labels sit on their grid lines inside the plot, so there is no empty
+  margin on the left; all charts keep a common time axis
+- Phone: outer margins halved (8 px)
+
 ## 0.11.1
 
 - Inside Home Assistant (Ingress panel) the own logo and name are hidden: HA's toolbar

@@ -1937,10 +1937,11 @@ class SunflowApp extends LitElement {
     /* No frame around the content: on small screens every pixel of width counts */
     main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
     @media (max-width: 700px) {
-      header { padding: 6px 12px; }
+      header { padding: 4px 8px; }
       .brand .subtitle { display: none; }
       .tab { padding: 0 10px; font-size: 13px; }
-      .layout { padding: 12px 16px; gap: 12px; }
+      .layout { padding: 6px 8px; gap: 8px; }
+      .restore-banner { margin: 8px 8px 0; }
       /* Steps as a compact row; only the current one shows its name */
       nav { flex-basis: 100%; max-width: none; display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 4px; }
       .step { width: auto; flex: none; min-height: 40px; padding: 4px 6px; }
