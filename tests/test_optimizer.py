@@ -532,3 +532,43 @@ def test_gate_waits_for_vehicle() -> None:
     car_done = next(t for t in range(96) if sum(s.flex_w["Auto"] for s in plan.slots[: t + 1]) / 4 >= 6000 - 1)
     assert all(s.flex_w["Warmwasser"] < 10 for s in plan.slots[: car_done + 1])
     assert plan.flex[1].planned_wh > 1000
+
+
+@pytest.mark.parametrize(
+    ("conditions", "strategy", "battery_wh", "after"),
+    [
+        pytest.param([("battery", 80.0)], "cost", 16000.0, [], id="battery"),
+        pytest.param([("ev", 90.0)], "cost", None, [("Auto", 20 * 400.0)], id="vehicle"),
+        pytest.param([("ev", 95.0)], "cost", None, [("Auto", 20 * 400.0)], id="vehicle-above-target"),
+        pytest.param([("battery", 80.0), ("ev", 90.0)], "fast", None, [], id="fast-ignores"),
+    ],
+)
+def test_with_conditions(
+    conditions: list[tuple[str, float]], strategy: str, battery_wh: float | None, after: list[tuple[str, float]]
+) -> None:
+    """Priority conditions become gates on the planned loads."""
+    from sunflow.config_store import DeviceConfig, FlexSettings, PriorityCondition
+    from sunflow.optimizer import FlexLoad
+    from sunflow.plan import with_conditions
+
+    devices = [
+        DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
+        DeviceConfig(
+            id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser",
+            flex=FlexSettings(strategy=strategy),
+        ),
+    ]
+    config = SunflowConfig(
+        devices=devices,
+        priority_conditions={"ww": [PriorityCondition(device_id=d, min_pct=p) for d, p in conditions]},
+    )
+    loads = {
+        "ev": FlexLoad(name="Auto", energy_wh=10000, max_power_w=11000, available=[True] * 4),
+        "ww": FlexLoad(name="Warmwasser", energy_wh=3000, max_power_w=2800, available=[True] * 4),
+    }
+    # Car at 70 %, target 90 %, 400 Wh per %
+    result = with_conditions(config, loads, {"ev": (70.0, 90.0, 400.0)}, 20000.0, START)
+
+    assert result["ww"].gate_battery_wh == battery_wh
+    assert result["ww"].gate_after == after
+    assert not result["ev"].gated

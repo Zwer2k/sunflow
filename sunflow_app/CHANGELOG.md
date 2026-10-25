@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2
+
+- Fix: planning failed with an internal error as soon as a priority limit on the
+  home battery was set (since 0.6.0)
+- Server errors show the HTTP status instead of a JSON parse error
+
 ## 0.7.1
 
 - Battery efficiency suggestion counts as reliable only from 10 full cycles (was 2);
