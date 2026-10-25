@@ -246,12 +246,12 @@ class SunflowPlan extends LitElement {
         <div class="legend">
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>PV-Erzeugung</span>
           ${hasLoadpoints
-            ? html`<span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>Ladepunkte (evcc)</span>`
+            ? html`<span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>steuerbare Verbraucher</span>`
             : nothing}
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Hausverbrauch
             <span class="muted">(Prognose: ${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
               ? `, skaliert auf ${toDisplay(plan.load_scaled_to_kwh, "kWh")} kWh/Tag`
-              : ""}${plan.load_separated_hours ? `, ohne Ladepunkte (${plan.load_separated_hours} h getrennt)` : ""})</span></span>
+              : ""}${plan.load_separated_hours ? `, ohne steuerbare Verbraucher (${plan.load_separated_hours} h getrennt)` : ""})</span></span>
         </div>
         ${lineChart(
           [
@@ -259,11 +259,11 @@ class SunflowPlan extends LitElement {
             { name: "Verbrauch Prognose", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
             { name: "PV gemessen", color: SERIES_COLORS[1], points: this._past("pv_w") },
             ...(hasLoadpoints
-              ? [{ name: "Ladepunkte gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
+              ? [{ name: "Verbraucher gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
               : []),
             ...(plan.flex?.length
               ? [{
-                  name: "Ladepunkte geplant",
+                  name: "Verbraucher geplant",
                   color: UNASSIGNED_COLOR,
                   dashed: true,
                   points: slots.map((s) => ({ start: s.start, end: s.end, value: Object.values(s.flex_w ?? {}).reduce((a, b) => a + b, 0) })),
@@ -310,7 +310,7 @@ class SunflowPlan extends LitElement {
     const fmt = (v, unit) => (v === null || v === undefined ? "–" : `${Math.round(v * 10) / 10} ${unit}`.replace(".", ","));
     return html`
       <section>
-        <h2>Ladepunkte <span class="tag">Vorschau</span></h2>
+        <h2>Steuerbare Verbraucher <span class="tag">Vorschau</span></h2>
         <div class="flex-list">
           ${plan.flex.map((f) => {
             const windows = flexWindows(plan.slots, f.name);

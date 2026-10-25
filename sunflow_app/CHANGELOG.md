@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.1
+
+- Kenndaten: devices can be removed ("Entfernen", with confirmation); overrides,
+  priority entry, limits and measurement choice referring to them are cleaned up
+- Wording: "Steuerbare Verbraucher" instead of "Ladepunkte" in Planung; the finished
+  setup points to Live, Steuerung and Planung; German decimals for plane capacity and
+  minimum SoC
+
 ## 0.10.0
 
 Robustness and safety

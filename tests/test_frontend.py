@@ -261,3 +261,34 @@ def test_rejects_nan_parameters(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert store.load().devices[0].parameters == {}
+
+
+def test_remove_device_cleans_references(tmp_path: Path) -> None:
+    """Removing a device drops its overrides, priority entry, limits and measurement choice."""
+    from sunflow.config_store import ConfigStore, DeviceConfig, DeviceOverride, PriorityCondition, SunflowConfig
+
+    store = ConfigStore(tmp_path)
+    store.save(
+        SunflowConfig(
+            devices=[
+                DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
+                DeviceConfig(id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="WW"),
+            ],
+            overrides={"ev": DeviceOverride(paused=True)},
+            priorities=["battery", "ev", "ww"],
+            priority_conditions={"ww": [PriorityCondition(device_id="ev", min_pct=80)]},
+            measurement_sources={"grid": "ev"},
+        )
+    )
+    app = create_app()
+    app.state.store = store
+    client = TestClient(app)
+
+    assert client.delete("/api/v1/config/devices/ev").status_code == 200
+
+    config = store.load()
+    assert [d.id for d in config.devices] == ["ww"]
+    assert config.overrides == {}
+    assert config.priorities == ["battery", "ww"]
+    assert config.priority_conditions == {}
+    assert config.measurement_sources == {}

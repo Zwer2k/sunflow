@@ -1246,6 +1246,16 @@ async def remove_device(request: Request, device_id: str) -> None:
     if config.device(device_id) is None:
         raise HTTPException(status_code=404, detail="Device not configured")
     config.devices = [d for d in config.devices if d.id != device_id]
+    # Nothing may keep referring to the removed device
+    config.overrides.pop(device_id, None)
+    config.priorities = [i for i in config.priorities if i != device_id]
+    config.priority_conditions.pop(device_id, None)
+    config.priority_conditions = {
+        owner: kept
+        for owner, conditions in config.priority_conditions.items()
+        if (kept := [c for c in conditions if c.device_id != device_id])
+    }
+    config.measurement_sources = {q: d for q, d in config.measurement_sources.items() if d != device_id}
     store.save(config)
     _replan(request)
 
