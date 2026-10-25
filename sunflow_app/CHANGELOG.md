@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1
+
+- Fix: the "Expertenmodus" switch text was cut off when the step list needed much
+  room; the step column has a fixed width and its styles no longer leak into the
+  main menu
+
 ## 0.12.0
 
 - Main menu with icons: on the PC at the top with icon and text, stays in view while

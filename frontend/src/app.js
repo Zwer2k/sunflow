@@ -1919,8 +1919,8 @@ class SunflowApp extends LitElement {
     .tab:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
     .tab.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
     .switch {
-      display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px;
-      border: 0; background: transparent; cursor: pointer; font-size: 13px; color: var(--sf-muted);
+      display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; flex: none;
+      border: 0; background: transparent; cursor: pointer; font-size: 13px; color: var(--sf-muted); white-space: nowrap;
     }
     .track { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--sf-muted); transition: background .15s; }
     .track.on { background: var(--sf-primary); }
@@ -1931,8 +1931,9 @@ class SunflowApp extends LitElement {
       max-width: 1240px; margin: 0 auto; padding: 16px;
       display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;
     }
-    .sidebar { flex: 1 1 220px; max-width: 280px; display: flex; flex-direction: column; gap: 4px; }
-    nav {
+    /* Fixed width: long step names must not squeeze the switch below */
+    .sidebar { flex: 0 0 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .sidebar nav {
       background: var(--sf-surface);
       border: 1px solid var(--sf-border); border-radius: 12px; padding: 8px;
     }
@@ -1970,8 +1971,8 @@ class SunflowApp extends LitElement {
       .layout { padding: 6px 8px; gap: 8px; }
       .restore-banner { margin: 8px 8px 0; }
       /* Steps as a compact row; only the current one shows its name */
-      .sidebar { flex-basis: 100%; max-width: none; }
-      nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 4px; }
+      .sidebar { flex: 0 0 100%; }
+      .sidebar nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; min-width: 0; padding: 4px; }
       .step { width: auto; flex: none; min-height: 40px; padding: 4px 6px; }
       .step:not(.active) span:last-child { display: none; }
       /* Own row below the steps, always visible */
