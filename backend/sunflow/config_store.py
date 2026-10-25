@@ -176,19 +176,23 @@ class SunflowConfig(BaseModel):
         order = [i for i in self.priorities if i in known]
         return order + [i for i in known if i not in order]
 
-    def valid_conditions(self, device_id: str) -> list[PriorityCondition]:
-        """Conditions of a consumer that refer to entries ranked above it."""
+    def ranked_above(self, device_id: str) -> set[str]:
+        """Ids of the entries with a higher priority than the given one."""
         order = self.priority_order()
-        if device_id not in order:
-            return []
-        above = set(order[: order.index(device_id)])
+        return set(order[: order.index(device_id)]) if device_id in order else set()
+
+    def valid_conditions(self, device_id: str) -> list[PriorityCondition]:
+        """Conditions that apply: those referring to entries ranked above the consumer.
+
+        The others stay stored (hidden) and apply again once their entry moves up.
+        """
+        above = self.ranked_above(device_id)
         return [c for c in self.priority_conditions.get(device_id, []) if c.device_id in above]
 
-    def prune_conditions(self) -> None:
-        """Drop conditions that no longer refer to a higher entry (after reordering)."""
-        self.priority_conditions = {
-            device_id: kept for device_id in self.priority_conditions if (kept := self.valid_conditions(device_id))
-        }
+    def hidden_conditions(self, device_id: str) -> list[PriorityCondition]:
+        """Stored conditions that currently do not apply because their entry ranks lower."""
+        above = self.ranked_above(device_id)
+        return [c for c in self.priority_conditions.get(device_id, []) if c.device_id not in above]
 
 
 class ConfigStore:

@@ -816,6 +816,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "id": i,
                 "name": names[i],
                 "conditions": [c.model_dump() for c in config.valid_conditions(i)],
+                "hidden_conditions": [c.model_dump() for c in config.hidden_conditions(i)],
             }
             for i in order
         ],
@@ -883,7 +884,6 @@ async def set_priorities(request: Request, order: list[str]) -> list[str]:
     if unknown := [i for i in order if i not in known]:
         raise HTTPException(status_code=422, detail=f"Unknown ids: {unknown}")
     config.priorities = order
-    config.prune_conditions()
     store.save(config)
     _replan(request)
     return config.priority_order()
@@ -898,13 +898,14 @@ async def set_priority_conditions(
     config = store.load()
     if config.device(device_id) is None:
         raise HTTPException(status_code=404, detail="Device not configured")
-    order = config.priority_order()
     # Only entries ranked higher can hold a consumer back
-    above = set(order[: order.index(device_id)]) if device_id in order else set()
+    above = config.ranked_above(device_id)
     if invalid := [c.device_id for c in conditions if c.device_id not in above]:
         raise HTTPException(status_code=422, detail=f"Conditions must refer to higher entries: {invalid}")
-    if conditions:
-        config.priority_conditions[device_id] = conditions
+    # Hidden conditions (entry currently ranked lower) are kept for when it moves up again
+    stored = conditions + config.hidden_conditions(device_id)
+    if stored:
+        config.priority_conditions[device_id] = stored
     else:
         config.priority_conditions.pop(device_id, None)
     store.save(config)

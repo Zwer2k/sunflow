@@ -283,6 +283,11 @@ class SunflowControl extends LitElement {
                         .map((c) => `${names[c.device_id] ?? c.device_id} ${c.min_pct} %`)
                         .join(" und ")}</span>`
                     : nothing}
+                  ${p.hidden_conditions?.length
+                    ? html`<span class="small muted">ausgeblendet (steht tiefer): ${p.hidden_conditions
+                        .map((c) => `${names[c.device_id] ?? c.device_id} ${c.min_pct} %`)
+                        .join(", ")}</span>`
+                    : nothing}
                 </span>
                 ${p.id !== "battery" && own.length
                   ? html`<button class="text" aria-expanded=${editing} ?disabled=${this._busy}
