@@ -6,10 +6,11 @@ profile: evcc_intg/loadpoint
 version: 1
 match:
   integration: evcc_intg
-  model: "Loadpoint*"
+  # The integration names devices in the HA language
+  model: ["Loadpoint*", "Ladepunkt*"]
   requires: [charge_power, mode]
 
-name_strip: ["evcc - ", "Loadpoint ", " [evcc]"]
+name_strip: ["evcc - ", "Loadpoint ", "Ladepunkt ", " [evcc]"]
 
 capabilities: [loadpoint]
 

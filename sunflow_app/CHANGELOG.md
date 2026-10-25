@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3
+
+- evcc loadpoints are recognized when Home Assistant runs in German: the evcc
+  integration names them "Ladepunkt …" instead of "Loadpoint …"
+
 ## 0.4.2
 
 - Live view adapts to the configuration: components that are not configured are

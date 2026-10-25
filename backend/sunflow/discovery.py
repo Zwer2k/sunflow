@@ -111,8 +111,10 @@ def match_profile(
             "manufacturer"
         ):
             continue
-        if "model" in match and not fnmatch(device.get("model") or "", match["model"]):
-            continue
+        if "model" in match:
+            patterns = match["model"] if isinstance(match["model"], list) else [match["model"]]
+            if not any(fnmatch(device.get("model") or "", pattern) for pattern in patterns):
+                continue
         if not all(
             any(entity_has_key(e, key) for e in device_entities)
             for key in match.get("requires", [])
