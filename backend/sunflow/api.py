@@ -54,7 +54,7 @@ from .executor import (
 )
 from .ha import HAClient, HAError
 from .efficiency import estimate_from_counters, estimate_from_history
-from .energy import energy_balance, energy_sources
+from .energy import battery_counters, efficiency_history, energy_balance, energy_sources
 from .history import fetch_history, history_series
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
@@ -1186,6 +1186,23 @@ async def get_energy(request: Request, period: str = "today") -> dict[str, Any]:
         return await energy_balance(request.app.state.ha, sources, start, end)
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
+
+
+@router.get("/efficiency/history")
+async def get_efficiency_history(
+    request: Request, days: Annotated[int, Query(ge=7, le=365)] = 60
+) -> list[dict[str, Any]]:
+    """Daily efficiency of batteries and inverters with energy counters, for the Analyse tab."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    snapshot = await _snapshot(request)
+    return await efficiency_history(
+        request.app.state.ha,
+        battery_counters(config, profiles, snapshot),
+        energy_sources(config, profiles, snapshot).inverters,
+        days,
+        await _local_tz(request),
+    )
 
 
 @router.get("/live")

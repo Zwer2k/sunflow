@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0
+
+- Analyse: new chart "Wirkungsgrade" (30 days, 90 days, 1 year) with one value per
+  day for every battery (round trip incl. standby, corrected by the SoC change) and
+  every inverter with AC and DC counters (e.g. Huawei); energy-weighted average in the
+  legend. Days with little energy or gaps in the statistics stay empty
+- Charts support an axis not starting at zero and label long ranges with dates
+
 ## 0.13.0
 
 - New parameter "Wirkungsgrad Wechselrichter" (per direction, default 96,5 %). Grid

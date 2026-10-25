@@ -24,6 +24,8 @@ class SunflowAnalysis extends LitElement {
     _energy: { state: true },
     _period: { state: true },
     _energyError: { state: true },
+    _efficiency: { state: true },
+    _efficiencyDays: { state: true },
     _importing: { state: true },
   };
 
@@ -33,6 +35,8 @@ class SunflowAnalysis extends LitElement {
     this._error = null;
     this._energy = null;
     this._period = "7d";
+    this._efficiency = null;
+    this._efficiencyDays = 60;
   }
 
   connectedCallback() {
@@ -60,6 +64,22 @@ class SunflowAnalysis extends LitElement {
     }
   }
 
+  async _loadEfficiency() {
+    const days = this._efficiencyDays;
+    try {
+      const series = await api.efficiencyHistory(days);
+      if (days === this._efficiencyDays) this._efficiency = series;
+    } catch {
+      // Optional section; without energy counters there is nothing to show
+      if (days === this._efficiencyDays) this._efficiency = [];
+    }
+  }
+
+  _setEfficiencyDays(days) {
+    this._efficiencyDays = days;
+    this._loadEfficiency();
+  }
+
   _setPeriod(period) {
     this._period = period;
     this._loadEnergy();
@@ -67,6 +87,7 @@ class SunflowAnalysis extends LitElement {
 
   async _load() {
     this._loadEnergy();
+    this._loadEfficiency();
     try {
       this._shadow = await api.shadow();
       this._error = null;
@@ -85,6 +106,7 @@ class SunflowAnalysis extends LitElement {
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${this._renderEnergy()}
+      ${this._renderEfficiency()}
       ${this._shadow === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
       ${this._renderShadow()}
     `;
@@ -131,6 +153,59 @@ class SunflowAnalysis extends LitElement {
           ${e.inverters.map((i) => tile(`Wirkungsgrad ${i.name}`, pct(i.efficiency),
             i.dc_wh === null ? null : `${wh(i.ac_wh)} AC aus ${wh(i.dc_wh)} DC`))}
         </div>` : nothing}
+      </section>
+    `;
+  }
+
+  _renderEfficiency() {
+    const series = (this._efficiency ?? []).filter((s) => s.points.some((p) => p.value !== null));
+    if (!series.length) return nothing;
+    const pct = (v) => `${(v * 100).toFixed(1).replace(".", ",")} %`;
+    const day = (iso) => {
+      const [y, m, d] = iso.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    };
+    const lines = series.map((s, i) => ({
+      name: s.name,
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+      points: s.points.map((p) => ({ start: day(p.date), end: new Date(day(p.date).getTime() + 86_400_000), value: p.value })),
+    }));
+    const values = series.flatMap((s) => s.points.filter((p) => p.value !== null).map((p) => p.value));
+    const lowest = Math.min(...values);
+    // Energy-weighted mean: days with more throughput count more
+    const mean = (s) => {
+      const valid = s.points.filter((p) => p.value !== null && p.energy_wh);
+      const energy = valid.reduce((sum, p) => sum + p.energy_wh, 0);
+      return energy ? valid.reduce((sum, p) => sum + p.value * p.energy_wh, 0) / energy : null;
+    };
+    return html`
+      <section>
+        <div class="section-head">
+          <h2>Wirkungsgrade</h2>
+          <div class="range" role="group" aria-label="Zeitraum Wirkungsgrade">
+            ${[[30, "30 Tage"], [90, "90 Tage"], [365, "1 Jahr"]].map(
+              ([value, label]) => html`<button class=${this._efficiencyDays === value ? "active" : ""}
+                aria-pressed=${this._efficiencyDays === value} @click=${() => this._setEfficiencyDays(value)}>${label}</button>`,
+            )}
+          </div>
+        </div>
+        <p class="small muted">Pro Tag aus den Energiezählern. Speicher: Zyklus einschließlich Eigenverbrauch, um die
+          Änderung des Ladestands bereinigt. Wechselrichter: Wechselstrom-Ertrag geteilt durch Gleichstrom-Eingang.
+          Tage mit sehr wenig Energie oder Lücken in den Daten bleiben leer.</p>
+        <div class="legend">
+          ${series.map((s, i) => {
+            const average = mean(s);
+            return html`<span class="legend-item"><span class="swatch" style="background:${lines[i].color}"></span>
+              ${s.name} (${s.kind === "battery" ? "Speicher" : "Wechselrichter"})${average !== null ? ` · Ø ${pct(average)}` : ""}</span>`;
+          })}
+        </div>
+        ${lineChart(lines, {
+          label: "Wirkungsgrade pro Tag",
+          formatY: (v) => `${Math.round(v * 100)} %`,
+          yMin: Math.max(Math.floor(lowest * 10) / 10 - 0.1, 0),
+          // Noise can push single days above 100 %; the axis grows instead of cutting them off
+          yMax: Math.max(1, ...values),
+        })}
       </section>
     `;
   }

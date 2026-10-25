@@ -148,3 +148,49 @@ def test_split_losses_needs_enough_varied_days() -> None:
 
     assert split_losses([(10000, 6000, -500)] * 3) is None
     assert split_losses([(10000, 6000, -500)] * 10) is None
+
+
+async def test_efficiency_history_per_day() -> None:
+    """Daily battery round trip (SoC corrected) and inverter AC/DC; small or incomplete days stay empty."""
+    from zoneinfo import ZoneInfo
+
+    from sunflow.energy import BatteryCounters, efficiency_history
+
+    tz = ZoneInfo("Europe/Berlin")
+    end = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    days = [end - timedelta(days=n) for n in (3, 2, 1)]
+
+    def hourly(per_day: list[float], skip: set[tuple[int, int]] = frozenset()) -> list[dict[str, Any]]:
+        """Spread daily energy over the hours; skip (day, hour) to simulate a gap."""
+        rows = []
+        for index, (day, total) in enumerate(zip(days, per_day, strict=True)):
+            for hour in range(24):
+                if (index, hour) not in skip:
+                    rows.append({"start": (day + timedelta(hours=hour)).timestamp() * 1000, "change": total / 24})
+        return rows
+
+    soc = [
+        {"start": (day + timedelta(hours=h)).timestamp() * 1000, "mean": 50}
+        for day in [*days, end]
+        for h in (-1, 0)
+    ]
+
+    class Client:
+        async def command(self, msg_type: str, **data: Any) -> dict[str, list[dict[str, Any]]]:
+            return {
+                # Day 1: 10 kWh in, 7.2 out at unchanged SoC -> 72 %; day 2: only 1 kWh; day 3: a gap
+                "in": hourly([10000, 1000, 10000], skip={(2, 17)}),
+                "out": hourly([7200, 900, 7200]),
+                "soc": soc,
+                "ac": hourly([1800, 200, 1800]),
+                "dc": hourly([2000, 250, 2000]),
+            }
+
+    battery = BatteryCounters(name="Sofar", charge="in", discharge="out", soc="soc", capacity_wh=20000)
+    sofar, huawei = await efficiency_history(Client(), [battery], {"Huawei": ("ac", "dc")}, 3, tz)
+
+    assert sofar["points"][0]["value"] == pytest.approx(0.72)
+    assert sofar["points"][1]["value"] is None  # 1 kWh is below 0.2 cycles
+    assert sofar["points"][2]["value"] is None  # an hour is missing
+    assert huawei["points"][0]["value"] == pytest.approx(0.9)
+    assert huawei["points"][1]["value"] is None  # 250 Wh DC: too little

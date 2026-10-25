@@ -80,6 +80,7 @@ export const api = {
   setMeasurements: (choices) => request("PUT", "/config/measurements", choices),
   pendingRestore: () => request("GET", "/device-test/pending-restore"),
   restoreAfterTest: () => request("POST", "/device-test/restore?confirm=true"),
+  efficiencyHistory: (days) => request("GET", `/efficiency/history?days=${days}`),
   energy: (period) => request("GET", `/energy?period=${encodeURIComponent(period)}`),
   efficiency: (configDeviceId) => request("GET", `/config/devices/${encodeURIComponent(configDeviceId)}/efficiency`),
   history: (hours = 24) => request("GET", `/history?hours=${hours}`),
