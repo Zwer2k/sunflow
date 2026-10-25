@@ -19,11 +19,12 @@ function fit() {
 // Hours between time labels: the smallest step that leaves room for a label
 const HOUR_STEPS = [1, 2, 3, 6, 12, 24, 48];
 const MIN_LABEL_SPACING = 56;
-const PAD = { top: 12, right: 12, bottom: 28 };
-// Axis labels use 11px text; this is a safe average glyph width for digits, units and spaces
-const AXIS_CHAR_WIDTH = 6.6;
-// Same plot area in charts stacked below each other, unless a label needs more room
-const MIN_LEFT = 72;
+const PAD = { top: 18, right: 8, bottom: 28 };
+// Value labels sit on their grid lines inside the plot, so no left margin is needed and
+// charts below each other share the same time axis
+const LEFT = 2;
+// Keeps value labels readable where a line passes behind them
+const LABEL_HALO = "paint-order: stroke; stroke: var(--sf-surface); stroke-width: 3px; stroke-linejoin: round";
 const timeFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 const dayFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
 
@@ -62,7 +63,7 @@ function timeScale(start, end, left) {
 function frame(start, end, scale, formatY) {
   const { max: yMax, ticks } = scale;
   // Left margin fits the widest y label so it is never cut off
-  const left = Math.max(MIN_LEFT, Math.max(...ticks.map((v) => axisLabel(v, formatY).length)) * AXIS_CHAR_WIDTH + 12);
+  const left = LEFT;
   const x = timeScale(start, end, left);
   const y = (v) => H - PAD.bottom - (v / yMax) * (H - PAD.top - PAD.bottom);
   const pxPerHour = (W - left - PAD.right) / Math.max((end - start) / 3600_000, 1);
@@ -74,7 +75,8 @@ function frame(start, end, scale, formatY) {
     if (t < start) continue;
     // Steps of a day or more label midnights only (every second one for 48 h)
     const due = every < 24 ? t.getHours() % every === 0 : t.getHours() === 0 && (every === 24 || t.getDate() % 2 === 0);
-    if (due) hours.push(t);
+    // Labels centred on the tick must not be cut off at the edges
+    if (due && x(t) > 18 && x(t) < W - PAD.right - 18) hours.push(t);
   }
   return {
     x,
@@ -84,7 +86,9 @@ function frame(start, end, scale, formatY) {
       ${ticks.map(
         (v) => svg`
           <line x1=${left} x2=${W - PAD.right} y1=${y(v)} y2=${y(v)} class="grid"></line>
-          <text x=${left - 6} y=${y(v) + 4} text-anchor="end" class="axis">${axisLabel(v, formatY)}</text>
+          ${v === 0
+            ? nothing
+            : svg`<text x=${left + 2} y=${y(v) - 4} text-anchor="start" class="axis" style=${LABEL_HALO}>${axisLabel(v, formatY)}</text>`}
         `,
       )}
       ${hours.map(
