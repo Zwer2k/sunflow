@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.27.0
+
+- Analyse → "Kosten pro Tag" (30/90 days): net electricity cost per day (import minus
+  feed-in) next to what it would have cost without PV and battery, from the energy
+  counters and the price history of the tariff entity; totals for net cost, savings
+  and feed-in revenue
+- Planung → "Kostenverlauf": accumulated electricity cost over the plan with Sunflow
+  against plain self-consumption
+
 ## 0.26.0
 
 - Grid friendly option (Standards), combinable with every strategy: export and import

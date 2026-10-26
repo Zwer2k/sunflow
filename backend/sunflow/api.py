@@ -59,7 +59,8 @@ from .history import fetch_history, history_series
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .settings import Settings
-from .plan import cloud_coverage, weather_entity
+from .costs import cost_history
+from .plan import cloud_coverage, feed_in_price, weather_entity
 from .recommendations import build as build_recommendations
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
@@ -832,6 +833,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "load_model": result.load_model.as_dict() if result.load_model else None,
         "usages": {device_id: asdict(usage) for device_id, usage in result.usages.items()},
         "baseline_alternative_cost": plan.baseline_alternative_cost,
+        "baseline_slot_costs": plan.baseline_slot_costs,
         "terminal_value": plan.terminal_value,
         "baseline_terminal_value": plan.baseline_terminal_value,
         "savings": plan.savings if plan.slots else None,
@@ -1357,6 +1359,27 @@ def weather_provider(entity_id: str, snapshot: Snapshot) -> str | None:
     if entry is None:
         return None
     return snapshot.integration_names.get(entry.get("platform"), entry.get("platform"))
+
+
+@router.get("/costs/history")
+async def get_cost_history(request: Request, days: Annotated[int, Query(ge=1, le=90)] = 30) -> list[dict[str, Any]]:
+    """Daily electricity costs, feed-in revenue and the cost without PV and battery."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    snapshot = await _snapshot(request)
+    battery_device = next(
+        (d for d in config.devices if "battery_window" in profiles[d.profile]["capabilities"]), None
+    )
+    fixed = config.tariff.fixed_price_ct
+    return await cost_history(
+        request.app.state.ha,
+        energy_sources(config, profiles, snapshot),
+        config.tariff.import_entity_id,
+        fixed / 100 if fixed is not None else None,
+        feed_in_price(config, battery_device),
+        days,
+        await _local_tz(request),
+    )
 
 
 @router.get("/live")
