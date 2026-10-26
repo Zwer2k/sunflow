@@ -267,7 +267,7 @@ class SunflowPlan extends LitElement {
             : hasLoadpoints
               ? this._legendButton("consumers", UNASSIGNED_COLOR, "steuerbare Verbraucher")
               : nothing}
-          <span class="legend-item">${this._legendButton("load", SERIES_COLORS[0], "Hausverbrauch")}
+          <span class="legend-item">${this._legendButton("load", SERIES_COLORS[0], hasLoadpoints ? "Hausverbrauch ohne steuerbare Verbraucher" : "Hausverbrauch")}
             <span class="muted">(Prognose: ${plan.load_model
               ? `gelerntes Modell mit Außentemperatur aus ${plan.load_model.days} Tagen, Abweichung ${formatValue(plan.load_model.error_model, "W")} statt ${formatValue(plan.load_model.error_average, "W")}`
               : html`${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
@@ -276,7 +276,7 @@ class SunflowPlan extends LitElement {
         </div>
         ${lineChart(
           this._focused([
-            { key: "load", name: "Verbrauch gemessen", color: SERIES_COLORS[0], points: this._past("load_w") },
+            { key: "load", name: "Verbrauch gemessen", color: SERIES_COLORS[0], points: this._pastBaseLoad() },
             { key: "load", name: "Verbrauch Prognose", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
             { key: "pv", name: "PV gemessen", color: SERIES_COLORS[1], points: this._past("pv_w") },
             ...(consumers.length
@@ -430,6 +430,14 @@ class SunflowPlan extends LitElement {
   _past(key) {
     const points = (this._history?.points ?? []).map((p) => ({ start: p.start, end: p.end, value: p[key] }));
     return this._withLive(points, this._plan?.actual?.[key]);
+  }
+
+  /** Like the forecast: the house without the controllable consumers, which have their own lines. */
+  _pastBaseLoad() {
+    const base = (load, consumers) => (load === null || load === undefined ? null : Math.max(load - (consumers ?? 0), 0));
+    const points = (this._history?.points ?? []).map((p) => ({ start: p.start, end: p.end, value: base(p.load_w, p.loadpoint_w) }));
+    const actual = this._plan?.actual;
+    return this._withLive(points, actual ? base(actual.load_w, actual.loadpoint_w) : null);
   }
 
   _pastConsumer(deviceId) {
