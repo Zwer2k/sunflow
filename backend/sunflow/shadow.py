@@ -260,6 +260,10 @@ def comparable(planned: str) -> str:
 def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Compare planned and actual values of slots that have both."""
     complete = [r for r in rows if r["planned_action"] is not None and r["actual_action"] is not None]
+    # The load forecast leaves out the controllable consumers (wallbox, heater), the meter includes them
+    for r in complete:
+        load = r["actual_load_w"]
+        r["actual_base_load_w"] = None if load is None else max(load - (r.get("actual_loadpoint_w") or 0.0), 0.0)
 
     def energy(key: str) -> float:
         return sum(r[key] or 0 for r in complete) * 0.25 / 1000
@@ -276,8 +280,8 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "pv_actual_kwh": energy("actual_pv_w"),
         "pv_mae_w": mae("planned_pv_w", "actual_pv_w"),
         "load_forecast_kwh": energy("planned_load_w"),
-        "load_actual_kwh": energy("actual_load_w"),
-        "load_mae_w": mae("planned_load_w", "actual_load_w"),
+        "load_actual_kwh": energy("actual_base_load_w"),
+        "load_mae_w": mae("planned_load_w", "actual_base_load_w"),
         "soc_mae_wh": mae("planned_soc_wh", "actual_soc_wh"),
         "agreement": 1 - len(differing) / len(complete) if complete else None,
         "differing_slots": len(differing),

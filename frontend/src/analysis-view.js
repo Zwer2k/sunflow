@@ -455,7 +455,7 @@ class SunflowAnalysis extends LitElement {
                   <div class="small muted">tatsächlich ${kwh(e.pv_actual_kwh)} (${deviation(e.pv_forecast_kwh, e.pv_actual_kwh)})</div>
                 </div>
                 <div class="tile">
-                  <div class="small muted">Lastprognose</div>
+                  <div class="small muted">Lastprognose (ohne steuerbare Verbraucher)</div>
                   <div class="value">${kwh(e.load_forecast_kwh)}</div>
                   <div class="small muted">tatsächlich ${kwh(e.load_actual_kwh)} (${deviation(e.load_forecast_kwh, e.load_actual_kwh)})</div>
                 </div>

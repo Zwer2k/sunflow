@@ -156,3 +156,21 @@ def test_merge_skips_columns_of_a_newer_version(tmp_path: Path) -> None:
 
     assert store.merge_from(tmp_path / "newer" / "shadow.db") == 1
     assert store.rows(datetime(2026, 10, 1, tzinfo=UTC))[0]["actual_pv_w"] == 900
+
+
+def test_load_forecast_is_compared_without_consumers() -> None:
+    """The forecast is the base load; wallbox and heater are subtracted from the meter."""
+    empty = dict.fromkeys(("planned_pv_w", "actual_pv_w", "planned_soc_wh", "actual_soc_wh"))
+    row = empty | {
+        "planned_action": "auto",
+        "actual_action": "auto",
+        "planned_load_w": 500.0,
+        "actual_load_w": 11500.0,
+        "actual_loadpoint_w": 11000.0,
+    }
+    old = row | {"start": "older", "actual_loadpoint_w": None, "actual_load_w": 600.0}
+
+    evaluation = evaluate([row, old])
+
+    assert evaluation["load_actual_kwh"] == pytest.approx((500 + 600) * 0.25 / 1000)
+    assert evaluation["load_mae_w"] == pytest.approx(50)

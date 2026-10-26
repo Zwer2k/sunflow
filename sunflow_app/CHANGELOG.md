@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.30.2
+
+- Planung: Die gemessene Linie „Hausverbrauch“ enthält die steuerbaren Verbraucher (Wallbox, Heizstab, E-Bike) nicht mehr doppelt – sie haben eigene Linien, und die Prognose rechnet ebenfalls ohne sie.
+- Analyse → Schattenbetrieb: Die Lastprognose wird mit dem gemessenen Verbrauch ohne steuerbare Verbraucher verglichen; vorher ließ ein Ladevorgang die Prognose zu niedrig aussehen.
+
 ## 0.30.1
 
 - Analyse → Wirkungsgrade: Tage mit wenig Energie (im Herbst und Winter häufig) bleiben nicht mehr leer, sondern werden mit den folgenden Tagen zu einem Wert zusammengefasst. Die Linien reichen dadurch wieder bis an die letzten Tage.
