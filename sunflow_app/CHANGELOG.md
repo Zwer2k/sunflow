@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.0
+
+- Own consumers with a power sensor learn their use from the last 10 days: daily
+  energy (mean) and running power (90th percentile while on). Without a set daily
+  energy the plan uses the learned one; when the settings differ by more than 30 %, a
+  recommendation offers the measured values. The consumer list shows them
+
 ## 0.23.1
 
 - "Hausverbrauch pro Tag" is a start value: it scales the load forecast only while less

@@ -17,7 +17,7 @@ from .load_forecast import (
     subtract_loads,
 )
 from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
-from .habits import Departure, learn_departure
+from .habits import ConsumerUsage, Departure, learn_departure, learn_usage
 from .load_model import LoadModel
 from .pv_learning import PvCorrection, cloud_class
 from .resolver import preview
@@ -78,6 +78,7 @@ def flex_loads(
     tz: tzinfo,
     battery_capacity_wh: float | None = None,
     departures: dict[str, Departure] | None = None,
+    usages: dict[str, ConsumerUsage] | None = None,
 ) -> tuple[list[FlexLoad], list[FlexInfo], list[str], tuple[tuple[str, float], ...]]:
     """Derive the energy need of every flexible consumer from live values and its settings.
 
@@ -110,7 +111,8 @@ def flex_loads(
         }
         params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
         kind = device_kind(profile, device, snapshot) or ("load" if "load" in profile["capabilities"] else "vehicle")
-        max_power = params.get("max_power") or 0.0
+        usage = (usages or {}).get(device.id)
+        max_power = params.get("max_power") or (usage.running_w if usage and usage.running_w else 0.0)
         current = roles["vehicle_soc"].value if "vehicle_soc" in roles else None
         target = roles["limit_soc"].value if "limit_soc" in roles else None
         if settings.target is not None:
@@ -147,7 +149,8 @@ def flex_loads(
                     "Zweifel mit Netzstrom. Preis unter Kenndaten → Planung eintragen."
                 )
         elif kind == "load":
-            daily = params.get("daily_energy_wh")
+            # Set by the user, else learned from the power sensor
+            daily = params.get("daily_energy_wh") or (usage.daily_wh if usage else None)
             if not daily:
                 info.reason = "Energiebedarf pro Tag fehlt"
                 continue
@@ -310,7 +313,36 @@ class PlanResult:
     clouds: list[float | None] = field(default_factory=list)
     temperatures: list[float | None] = field(default_factory=list)
     load_model: LoadModel | None = None
+    usages: dict[str, ConsumerUsage] = field(default_factory=dict)
     pv_correction: PvCorrection | None = None
+
+
+async def consumer_usages(
+    client: HAClient, config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot
+) -> dict[str, ConsumerUsage]:
+    """Learned daily energy and running power of own consumers with a power sensor."""
+    result = {}
+    for device in config.devices:
+        profile = profiles[device.profile]
+        if "load" not in profile["capabilities"]:
+            continue
+        role = next(
+            (
+                r
+                for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+                if r.role == "power"
+            ),
+            None,
+        )
+        if role is None or not role.entity_id:
+            continue
+        try:
+            usage = await learn_usage(client, role.entity_id)
+        except HAError:
+            continue
+        if usage is not None:
+            result[device.id] = usage
+    return result
 
 
 async def vehicle_departures(
@@ -807,6 +839,7 @@ async def compute_plan(
             for slot in inputs
         ]
     departures = await vehicle_departures(client, config, profiles, snapshot, tz)
+    usages = await consumer_usages(client, config, profiles, snapshot)
     loads, flex_infos, flex_warnings, battery_gate = flex_loads(
         config,
         profiles,
@@ -815,6 +848,7 @@ async def compute_plan(
         tz,
         battery_capacity_wh=battery.capacity_wh,
         departures=departures,
+        usages=usages,
     )
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings
@@ -831,6 +865,7 @@ async def compute_plan(
         clouds=clouds,
         temperatures=weather["temperature"],
         load_model=load_model if load_model is not None and load_model.useful else None,
+        usages=usages,
         pv_correction=pv_correction if config.optimizer.pv_learning else None,
         care=care,
         plan=plan,

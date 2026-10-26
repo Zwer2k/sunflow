@@ -195,6 +195,51 @@ def plan_worse_than_baseline(latest: PlanResult | None) -> list[Recommendation]:
     ]
 
 
+# Learned and set consumer values differing by more than this share
+USAGE_DEVIATION = 0.3
+
+
+def consumer_usage(config: SunflowConfig, latest: PlanResult | None) -> list[Recommendation]:
+    """Own consumers whose measured use differs from the set daily energy or power."""
+    result = []
+    for device_id, usage in (latest.usages if latest else {}).items():
+        device = config.device(device_id)
+        if device is None:
+            continue
+        daily = device.parameters.get("daily_energy_wh")
+        if daily is None or abs(usage.daily_wh / daily - 1) > USAGE_DEVIATION:
+            result.append(
+                Recommendation(
+                    id=f"consumer_daily:{device_id}",
+                    severity="info",
+                    title=f"{device.name}: gemessen {usage.daily_wh / 1000:.2f} kWh pro Tag".replace(".", ","),
+                    text=(
+                        f"Aus {usage.days} Tagen Leistungsmessung. "
+                        + (
+                            f"Eingestellt sind {daily / 1000:.2f} kWh.".replace(".", ",")
+                            if daily is not None
+                            else "Eingestellt ist nichts – die Planung nutzt bereits den gemessenen Wert."
+                        )
+                    ),
+                    action={"type": "set_parameter", "device_id": device_id, "name": "daily_energy_wh", "value": round(usage.daily_wh)},
+                    fingerprint=_fingerprint(round(usage.daily_wh / 100), daily),
+                )
+            )
+        power = device.parameters.get("max_power")
+        if usage.running_w and power and abs(usage.running_w / power - 1) > USAGE_DEVIATION:
+            result.append(
+                Recommendation(
+                    id=f"consumer_power:{device_id}",
+                    severity="info",
+                    title=f"{device.name}: läuft mit etwa {usage.running_w:.0f} W statt {power:.0f} W",
+                    text="Die Planung reserviert die eingestellte Leistung; mit der gemessenen passt sie besser in den PV-Überschuss.",
+                    action={"type": "set_parameter", "device_id": device_id, "name": "max_power", "value": round(usage.running_w)},
+                    fingerprint=_fingerprint(round(usage.running_w / 50), power),
+                )
+            )
+    return result
+
+
 def pv_forecast(config: SunflowConfig, correction: PvCorrection | None, weather: list[dict[str, Any]]) -> list[Recommendation]:
     """PV forecast far off while learning is off, or no weather with cloud coverage."""
     result = []
@@ -240,6 +285,7 @@ def build(
         *limits_cost_pv(config, latest),
         *plan_worse_than_baseline(latest),
         *hot_water_demand(config),
+        *consumer_usage(config, latest),
         *pv_forecast(config, correction, weather),
     ]
     dismissed = set(config.dismissed_recommendations)

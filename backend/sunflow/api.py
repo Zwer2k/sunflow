@@ -830,6 +830,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "alternative_cost": plan.alternative_cost,
         "pv_correction": result.pv_correction.as_dict() if result.pv_correction and result.pv_correction.slots else None,
         "load_model": result.load_model.as_dict() if result.load_model else None,
+        "usages": {device_id: asdict(usage) for device_id, usage in result.usages.items()},
         "baseline_alternative_cost": plan.baseline_alternative_cost,
         "terminal_value": plan.terminal_value,
         "baseline_terminal_value": plan.baseline_terminal_value,
