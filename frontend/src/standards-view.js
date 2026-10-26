@@ -344,6 +344,19 @@ class SunflowStandards extends LitElement {
             <span class="small muted">Vergleicht Prognose und Messung je Stunde und Bewölkung, Details unter „Analyse“.</span>
           </label>
           <div class="field">
+            <span class="field-label">Unsichere PV-Prognose</span>
+            <select aria-label="Unsichere PV-Prognose" ?disabled=${this._saving}
+              @change=${(e) => this._saveSettings({ pv_risk: e.target.value })}>
+              ${[
+                ["expected", "Erwartungswert (optimistischer)"],
+                ["balanced", "Ausgewogen"],
+                ["cautious", "Vorsichtig"],
+              ].map(([value, label]) => html`<option value=${value} ?selected=${settings.pv_risk === value}>${label}</option>`)}
+            </select>
+            <span class="small muted">Vorsichtig plant mehr mit dem schlechten Fall der Prognose (Solcast p10): lieber nachts
+              günstig nachladen, als bei weniger Sonne teuer nachzukaufen.</span>
+          </div>
+          <div class="field">
             <span class="field-label">Wetter für die Bewölkung</span>
             <select aria-label="Wetter-Entität" ?disabled=${this._saving}
               @change=${(e) => this._saveSettings({ weather_entity: e.target.value || null })}>

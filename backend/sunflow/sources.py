@@ -361,15 +361,33 @@ def resample(points: list[ForecastPoint], step: timedelta) -> list[ForecastPoint
 
 
 def sum_forecasts(series: list[list[ForecastPoint]]) -> list[ForecastPoint]:
-    """Add forecasts per interval (e.g. several planes of one plant), on a 30 minute grid."""
+    """Add forecasts per interval (e.g. several planes of one plant), on a 30 minute grid.
+
+    Planes without an uncertainty range (Forecast.Solar) get the relative range of the
+    planes that have one (Solcast) in the same interval, else none (p10 = p90 = p50).
+    """
+    # power and p10/p90 of planes with a range, power of planes without
     totals: dict[tuple[datetime, datetime], list[float]] = {}
     for points in series:
         for p in resample(points, timedelta(minutes=30)):
-            total = totals.setdefault((p.start, p.end), [0.0, 0.0, 0.0])
-            total[0] += p.power
-            total[1] += p.power10 or 0
-            total[2] += p.power90 or 0
-    return [
-        ForecastPoint(start=s, end=e, power=v[0], power10=v[1], power90=v[2])
-        for (s, e), v in sorted(totals.items())
-    ]
+            total = totals.setdefault((p.start, p.end), [0.0, 0.0, 0.0, 0.0])
+            if p.power10 is not None and p.power90 is not None:
+                total[0] += p.power
+                total[1] += p.power10
+                total[2] += p.power90
+            else:
+                total[3] += p.power
+    result = []
+    for (start, end), (ranged, low, high, plain) in sorted(totals.items()):
+        low_ratio = low / ranged if ranged > 0 else 1.0
+        high_ratio = high / ranged if ranged > 0 else 1.0
+        result.append(
+            ForecastPoint(
+                start=start,
+                end=end,
+                power=ranged + plain,
+                power10=low + plain * low_ratio,
+                power90=high + plain * high_ratio,
+            )
+        )
+    return result

@@ -381,6 +381,9 @@ def cheapest_window_end(inputs: list[SlotInput], hours: int = 24) -> int:
     return last
 
 
+# Share of the way from the expected (p50) towards the pessimistic PV forecast (p10)
+PV_RISK = {"expected": 0.0, "balanced": 0.3, "cautious": 0.7}
+
 # A due full charge is worth this much per kWh missing; overdue it must happen
 OVERDUE_FULL_CHARGE_PENALTY = 2.0
 
@@ -601,6 +604,7 @@ def build_inputs(
             SlotInput(
                 start=moment,
                 pv_w=value_at(pv_15, moment, "power") or 0.0,
+                pv_low_w=value_at(pv_15, moment, "power10"),
                 load_w=value_at(load.points, moment, "power") or 0.0,
                 price=price,
                 feed_in=feed_in,
@@ -749,9 +753,20 @@ async def compute_plan(
             for slot, temperature in zip(inputs, weather["temperature"], strict=True)
         ]
     if config.optimizer.pv_learning and pv_correction is not None and pv_correction.slots:
+        corrected = []
+        for slot, cloud in zip(inputs, clouds, strict=True):
+            factor = pv_correction.factor(slot.start.astimezone(tz).hour, cloud_class(cloud))
+            low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
+            corrected.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
+        inputs = corrected
+    if (risk := PV_RISK[config.optimizer.pv_risk]) > 0:
+        # Plan part of the way towards the pessimistic forecast: a shortfall costs grid
+        # power at the full price, a surplus only the feed-in tariff
         inputs = [
-            replace(slot, pv_w=slot.pv_w * pv_correction.factor(slot.start.astimezone(tz).hour, cloud_class(cloud)))
-            for slot, cloud in zip(inputs, clouds, strict=True)
+            replace(slot, pv_w=slot.pv_w - risk * max(slot.pv_w - slot.pv_low_w, 0.0))
+            if slot.pv_low_w is not None
+            else slot
+            for slot in inputs
         ]
     loads, flex_infos, flex_warnings, battery_gate = flex_loads(
         config, profiles, snapshot, [i.start for i in inputs], tz, battery_capacity_wh=battery.capacity_wh

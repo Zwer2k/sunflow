@@ -798,3 +798,25 @@ async def test_battery_care_overdue_uses_grid(monkeypatch: pytest.MonkeyPatch) -
     assert care.from_grid
     assert care.full_charge_slot == 23
     assert "überfällig" in care.notes[0]
+
+
+def test_cautious_pv_charges_more_from_the_grid() -> None:
+    """Planning towards the pessimistic PV forecast stores more cheap night energy."""
+    import math
+
+    battery = BatterySpec(capacity_wh=10000, soc_wh=1000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000,
+                          efficiency_charge=math.sqrt(0.95), efficiency_discharge=math.sqrt(0.95))
+    # Night cheap, day expensive; PV expected 3 kW but only 1 kW in the pessimistic case
+    def inputs(pv: float) -> list[SlotInput]:
+        return [
+            SlotInput(start=START + i * SLOT, pv_w=pv if 32 <= i < 64 else 0.0, load_w=1500, price=0.20 if i < 24 else 0.35, feed_in=0.08)
+            for i in range(96)
+        ]
+
+    def night_charge(pv: float) -> float:
+        plan = optimize(inputs(pv), battery, Settings(wear_ct_per_kwh=1))
+        return sum(s.charge_w for s in plan.slots[:24]) / 4
+
+    expected = night_charge(3000)
+    cautious = night_charge(3000 - 0.7 * (3000 - 1000))
+    assert cautious > expected
