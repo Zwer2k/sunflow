@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.2
+
+- Live: weather on the right in the title line (wraps below on narrow screens)
+
 ## 0.19.1
 
 - Live and Steuerung show powers like their source entity in Home Assistant: in the

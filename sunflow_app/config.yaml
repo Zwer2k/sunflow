@@ -1,5 +1,5 @@
 name: Sunflow
-version: "0.19.1"
+version: "0.19.2"
 slug: sunflow
 description: Predictive energy management with PV forecasts and dynamic prices
 url: https://github.com/Zwer2k/sunflow
