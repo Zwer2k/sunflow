@@ -138,6 +138,12 @@ export function priceChart(points, label, { start: rangeStart = null, end: range
   `;
 }
 
+/** Values without a neighbor: a path draws nothing for them, so they get a dot. */
+function isolated(points) {
+  const has = (p) => p && p.value !== null && p.value !== undefined;
+  return points.filter((p, i) => has(p) && !has(points[i - 1]) && !has(points[i + 1]));
+}
+
 /**
  * Lines over time; series: [{name, color, dashed?, dim?, points: [{start, end, value}]}].
  * Dimmed series recede behind the others (legend highlighting).
@@ -194,6 +200,10 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, no
           <text x=${W - PAD.right - 4} y=${y(l.value) - 4} text-anchor="end" class="axis limit-label">${l.label}</text>
         `,
       )}
+      ${series.flatMap((s) => isolated(s.points).map(
+        (p) => svg`<circle cx=${(x(new Date(p.start)) + x(new Date(p.end))) / 2} cy=${y(p.value)} r="4"
+          style="fill: ${s.color}" fill-opacity=${s.dim ? 0.15 : 1}></circle>`,
+      ))}
       ${[...series.filter((s) => s.dim), ...series.filter((s) => !s.dim)].map(
         (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width=${s.dim === false ? 3 : 2}
           stroke-opacity=${s.dim ? 0.15 : 1}
