@@ -30,6 +30,8 @@ class SunflowStandards extends LitElement {
     _maxSoc: { state: true },
     _fullEvery: { state: true },
     _gridAfter: { state: true },
+    _exportLimit: { state: true },
+    _importLimit: { state: true },
     _daily: { state: true },
     _largeLoad: { state: true },
     _saving: { state: true },
@@ -89,6 +91,8 @@ class SunflowStandards extends LitElement {
       if ("max_soc_pct" in changes) this._maxSoc = undefined;
       if ("full_charge_every_days" in changes) this._fullEvery = undefined;
       if ("full_charge_grid_after_days" in changes) this._gridAfter = undefined;
+      if ("export_limit_w" in changes) this._exportLimit = undefined;
+      if ("import_limit_w" in changes) this._importLimit = undefined;
       if ("daily_consumption_kwh" in changes) this._daily = undefined;
       if ("large_load_threshold_w" in changes) this._largeLoad = undefined;
       await this._load();
@@ -105,7 +109,7 @@ class SunflowStandards extends LitElement {
 
   /** Save edited numbers before the wizard moves on; false when they are invalid. */
   async saveIfChanged() {
-    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._daily, this._largeLoad].some(
+    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._exportLimit, this._importLimit, this._daily, this._largeLoad].some(
       (v) => v !== undefined,
     );
     return !changed || this._saveNumbers(this._settings);
@@ -172,6 +176,15 @@ class SunflowStandards extends LitElement {
         return false;
       }
       changes.full_charge_grid_after_days = days;
+    }
+    for (const [edit, key] of [[this._exportLimit, "export_limit_w"], [this._importLimit, "import_limit_w"]]) {
+      if (edit === undefined) continue;
+      const kw = fromDisplay(edit, "kW");
+      if (kw === undefined || (kw !== null && kw <= 0)) {
+        this._error = "Bitte eine gültige Leistung in kW eingeben oder das Feld leeren.";
+        return false;
+      }
+      changes[key] = kw === null ? null : kw * 1000;
     }
     if (this._reserve !== undefined) {
       const reserve = fromDisplay(this._reserve, "%");
@@ -356,6 +369,32 @@ class SunflowStandards extends LitElement {
             </span>
             <span class="small muted">Vergleicht Prognose und Messung je Stunde und Bewölkung, Details unter „Analyse“.</span>
           </label>
+          <div class="field wide">
+            <span class="field-label">Netzdienlich</span>
+            <span class="inline">
+              <input type="checkbox" .checked=${settings.grid_friendly} ?disabled=${this._saving}
+                @change=${(e) => this._saveSettings({ grid_friendly: e.target.checked })}>
+              Einspeise- und Bezugsspitzen vermeiden, wo es wenig kostet
+            </span>
+            ${settings.grid_friendly
+              ? html`<div class="fields">
+                  <label class="field">
+                    <span class="field-label">Einspeisung möglichst unter</span>
+                    <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 6"
+                      .value=${this._exportLimit ?? toDisplay(settings.export_limit_w === null ? null : settings.export_limit_w / 1000, "kW")}
+                      @input=${(e) => (this._exportLimit = e.target.value)}><span class="muted">kW</span></span>
+                    <span class="small muted">Der Speicher lädt dann bevorzugt in der Mittagsspitze. Solarspitzengesetz: oft 60 % der PV-Leistung.</span>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Netzbezug möglichst unter</span>
+                    <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 11"
+                      .value=${this._importLimit ?? toDisplay(settings.import_limit_w === null ? null : settings.import_limit_w / 1000, "kW")}
+                      @input=${(e) => (this._importLimit = e.target.value)}><span class="muted">kW</span></span>
+                    <span class="small muted">Wallbox, Heizstab und Netzladen laufen dann eher nacheinander als gleichzeitig.</span>
+                  </label>
+                </div>`
+              : nothing}
+          </div>
           <div class="field">
             <span class="field-label">Unsichere PV-Prognose</span>
             <select aria-label="Unsichere PV-Prognose" ?disabled=${this._saving}
@@ -382,7 +421,7 @@ class SunflowStandards extends LitElement {
             <span class="small muted">Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.</span>
           </div>
         </div>
-        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._daily, this._largeLoad].some((v) => v !== undefined)
+        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._exportLimit, this._importLimit, this._daily, this._largeLoad].some((v) => v !== undefined)
           ? html`<div class="actions">
               <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
                 Speichern und neu planen

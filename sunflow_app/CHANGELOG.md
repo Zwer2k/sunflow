@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.26.0
+
+- Grid friendly option (Standards), combinable with every strategy: export and import
+  above set powers cost 20 ct/kWh extra in the plan. The battery then charges in the
+  midday PV peak instead of filling up in the morning, and large consumers run one
+  after another instead of together, as long as that costs little
+
 ## 0.25.0
 
 - New battery strategy "Autarkie": as little grid import as possible instead of the

@@ -47,6 +47,10 @@ class Settings:
     # Extra cost per imported kWh: makes grid energy count far above any price difference
     # ("autarky": as little grid as possible rather than the cheapest grid)
     import_penalty_ct_per_kwh: float = 0.0
+    # Grid friendly: export and import above these powers cost extra (soft limits)
+    export_soft_limit_w: float | None = None
+    import_soft_limit_w: float | None = None
+    peak_penalty_ct_per_kwh: float = 20.0
     # Energy that must stay in the battery, e.g. for backup power ("backup")
     reserve_wh: float = 0.0
     # A fixed feed-in tariff only pays for PV; exporting stored grid energy is not
@@ -326,6 +330,13 @@ def optimize(
     cg = count + np.arange(n) if split_grid else None
     if split_grid:
         count += n
+    # Power above the grid friendly limits per slot (export, import)
+    over_export = count + np.arange(n) if settings.export_soft_limit_w is not None else None
+    if over_export is not None:
+        count += n
+    over_import = count + np.arange(n) if settings.import_soft_limit_w is not None else None
+    if over_import is not None:
+        count += n
     # Shortfall (Wh) to a due full charge
     full_short = count if settings.full_charge_slot is not None and 0 <= settings.full_charge_slot < n else None
     if full_short is not None:
@@ -355,6 +366,9 @@ def optimize(
     cost[s[-1]] -= terminal / 1000
     if full_short is not None:
         cost[full_short] = settings.full_charge_penalty / 1000
+    for over in (over_export, over_import):
+        if over is not None:
+            cost[over] = settings.peak_penalty_ct_per_kwh / 100 * DT_H / 1000
     # PV stored now is worth this much later; feed-in is what surplus earns otherwise
     stored_value = terminal * eta_c
     mean_feed_in = float(np.mean([i.feed_in for i in inputs]))
@@ -507,6 +521,14 @@ def optimize(
         add_gate(slots, f[k], load.max_power_w, load.gate_battery_wh, waits_for(load.gate_after))
     if battery_slots:
         add_gate(battery_slots, c, battery.max_charge_w, None, battery_after)
+    for over, flow, limit in (
+        (over_export, ge, settings.export_soft_limit_w),
+        (over_import, gi, settings.import_soft_limit_w),
+    ):
+        if over is not None:
+            for t in range(n):
+                # flow - over <= limit: only the part above the limit costs the penalty
+                gate_rows.append(({flow[t]: 1, over[t]: -1}, limit))
     if full_short is not None:
         # soc at the target slot plus shortfall reaches (almost) full
         gate_rows.append(({s[settings.full_charge_slot]: -1, full_short: -1}, -battery.capacity_wh * FULL_FRACTION))
