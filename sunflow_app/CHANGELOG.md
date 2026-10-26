@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.1
+
+- Weather choice: shows the provider ("Home (Open-Meteo)") and checks the cloud
+  coverage in the hourly forecast that Sunflow uses. Open-Meteo was wrongly marked
+  "ohne Bewölkungsangabe" because its current state has no cloud coverage
+
 ## 0.18.0
 
 - PV forecast learns from this site: shadow mode now also stores the uncorrected
