@@ -88,6 +88,13 @@ class ForecastPlane(BaseModel):
     device_id: str | None = None
     # Set by the user; the detected name may be generic ("Solar production forecast")
     custom_name: str | None = None
+    # Measured PV strings of this plane ("<device id>:<string>"), for learning per plane
+    strings: list[str] = Field(default_factory=list)
+
+    @property
+    def key(self) -> str:
+        """Stable id of the plane in stored data."""
+        return f"{self.source}:{self.ref}"
 
     @property
     def display_name(self) -> str:

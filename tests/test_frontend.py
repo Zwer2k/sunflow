@@ -329,7 +329,7 @@ def test_pv_strings() -> None:
     """String power is measured or voltage x current; strings without entities are left out."""
     from types import SimpleNamespace
 
-    from sunflow.api import pv_strings
+    from sunflow.site import pv_strings
 
     def role(value: float | None, entity: str | None = "sensor.x") -> SimpleNamespace:
         return SimpleNamespace(value=value, entity_id=entity, display={"unit": "kW", "precision": 2})
@@ -342,11 +342,11 @@ def test_pv_strings() -> None:
 
     kw = {"unit": "kW", "precision": 2}
     assert pv_strings(sofar) == [
-        {"name": "String 1", "power_w": 1200.0, "display": kw},
-        {"name": "String 2", "power_w": 0.0, "display": kw},
+        {"index": 1, "name": "String 1", "power_w": 1200.0, "display": kw},
+        {"index": 2, "name": "String 2", "power_w": 0.0, "display": kw},
     ]
     # Computed from voltage x current: whole watts
-    assert pv_strings(huawei) == [{"name": "String 1", "power_w": 1000.0, "display": {"unit": "W", "precision": 0}}]
+    assert pv_strings(huawei) == [{"index": 1, "name": "String 1", "power_w": 1000.0, "display": {"unit": "W", "precision": 0}}]
 
 
 def test_display_precision_from_registry() -> None:

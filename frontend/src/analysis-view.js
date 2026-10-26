@@ -326,6 +326,20 @@ class SunflowAnalysis extends LitElement {
                 ? html`<p class="small muted">Je Stunde: ${hours.map(([h, f]) => `${h} Uhr ${pct(f)}`).join(" · ")}</p>`
                 : nothing}`
           : html`<p class="muted">Noch keine Tagesdaten – der Schattenbetrieb sammelt ab jetzt.</p>`}
+        ${l.planes?.length
+          ? html`<h3>Je Dachfläche</h3>
+              <ul class="small plane-list">
+                ${l.planes.map(
+                  (p) => html`<li><strong>${p.name}</strong>: ${p.slots ? pct(p.overall) : "noch keine Daten"}
+                    ${p.slots
+                      ? html`<span class="muted">(${p.days} Tage${p.by_cloud.clear !== null ? ` · klar ${pct(p.by_cloud.clear)}` : ""}${p.by_cloud.overcast !== null
+                          ? ` · bedeckt ${pct(p.by_cloud.overcast)}`
+                          : ""})</span>`
+                      : nothing}</li>`,
+                )}
+              </ul>`
+          : html`<p class="small muted">Tipp: Unter Einstellungen → Tarif & Prognose lassen sich Dachflächen ihren PV-Strings
+              zuordnen; dann lernt Sunflow jede Fläche einzeln (z. B. Verschattung).</p>`}
         <h3>Hausverbrauch</h3>
         ${l.load_model
           ? html`<p class="small">

@@ -77,6 +77,33 @@ def _shrunk(actual: float, forecast: float, prior: float, weight: float = PRIOR_
     return min(max(factor, FACTOR_RANGE[0]), FACTOR_RANGE[1])
 
 
+def learn_planes(rows: list[dict[str, Any]], planes: dict[str, list[str]], tz: tzinfo) -> dict[str, PvCorrection]:
+    """A correction per forecast plane from the strings it is measured by.
+
+    planes: plane key -> string keys. Rows need plane_forecasts and actual_strings.
+    """
+    result = {}
+    for key, strings in planes.items():
+        if not strings:
+            continue
+        plane_rows = []
+        for row in rows:
+            forecast = (row.get("plane_forecasts") or {}).get(key)
+            measured = row.get("actual_strings") or {}
+            if forecast is None or not all(s in measured for s in strings):
+                continue
+            plane_rows.append(
+                {
+                    "start": row["start"],
+                    "forecast_pv_w": forecast,
+                    "actual_pv_w": sum(measured[s] for s in strings),
+                    "weather_cloud": row.get("weather_cloud"),
+                }
+            )
+        result[key] = learn(plane_rows, tz)
+    return result
+
+
 def learn(rows: list[dict[str, Any]], tz: tzinfo) -> PvCorrection:
     """Learn the factors from shadow rows (forecast_pv_w or planned_pv_w, actual_pv_w, weather_cloud)."""
     samples = []

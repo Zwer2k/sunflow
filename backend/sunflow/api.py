@@ -64,7 +64,7 @@ from .plan import cloud_coverage, feed_in_price, weather_entity
 from .recommendations import build as build_recommendations
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
-from .site import MEASUREMENTS, PV_OUTPUT_ROLES, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
+from .site import MEASUREMENTS, PV_OUTPUT_ROLES, pv_strings, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
 from .summary import SetupSummary, build_summary
 from .sources import (
     ForecastPoint,
@@ -479,13 +479,28 @@ async def get_sources(request: Request) -> dict[str, Any]:
             | {
                 "device_id": plane.device_id if plane else None,
                 "custom_name": plane.custom_name if plane else None,
+                "strings": plane.strings if plane else [],
                 "detected_name": site.name,
                 "name": (plane.custom_name if plane else None) or site.name,
             }
         )
+    # Strings a plane can be measured by, per plant
+    strings = []
+    for device in config.devices:
+        profile = _library(request).profiles[device.profile]
+        if "pv" not in profile["capabilities"]:
+            continue
+        roles = {
+            r.role: r
+            for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+        }
+        strings += [
+            {"id": f"{device.id}:{s['index']}", "device_id": device.id, "name": s["name"]} for s in pv_strings(roles)
+        ]
     return {
         "prices": [asdict(p) for p in price_sources(states)],
         "forecast_planes": planes,
+        "pv_strings": strings,
         "tariff": config.tariff.model_dump(),
     }
 
@@ -870,6 +885,7 @@ async def get_plan(request: Request) -> dict[str, Any]:
             request.app.state.snapshots,
             await runner.pv_correction() if runner else None,
             runner.load_model if runner else None,
+            runner.plane_corrections if runner else None,
         )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
@@ -1325,6 +1341,11 @@ async def get_pv_learning(request: Request) -> dict[str, Any]:
     snapshot = await _snapshot(request)
     return correction.as_dict() | {
         "load_model": runner.load_model.as_dict() if runner.load_model else None,
+        "planes": [
+            {"name": plane.display_name, "strings": len(plane.strings)} | runner.plane_corrections[plane.key].as_dict()
+            for plane in config.forecast_planes
+            if plane.strings and plane.key in runner.plane_corrections
+        ],
         "enabled": config.optimizer.pv_learning,
         "weather_entity": weather_entity(config, snapshot),
     }
@@ -1514,34 +1535,6 @@ async def _live_weather(request: Request, config: SunflowConfig, snapshot: Snaps
             for f in upcoming[:WEATHER_HOURS]
         ],
     }
-
-
-MAX_STRINGS = 4
-
-
-def pv_strings(roles: dict[str, Any]) -> list[dict[str, Any]]:
-    """DC power per string: measured, or voltage times current; missing values count as 0 W."""
-    strings = []
-    for index in range(1, MAX_STRINGS + 1):
-        # A role without entity means the device has no such string
-        power, voltage, current = (
-            role if (role := roles.get(f"pv{index}_{kind}")) is not None and role.entity_id else None
-            for kind in ("power", "voltage", "current")
-        )
-        if power is None and (voltage is None or current is None):
-            continue
-        if power is not None:
-            value = power.value
-        else:
-            value = voltage.value * current.value if voltage.value is not None and current.value is not None else None
-        strings.append(
-            {
-                "name": f"String {index}",
-                "power_w": max(value or 0.0, 0.0),
-                "display": power.display if power is not None else {"unit": "W", "precision": 0},
-            }
-        )
-    return strings
 
 
 def combine_batteries(batteries: list[dict[str, Any]]) -> dict[str, Any] | None:

@@ -213,3 +213,32 @@ def site_status(
     outputs = [s.pv_output for s in site.devices if s.pv_output is not None]
     site.pv_total = sum(outputs) if outputs else None
     return site
+
+
+MAX_STRINGS = 4
+
+
+def pv_strings(roles: dict[str, Any]) -> list[dict[str, Any]]:
+    """DC power per string: measured, or voltage times current; missing values count as 0 W."""
+    strings = []
+    for index in range(1, MAX_STRINGS + 1):
+        # A role without entity means the device has no such string
+        power, voltage, current = (
+            role if (role := roles.get(f"pv{index}_{kind}")) is not None and role.entity_id else None
+            for kind in ("power", "voltage", "current")
+        )
+        if power is None and (voltage is None or current is None):
+            continue
+        if power is not None:
+            value = power.value
+        else:
+            value = voltage.value * current.value if voltage.value is not None and current.value is not None else None
+        strings.append(
+            {
+                "index": index,
+                "name": f"String {index}",
+                "power_w": max(value or 0.0, 0.0),
+                "display": power.display if power is not None else {"unit": "W", "precision": 0},
+            }
+        )
+    return strings

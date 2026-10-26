@@ -484,7 +484,28 @@ class SunflowApp extends LitElement {
   }
 
   async _assignPlane(plane, deviceId) {
-    await this._savePlanes(plane, { device_id: deviceId || null });
+    // Strings of another plant no longer fit
+    await this._savePlanes(plane, { device_id: deviceId || null, strings: [] });
+  }
+
+  _renderPlaneStrings(plane, strings) {
+    const own = strings.filter((s) => s.device_id === plane.device_id);
+    if (!plane.device_id || !own.length) return nothing;
+    const chosen = new Set(plane.strings ?? []);
+    const toggle = (id, on) => {
+      const next = new Set(chosen);
+      if (on) next.add(id);
+      else next.delete(id);
+      this._savePlanes(plane, { strings: [...next] });
+    };
+    return html`<div class="small plane-strings">
+      <span class="muted">Gemessen von:</span>
+      ${own.map(
+        (s) => html`<label class="inline"><input type="checkbox" .checked=${chosen.has(s.id)}
+          @change=${(e) => toggle(s.id, e.target.checked)}> ${s.name}</label>`,
+      )}
+      <span class="muted">– dann lernt Sunflow diese Fläche einzeln (z. B. Verschattung).</span>
+    </div>`;
   }
 
   async _renamePlane(plane, name) {
@@ -507,12 +528,13 @@ class SunflowApp extends LitElement {
     const planes = this._sources.forecast_planes;
     try {
       await api.setForecast(
-        planes.map(({ source, ref, detected_name, device_id, custom_name }) => ({
+        planes.map(({ source, ref, detected_name, device_id, custom_name, strings }) => ({
           source,
           ref,
           name: detected_name,
           device_id,
           custom_name,
+          strings: strings ?? [],
         })),
       );
       await this._loadForecastSeries();
@@ -1707,6 +1729,7 @@ class SunflowApp extends LitElement {
                           (p) => html`<option value=${p.id} ?selected=${plane.device_id === p.id}>${p.name}</option>`,
                         )}
                       </select>
+                      ${this._renderPlaneStrings(plane, sources.pv_strings ?? [])}
                     </div>
                   `,
                 )}
@@ -2165,6 +2188,7 @@ class SunflowApp extends LitElement {
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     .danger { color: var(--sf-error-text); }
+    .plane-strings { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
     .manual-item { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
     .item-actions { display: flex; gap: 8px; }
     .restore-banner {

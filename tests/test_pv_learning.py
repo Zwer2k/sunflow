@@ -60,3 +60,25 @@ def test_without_weather_uses_hour_factor() -> None:
     correction = learn(rows, BERLIN)
 
     assert correction.factor(12, "overcast") == pytest.approx(0.8, abs=0.03)
+
+
+def test_learns_each_plane_from_its_strings() -> None:
+    """The north-east roof is shaded in the morning, the south-east one delivers as forecast."""
+    from sunflow.pv_learning import learn_planes
+
+    rows = []
+    start = datetime(2026, 10, 1, tzinfo=BERLIN)
+    for day in range(30):
+        for quarter in range(8 * 4, 12 * 4):  # 08-12 local
+            moment = (start + timedelta(days=day, minutes=15 * quarter)).astimezone(UTC)
+            rows.append({
+                "start": moment.isoformat(),
+                "plane_forecasts": {"solcast:ne": 1000.0, "solcast:se": 2000.0},
+                "actual_strings": {"sofar:1": 600.0, "sofar:2": 1000.0, "huawei:1": 1000.0},
+                "weather_cloud": None,
+            })
+
+    corrections = learn_planes(rows, {"solcast:ne": ["sofar:1"], "solcast:se": ["sofar:2", "huawei:1"]}, BERLIN)
+
+    assert corrections["solcast:ne"].factor(9, None) == pytest.approx(0.6, abs=0.05)
+    assert corrections["solcast:se"].factor(9, None) == pytest.approx(1.0, abs=0.03)

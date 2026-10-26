@@ -310,6 +310,8 @@ class PlanResult:
     care: BatteryCare | None = None
     # Uncorrected PV forecast and forecast cloud coverage per slot (for learning)
     raw_pv: list[float] = field(default_factory=list)
+    plane_forecasts_now: dict[str, float] = field(default_factory=dict)
+    plane_corrections: dict[str, PvCorrection] = field(default_factory=dict)
     clouds: list[float | None] = field(default_factory=list)
     temperatures: list[float | None] = field(default_factory=list)
     load_model: LoadModel | None = None
@@ -702,6 +704,7 @@ async def compute_plan(
     tz: tzinfo,
     pv_correction: PvCorrection | None = None,
     load_model: LoadModel | None = None,
+    plane_corrections: dict[str, PvCorrection] | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule."""
     warnings: list[str] = []
@@ -818,6 +821,11 @@ async def compute_plan(
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
     raw_pv = [slot.pv_w for slot in inputs]
+    # Forecast per plane and slot, to learn and correct each plane on its own
+    plane_slots = {
+        plane.key: [value_at(resample(points, SLOT), slot.start, "power") or 0.0 for slot in inputs]
+        for plane, points in zip(used_planes, series, strict=False)
+    }
     weather = await weather_forecast(
         client, weather_entity(config, snapshot), [slot.start for slot in inputs], ("cloud_coverage", "temperature")
     )
@@ -831,10 +839,20 @@ async def compute_plan(
             else slot
             for slot, temperature in zip(inputs, weather["temperature"], strict=True)
         ]
-    if config.optimizer.pv_learning and pv_correction is not None and pv_correction.slots:
+    own = {key: c for key, c in (plane_corrections or {}).items() if c.slots and key in plane_slots}
+    site = pv_correction if pv_correction is not None and pv_correction.slots else None
+    if config.optimizer.pv_learning and (site or own):
         corrected = []
-        for slot, cloud in zip(inputs, clouds, strict=True):
-            factor = pv_correction.factor(slot.start.astimezone(tz).hour, cloud_class(cloud))
+        for t, (slot, cloud) in enumerate(zip(inputs, clouds, strict=True)):
+            hour, kind = slot.start.astimezone(tz).hour, cloud_class(cloud)
+            site_factor = site.factor(hour, kind) if site else 1.0
+            # Each plane with its own factor (e.g. shading of one roof), the rest with the site's
+            total = sum(powers[t] for powers in plane_slots.values())
+            weighted = sum(
+                powers[t] * (own[key].factor(hour, kind) if key in own else site_factor)
+                for key, powers in plane_slots.items()
+            )
+            factor = weighted / total if total > 0 else site_factor
             low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
             corrected.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
         inputs = corrected
@@ -871,6 +889,8 @@ async def compute_plan(
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
     return PlanResult(
         raw_pv=raw_pv,
+        plane_forecasts_now={key: powers[0] for key, powers in plane_slots.items() if powers},
+        plane_corrections=own if config.optimizer.pv_learning else {},
         clouds=clouds,
         temperatures=weather["temperature"],
         load_model=load_model if load_model is not None and load_model.useful else None,
