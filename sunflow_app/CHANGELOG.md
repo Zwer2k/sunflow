@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.2
+
+- Fix "401: Unauthorized" after a while inside Home Assistant: the Supervisor expires
+  the Ingress session when HA's panel is in the background. Sunflow now renews it
+  through HA's connection in the surrounding page and repeats the request, and renews
+  it right away when the tab comes back after more than 5 minutes. If renewing is not
+  possible, a clear message asks to reload
+
 ## 0.17.1
 
 - Battery care: "Spätestens nach … Tagen aus dem Netz". When the battery was not full
