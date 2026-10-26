@@ -13,6 +13,7 @@ from .ha import HAClient, HAError
 from .plan import PlanResult, compute_plan
 from .profiles import ProfileLibrary
 from .resolver import preview
+from .load_model import LoadModel, fit as fit_load_model
 from .pv_learning import PvCorrection, learn
 from .shadow import Sample, ShadowStore, SlotRecorder, slot_start
 from .site import device_parameters, measurement_device, site_status
@@ -29,7 +30,7 @@ async def local_timezone(client: HAClient) -> ZoneInfo:
 
 
 # PV correction: learned from this many days of shadow data, refreshed this often
-LEARNING_WINDOW = timedelta(days=60)
+LEARNING_WINDOW = timedelta(days=120)
 CORRECTION_REFRESH = timedelta(hours=1)
 
 
@@ -39,6 +40,7 @@ async def current_plan(
     library: ProfileLibrary,
     snapshots: SnapshotCache | None = None,
     pv_correction: PvCorrection | None = None,
+    load_model: LoadModel | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -51,6 +53,7 @@ async def current_plan(
         slot_start(datetime.now(UTC)),
         await local_timezone(client),
         pv_correction,
+        load_model,
     )
 
 
@@ -139,6 +142,7 @@ class ShadowRunner:
         self.last_sample: Sample | None = None
         self.last_sample_at: datetime | None = None
         self._correction: PvCorrection | None = None
+        self.load_model: LoadModel | None = None
         self._correction_at = datetime.min.replace(tzinfo=UTC)
         self._recorder: SlotRecorder | None = None
         self._replan_task: asyncio.Task[None] | None = None
@@ -218,13 +222,18 @@ class ShadowRunner:
         now = datetime.now(UTC)
         if self._correction is None or now - self._correction_at > CORRECTION_REFRESH:
             rows = await asyncio.to_thread(self.shadow.rows, now - LEARNING_WINDOW)
-            self._correction = learn(rows, await local_timezone(self._client))
+            tz = await local_timezone(self._client)
+            self._correction = learn(rows, tz)
+            self.load_model = await asyncio.to_thread(
+                fit_load_model, rows, tz, self._store.load().optimizer.large_load_threshold_w
+            )
             self._correction_at = now
         return self._correction
 
     async def _replan(self, start: datetime) -> None:
+        correction = await self.pv_correction()
         result = await current_plan(
-            self._client, self._store, self._library, self.snapshots, await self.pv_correction()
+            self._client, self._store, self._library, self.snapshots, correction, self.load_model
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
@@ -242,5 +251,6 @@ class ShadowRunner:
             # Learning compares the uncorrected forecast with the measurement
             "forecast_pv": result.raw_pv[0] if result.raw_pv else None,
             "cloud": result.clouds[0] if result.clouds else None,
+            "temp": result.temperatures[0] if result.temperatures else None,
         }
         await asyncio.to_thread(self.shadow.store_planned, start, planned)

@@ -258,9 +258,11 @@ class SunflowPlan extends LitElement {
             ? html`<span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>steuerbare Verbraucher</span>`
             : nothing}
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Hausverbrauch
-            <span class="muted">(Prognose: ${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
+            <span class="muted">(Prognose: ${plan.load_model
+              ? `gelerntes Modell mit Außentemperatur aus ${plan.load_model.days} Tagen, Abweichung ${formatValue(plan.load_model.error_model, "W")} statt ${formatValue(plan.load_model.error_average, "W")}`
+              : html`${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
               ? `, skaliert auf ${toDisplay(plan.load_scaled_to_kwh, "kWh")} kWh/Tag`
-              : ""}${plan.load_separated_hours ? `, ohne steuerbare Verbraucher (${plan.load_separated_hours} h getrennt)` : ""})</span></span>
+              : ""}${plan.load_separated_hours ? `, ohne steuerbare Verbraucher (${plan.load_separated_hours} h getrennt)` : ""}`})</span></span>
         </div>
         ${lineChart(
           [

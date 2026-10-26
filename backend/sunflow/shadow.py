@@ -35,11 +35,12 @@ CREATE TABLE IF NOT EXISTS slots (
     samples INTEGER,
     forecast_pv_w REAL,
     weather_cloud REAL,
-    actual_loadpoint_w REAL
+    actual_loadpoint_w REAL,
+    weather_temp REAL
 )
 """
 # Columns added after the first release; existing databases get them on open
-ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL"}
+ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL"}
 
 
 def slot_start(moment: datetime) -> datetime:
@@ -138,11 +139,13 @@ class ShadowStore:
             self._db.execute(
                 """
                 INSERT INTO slots (start, planned_action, planned_power_w, planned_soc_wh,
-                                   planned_pv_w, planned_load_w, planned_price, forecast_pv_w, weather_cloud)
-                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud)
+                                   planned_pv_w, planned_load_w, planned_price, forecast_pv_w, weather_cloud,
+                                   weather_temp)
+                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud, :temp)
                 ON CONFLICT(start) DO UPDATE SET
                     forecast_pv_w = excluded.forecast_pv_w,
                     weather_cloud = excluded.weather_cloud,
+                    weather_temp = excluded.weather_temp,
                     planned_action = excluded.planned_action,
                     planned_power_w = excluded.planned_power_w,
                     planned_soc_wh = excluded.planned_soc_wh,
@@ -150,7 +153,7 @@ class ShadowStore:
                     planned_load_w = excluded.planned_load_w,
                     planned_price = excluded.planned_price
                 """,
-                {"start": start.isoformat(), "forecast_pv": None, "cloud": None, **planned},
+                {"start": start.isoformat(), "forecast_pv": None, "cloud": None, "temp": None, **planned},
             )
             self._db.commit()
 

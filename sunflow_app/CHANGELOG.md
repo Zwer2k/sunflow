@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.0
+
+- Learned load forecast: shadow mode now stores the forecast outside temperature per
+  slot. From 14 days of such data a regression model learns the base load per hour,
+  the weekend difference and the heating (and cooling) share of the temperature;
+  recent days weigh more. The plan uses it once it beats the hourly average on held
+  out days. Analyse → "Lernen" shows its state and accuracy
+
 ## 0.20.1
 
 - Shadow mode records the power of the controllable consumers; the load recommendation

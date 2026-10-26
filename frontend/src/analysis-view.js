@@ -241,7 +241,8 @@ class SunflowAnalysis extends LitElement {
     const hours = Object.entries(l.by_hour ?? {});
     return html`
       <section>
-        <h2>PV-Prognose lernen</h2>
+        <h2>Lernen</h2>
+        <h3>PV-Prognose</h3>
         <p class="small muted">
           ${l.enabled ? "Die Planung nutzt die angepasste Prognose." : "Ausgeschaltet (Standards) – die Planung nutzt die Rohprognose."}
           Gelernt wird aus dem Schattenbetrieb: Prognose gegen Messung je Stunde${l.weather_entity
@@ -265,6 +266,16 @@ class SunflowAnalysis extends LitElement {
                 ? html`<p class="small muted">Je Stunde: ${hours.map(([h, f]) => `${h} Uhr ${pct(f)}`).join(" · ")}</p>`
                 : nothing}`
           : html`<p class="muted">Noch keine Tagesdaten – der Schattenbetrieb sammelt ab jetzt.</p>`}
+        <h3>Hausverbrauch</h3>
+        ${l.load_model
+          ? html`<p class="small">
+              Modell aus ${l.load_model.days} Tagen: je Stunde, Werktag/Wochenende und Außentemperatur
+              (${l.load_model.heating_w_per_k > 1 ? `+${Math.round(l.load_model.heating_w_per_k)} W je Grad unter 15 °C` : "kein Heizeinfluss erkennbar"}).
+              Auf den letzten Tagen ${formatValue(l.load_model.error_model, "W")} Abweichung statt ${formatValue(l.load_model.error_average, "W")}
+              mit dem Stundenmittel – ${l.load_model.useful ? "die Planung nutzt das Modell." : "noch nicht besser, die Planung bleibt beim Stundenmittel."}
+            </p>`
+          : html`<p class="small muted">Sammelt Daten: Das Modell startet nach 14 Tagen mit Temperatur und Verbraucherleistung im
+              Schattenbetrieb. Bis dahin plant Sunflow mit den Stundenmitteln der Historie.</p>`}
       </section>
     `;
   }
