@@ -135,6 +135,10 @@ class OptimizerConfig(BaseModel):
     full_charge_every_days: int | None = Field(default=None, ge=1, le=90)
     # When PV did not fill the battery for this long, charge it full from the grid at the cheapest time
     full_charge_grid_after_days: int | None = Field(default=None, ge=1, le=120)
+    # Adapt the PV forecast to this site from shadow data; weather entity for the cloud
+    # coverage (None: the first weather entity found)
+    pv_learning: bool = True
+    weather_entity: str | None = None
 
     @model_validator(mode="after")
     def _derive_wear(self) -> "OptimizerConfig":

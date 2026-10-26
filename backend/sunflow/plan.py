@@ -8,7 +8,7 @@ from typing import Any
 
 from .config_store import BATTERY_PRIORITY_ID, DeviceConfig, SunflowConfig
 from .discovery import Snapshot
-from .ha import HAClient
+from .ha import HAClient, HAError
 from .load_forecast import (
     LoadForecast,
     build_load_forecast,
@@ -17,6 +17,7 @@ from .load_forecast import (
     subtract_loads,
 )
 from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
+from .pv_learning import PvCorrection, cloud_class
 from .resolver import preview
 from .site import device_kind, device_parameters
 from .sources import (
@@ -291,6 +292,51 @@ class PlanResult:
     battery: BatterySpec | None = None
     reserve_wh: float = 0.0
     care: BatteryCare | None = None
+    # Uncorrected PV forecast and forecast cloud coverage per slot (for learning)
+    raw_pv: list[float] = field(default_factory=list)
+    clouds: list[float | None] = field(default_factory=list)
+    pv_correction: PvCorrection | None = None
+
+
+def weather_entity(config: SunflowConfig, snapshot: Snapshot) -> str | None:
+    """The configured weather entity, else the first one in Home Assistant."""
+    if config.optimizer.weather_entity:
+        return config.optimizer.weather_entity
+    return next((e for e in sorted(snapshot.states) if e.startswith("weather.")), None)
+
+
+async def cloud_coverage(client: HAClient, entity_id: str | None, slot_starts: list[datetime]) -> list[float | None]:
+    """Forecast cloud coverage (%) per slot from the weather entity's hourly forecast."""
+    if not entity_id or not slot_starts:
+        return [None] * len(slot_starts)
+    try:
+        response = await client.call_service(
+            "weather", "get_forecasts", {"type": "hourly"}, target={"entity_id": entity_id}, return_response=True
+        )
+        forecast = response["response"][entity_id]["forecast"]
+    except (HAError, KeyError, TypeError):
+        # The correction then uses the per hour factors only
+        return [None] * len(slot_starts)
+    by_hour = {
+        datetime.fromisoformat(item["datetime"]).astimezone(UTC).replace(minute=0, second=0, microsecond=0): item.get(
+            "cloud_coverage"
+        )
+        for item in forecast
+        if "datetime" in item
+    }
+    if not by_hour:
+        return [None] * len(slot_starts)
+    known = sorted(by_hour)
+
+    def nearest(moment: datetime) -> float | None:
+        # The hourly forecast starts with the next hour; the current one takes its neighbour
+        hour = moment.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+        if hour in by_hour:
+            return by_hour[hour]
+        closest = min(known, key=lambda h: abs(h - hour))
+        return by_hour[closest] if abs(closest - hour) <= timedelta(hours=2) else None
+
+    return [nearest(start) for start in slot_starts]
 
 
 @dataclass(kw_only=True)
@@ -561,6 +607,7 @@ async def compute_plan(
     snapshot: Snapshot,
     start: datetime,
     tz: tzinfo,
+    pv_correction: PvCorrection | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule."""
     warnings: list[str] = []
@@ -676,6 +723,13 @@ async def compute_plan(
     inputs = build_inputs(start, prices, pv, load, feed_in_price(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
+    raw_pv = [slot.pv_w for slot in inputs]
+    clouds = await cloud_coverage(client, weather_entity(config, snapshot), [slot.start for slot in inputs])
+    if config.optimizer.pv_learning and pv_correction is not None and pv_correction.slots:
+        inputs = [
+            replace(slot, pv_w=slot.pv_w * pv_correction.factor(slot.start.astimezone(tz).hour, cloud_class(cloud)))
+            for slot, cloud in zip(inputs, clouds, strict=True)
+        ]
     loads, flex_infos, flex_warnings, battery_gate = flex_loads(
         config, profiles, snapshot, [i.start for i in inputs], tz, battery_capacity_wh=battery.capacity_wh
     )
@@ -690,6 +744,9 @@ async def compute_plan(
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
     return PlanResult(
+        raw_pv=raw_pv,
+        clouds=clouds,
+        pv_correction=pv_correction if config.optimizer.pv_learning else None,
         care=care,
         plan=plan,
         battery_device=battery_device.id,

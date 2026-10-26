@@ -113,6 +113,8 @@ export const api = {
   pendingRestore: () => request("GET", "/device-test/pending-restore"),
   restoreAfterTest: () => request("POST", "/device-test/restore?confirm=true"),
   efficiencyHistory: (days) => request("GET", `/efficiency/history?days=${days}`),
+  pvLearning: () => request("GET", "/pv-learning"),
+  weatherEntities: () => request("GET", "/weather/entities"),
   energy: (period) => request("GET", `/energy?period=${encodeURIComponent(period)}`),
   efficiency: (configDeviceId) => request("GET", `/config/devices/${encodeURIComponent(configDeviceId)}/efficiency`),
   history: (hours = 24) => request("GET", `/history?hours=${hours}`),

@@ -26,6 +26,7 @@ class SunflowAnalysis extends LitElement {
     _energyError: { state: true },
     _efficiency: { state: true },
     _efficiencyDays: { state: true },
+    _pvLearning: { state: true },
     _importing: { state: true },
   };
 
@@ -86,6 +87,7 @@ class SunflowAnalysis extends LitElement {
   }
 
   async _load() {
+    api.pvLearning().then((data) => (this._pvLearning = data)).catch(() => (this._pvLearning = null));
     this._loadEnergy();
     this._loadEfficiency();
     try {
@@ -107,6 +109,7 @@ class SunflowAnalysis extends LitElement {
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${this._renderEnergy()}
       ${this._renderEfficiency()}
+      ${this._renderPvLearning()}
       ${this._shadow === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
       ${this._renderShadow()}
     `;
@@ -153,6 +156,41 @@ class SunflowAnalysis extends LitElement {
           ${e.inverters.map((i) => tile(`Wirkungsgrad ${i.name}`, pct(i.efficiency),
             i.dc_wh === null ? null : `${wh(i.ac_wh)} AC aus ${wh(i.dc_wh)} DC`))}
         </div>` : nothing}
+      </section>
+    `;
+  }
+
+  _renderPvLearning() {
+    const l = this._pvLearning;
+    if (!l) return nothing;
+    const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(v * 100)} %`);
+    const hours = Object.entries(l.by_hour ?? {});
+    return html`
+      <section>
+        <h2>PV-Prognose lernen</h2>
+        <p class="small muted">
+          ${l.enabled ? "Die Planung nutzt die angepasste Prognose." : "Ausgeschaltet (Standards) – die Planung nutzt die Rohprognose."}
+          Gelernt wird aus dem Schattenbetrieb: Prognose gegen Messung je Stunde${l.weather_entity
+            ? html` und Bewölkung laut <code>${l.weather_entity}</code>`
+            : " (keine Wetter-Entität gefunden)"}.
+          Mit wenigen Tagen bleiben die Faktoren nahe 100 %.
+        </p>
+        ${l.slots
+          ? html`
+              <div class="tiles">
+                <div class="tile now"><div class="small muted">Gesamt</div><div class="value">${pct(l.overall)}</div>
+                  <div class="small muted">der Prognose kommt an · ${l.days} Tage</div></div>
+                <div class="tile"><div class="small muted">Klar</div><div class="value">${pct(l.by_cloud.clear)}</div></div>
+                <div class="tile"><div class="small muted">Wechselnd bewölkt</div><div class="value">${pct(l.by_cloud.mixed)}</div></div>
+                <div class="tile"><div class="small muted">Bedeckt</div><div class="value">${pct(l.by_cloud.overcast)}</div></div>
+                <div class="tile"><div class="small muted">Mittlere Abweichung</div>
+                  <div class="value">${formatValue(l.error_after, "W")}</div>
+                  <div class="small muted">vorher ${formatValue(l.error_before, "W")}</div></div>
+              </div>
+              ${hours.length
+                ? html`<p class="small muted">Je Stunde: ${hours.map(([h, f]) => `${h} Uhr ${pct(f)}`).join(" · ")}</p>`
+                : nothing}`
+          : html`<p class="muted">Noch keine Tagesdaten – der Schattenbetrieb sammelt ab jetzt.</p>`}
       </section>
     `;
   }

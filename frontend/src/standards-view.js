@@ -20,6 +20,7 @@ class SunflowStandards extends LitElement {
     _wearMode: { state: true },
     _wearCalc: { state: true },
     _batteryKwh: { state: true },
+    _weather: { state: true },
     _reserve: { state: true },
     _maxSoc: { state: true },
     _fullEvery: { state: true },
@@ -46,6 +47,7 @@ class SunflowStandards extends LitElement {
       this._settings = (await api.config()).optimizer;
       this._error = null;
       // Capacity as default for the wear calculation (derived from the battery modules)
+      api.weatherEntities().then((list) => (this._weather = list)).catch(() => (this._weather = []));
       api.latestPlan().then((plan) => (this._batteryKwh = plan.battery ? plan.battery.capacity_wh / 1000 : null)).catch(() => {});
     } catch (err) {
       this._error = `Einstellungen konnten nicht geladen werden: ${err.message}`;
@@ -332,6 +334,27 @@ class SunflowStandards extends LitElement {
               erlaubt, wenn es sich rechnet
             </span>
           </label>
+          <label class="field">
+            <span class="field-label">PV-Prognose</span>
+            <span class="inline">
+              <input type="checkbox" .checked=${settings.pv_learning} ?disabled=${this._saving}
+                @change=${(e) => this._saveSettings({ pv_learning: e.target.checked })}>
+              an die Anlage anpassen (aus Messwerten lernen)
+            </span>
+            <span class="small muted">Vergleicht Prognose und Messung je Stunde und Bewölkung, Details unter „Analyse“.</span>
+          </label>
+          <div class="field">
+            <span class="field-label">Wetter für die Bewölkung</span>
+            <select aria-label="Wetter-Entität" ?disabled=${this._saving}
+              @change=${(e) => this._saveSettings({ weather_entity: e.target.value || null })}>
+              <option value="" ?selected=${!settings.weather_entity}>Automatisch (erste Wetter-Entität)</option>
+              ${(this._weather ?? []).map(
+                (w) => html`<option value=${w.entity_id} ?selected=${settings.weather_entity === w.entity_id}>
+                  ${w.name}${w.cloud_coverage ? "" : " – ohne Bewölkungsangabe"}</option>`,
+              )}
+            </select>
+            <span class="small muted">Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.</span>
+          </div>
         </div>
         ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._daily, this._largeLoad].some((v) => v !== undefined)
           ? html`<div class="actions">
@@ -415,6 +438,10 @@ class SunflowStandards extends LitElement {
     .option.selected { border-color: var(--sf-primary); background: var(--sf-primary-bg); }
     .option input { margin-top: 3px; width: 18px; height: 18px; }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    select {
+      min-height: 40px; padding: 0 10px; font: inherit; font-size: 14px; border: 1px solid var(--sf-border-strong);
+      border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
+    }
     .field.wide { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; }
     .segmented { display: flex; flex-wrap: wrap; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; align-self: flex-start; }
     .segmented button {

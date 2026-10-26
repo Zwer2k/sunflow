@@ -249,7 +249,11 @@ class SunflowPlan extends LitElement {
       <section>
         <h3>PV-Erzeugung und Hausverbrauch</h3>
         <div class="legend">
-          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>PV-Erzeugung</span>
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>PV-Erzeugung
+            ${plan.pv_correction
+              ? html`<span class="muted">(Prognose an die Anlage angepasst: Ø ${Math.round(plan.pv_correction.overall * 100)} %
+                  aus ${plan.pv_correction.days} Tagen)</span>`
+              : nothing}</span>
           ${hasLoadpoints
             ? html`<span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>steuerbare Verbraucher</span>`
             : nothing}
