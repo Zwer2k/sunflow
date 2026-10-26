@@ -13,6 +13,8 @@ from typing import Any
 from .ha import HAClient
 
 HISTORY_DAYS = 28
+# From this much history (hours) the daily consumption setting no longer scales the forecast
+OWN_HISTORY_HOURS = 7 * 24
 MIN_SAMPLES = 2
 DEFAULT_LOAD_W = 400.0
 SLOT = timedelta(minutes=15)
@@ -37,6 +39,8 @@ class LoadForecast:
     excluded_hours: int = 0
     scaled_to_kwh: float | None = None
     separated_hours: int = 0
+    # Mean daily base load of the history (large loads left out), as a suggestion
+    history_daily_kwh: float | None = None
 
 
 async def fetch_hourly_means(
@@ -131,10 +135,13 @@ def build_load_forecast(
         return typical_w * TYPICAL_DAY[local.hour], "default"
 
     factors: dict[Any, float] = {}
+    # The daily consumption setting is a start value: with a week of history the
+    # measured hourly means stand on their own
+    scale = bool(daily_kwh) and len(kept) < OWN_HISTORY_HOURS
 
     def factor(local: datetime) -> float:
         """Scale each calendar day on its own so it adds up to daily_kwh (day types differ)."""
-        if not daily_kwh:
+        if not scale:
             return 1.0
         day = local.date()
         if day not in factors:
@@ -161,7 +168,8 @@ def build_load_forecast(
         history_hours=len(history),
         quality=quality,
         excluded_hours=len(history) - len(kept),
-        scaled_to_kwh=daily_kwh,
+        scaled_to_kwh=daily_kwh if scale else None,
+        history_daily_kwh=fmean(v for _, v in kept) * 24 / 1000 if len(kept) >= OWN_HISTORY_HOURS else None,
     )
 
 

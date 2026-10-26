@@ -820,6 +820,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "load_quality": result.load.quality if result.load else None,
         "load_history_hours": result.load.history_hours if result.load else 0,
         "load_scaled_to_kwh": result.load.scaled_to_kwh if result.load else None,
+        "load_history_daily_kwh": result.load.history_daily_kwh if result.load else None,
         "load_excluded_hours": result.load.excluded_hours if result.load else 0,
         "load_separated_hours": result.load.separated_hours if result.load else 0,
         "settings": config.optimizer.model_dump(),
