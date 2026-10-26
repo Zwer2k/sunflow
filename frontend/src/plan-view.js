@@ -334,7 +334,9 @@ class SunflowPlan extends LitElement {
                 <div class="small">
                   ${f.kind === "load" ? nothing : html`${fmt(f.current, f.unit)} → ${fmt(f.target, f.unit)}`}
                   ${f.need_wh > 0 ? html` · Bedarf ${formatValue(f.need_wh, "Wh")}` : nothing}
-                  ${f.deadline ? html` · bis ${dayTime.format(new Date(f.deadline))}` : nothing}
+                  ${f.deadline
+                    ? html` · bis ${dayTime.format(new Date(f.deadline))}${f.learned_departure ? " (übliche Abfahrt, gelernt)" : ""}`
+                    : nothing}
                   ${f.daily_wh > 0 ? html` · danach täglich ${formatValue(f.daily_wh, "Wh")}` : nothing}
                 </div>
                 ${f.reason
