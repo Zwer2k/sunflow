@@ -120,6 +120,7 @@ export const api = {
   history: (hours = 24) => request("GET", `/history?hours=${hours}`),
   shadow: (hours = 48) => request("GET", `/shadow?hours=${hours}`),
   setOptimizer: (settings) => request("PUT", "/config/optimizer", settings),
+  costHistory: (days) => request("GET", `/costs/history?days=${days}`),
   recommendations: () => request("GET", "/recommendations"),
   dismissRecommendation: (id, fingerprint) => request("POST", "/recommendations/dismiss", { id, fingerprint }),
   setOverrides: (configDeviceId, overrides) =>

@@ -305,6 +305,8 @@ class SunflowPlan extends LitElement {
         )}
       </section>
 
+      ${this._renderCostCurve(plan, slots)}
+
       <section>
         <h3>Bezugspreis <span class="tag">Vorschau</span></h3>
         ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price })), "Bezugspreis im Plan", {
@@ -356,6 +358,41 @@ class SunflowPlan extends LitElement {
             `;
           })}
         </div>
+      </section>
+    `;
+  }
+
+  _renderCostCurve(plan, slots) {
+    const baseline = plan.baseline_slot_costs ?? [];
+    if (baseline.length !== slots.length) return nothing;
+    let planned = 0;
+    let without = 0;
+    const withSunflow = [];
+    const withoutSunflow = [];
+    slots.forEach((s, i) => {
+      planned += (s.price * s.import_w - s.feed_in * s.export_w) * 0.25 / 1000;
+      without += baseline[i];
+      withSunflow.push({ start: s.start, end: s.end, value: planned });
+      withoutSunflow.push({ start: s.start, end: s.end, value: without });
+    });
+    const lowest = Math.min(0, ...withSunflow.map((p) => p.value), ...withoutSunflow.map((p) => p.value));
+    return html`
+      <section>
+        <h3>Kostenverlauf <span class="tag">Vorschau</span></h3>
+        <div class="legend">
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>mit Sunflow ${euro.format(planned)}</span>
+          <span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>reiner Eigenverbrauch ${euro.format(without)}</span>
+          <span class="muted small">aufsummierte Stromkosten (Bezug minus Einspeisung)${plan.alternative_cost || plan.baseline_alternative_cost
+            ? `, ohne Ersatzheizung (${euro.format(plan.alternative_cost)} bzw. ${euro.format(plan.baseline_alternative_cost)})`
+            : ""}</span>
+        </div>
+        ${lineChart(
+          [
+            { name: "mit Sunflow", color: SERIES_COLORS[0], points: withSunflow },
+            { name: "reiner Eigenverbrauch", color: UNASSIGNED_COLOR, dashed: true, points: withoutSunflow },
+          ],
+          { label: "Aufsummierte Stromkosten mit und ohne Sunflow", formatY: (v) => euro.format(v), yMin: lowest },
+        )}
       </section>
     `;
   }

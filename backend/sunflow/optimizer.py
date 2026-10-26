@@ -177,6 +177,8 @@ class Plan:
     # Part of cost and baseline_cost for needs covered by an alternative (e.g. district heating)
     alternative_cost: float = 0.0
     baseline_alternative_cost: float = 0.0
+    # Electricity cost per slot without Sunflow (for the cost chart)
+    baseline_slot_costs: list[float] = field(default_factory=list)
     # Value of the energy left at the end; savings compare cost minus this value
     terminal_value: float = 0.0
     baseline_terminal_value: float = 0.0
@@ -247,8 +249,13 @@ def smooth_actions(slots: list[PlanSlot], min_slots: int = 3) -> None:
             i = j + 1
 
 
-def simulate_self_consumption(inputs: list[SlotInput], battery: BatterySpec) -> tuple[float, float]:
-    """Cost in € and final SoC in Wh without Sunflow: the battery only follows surplus or deficit."""
+def simulate_self_consumption(
+    inputs: list[SlotInput], battery: BatterySpec, per_slot: list[float] | None = None
+) -> tuple[float, float]:
+    """Cost in € and final SoC in Wh without Sunflow: the battery only follows surplus or deficit.
+
+    per_slot, if given, receives the cost of every slot.
+    """
     soc = battery.soc_wh
     cost = 0.0
     for slot in inputs:
@@ -263,7 +270,10 @@ def simulate_self_consumption(inputs: list[SlotInput], battery: BatterySpec) -> 
             discharge = min(-surplus, battery.max_discharge_w, max(available, 0))
             soc -= discharge / battery.efficiency_discharge * DT_H
             imported, export = -surplus - discharge, 0.0
-        cost += (slot.price * imported - slot.feed_in * export) * DT_H / 1000
+        slot_cost = (slot.price * imported - slot.feed_in * export) * DT_H / 1000
+        cost += slot_cost
+        if per_slot is not None:
+            per_slot.append(slot_cost)
     return cost, soc
 
 
@@ -693,7 +703,7 @@ def optimize(
         (p.price * p.import_w - p.feed_in * p.export_w) * DT_H / 1000 for p in plan.slots
     )
     baseline_inputs, plan.baseline_alternative_cost = immediate_flex(inputs, flex)
-    plan.baseline_cost, baseline_soc = simulate_self_consumption(baseline_inputs, battery)
+    plan.baseline_cost, baseline_soc = simulate_self_consumption(baseline_inputs, battery, plan.baseline_slot_costs)
     plan.baseline_cost += plan.baseline_alternative_cost
     plan.baseline_terminal_value = terminal * baseline_soc / 1000
     return plan

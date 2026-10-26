@@ -28,6 +28,8 @@ class SunflowAnalysis extends LitElement {
     _efficiencyDays: { state: true },
     _pvLearning: { state: true },
     _recommendations: { state: true },
+    _costs: { state: true },
+    _costDays: { state: true },
     _applying: { state: true },
     _importing: { state: true },
   };
@@ -158,7 +160,64 @@ class SunflowAnalysis extends LitElement {
     `;
   }
 
+  async _loadCosts() {
+    const days = this._costDays ?? 30;
+    try {
+      const costs = await api.costHistory(days);
+      if (days === (this._costDays ?? 30)) this._costs = costs;
+    } catch {
+      this._costs = [];
+    }
+  }
+
+  _renderCosts() {
+    const days = this._costs ?? [];
+    if (!days.length) return nothing;
+    const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+    const sum = (key) => days.reduce((total, d) => total + (d[key] ?? 0), 0);
+    const hasWithout = days.some((d) => d.without_pv_cost !== null);
+    const point = (d, key) => {
+      const [y, m, day] = d.date.split("-").map(Number);
+      const start = new Date(y, m - 1, day);
+      return { start, end: new Date(start.getTime() + 86_400_000), value: d[key] };
+    };
+    const lines = [
+      { name: "Nettokosten", color: SERIES_COLORS[0], points: days.map((d) => point(d, "net_cost")) },
+      ...(hasWithout
+        ? [{ name: "ohne PV und Speicher", color: SERIES_COLORS[1], dashed: true, points: days.map((d) => point(d, "without_pv_cost")) }]
+        : []),
+    ];
+    const lowest = Math.min(0, ...days.map((d) => d.net_cost));
+    const incomplete = days.filter((d) => !d.complete).length;
+    return html`
+      <section>
+        <div class="section-head">
+          <h2>Kosten pro Tag</h2>
+          <div class="range" role="group" aria-label="Zeitraum Kosten">
+            ${[[30, "30 Tage"], [90, "90 Tage"]].map(
+              ([value, label]) => html`<button class=${(this._costDays ?? 30) === value ? "active" : ""}
+                aria-pressed=${(this._costDays ?? 30) === value}
+                @click=${() => { this._costDays = value; this._loadCosts(); }}>${label}</button>`,
+            )}
+          </div>
+        </div>
+        <div class="tiles">
+          <div class="tile now"><div class="small muted">Nettokosten</div><div class="value">${euro.format(sum("net_cost"))}</div>
+            <div class="small muted">Bezug ${euro.format(sum("import_cost"))} − Einspeisung ${euro.format(sum("export_revenue"))}</div></div>
+          ${hasWithout
+            ? html`<div class="tile"><div class="small muted">Ohne PV und Speicher</div><div class="value">${euro.format(sum("without_pv_cost"))}</div></div>
+                <div class="tile"><div class="small muted">Ersparnis durch PV und Speicher</div><div class="value">${euro.format(sum("savings"))}</div></div>`
+            : nothing}
+        </div>
+        ${lineChart(lines, { label: "Stromkosten pro Tag", formatY: (v) => euro.format(v), yMin: lowest })}
+        <p class="small muted">Aus Energiezählern und dem Preisverlauf der Tarif-Entität; Einspeisung zur eingestellten Vergütung.
+          ${incomplete ? `${incomplete} Tag(e) mit Lücken in der Statistik.` : ""}</p>
+      </section>
+    `;
+  }
+
   async _load() {
+    this._loadCosts();
     this._loadRecommendations();
     api.pvLearning().then((data) => (this._pvLearning = data)).catch(() => (this._pvLearning = null));
     this._loadEnergy();
@@ -182,6 +241,7 @@ class SunflowAnalysis extends LitElement {
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${this._renderRecommendations()}
       ${this._renderEnergy()}
+      ${this._renderCosts()}
       ${this._renderEfficiency()}
       ${this._renderPvLearning()}
       ${this._shadow === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
