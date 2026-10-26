@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.2
+
+- Analyse: Das Diagramm „Kosten pro Tag“ hat eine Legende.
+
 ## 0.28.1
 
 - Planung: Jeder steuerbare Verbraucher hat im Diagramm „PV-Erzeugung und Hausverbrauch“ eine eigene Farbe (gemessen und geplant), passend zur Karte unter „Steuerbare Verbraucher“.
