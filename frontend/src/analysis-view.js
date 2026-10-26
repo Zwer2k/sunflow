@@ -1,5 +1,5 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
-import { api } from "./api.js";
+import { api, renewIngressSession } from "./api.js";
 import { poll } from "./poll.js";
 import { lineChart, SERIES_COLORS } from "./charts.js";
 import { formatValue } from "./format.js";
@@ -291,7 +291,10 @@ class SunflowAnalysis extends LitElement {
     body.append("file", file);
     this._importing = true;
     try {
-      const response = await fetch("api/v1/import", { method: "POST", body });
+      let response = await fetch("api/v1/import", { method: "POST", body });
+      if (response.status === 401 && (await renewIngressSession())) {
+        response = await fetch("api/v1/import", { method: "POST", body });
+      }
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail ?? response.statusText);
       this._importResult = `${data.imported_slots} Zeitabschnitte importiert.`;

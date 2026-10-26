@@ -4,18 +4,48 @@ const BASE = "api/v1";
 // A hanging request must not block the browser's few connections to Home Assistant
 const TIMEOUT_MS = 60 * 1000;
 
+/**
+ * Renew the Home Assistant Ingress session through HA's own connection in the parent page.
+ *
+ * The Supervisor expires the ingress_session cookie after a while without validation;
+ * HA's frontend renews it only while its panel is active, so a tab or app in the
+ * background comes back with "401: Unauthorized". The panel page is same-origin.
+ */
+export async function renewIngressSession() {
+  try {
+    const hass = window.parent?.document.querySelector("home-assistant")?.hass;
+    if (!hass || window.parent === window) return false;
+    const result = await hass.callWS({ type: "supervisor/api", endpoint: "/ingress/session", method: "post" });
+    if (!result?.session) return false;
+    const secure = window.location.protocol === "https:" ? ";Secure" : "";
+    document.cookie = `ingress_session=${result.session};path=/api/hassio_ingress/;SameSite=Strict${secure}`;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function send(method, path, body) {
+  return fetch(`${BASE}${path}`, {
+    method,
+    headers: body === undefined ? {} : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+}
+
 async function request(method, path, body) {
   let response;
   try {
-    response = await fetch(`${BASE}${path}`, {
-      method,
-      headers: body === undefined ? {} : { "content-type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    response = await send(method, path, body);
+    // Expired ingress session: renew once and repeat the request
+    if (response.status === 401 && (await renewIngressSession())) response = await send(method, path, body);
   } catch (err) {
     if (err.name === "TimeoutError") throw new Error("Keine Antwort vom Server (Zeitüberschreitung)");
     throw err;
+  }
+  if (response.status === 401) {
+    throw new Error("Sitzung bei Home Assistant abgelaufen – bitte die Seite neu laden");
   }
   // Server errors may come as plain text ("Internal Server Error")
   const text = response.status === 204 ? "" : await response.text();
