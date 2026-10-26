@@ -5,6 +5,7 @@ come from the device chosen under "Messquellen"; on "automatic" the grid counter
 of the energy dashboard win, then a dedicated meter, then an inverter.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
 import math
@@ -210,6 +211,36 @@ MIN_BATTERY_CYCLE = 0.2
 MIN_INVERTER_WH = 500
 
 
+def _windowed(
+    dates: list[date],
+    complete: Callable[[date], bool],
+    value_of: Callable[[list[date]], float | None],
+    energy_of: Callable[[list[date]], float],
+) -> list[dict[str, Any]]:
+    """One point per day; days with too little energy are merged with the following ones.
+
+    In winter single days often stay below the minimum; together they still give a
+    value. A day with gaps in the statistics ends the window, its days stay empty.
+    """
+    points: list[dict[str, Any]] = []
+    window: list[date] = []
+
+    def empty(days: list[date]) -> None:
+        points.extend({"date": day.isoformat(), "days": 1, "value": None, "energy_wh": None} for day in days)
+
+    for day in dates:
+        if not complete(day):
+            empty([*window, day])
+            window = []
+            continue
+        window.append(day)
+        if (value := value_of(window)) is not None:
+            points.append({"date": window[0].isoformat(), "days": len(window), "value": value, "energy_wh": energy_of(window)})
+            window = []
+    empty(window)
+    return points
+
+
 async def efficiency_history(
     client: HAClient,
     batteries: list[BatteryCounters],
@@ -270,24 +301,35 @@ async def efficiency_history(
     series = []
     for battery in batteries:
         charged, discharged, soc = per_day(battery.charge), per_day(battery.discharge), soc_at_midnight(battery.soc)
-        points = []
-        for day in dates:
-            c, d = charged.get(day), discharged.get(day)
-            begin, finish = soc.get(day), soc.get(day + timedelta(days=1))
-            value = None
-            if c and d is not None and begin is not None and finish is not None and c >= MIN_BATTERY_CYCLE * battery.capacity_wh:
-                stored = battery.capacity_wh * (finish - begin) / 100
-                root = stored * stored + 4 * c * d
-                eta = (stored + math.sqrt(root)) / (2 * c) if root >= 0 else None
-                value = eta * eta if eta else None
-            points.append({"date": day.isoformat(), "value": value, "energy_wh": c})
+
+        def battery_value(window: list[date]) -> float | None:
+            c = sum(charged[day] for day in window)
+            d = sum(discharged[day] for day in window)
+            begin, finish = soc.get(window[0]), soc.get(window[-1] + timedelta(days=1))
+            if c < MIN_BATTERY_CYCLE * battery.capacity_wh or begin is None or finish is None:
+                return None
+            stored = battery.capacity_wh * (finish - begin) / 100
+            root = stored * stored + 4 * c * d
+            eta = (stored + math.sqrt(root)) / (2 * c) if root >= 0 else None
+            return eta * eta if eta else None
+
+        points = _windowed(
+            dates,
+            # A window starts only at a midnight with known SoC
+            lambda day: day in charged and day in discharged and day in soc,
+            battery_value,
+            lambda window: sum(charged[day] for day in window),
+        )
         series.append({"name": battery.name, "kind": "battery", "points": points})
     for name, (ac_id, dc_id) in inverters.items():
         ac, dc = per_day(ac_id), per_day(dc_id)
-        points = []
-        for day in dates:
-            a, d = ac.get(day), dc.get(day)
-            value = a / d if a is not None and d and d >= MIN_INVERTER_WH else None
-            points.append({"date": day.isoformat(), "value": value, "energy_wh": d})
+
+        def inverter_value(window: list[date]) -> float | None:
+            a, d = sum(ac[day] for day in window), sum(dc[day] for day in window)
+            return a / d if d >= MIN_INVERTER_WH else None
+
+        points = _windowed(
+            dates, lambda day: day in ac and day in dc, inverter_value, lambda window: sum(dc[day] for day in window)
+        )
         series.append({"name": name, "kind": "inverter", "points": points})
     return series

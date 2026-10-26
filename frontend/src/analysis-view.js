@@ -370,7 +370,8 @@ class SunflowAnalysis extends LitElement {
     const lines = series.map((s, i) => ({
       name: s.name,
       color: SERIES_COLORS[i % SERIES_COLORS.length],
-      points: s.points.map((p) => ({ start: day(p.date), end: new Date(day(p.date).getTime() + 86_400_000), value: p.value })),
+      // Days with little energy are merged into one value spanning them
+      points: s.points.map((p) => ({ start: day(p.date), end: new Date(day(p.date).getTime() + (p.days ?? 1) * 86_400_000), value: p.value })),
     }));
     const values = series.flatMap((s) => s.points.filter((p) => p.value !== null).map((p) => p.value));
     const lowest = Math.min(...values);
@@ -393,7 +394,8 @@ class SunflowAnalysis extends LitElement {
         </div>
         <p class="small muted">Pro Tag aus den Energiezählern. Speicher: Zyklus einschließlich Eigenverbrauch, um die
           Änderung des Ladestands bereinigt. Wechselrichter: Wechselstrom-Ertrag geteilt durch Gleichstrom-Eingang.
-          Tage mit sehr wenig Energie oder Lücken in den Daten bleiben leer.</p>
+          Tage mit wenig Energie (Speicher unter 20 % der Kapazität geladen, Wechselrichter unter 0,5 kWh) werden mit
+          den folgenden zu einem Wert zusammengefasst; Tage mit Lücken in den Daten bleiben leer.</p>
         <div class="legend">
           ${series.map((s, i) => {
             const average = mean(s);

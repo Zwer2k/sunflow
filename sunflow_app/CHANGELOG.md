@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.30.1
+
+- Analyse → Wirkungsgrade: Tage mit wenig Energie (im Herbst und Winter häufig) bleiben nicht mehr leer, sondern werden mit den folgenden Tagen zu einem Wert zusammengefasst. Die Linien reichen dadurch wieder bis an die letzten Tage.
+- Diagramme: Einzelne Werte ohne Nachbarn werden als Punkt gezeichnet statt unsichtbar zu bleiben.
+
 ## 0.30.0
 
 - Notstrom-Reserve gilt jetzt in jeder Strategie (Ausgewogen, PV aufnehmen, Autarkie): eigener Schalter mit Prozentwert unter Einstellungen → Planung. Im Alltag wird der Speicher nie unter die Reserve geplant; sie bleibt dem Notstrom bei Stromausfall vorbehalten.

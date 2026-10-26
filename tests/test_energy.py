@@ -150,6 +150,12 @@ def test_split_losses_needs_enough_varied_days() -> None:
     assert split_losses([(10000, 6000, -500)] * 10) is None
 
 
+def _hours_of(day: datetime) -> int:
+    """23, 24 or 25: the tests run on any date, also around daylight saving time changes."""
+    following = (day + timedelta(days=1)).replace(hour=0)
+    return round((following.timestamp() - day.timestamp()) / 3600)
+
+
 async def test_efficiency_history_per_day() -> None:
     """Daily battery round trip (SoC corrected) and inverter AC/DC; small or incomplete days stay empty."""
     from zoneinfo import ZoneInfo
@@ -164,9 +170,10 @@ async def test_efficiency_history_per_day() -> None:
         """Spread daily energy over the hours; skip (day, hour) to simulate a gap."""
         rows = []
         for index, (day, total) in enumerate(zip(days, per_day, strict=True)):
-            for hour in range(24):
+            hours = _hours_of(day)
+            for hour in range(hours):
                 if (index, hour) not in skip:
-                    rows.append({"start": (day + timedelta(hours=hour)).timestamp() * 1000, "change": total / 24})
+                    rows.append({"start": day.timestamp() * 1000 + hour * 3_600_000, "change": total / hours})
         return rows
 
     soc = [
@@ -190,7 +197,44 @@ async def test_efficiency_history_per_day() -> None:
     sofar, huawei = await efficiency_history(Client(), [battery], {"Huawei": ("ac", "dc")}, 3, tz)
 
     assert sofar["points"][0]["value"] == pytest.approx(0.72)
-    assert sofar["points"][1]["value"] is None  # 1 kWh is below 0.2 cycles
-    assert sofar["points"][2]["value"] is None  # an hour is missing
+    # 1 kWh is below 0.2 cycles and the following day has a gap: both stay empty
+    assert [p["value"] for p in sofar["points"][1:]] == [None, None]
     assert huawei["points"][0]["value"] == pytest.approx(0.9)
-    assert huawei["points"][1]["value"] is None  # 250 Wh DC: too little
+    # 250 Wh DC alone is too little; together with the next day it counts
+    assert huawei["points"][1]["days"] == 2
+    assert huawei["points"][1]["value"] == pytest.approx(2000 / 2250)
+
+
+async def test_efficiency_history_merges_days_with_little_energy() -> None:
+    """Winter days below the minimum are combined until there is enough energy for a value."""
+    from zoneinfo import ZoneInfo
+
+    from sunflow.energy import BatteryCounters, efficiency_history
+
+    tz = ZoneInfo("Europe/Berlin")
+    end = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    days = [end - timedelta(days=n) for n in (3, 2, 1)]
+
+    def hourly(per_day: list[float]) -> list[dict[str, Any]]:
+        return [
+            {"start": day.timestamp() * 1000 + hour * 3_600_000, "change": total / _hours_of(day)}
+            for day, total in zip(days, per_day, strict=True)
+            for hour in range(_hours_of(day))
+        ]
+
+    soc = [{"start": (day + timedelta(hours=h)).timestamp() * 1000, "mean": 50} for day in [*days, end] for h in (-1, 0)]
+
+    class Client:
+        async def command(self, msg_type: str, **data: Any) -> dict[str, list[dict[str, Any]]]:
+            return {"in": hourly([2500, 2500, 1000]), "out": hourly([2000, 2000, 800]), "soc": soc}
+
+    battery = BatteryCounters(name="Sofar", charge="in", discharge="out", soc="soc", capacity_wh=20000)
+    (sofar,) = await efficiency_history(Client(), [battery], {}, 3, tz)
+
+    merged, last = sofar["points"]
+    assert merged["date"] == days[0].date().isoformat()
+    assert merged["days"] == 2
+    assert merged["value"] == pytest.approx(0.8)
+    assert merged["energy_wh"] == pytest.approx(5000)
+    # Still too little on its own; the window is not closed yet
+    assert last["value"] is None
