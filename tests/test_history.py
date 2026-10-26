@@ -93,3 +93,17 @@ def test_efficiency_estimate() -> None:
     assert not lossy.reliable
 
     assert not estimate([10000.0, -2000.0], 1.0, 40, 40, capacity).plausible
+
+
+async def test_consumers_one_by_one_and_summed() -> None:
+    """Each controllable consumer gets its own line; loadpoint_w stays their sum."""
+    client = FakeClient({"sensor.wallbox": [(0, 3000), (5, 3000)], "sensor.ebike": [(0, 100), (5, 200)]})
+    series = [
+        Series(key="loadpoint_w", statistic_id="sensor.wallbox", factor=1, device_id="wallbox"),
+        Series(key="loadpoint_w", statistic_id="sensor.ebike", factor=1, device_id="ebike"),
+    ]
+
+    (point,) = await fetch_history(client, series, START, START + timedelta(minutes=15), timedelta(minutes=15))
+
+    assert point["consumers"] == {"wallbox": pytest.approx(3000), "ebike": pytest.approx(150)}
+    assert point["loadpoint_w"] == pytest.approx(3150)

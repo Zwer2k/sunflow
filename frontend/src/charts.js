@@ -139,7 +139,8 @@ export function priceChart(points, label, { start: rangeStart = null, end: range
 }
 
 /**
- * Lines over time; series: [{name, color, dashed?, points: [{start, end, value}]}].
+ * Lines over time; series: [{name, color, dashed?, dim?, points: [{start, end, value}]}].
+ * Dimmed series recede behind the others (legend highlighting).
  * Points with value null leave a gap. `now` draws a marker separating measured
  * values (left) from forecasts (right). `limits` ([{value, label}]) draws labeled
  * horizontal reference lines.
@@ -193,8 +194,9 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, no
           <text x=${W - PAD.right - 4} y=${y(l.value) - 4} text-anchor="end" class="axis limit-label">${l.label}</text>
         `,
       )}
-      ${series.map(
-        (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width="2"
+      ${[...series.filter((s) => s.dim), ...series.filter((s) => !s.dim)].map(
+        (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width=${s.dim === false ? 3 : 2}
+          stroke-opacity=${s.dim ? 0.15 : 1}
           stroke-dasharray=${s.dashed ? "5 4" : "none"} stroke-linejoin="round" stroke-linecap="round"></path>`,
       )}
       ${[...slots.values()].map(
