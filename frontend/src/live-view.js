@@ -47,6 +47,26 @@ const ICONS = {
 };
 
 const dayFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const hourFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
+
+// Home Assistant weather conditions: symbol and German name
+const WEATHER = {
+  "clear-night": ["🌙", "klar"],
+  cloudy: ["☁️", "bedeckt"],
+  exceptional: ["⚠️", "Unwetter"],
+  fog: ["🌫️", "Nebel"],
+  hail: ["🌨️", "Hagel"],
+  lightning: ["🌩️", "Gewitter"],
+  "lightning-rainy": ["⛈️", "Gewitter mit Regen"],
+  partlycloudy: ["⛅", "teils bewölkt"],
+  pouring: ["🌧️", "Starkregen"],
+  rainy: ["🌦️", "Regen"],
+  snowy: ["❄️", "Schnee"],
+  "snowy-rainy": ["🌨️", "Schneeregen"],
+  sunny: ["☀️", "sonnig"],
+  windy: ["💨", "windig"],
+  "windy-variant": ["💨", "windig, bewölkt"],
+};
 
 function pct(value) {
   return value === null || value === undefined ? "–" : `${Math.round(value * 100)} %`;
@@ -133,10 +153,40 @@ class SunflowLive extends LitElement {
         <h1>Live</h1>
         <span class="small muted">Aktuelle Energieflüsse${live ? html` · Stand ${dayFormat.format(new Date(live.time))}` : nothing}</span>
       </div>
+      ${live?.weather ? this._renderWeather(live.weather) : nothing}
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${live === null && !this._error ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
       ${live ? this._renderFlow(live) : nothing}
       ${this._renderToday()}
+    `;
+  }
+
+  _renderWeather(weather) {
+    const [symbol, name] = WEATHER[weather.condition] ?? ["", weather.condition ?? ""];
+    const temp = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)}${weather.temperature_unit ?? "°C"}`);
+    return html`
+      <div class="weather" aria-label="Wetter">
+        <div class="weather-now">
+          <span class="weather-symbol" aria-hidden="true">${symbol}</span>
+          <div>
+            <div><strong>${temp(weather.temperature)}</strong> ${name}</div>
+            ${weather.cloud !== null && weather.cloud !== undefined
+              ? html`<div class="small muted">${Math.round(weather.cloud)} % Bewölkung</div>`
+              : nothing}
+          </div>
+        </div>
+        <ol class="weather-hours">
+          ${weather.hours.map((h) => {
+            const [hourSymbol, hourName] = WEATHER[h.condition] ?? ["·", h.condition ?? ""];
+            return html`<li title="${hourName}${h.precipitation ? `, ${String(h.precipitation).replace(".", ",")} mm` : ""}">
+              <span class="small muted">${hourFormat.format(new Date(h.time))}</span>
+              <span aria-label=${hourName}>${hourSymbol}</span>
+              <span class="small">${temp(h.temperature)}</span>
+              ${h.cloud !== null && h.cloud !== undefined ? html`<span class="small muted">${Math.round(h.cloud)} %</span>` : nothing}
+            </li>`;
+          })}
+        </ol>
+      </div>
     `;
   }
 
@@ -347,7 +397,7 @@ class SunflowLive extends LitElement {
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
     /* Header, title and today's tiles stay visible below the diagram without scrolling */
-    .flow { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 330px)); display: block; margin: 0 auto; }
+    .flow { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 400px)); display: block; margin: 0 auto; }
     .edge { fill: none; stroke-linecap: round; }
     .edge.idle { stroke: var(--sf-border); stroke-width: 1.5; }
     .edge.base { opacity: 0.25; }
@@ -371,6 +421,15 @@ class SunflowLive extends LitElement {
       .flow { max-height: none; }
     }
     .soc-track { fill: none; stroke: var(--sf-border); stroke-width: 4; }
+    .weather { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+    .weather-now { display: flex; align-items: center; gap: 10px; }
+    .weather-symbol { font-size: 32px; line-height: 1; }
+    /* Next hours scroll sideways on narrow screens instead of wrapping */
+    .weather-hours { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; flex: 1; min-width: 0; }
+    .weather-hours li {
+      flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 52px;
+      padding: 4px 6px; border-radius: 8px; background: var(--sf-subtle);
+    }
     .soc-ring { fill: none; stroke-width: 4; stroke-linecap: round; }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 8px 12px; }

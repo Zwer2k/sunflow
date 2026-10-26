@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.0
+
+- Live: weather strip below the title with the current condition, temperature and
+  cloud coverage and the next 8 hours (symbol, temperature, cloud coverage;
+  precipitation as tooltip), from the weather entity chosen in Standards. The forecast
+  is cached for 10 minutes
+
 ## 0.18.1
 
 - Weather choice: shows the provider ("Home (Open-Meteo)") and checks the cloud

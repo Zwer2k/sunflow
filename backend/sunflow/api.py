@@ -1364,6 +1364,50 @@ async def get_live(request: Request) -> dict[str, Any]:
         "grid_w": grid_w,
         "load_w": load_w,
         "consumers": consumers,
+        "weather": await _live_weather(request, config, snapshot),
+    }
+
+
+WEATHER_CACHE = timedelta(minutes=10)
+WEATHER_HOURS = 8
+
+
+async def _live_weather(request: Request, config: SunflowConfig, snapshot: Snapshot) -> dict[str, Any] | None:
+    """Current weather and the next hours of the configured weather entity (forecast cached)."""
+    entity_id = weather_entity(config, snapshot)
+    state = snapshot.states.get(entity_id or "")
+    if not entity_id or state is None:
+        return None
+    cache = getattr(request.app.state, "weather_cache", None)
+    now = datetime.now(UTC)
+    if cache is None or cache["entity"] != entity_id or now - cache["at"] > WEATHER_CACHE:
+        try:
+            response = await request.app.state.ha.call_service(
+                "weather", "get_forecasts", {"type": "hourly"}, target={"entity_id": entity_id}, return_response=True
+            )
+            forecast = response["response"][entity_id]["forecast"]
+        except (HAError, KeyError, TypeError):
+            forecast = []
+        cache = {"entity": entity_id, "at": now, "forecast": forecast}
+        request.app.state.weather_cache = cache
+    upcoming = [f for f in cache["forecast"] if "datetime" in f and datetime.fromisoformat(f["datetime"]) > now]
+    attributes = state["attributes"]
+    return {
+        "condition": state["state"],
+        "temperature": attributes.get("temperature"),
+        "temperature_unit": attributes.get("temperature_unit", "°C"),
+        # Open-Meteo has no current cloud coverage; the next hour stands in
+        "cloud": attributes.get("cloud_coverage", upcoming[0].get("cloud_coverage") if upcoming else None),
+        "hours": [
+            {
+                "time": f["datetime"],
+                "condition": f.get("condition"),
+                "temperature": f.get("temperature"),
+                "cloud": f.get("cloud_coverage"),
+                "precipitation": f.get("precipitation"),
+            }
+            for f in upcoming[:WEATHER_HOURS]
+        ],
     }
 
 
