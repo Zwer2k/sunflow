@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.5
+
+- Entity assignment: German names for all roles (PV strings, energy counters, plan
+  values); values rounding to zero show as "0 W" instead of "−0 W"
+
 ## 0.19.4
 
 - Sofar battery and PV power in 10 W steps: the live value is the sum of the per input
