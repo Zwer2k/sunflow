@@ -27,6 +27,8 @@ class SunflowAnalysis extends LitElement {
     _efficiency: { state: true },
     _efficiencyDays: { state: true },
     _pvLearning: { state: true },
+    _recommendations: { state: true },
+    _applying: { state: true },
     _importing: { state: true },
   };
 
@@ -86,7 +88,78 @@ class SunflowAnalysis extends LitElement {
     this._loadEnergy();
   }
 
+  async _loadRecommendations() {
+    try {
+      this._recommendations = await api.recommendations();
+    } catch {
+      this._recommendations = null;
+    }
+    // The menu badge counts them
+    this.dispatchEvent(new CustomEvent("sf-recommendations", {
+      detail: { count: this._recommendations?.length ?? 0 }, bubbles: true, composed: true,
+    }));
+  }
+
+  async _applyRecommendation(rec) {
+    const action = rec.action;
+    if (action.type === "navigate") {
+      this.dispatchEvent(new CustomEvent("sf-navigate", { detail: action, bubbles: true, composed: true }));
+      return;
+    }
+    this._applying = rec.id;
+    try {
+      if (action.type === "set_parameter") {
+        await api.updateDevice(action.device_id, { parameters: { [action.name]: action.value } });
+      } else if (action.type === "set_optimizer") {
+        const settings = (await api.config()).optimizer;
+        await api.setOptimizer({ ...settings, ...action.changes });
+      }
+      this._error = null;
+      await this._loadRecommendations();
+    } catch (err) {
+      this._error = `Empfehlung konnte nicht übernommen werden: ${err.message}`;
+    } finally {
+      this._applying = null;
+    }
+  }
+
+  async _dismissRecommendation(rec) {
+    try {
+      await api.dismissRecommendation(rec.id, rec.fingerprint);
+      await this._loadRecommendations();
+    } catch (err) {
+      this._error = `Ausblenden fehlgeschlagen: ${err.message}`;
+    }
+  }
+
+  _renderRecommendations() {
+    const list = this._recommendations;
+    if (!list?.length) return nothing;
+    const actionLabel = (a) => (a.type === "navigate" ? "Öffnen" : "Übernehmen");
+    return html`
+      <section>
+        <h2>Empfehlungen</h2>
+        <div class="recommendations">
+          ${list.map(
+            (rec) => html`<article class="recommendation ${rec.severity}">
+              <strong>${rec.title}</strong>
+              <p class="small">${rec.text}</p>
+              <div class="actions">
+                ${rec.action
+                  ? html`<button class="ok" ?disabled=${this._applying === rec.id} @click=${() => this._applyRecommendation(rec)}>
+                      ${actionLabel(rec.action)}</button>`
+                  : nothing}
+                <button class="secondary" @click=${() => this._dismissRecommendation(rec)}>Ausblenden</button>
+              </div>
+            </article>`,
+          )}
+        </div>
+      </section>
+    `;
+  }
+
   async _load() {
+    this._loadRecommendations();
     api.pvLearning().then((data) => (this._pvLearning = data)).catch(() => (this._pvLearning = null));
     this._loadEnergy();
     this._loadEfficiency();
@@ -107,6 +180,7 @@ class SunflowAnalysis extends LitElement {
         </div>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
+      ${this._renderRecommendations()}
       ${this._renderEnergy()}
       ${this._renderEfficiency()}
       ${this._renderPvLearning()}
@@ -409,6 +483,14 @@ class SunflowAnalysis extends LitElement {
     .chart .axis { fill: var(--sf-muted); font-size: 11px; }
     .chart .hit { fill: transparent; }
     .chart .hit:hover { fill: var(--sf-text); fill-opacity: 0.06; }
+    .recommendations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 10px; }
+    .recommendation {
+      display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px;
+      background: var(--sf-subtle); border-left: 4px solid var(--sf-neutral-text);
+    }
+    .recommendation.warn { border-left-color: var(--sf-warn-text); }
+    .recommendation p { margin: 0; }
+    .recommendation .actions { display: flex; gap: 8px; margin-top: 4px; }
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }

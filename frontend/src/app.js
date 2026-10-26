@@ -126,6 +126,7 @@ class SunflowApp extends LitElement {
     _site: { state: true },
     _discoveryError: { state: true },
     _pendingRestore: { state: true },
+    _recommendationCount: { state: true },
     _restoring: { state: true },
     _measurements: { state: true },
     _sources: { state: true },
@@ -192,11 +193,28 @@ class SunflowApp extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._load();
+    this._loadRecommendationCount();
+    this._stopRecommendations = poll(() => this._loadRecommendationCount(), 15 * 60 * 1000);
+    // Views report changes of the count and ask to open another view
+    this.addEventListener("sf-recommendations", (e) => (this._recommendationCount = e.detail.count));
+    this.addEventListener("sf-navigate", (e) => {
+      this._setView(e.detail.view);
+      if (e.detail.step !== undefined) this._goTo(e.detail.step);
+    });
+  }
+
+  async _loadRecommendationCount() {
+    try {
+      this._recommendationCount = (await api.recommendations()).length;
+    } catch {
+      // Only a badge
+    }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopPreview();
+    this._stopRecommendations?.();
   }
 
   async _load() {
@@ -806,6 +824,9 @@ class SunflowApp extends LitElement {
               aria-label=${label} aria-current=${this._view === view ? "page" : "false"} @click=${() => this._setView(view)}>
               <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon}></path></svg>
               <span class="tab-label">${label}</span>
+              ${view === "analysis" && this._recommendationCount
+                ? html`<span class="badge" aria-label="${this._recommendationCount} Empfehlungen">${this._recommendationCount}</span>`
+                : nothing}
             </button>`,
           )}
         </nav>
@@ -1945,6 +1966,11 @@ class SunflowApp extends LitElement {
       min-height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent;
       cursor: pointer; font-size: 14px; color: var(--sf-muted);
     }
+    .tab { position: relative; }
+    .badge {
+      min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 18px;
+      background: var(--sf-warn-text); color: var(--sf-surface); text-align: center;
+    }
     .tab-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .tab:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
     .tab.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
@@ -1995,6 +2021,7 @@ class SunflowApp extends LitElement {
       .tab { flex: 1; justify-content: center; min-height: 48px; padding: 0; }
       .tab-icon { width: 24px; height: 24px; }
       .tab-label { display: none; }
+      .badge { position: absolute; top: 4px; left: calc(50% + 6px); }
       .tab.active { box-shadow: none; background: var(--sf-primary-bg); color: var(--sf-primary-text); }
       /* Room for the bottom bar */
       :host { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
