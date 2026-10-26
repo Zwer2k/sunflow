@@ -54,6 +54,13 @@ class Settings:
     # The battery only charges from PV once these loads got this much energy (Wh);
     # until then it may only charge from the grid
     battery_gate_after: tuple[tuple[str, float], ...] = ()
+    # Battery care: SoC kept below this (Wh) in everyday use
+    soc_limit_wh: float | None = None
+    # A full charge is due: the battery should be full at the end of this slot (soft)
+    full_charge_slot: int | None = None
+    # €/kWh missing to full at that slot; high enough to prefer PV, low enough not to
+    # force expensive grid charging
+    full_charge_penalty: float = 0.25
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -314,6 +321,10 @@ def optimize(
     cg = count + np.arange(n) if split_grid else None
     if split_grid:
         count += n
+    # Shortfall (Wh) to a due full charge
+    full_short = count if settings.full_charge_slot is not None and 0 <= settings.full_charge_slot < n else None
+    if full_short is not None:
+        count += 1
     battery = replace(battery, soc_wh=min(max(battery.soc_wh, 0), battery.capacity_wh))
     wear = settings.wear_ct_per_kwh / 100
     mean_price = float(np.mean([i.price for i in inputs]))
@@ -337,6 +348,8 @@ def optimize(
         tie += 0.0001 * t / n
         cost[d[t]] = (wear + tie) * DT_H / 1000
     cost[s[-1]] -= terminal / 1000
+    if full_short is not None:
+        cost[full_short] = settings.full_charge_penalty / 1000
     # PV stored now is worth this much later; feed-in is what surplus earns otherwise
     stored_value = terminal * eta_c
     mean_feed_in = float(np.mean([i.feed_in for i in inputs]))
@@ -386,6 +399,11 @@ def optimize(
 
     # A battery below its floor may stay there but must not be drained further
     soc_min = min(max(battery.min_soc_wh, settings.reserve_wh), battery.soc_wh)
+    # Charge limit for battery care; lifted while a full charge is due. Above it already,
+    # the battery may stay there but not charge further
+    soc_upper = battery.capacity_wh
+    if settings.soc_limit_wh is not None and full_short is None:
+        soc_upper = min(battery.capacity_wh, max(settings.soc_limit_wh, battery.soc_wh, soc_min))
     lower = np.zeros(count)
     upper = np.full(count, np.inf)
     for t, slot in enumerate(inputs):
@@ -405,7 +423,7 @@ def optimize(
             battery.max_discharge_w if settings.allow_battery_export else 0.0
         )
         lower[s[t]] = soc_min
-        upper[s[t]] = battery.capacity_wh
+        upper[s[t]] = soc_upper
         for k, load in enumerate(flex):
             limit = load.max_power_w if load.available[t] else 0.0
             if load.pv_only:
@@ -484,6 +502,9 @@ def optimize(
         add_gate(slots, f[k], load.max_power_w, load.gate_battery_wh, waits_for(load.gate_after))
     if battery_slots:
         add_gate(battery_slots, c, battery.max_charge_w, None, battery_after)
+    if full_short is not None:
+        # soc at the target slot plus shortfall reaches (almost) full
+        gate_rows.append(({s[settings.full_charge_slot]: -1, full_short: -1}, -battery.capacity_wh * FULL_FRACTION))
     integrality = np.zeros(total)
     integrality[count:] = 1
     binary_total = total
@@ -606,7 +627,8 @@ def optimize(
             x[c[t]],
             x[d[t]],
             settings.action_threshold_w,
-            full=x[s[t]] >= battery.capacity_wh * FULL_FRACTION,
+            # Only a really full battery stops by itself; at a care limit charging must be limited
+            full=soc_upper >= battery.capacity_wh and x[s[t]] >= battery.capacity_wh * FULL_FRACTION,
         )
         plan.slots.append(
             PlanSlot(

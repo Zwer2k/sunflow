@@ -21,6 +21,8 @@ class SunflowStandards extends LitElement {
     _wearCalc: { state: true },
     _batteryKwh: { state: true },
     _reserve: { state: true },
+    _maxSoc: { state: true },
+    _fullEvery: { state: true },
     _daily: { state: true },
     _largeLoad: { state: true },
     _saving: { state: true },
@@ -73,6 +75,8 @@ class SunflowStandards extends LitElement {
         this._wearCalc = undefined;
       }
       if ("backup_reserve_pct" in changes) this._reserve = undefined;
+      if ("max_soc_pct" in changes) this._maxSoc = undefined;
+      if ("full_charge_every_days" in changes) this._fullEvery = undefined;
       if ("daily_consumption_kwh" in changes) this._daily = undefined;
       if ("large_load_threshold_w" in changes) this._largeLoad = undefined;
       await this._load();
@@ -89,7 +93,7 @@ class SunflowStandards extends LitElement {
 
   /** Save edited numbers before the wizard moves on; false when they are invalid. */
   async saveIfChanged() {
-    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._daily, this._largeLoad].some(
+    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._daily, this._largeLoad].some(
       (v) => v !== undefined,
     );
     return !changed || this._saveNumbers(this._settings);
@@ -132,6 +136,22 @@ class SunflowStandards extends LitElement {
         return false;
       }
       changes.large_load_threshold_w = kw === null ? null : kw * 1000;
+    }
+    if (this._maxSoc !== undefined) {
+      const limit = fromDisplay(this._maxSoc, "%");
+      if (limit === undefined || limit === null || limit < 50 || limit > 100) {
+        this._error = "Bitte eine Ladegrenze zwischen 50 und 100 % eingeben.";
+        return false;
+      }
+      changes.max_soc_pct = limit;
+    }
+    if (this._fullEvery !== undefined) {
+      const days = fromDisplay(this._fullEvery, "");
+      if (days === undefined || (days !== null && (!Number.isInteger(days) || days < 1 || days > 90))) {
+        this._error = "Bitte ganze Tage zwischen 1 und 90 eingeben oder das Feld leeren.";
+        return false;
+      }
+      changes.full_charge_every_days = days;
     }
     if (this._reserve !== undefined) {
       const reserve = fromDisplay(this._reserve, "%");
@@ -247,6 +267,24 @@ class SunflowStandards extends LitElement {
               </label>`
             : nothing}
           <label class="field">
+            <span class="field-label">Ladegrenze im Alltag</span>
+            <span class="input-unit">
+              <input inputmode="decimal" .value=${this._maxSoc ?? toDisplay(settings.max_soc_pct, "%")}
+                @input=${(e) => (this._maxSoc = e.target.value)}>
+              <span class="muted">%</span>
+            </span>
+            <span class="small muted">Schont die Zellen: höher lädt Sunflow nur für eine fällige Vollladung. 100 % = keine Grenze.</span>
+          </label>
+          <label class="field">
+            <span class="field-label">Voll laden alle</span>
+            <span class="input-unit">
+              <input inputmode="numeric" placeholder="z. B. 14" .value=${this._fullEvery ?? toDisplay(settings.full_charge_every_days, "")}
+                @input=${(e) => (this._fullEvery = e.target.value)}>
+              <span class="muted">Tage</span>
+            </span>
+            <span class="small muted">Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt.</span>
+          </label>
+          <label class="field">
             <span class="field-label">Durchschnittlicher Hausverbrauch</span>
             <span class="input-unit">
               <input inputmode="decimal" placeholder="z. B. 14"
@@ -276,7 +314,7 @@ class SunflowStandards extends LitElement {
             </span>
           </label>
         </div>
-        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._daily, this._largeLoad].some((v) => v !== undefined)
+        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._daily, this._largeLoad].some((v) => v !== undefined)
           ? html`<div class="actions">
               <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
                 Speichern und neu planen
