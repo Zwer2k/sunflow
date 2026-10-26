@@ -34,11 +34,12 @@ CREATE TABLE IF NOT EXISTS slots (
     actual_action TEXT,
     samples INTEGER,
     forecast_pv_w REAL,
-    weather_cloud REAL
+    weather_cloud REAL,
+    actual_loadpoint_w REAL
 )
 """
 # Columns added after the first release; existing databases get them on open
-ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL"}
+ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL"}
 
 
 def slot_start(moment: datetime) -> datetime:
@@ -56,6 +57,8 @@ class Sample:
     grid_w: float | None
     pv_w: float | None
     load_w: float | None
+    # Power of all controllable consumers (wallbox, heating rod, own consumers)
+    loadpoint_w: float | None = None
 
 
 @dataclass(kw_only=True)
@@ -79,6 +82,7 @@ class SlotRecorder:
             "actual_grid_w": mean("grid_w"),
             "actual_pv_w": mean("pv_w"),
             "actual_load_w": mean("load_w"),
+            "actual_loadpoint_w": mean("loadpoint_w"),
             "samples": len(self.samples),
         }
         result["actual_action"] = actual_action(result["actual_grid_w"], result["actual_battery_w"])

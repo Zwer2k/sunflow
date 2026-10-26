@@ -204,13 +204,17 @@ def load_forecast(config: SunflowConfig, rows: list[dict[str, Any]], days: int) 
     heating rod), else they would count as base consumption.
     """
     threshold = config.optimizer.large_load_threshold_w
+    # The forecast is the base load without controllable consumers; only quarters where
+    # their power was recorded can be compared
     pairs = [
-        (row["planned_load_w"], row["actual_load_w"])
+        (row["planned_load_w"], row["actual_load_w"] - row["actual_loadpoint_w"])
         for row in rows
         if row.get("planned_load_w") is not None
         and row.get("actual_load_w") is not None
-        and (threshold is None or row["actual_load_w"] <= threshold)
+        and row.get("actual_loadpoint_w") is not None
+        and (threshold is None or row["actual_load_w"] - row["actual_loadpoint_w"] <= threshold)
     ]
+    days = min(days, len(pairs) // 96)
     compared = len(pairs)
     forecast = sum(p for p, _ in pairs) / 4000
     actual = sum(a for _, a in pairs) / 4000

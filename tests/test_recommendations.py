@@ -43,8 +43,11 @@ def test_hot_water_demand_plausibility() -> None:
 def test_load_forecast_deviation_offers_new_daily_value() -> None:
     """Base load 500 W measured against 400 W forecast suggests 12 kWh per day; wallbox quarters do not count."""
     config = _config(optimizer=OptimizerConfig(daily_consumption_kwh=14, large_load_threshold_w=3500))
-    rows = [{"planned_load_w": 400.0, "actual_load_w": 500.0} for _ in range(3 * 96)]
-    rows += [{"planned_load_w": 400.0, "actual_load_w": 11000.0} for _ in range(8)]
+    # Heating rod (2,8 kW) runs in 8 quarters: it is not base load
+    rows = [{"planned_load_w": 400.0, "actual_load_w": 500.0, "actual_loadpoint_w": 0.0} for _ in range(3 * 96)]
+    rows += [{"planned_load_w": 400.0, "actual_load_w": 3300.0, "actual_loadpoint_w": 2800.0} for _ in range(8)]
+    # Older rows without consumer power are left out
+    rows += [{"planned_load_w": 400.0, "actual_load_w": 900.0} for _ in range(96)]
 
     rec = next(r for r in build(config, None, {}, rows, 3, None, []) if r["id"] == "load_forecast")
 

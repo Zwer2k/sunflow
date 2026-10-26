@@ -7,7 +7,7 @@ import logging
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .config_store import ConfigStore, DeviceConfig
+from .config_store import ConfigStore, DeviceConfig, SunflowConfig
 from .discovery import SnapshotCache, fetch_snapshot
 from .ha import HAClient, HAError
 from .plan import PlanResult, compute_plan
@@ -90,7 +90,20 @@ async def take_sample(
         grid_w=values(measurement_device(config, profiles, "grid")).get("grid_power"),
         pv_w=site_status(config.devices, profiles, snapshot).pv_total,
         load_w=values(measurement_device(config, profiles, "load")).get("load_power"),
+        loadpoint_w=consumer_power(config, profiles, values),
     )
+
+
+def consumer_power(config: SunflowConfig, profiles: dict[str, Any], values: Any) -> float | None:
+    """Summed power of the controllable consumers; None without any."""
+    powers = []
+    for device in config.devices:
+        capabilities = profiles[device.profile]["capabilities"]
+        if "loadpoint" in capabilities or "load" in capabilities:
+            readings = values(device)
+            power = readings.get("charge_power") if "loadpoint" in capabilities else readings.get("power")
+            powers.append(max(power or 0.0, 0.0))
+    return sum(powers) if powers else None
 
 
 @dataclass(kw_only=True)
