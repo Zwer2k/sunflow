@@ -124,7 +124,7 @@ class OptimizerConfig(BaseModel):
     # When set, wear_ct_per_kwh is derived from it
     wear_calculation: WearCalculation | None = None
     allow_grid_charge: bool = True
-    strategy: Literal["balanced", "pv_absorption", "backup"] = "balanced"
+    strategy: Literal["balanced", "pv_absorption", "backup", "autarky"] = "balanced"
     backup_reserve_pct: float = 30.0
     # Load forecast: average daily household consumption and the threshold above
     # which hours count as large sporadic loads (e.g. EV charging) and are left out
@@ -149,7 +149,7 @@ class OptimizerConfig(BaseModel):
         return self
 
 
-Strategy = Literal["balanced", "pv_absorption", "backup"]
+Strategy = Literal["balanced", "pv_absorption", "backup", "autarky"]
 # Position of the home battery in the priority list
 BATTERY_PRIORITY_ID = "battery"
 

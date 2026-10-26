@@ -44,6 +44,9 @@ class Settings:
     allow_grid_charge: bool = True
     # Extra cost per exported kWh so the battery keeps room for PV ("pv_absorption")
     export_penalty_ct_per_kwh: float = 0.0
+    # Extra cost per imported kWh: makes grid energy count far above any price difference
+    # ("autarky": as little grid as possible rather than the cheapest grid)
+    import_penalty_ct_per_kwh: float = 0.0
     # Energy that must stay in the battery, e.g. for backup power ("backup")
     reserve_wh: float = 0.0
     # A fixed feed-in tariff only pays for PV; exporting stored grid energy is not
@@ -337,7 +340,7 @@ def optimize(
     spread = max(prices) - min(prices)
     cost = np.zeros(count)
     for t, slot in enumerate(inputs):
-        cost[gi[t]] = slot.price * DT_H / 1000
+        cost[gi[t]] = (slot.price + settings.import_penalty_ct_per_kwh / 100) * DT_H / 1000
         # Risk premium (max 0.5 ct/kWh): export late, after the battery is full. Equally
         # cheap if the forecast holds, but robust when PV falls short and like
         # self-consumption mode; must outweigh the smoothing of a flat export

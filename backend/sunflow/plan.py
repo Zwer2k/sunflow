@@ -622,6 +622,10 @@ def battery_spec(
     )
 
 
+# Import penalty for "autarky": far above price differences and wear, so the battery
+# covers every demand it can and loads go to the PV surplus
+AUTARKY_IMPORT_PENALTY_CT = 100.0
+
 # Export penalty for "pv_absorption": large enough to keep room for PV before sunny days
 PV_ABSORPTION_PENALTY_CT = 5.0
 
@@ -630,9 +634,12 @@ def optimizer_settings(config: SunflowConfig, battery: BatterySpec) -> Settings:
     """Translate the user's planning settings and strategy into optimizer settings."""
     options = config.optimizer
     strategy = config.effective_strategy(datetime.now(UTC))
+    autarky = strategy == "autarky"
     return Settings(
         wear_ct_per_kwh=options.wear_ct_per_kwh,
-        allow_grid_charge=options.allow_grid_charge,
+        # Autarky never charges from the grid
+        allow_grid_charge=options.allow_grid_charge and not autarky,
+        import_penalty_ct_per_kwh=AUTARKY_IMPORT_PENALTY_CT if autarky else 0.0,
         export_penalty_ct_per_kwh=PV_ABSORPTION_PENALTY_CT if strategy == "pv_absorption" else 0.0,
         reserve_wh=battery.capacity_wh * options.backup_reserve_pct / 100 if strategy == "backup" else 0.0,
     )

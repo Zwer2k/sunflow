@@ -9,6 +9,10 @@ const STRATEGIES = {
     hint: "Hält Platz für Solarstrom frei und lädt vor sonnigen Tagen nicht aus dem Netz – sinnvoll bei Einspeisebegrenzung.",
   },
   backup: { label: "Notstrom sicherstellen", hint: "Hält eine Reserve für Stromausfälle (EPS) im Speicher." },
+  autarky: {
+    label: "Möglichst autark",
+    hint: "So wenig Netzbezug wie möglich: kein Netzladen, der Speicher deckt jeden Bedarf sofort. Kann mit Zeittarifen etwas mehr kosten.",
+  },
 };
 
 /** Default planning settings ("Standards" step of the setup). */

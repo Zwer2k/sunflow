@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.25.0
+
+- New battery strategy "Autarkie": as little grid import as possible instead of the
+  lowest cost. Every imported kWh counts far above price differences, no grid
+  charging, the battery covers demand right away, loads go to the PV surplus.
+  Selectable in Standards and Steuerung
+
 ## 0.24.0
 
 - Own consumers with a power sensor learn their use from the last 10 days: daily
