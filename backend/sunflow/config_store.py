@@ -8,7 +8,7 @@ import shutil
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CONFIG_VERSION = 1
 
@@ -95,12 +95,34 @@ class ForecastPlane(BaseModel):
         return self.custom_name or self.name
 
 
+class WearCalculation(BaseModel):
+    """Battery wear from purchase price and the manufacturer's cycle rating."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    price_eur: float = Field(gt=0)
+    cycles: float = Field(gt=0)
+    capacity_kwh: float = Field(gt=0)
+    # Depth of discharge the cycle rating refers to
+    depth_of_discharge_pct: float = Field(default=90, gt=0, le=100)
+    # Remaining capacity at the end of the rated cycles; the capacity fades towards it
+    end_of_life_pct: float = Field(default=70, gt=0, le=100)
+
+    def ct_per_kwh(self) -> float:
+        """Price per kWh discharged over the battery's rated life."""
+        average_capacity = self.capacity_kwh * (1 + self.end_of_life_pct / 100) / 2
+        lifetime_kwh = self.cycles * average_capacity * self.depth_of_discharge_pct / 100
+        return self.price_eur * 100 / lifetime_kwh
+
+
 class OptimizerConfig(BaseModel):
     """User settings for planning."""
 
     model_config = ConfigDict(allow_inf_nan=False)
 
     wear_ct_per_kwh: float = 3.0
+    # When set, wear_ct_per_kwh is derived from it
+    wear_calculation: WearCalculation | None = None
     allow_grid_charge: bool = True
     strategy: Literal["balanced", "pv_absorption", "backup"] = "balanced"
     backup_reserve_pct: float = 30.0
@@ -108,6 +130,12 @@ class OptimizerConfig(BaseModel):
     # which hours count as large sporadic loads (e.g. EV charging) and are left out
     daily_consumption_kwh: float | None = None
     large_load_threshold_w: float | None = 3500.0
+
+    @model_validator(mode="after")
+    def _derive_wear(self) -> "OptimizerConfig":
+        if self.wear_calculation is not None:
+            self.wear_ct_per_kwh = round(self.wear_calculation.ct_per_kwh(), 2)
+        return self
 
 
 Strategy = Literal["balanced", "pv_absorption", "backup"]
