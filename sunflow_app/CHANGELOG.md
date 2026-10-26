@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.22.0
+
+- PV forecast uncertainty: the plan can lean towards the pessimistic forecast (Solcast
+  p10). Standards → "Unsichere PV-Prognose": expected value, balanced (default, 30 %
+  of the way to p10) or cautious (70 %). Forecast.Solar planes take the relative
+  range of Solcast in the same interval instead of counting as 0 in p10. The learned
+  PV correction applies to both values
+
 ## 0.21.0
 
 - Learned load forecast: shadow mode now stores the forecast outside temperature per

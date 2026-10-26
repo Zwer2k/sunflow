@@ -72,6 +72,8 @@ class SlotInput:
     load_w: float
     price: float  # import €/kWh
     feed_in: float  # export €/kWh
+    # Pessimistic PV (p10), when the forecast has a range
+    pv_low_w: float | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

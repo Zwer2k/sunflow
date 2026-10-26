@@ -174,7 +174,9 @@ def test_solcast() -> None:
 
     (total,) = sum_forecasts([a, b])
     assert total.power == pytest.approx(2000)
-    assert total.power10 == pytest.approx(1000)
+    # The plane without a range takes the relative range of the other: 1000 + 500 x 1.0/1.5
+    assert total.power10 == pytest.approx(1000 + 500 * 1.0 / 1.5)
+    assert total.power90 == pytest.approx(2000 + 500 * 2.0 / 1.5)
     assert total.end - total.start == period
 
 

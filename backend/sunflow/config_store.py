@@ -138,6 +138,8 @@ class OptimizerConfig(BaseModel):
     # Adapt the PV forecast to this site from shadow data; weather entity for the cloud
     # coverage (None: the first weather entity found)
     pv_learning: bool = True
+    # How much to trust the PV forecast: expected value, or partly the pessimistic one
+    pv_risk: Literal["expected", "balanced", "cautious"] = "balanced"
     weather_entity: str | None = None
 
     @model_validator(mode="after")
