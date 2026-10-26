@@ -282,11 +282,13 @@ class SunflowPlan extends LitElement {
               ? `, skaliert auf ${toDisplay(plan.load_scaled_to_kwh, "kWh")} kWh/Tag`
               : ""}${plan.load_separated_hours ? `, ohne steuerbare Verbraucher (${plan.load_separated_hours} h getrennt)` : ""}`})</span></span>
           ${hasLoadpoints
-            ? html`<label class="legend-item total-toggle">
-                <input type="checkbox" .checked=${this._showTotal} @change=${(e) => this._setShowTotal(e.target.checked)}>
-                ${this._showTotal ? html`<span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>` : nothing}
-                Gesamtverbrauch (mit steuerbaren Verbrauchern)
-              </label>`
+            ? html`<span class="legend-item total-toggle">
+                <input type="checkbox" id="show-total" aria-label="Gesamtverbrauch einblenden" .checked=${this._showTotal}
+                  @change=${(e) => this._setShowTotal(e.target.checked)}>
+                ${this._showTotal
+                  ? this._legendButton("total", UNASSIGNED_COLOR, "Gesamtverbrauch (mit steuerbaren Verbrauchern)")
+                  : html`<label for="show-total">Gesamtverbrauch (mit steuerbaren Verbrauchern)</label>`}
+              </span>`
             : nothing}
         </div>
         ${lineChart(
@@ -465,6 +467,7 @@ class SunflowPlan extends LitElement {
 
   _setShowTotal(show) {
     this._showTotal = show;
+    if (!show && this._focus === "total") this._focus = null;
     try {
       localStorage.setItem(TOTAL_KEY, show ? "1" : "0");
     } catch {
@@ -575,7 +578,7 @@ class SunflowPlan extends LitElement {
     .swatch.inline { display: inline-block; margin-right: 6px; vertical-align: -1px; }
     .legend-button { font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: 999px;
       padding: 2px 8px; margin: -3px 0 -3px -9px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-    .total-toggle { cursor: pointer; }
+    .total-toggle label, .total-toggle input { cursor: pointer; }
     .total-toggle input { margin: 0; }
     .legend-button:hover { background: var(--sf-subtle); }
     .legend-button.active { border-color: var(--sf-border, var(--sf-muted)); background: var(--sf-subtle); font-weight: 600; }

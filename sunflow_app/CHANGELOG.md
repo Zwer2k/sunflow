@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.4
+
+- Planung: Der eingeblendete Gesamtverbrauch lässt sich über seinen Legendeneintrag hervorheben wie die anderen Linien; ein- und ausgeblendet wird nur über das Häkchen.
+
 ## 0.30.3
 
 - Planung: Im Diagramm „PV-Erzeugung und Hausverbrauch“ lässt sich zusätzlich der Gesamtverbrauch einblenden (Hausverbrauch mit steuerbaren Verbrauchern, gemessen und geplant). Die Auswahl wird im Browser gemerkt.
