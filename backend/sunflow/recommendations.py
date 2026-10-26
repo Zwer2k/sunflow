@@ -16,8 +16,6 @@ from .pv_learning import PvCorrection
 
 # Shadow data needed before load or PV deviations count
 MIN_SHADOW_DAYS = 3
-# Deviation of the load forecast that is worth a new daily consumption
-LOAD_DEVIATION = 0.1
 # Battery efficiency off by more than this (percentage points) from the counters
 EFFICIENCY_GAP = 3.0
 # Hot water reheated per day above this temperature drop of the tank looks implausible
@@ -197,50 +195,6 @@ def plan_worse_than_baseline(latest: PlanResult | None) -> list[Recommendation]:
     ]
 
 
-def load_forecast(config: SunflowConfig, rows: list[dict[str, Any]], days: int) -> list[Recommendation]:
-    """The daily consumption setting does not match what was measured.
-
-    Like the forecast, the comparison leaves out quarters with large loads (wallbox,
-    heating rod), else they would count as base consumption.
-    """
-    threshold = config.optimizer.large_load_threshold_w
-    # The forecast is the base load without controllable consumers; only quarters where
-    # their power was recorded can be compared
-    pairs = [
-        (row["planned_load_w"], row["actual_load_w"] - row["actual_loadpoint_w"])
-        for row in rows
-        if row.get("planned_load_w") is not None
-        and row.get("actual_load_w") is not None
-        and row.get("actual_loadpoint_w") is not None
-        and (threshold is None or row["actual_load_w"] - row["actual_loadpoint_w"] <= threshold)
-    ]
-    days = min(days, len(pairs) // 96)
-    compared = len(pairs)
-    forecast = sum(p for p, _ in pairs) / 4000
-    actual = sum(a for _, a in pairs) / 4000
-    if days < MIN_SHADOW_DAYS or not forecast or not actual or not compared:
-        return []
-    if abs(actual / forecast - 1) < LOAD_DEVIATION:
-        return []
-    per_day = actual / (compared / 96)
-    current = config.optimizer.daily_consumption_kwh
-    action = {"type": "set_optimizer", "changes": {"daily_consumption_kwh": round(per_day, 1)}} if current else None
-    return [
-        Recommendation(
-            id="load_forecast",
-            severity="info",
-            title=f"Hausverbrauch {actual / forecast * 100 - 100:+.0f} % gegenüber der Prognose",
-            text=(
-                f"In {days} Tagen Schattenbetrieb lag der Verbrauch im Mittel bei {per_day:.1f} kWh pro Tag".replace(".", ",")
-                + (f", eingestellt sind {current:.1f} kWh.".replace(".", ",") if current else ".")
-                + " Viertelstunden mit großen Verbrauchern (Wallbox, Heizstab) sind dabei nicht mitgezählt."
-            ),
-            action=action,
-            fingerprint=_fingerprint(round(per_day), current),
-        )
-    ]
-
-
 def pv_forecast(config: SunflowConfig, correction: PvCorrection | None, weather: list[dict[str, Any]]) -> list[Recommendation]:
     """PV forecast far off while learning is off, or no weather with cloud coverage."""
     result = []
@@ -285,7 +239,6 @@ def build(
         *missing_settings(config, latest),
         *limits_cost_pv(config, latest),
         *plan_worse_than_baseline(latest),
-        *load_forecast(config, shadow_rows, shadow_days),
         *hot_water_demand(config),
         *pv_forecast(config, correction, weather),
     ]

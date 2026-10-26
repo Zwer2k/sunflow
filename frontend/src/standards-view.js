@@ -20,6 +20,7 @@ class SunflowStandards extends LitElement {
     _wearMode: { state: true },
     _wearCalc: { state: true },
     _batteryKwh: { state: true },
+    _historyKwh: { state: true },
     _weather: { state: true },
     _reserve: { state: true },
     _maxSoc: { state: true },
@@ -48,7 +49,10 @@ class SunflowStandards extends LitElement {
       this._error = null;
       // Capacity as default for the wear calculation (derived from the battery modules)
       api.weatherEntities().then((list) => (this._weather = list)).catch(() => (this._weather = []));
-      api.latestPlan().then((plan) => (this._batteryKwh = plan.battery ? plan.battery.capacity_wh / 1000 : null)).catch(() => {});
+      api.latestPlan().then((plan) => {
+        this._batteryKwh = plan.battery ? plan.battery.capacity_wh / 1000 : null;
+        this._historyKwh = plan.load_history_daily_kwh;
+      }).catch(() => {});
     } catch (err) {
       this._error = `Einstellungen konnten nicht geladen werden: ${err.message}`;
     }
@@ -306,14 +310,19 @@ class SunflowStandards extends LitElement {
             <span class="small muted">War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll – auch wenn Netzladen sonst aus ist. Leer = nie.</span>
           </label>
           <label class="field">
-            <span class="field-label">Durchschnittlicher Hausverbrauch</span>
+            <span class="field-label">Hausverbrauch pro Tag (Startwert)</span>
             <span class="input-unit">
               <input inputmode="decimal" placeholder="z. B. 14"
                 .value=${this._daily ?? toDisplay(settings.daily_consumption_kwh, "kWh")}
                 @input=${(e) => (this._daily = e.target.value)}>
               <span class="muted">kWh/Tag</span>
             </span>
-            <span class="small muted">Die Tagesform kommt aus der Historie, die Summe aus diesem Wert. Leer lassen = nur Historie.</span>
+            <span class="small muted">Gilt nur, solange weniger als 7 Tage Verbrauchsverlauf vorliegen; danach plant Sunflow mit
+              den gemessenen Werten (ab 14 Tagen mit dem gelernten Modell). Ohne große Verbraucher wie Wallbox und Heizstab.</span>
+            ${this._historyKwh
+              ? html`<span class="small">Aus dem Verlauf: <strong>${toDisplay(Math.round(this._historyKwh * 10) / 10, "ct")} kWh/Tag</strong>
+                  · <button class="link" @click=${() => (this._daily = toDisplay(Math.round(this._historyKwh * 10) / 10, "ct"))}>übernehmen</button></span>`
+              : nothing}
           </label>
           <label class="field">
             <span class="field-label">Großverbraucher ausklammern ab</span>
@@ -451,6 +460,7 @@ class SunflowStandards extends LitElement {
     .option.selected { border-color: var(--sf-primary); background: var(--sf-primary-bg); }
     .option input { margin-top: 3px; width: 18px; height: 18px; }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    .link { border: 0; background: none; padding: 0; color: var(--sf-primary-text); text-decoration: underline; cursor: pointer; font: inherit; }
     select {
       min-height: 40px; padding: 0 10px; font: inherit; font-size: 14px; border: 1px solid var(--sf-border-strong);
       border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);

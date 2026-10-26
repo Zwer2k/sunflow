@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.23.1
+
+- "Hausverbrauch pro Tag" is a start value: it scales the load forecast only while less
+  than 7 days of consumption history exist; afterwards the measured hourly means count
+  (and from 14 days the learned model). Standards shows a suggestion from the history
+  (base load without large loads) to take over. The recommendation to change the daily
+  consumption is dropped
+
 ## 0.23.0
 
 - Learned departure of the car: from the last 14 days of the loadpoint's "connected"

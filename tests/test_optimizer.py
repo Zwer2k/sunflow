@@ -646,13 +646,22 @@ def test_baseline_runs_optional_loads_on_pv_only() -> None:
     assert plan.savings >= -0.01
 
 
-def test_load_forecast_scales_each_day() -> None:
-    """With a daily total every calendar day adds up to it, also when day types differ."""
+@pytest.mark.parametrize(
+    ("days", "saturday_kwh", "scaled"),
+    [
+        # Short history: the setting is the start value, every calendar day adds up to it
+        pytest.param(5, 14.0, True, id="start-value"),
+        # A week or more: the measured hourly means count (weekend 800 W x 24 h)
+        pytest.param(14, 19.2, False, id="own-history"),
+    ],
+)
+def test_daily_consumption_is_a_start_value(days: int, saturday_kwh: float, scaled: bool) -> None:
+    """The daily consumption setting scales the forecast only while the history is short."""
     monday = datetime(2026, 10, 19, 0, 0, tzinfo=BERLIN)
     # Weekdays use 400 W, the weekend 800 W: day types with different shapes
     history = [
         ((monday + timedelta(days=d, hours=h)).astimezone(UTC), 800.0 if d % 7 >= 5 else 400.0)
-        for d in range(14)
+        for d in range(days)
         for h in range(24)
     ]
     start = datetime(2026, 10, 30, 12, 0, tzinfo=BERLIN)  # Friday noon, horizon into the weekend
@@ -660,7 +669,9 @@ def test_load_forecast_scales_each_day() -> None:
     forecast = build_load_forecast(history, start, 48, BERLIN, daily_kwh=14)
 
     saturday = [p.power for p in forecast.points if p.start.date() == datetime(2026, 10, 31).date()]
-    assert sum(saturday) / 4 == pytest.approx(14000, rel=0.01)
+    assert sum(saturday) / 4 / 1000 == pytest.approx(saturday_kwh, rel=0.01)
+    assert (forecast.scaled_to_kwh is not None) == scaled
+    assert (forecast.history_daily_kwh is not None) == (not scaled)
 
 
 def test_grid_charging_needs_more_spread_than_pv_charging() -> None:
