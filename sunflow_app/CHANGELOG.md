@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.1
+
+- Shadow mode records the power of the controllable consumers; the load recommendation
+  compares the forecast with the measured base load without them (a heating rod below
+  the large-load threshold no longer counts as household consumption). It appears once
+  three days of such data exist
+
 ## 0.20.0
 
 - Recommendations (Analyse, count as badge on the menu): Sunflow checks settings, plan,
