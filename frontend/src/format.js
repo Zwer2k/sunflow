@@ -15,6 +15,23 @@ const ROLE_LABELS = {
   ac_power: "PV (AC)",
   daily_yield: "Tagesertrag",
   status: "Status",
+  plan_soc: "Plan-Ziel",
+  plan_time: "Plan-Abfahrt",
+  pv1_power: "PV String 1",
+  pv2_power: "PV String 2",
+  pv1_voltage: "PV String 1 Spannung",
+  pv1_current: "PV String 1 Strom",
+  pv2_voltage: "PV String 2 Spannung",
+  pv2_current: "PV String 2 Strom",
+  pv_energy: "PV-Ertrag (Zähler)",
+  pv_dc_energy: "PV-Eingang DC (Zähler)",
+  load_energy: "Hausverbrauch (Zähler)",
+  grid_import_energy: "Netzbezug (Zähler)",
+  grid_export_energy: "Einspeisung (Zähler)",
+  battery_charge_energy: "Speicher geladen (Zähler)",
+  battery_discharge_energy: "Speicher entladen (Zähler)",
+  switch: "Schalter",
+  power: "Leistung",
 };
 
 const number1 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
@@ -36,7 +53,8 @@ export function formatPower(watts, display) {
   const step = POWER_FACTORS[display?.unit] && display.precision !== null && display.precision !== undefined
     ? POWER_FACTORS[display.unit] / 10 ** display.precision
     : 1;
-  if (Math.abs(watts) < 1000) return `${number0.format(Math.round(watts / step) * step)} W`;
+  const rounded = Math.round(watts / step) * step;
+  if (Math.abs(watts) < 1000) return `${number0.format(rounded === 0 ? 0 : rounded)} W`;
   const digits = Math.min(2, Math.max(0, Math.round(3 - Math.log10(Math.max(step, 1)))));
   const number = new Intl.NumberFormat("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
   return `${number.format(watts / 1000)} kW`;
@@ -44,6 +62,8 @@ export function formatPower(watts, display) {
 
 export function formatValue(value, unit) {
   if (value === null || value === undefined) return "–";
+  // Values that round to zero are shown without sign ("0 W", not "−0 W")
+  if (Math.abs(value) < 0.5 && (unit === "W" || unit === "Wh")) value = 0;
   if (unit === "W") {
     return Math.abs(value) >= 1000 ? `${number1.format(value / 1000)} kW` : `${number0.format(value)} W`;
   }
