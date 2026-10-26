@@ -851,3 +851,19 @@ def test_autarky_minimizes_grid_import() -> None:
     autarky = imported(Settings(allow_grid_charge=False, import_penalty_ct_per_kwh=100))
     # The battery covers 3 kWh either way; autarky does not hold it back for the evening
     assert autarky <= cheapest + 1
+
+
+def test_grid_friendly_shaves_the_midday_export_peak() -> None:
+    """With an export limit the battery charges in the PV peak instead of first thing in the morning."""
+    battery = BatterySpec(capacity_wh=10000, soc_wh=1000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    # PV ramps up to 6 kW at noon (slot 24) and down again; 500 W load
+    inputs = [
+        SlotInput(start=START + i * SLOT, pv_w=max(6000 - abs(i - 24) * 400, 0), load_w=500, price=0.30, feed_in=0.08)
+        for i in range(48)
+    ]
+
+    def peak_export(settings: Settings) -> float:
+        return max(s.export_w for s in optimize(inputs, battery, settings).slots)
+
+    assert peak_export(Settings(export_soft_limit_w=2500)) <= 2500 + 1
+    assert peak_export(Settings()) > 2500

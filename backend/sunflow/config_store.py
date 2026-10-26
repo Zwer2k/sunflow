@@ -140,6 +140,10 @@ class OptimizerConfig(BaseModel):
     pv_learning: bool = True
     # How much to trust the PV forecast: expected value, or partly the pessimistic one
     pv_risk: Literal["expected", "balanced", "cautious"] = "balanced"
+    # Grid friendly: keep export and import below these powers where it costs little
+    grid_friendly: bool = False
+    export_limit_w: float | None = Field(default=None, gt=0)
+    import_limit_w: float | None = Field(default=None, gt=0)
     weather_entity: str | None = None
 
     @model_validator(mode="after")

@@ -640,6 +640,8 @@ def optimizer_settings(config: SunflowConfig, battery: BatterySpec) -> Settings:
         # Autarky never charges from the grid
         allow_grid_charge=options.allow_grid_charge and not autarky,
         import_penalty_ct_per_kwh=AUTARKY_IMPORT_PENALTY_CT if autarky else 0.0,
+        export_soft_limit_w=options.export_limit_w if options.grid_friendly else None,
+        import_soft_limit_w=options.import_limit_w if options.grid_friendly else None,
         export_penalty_ct_per_kwh=PV_ABSORPTION_PENALTY_CT if strategy == "pv_absorption" else 0.0,
         reserve_wh=battery.capacity_wh * options.backup_reserve_pct / 100 if strategy == "backup" else 0.0,
     )
