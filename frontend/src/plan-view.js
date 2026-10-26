@@ -20,6 +20,8 @@ const LOAD_QUALITY = {
 };
 // The plan is kept by the background runner; reloading only fetches it and the statistics
 const REFRESH_MS = 2 * 60 * 1000;
+// Remembered per browser; storage may be unavailable (private mode, previews)
+const TOTAL_KEY = "sunflow.plan.total";
 
 const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 const dayTime = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -100,6 +102,7 @@ class SunflowPlan extends LitElement {
     _history: { state: true },
     _historyHours: { state: true },
     _focus: { state: true },
+    _showTotal: { state: true },
   };
 
   constructor() {
@@ -110,6 +113,11 @@ class SunflowPlan extends LitElement {
     this._history = null;
     this._historyHours = 24;
     this._timer = null;
+    try {
+      this._showTotal = localStorage.getItem(TOTAL_KEY) === "1";
+    } catch {
+      this._showTotal = false;
+    }
   }
 
   connectedCallback() {
@@ -273,6 +281,13 @@ class SunflowPlan extends LitElement {
               : html`${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
               ? `, skaliert auf ${toDisplay(plan.load_scaled_to_kwh, "kWh")} kWh/Tag`
               : ""}${plan.load_separated_hours ? `, ohne steuerbare Verbraucher (${plan.load_separated_hours} h getrennt)` : ""}`})</span></span>
+          ${hasLoadpoints
+            ? html`<label class="legend-item total-toggle">
+                <input type="checkbox" .checked=${this._showTotal} @change=${(e) => this._setShowTotal(e.target.checked)}>
+                ${this._showTotal ? html`<span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>` : nothing}
+                Gesamtverbrauch (mit steuerbaren Verbrauchern)
+              </label>`
+            : nothing}
         </div>
         ${lineChart(
           this._focused([
@@ -294,6 +309,22 @@ class SunflowPlan extends LitElement {
                 ? [{ key: "consumers", name: "Verbraucher gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
                 : []),
             { key: "pv", name: "PV Prognose", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "pv_w") },
+            ...(hasLoadpoints && this._showTotal
+              ? [
+                  { key: "total", name: "Gesamtverbrauch gemessen", color: UNASSIGNED_COLOR, points: this._past("load_w") },
+                  {
+                    key: "total",
+                    name: "Gesamtverbrauch geplant",
+                    color: UNASSIGNED_COLOR,
+                    dashed: true,
+                    points: slots.map((s) => ({
+                      start: s.start,
+                      end: s.end,
+                      value: s.load_w + Object.values(s.flex_w ?? {}).reduce((a, b) => a + b, 0),
+                    })),
+                  },
+                ]
+              : []),
           ]),
           { label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose", formatY: (v) => formatValue(v, "W"), now: nowDate },
         )}
@@ -432,6 +463,15 @@ class SunflowPlan extends LitElement {
     return this._withLive(points, this._plan?.actual?.[key]);
   }
 
+  _setShowTotal(show) {
+    this._showTotal = show;
+    try {
+      localStorage.setItem(TOTAL_KEY, show ? "1" : "0");
+    } catch {
+      // Not remembered, the switch still works for this visit
+    }
+  }
+
   /** Like the forecast: the house without the controllable consumers, which have their own lines. */
   _pastBaseLoad() {
     const base = (load, consumers) => (load === null || load === undefined ? null : Math.max(load - (consumers ?? 0), 0));
@@ -535,6 +575,8 @@ class SunflowPlan extends LitElement {
     .swatch.inline { display: inline-block; margin-right: 6px; vertical-align: -1px; }
     .legend-button { font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: 999px;
       padding: 2px 8px; margin: -3px 0 -3px -9px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .total-toggle { cursor: pointer; }
+    .total-toggle input { margin: 0; }
     .legend-button:hover { background: var(--sf-subtle); }
     .legend-button.active { border-color: var(--sf-border, var(--sf-muted)); background: var(--sf-subtle); font-weight: 600; }
     .warn-text { color: var(--sf-warn-text); }

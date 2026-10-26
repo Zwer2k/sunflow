@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.3
+
+- Planung: Im Diagramm „PV-Erzeugung und Hausverbrauch“ lässt sich zusätzlich der Gesamtverbrauch einblenden (Hausverbrauch mit steuerbaren Verbrauchern, gemessen und geplant). Die Auswahl wird im Browser gemerkt.
+
 ## 0.30.2
 
 - Planung: Die gemessene Linie „Hausverbrauch“ enthält die steuerbaren Verbraucher (Wallbox, Heizstab, E-Bike) nicht mehr doppelt – sie haben eigene Linien, und die Prognose rechnet ebenfalls ohne sie.
