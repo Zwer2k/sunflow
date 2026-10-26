@@ -130,6 +130,9 @@ class OptimizerConfig(BaseModel):
     # which hours count as large sporadic loads (e.g. EV charging) and are left out
     daily_consumption_kwh: float | None = None
     large_load_threshold_w: float | None = 3500.0
+    # Battery care: everyday charge limit and how often a full charge (balancing) is wanted
+    max_soc_pct: float = Field(default=100, ge=50, le=100)
+    full_charge_every_days: int | None = Field(default=None, ge=1, le=90)
 
     @model_validator(mode="after")
     def _derive_wear(self) -> "OptimizerConfig":

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.0
+
+- Battery care (Standards): everyday charge limit (e.g. 90 %) and a full charge every
+  N days for balancing and calibration. The last full charge is read from the SoC
+  statistics; when due, the limit is lifted and the full charge is aimed at the end of
+  the PV surplus of that day (soft target, no forced grid charging). At the limit the
+  plan limits charging instead of self-consumption. The limit appears in the SoC chart
+- Weekdays in plan hints in German ("Mo 16:30" instead of "Mon 16:30")
+
 ## 0.16.0
 
 - Standards: battery wear either directly in ct/kWh or calculated from purchase price,

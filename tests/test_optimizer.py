@@ -469,6 +469,9 @@ def test_plan_response_battery_limits(reserve_wh: float, expected: float) -> Non
         "capacity_wh": 20000,
         "min_soc_wh": 2000,
         "reserve_wh": expected,
+        "limit_wh": None,
+        "full_charge_at": None,
+        "last_full": None,
     }
 
 
@@ -687,3 +690,62 @@ async def test_last_valid_value_skips_unknown() -> None:
     assert value == 10
     assert since == datetime.fromtimestamp(2000, UTC)
     assert await last_valid_value(Client(), None, timedelta(hours=6)) is None
+
+
+def test_charge_limit_for_battery_care() -> None:
+    """The battery stays below the care limit; at the limit the surplus is exported with charging limited."""
+    battery = BatterySpec(capacity_wh=10000, soc_wh=5000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(12, price=lambda i: 0.30, pv=lambda i: 4000.0)
+
+    plan = optimize(inputs, battery, Settings(soc_limit_wh=8000))
+
+    assert max(s.soc_wh for s in plan.slots) <= 8000 + 1
+    assert plan.slots[-1].action == "limit_charge"
+
+
+def test_due_full_charge_lifts_the_limit() -> None:
+    """When a full charge is due, the battery reaches full at the target slot from PV."""
+    battery = BatterySpec(capacity_wh=10000, soc_wh=5000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(12, price=lambda i: 0.30, pv=lambda i: 4000.0 if i < 40 else 0.0)
+
+    plan = optimize(inputs, battery, Settings(soc_limit_wh=8000, full_charge_slot=39))
+
+    assert plan.slots[39].soc_wh >= 10000 * 0.98 - 1
+    assert all(s.import_w < 1 for s in plan.slots[:40])
+
+
+async def test_battery_care_targets_end_of_pv_on_due_day() -> None:
+    """Limit from the settings; a due full charge aims at the last PV surplus slot of the due day."""
+    from types import SimpleNamespace
+    from zoneinfo import ZoneInfo
+
+    from sunflow.config_store import OptimizerConfig
+    import sunflow.plan as plan_module
+
+    tz = ZoneInfo("Europe/Berlin")
+    config = SunflowConfig(optimizer=OptimizerConfig(max_soc_pct=90, full_charge_every_days=14))
+    battery = BatterySpec(capacity_wh=20000, soc_wh=5000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    # Two days; PV surplus 08:00-15:45 local each day
+    begin = datetime(2026, 10, 26, 0, 0, tzinfo=tz)
+    inputs = [
+        SlotInput(start=(begin + i * SLOT).astimezone(UTC), pv_w=3000.0 if 32 <= i % 96 < 64 else 0.0, load_w=500, price=0.3, feed_in=0.08)
+        for i in range(192)
+    ]
+
+    async def last_full(client: object, entity: object, days: int) -> datetime:
+        # Last full 13 days ago at noon: due tomorrow
+        return (begin - timedelta(days=13)).replace(hour=12).astimezone(UTC)
+
+    original = plan_module.last_full_charge
+    plan_module.last_full_charge = last_full
+    try:
+        care = await plan_module.battery_care(
+            None, config, {"roles": {}}, SimpleNamespace(ha_device_id="x", role_overrides={}),
+            SimpleNamespace(devices=[], entities=[], states={}), battery, inputs, tz,
+        )
+    finally:
+        plan_module.last_full_charge = original
+
+    assert care.limit_wh == 18000
+    assert care.full_charge_slot == 96 + 63  # tomorrow 15:45, the last slot with surplus
+    assert "Vollladung fällig" in care.notes[0]

@@ -290,6 +290,92 @@ class PlanResult:
     warnings: list[str] = field(default_factory=list)
     battery: BatterySpec | None = None
     reserve_wh: float = 0.0
+    care: BatteryCare | None = None
+
+
+@dataclass(kw_only=True)
+class BatteryCare:
+    """Charge limit and due full charge of the plan."""
+
+    limit_wh: float | None = None
+    last_full: datetime | None = None
+    full_charge_slot: int | None = None
+    full_charge_at: datetime | None = None
+    notes: list[str] = field(default_factory=list)
+
+
+WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+
+
+def german_time(moment: datetime) -> str:
+    """'Mo 16:30' independent of the system locale."""
+    return f"{WEEKDAYS[moment.weekday()]} {moment:%H:%M}"
+
+
+# The SoC counts as full from here (BMS readings rarely show exactly 100)
+FULL_SOC_PCT = 99
+
+
+async def last_full_charge(client: HAClient, entity_id: str | None, days: int) -> datetime | None:
+    """Start of the last hour in which the SoC reached full, from the hourly statistics."""
+    if not entity_id:
+        return None
+    end = datetime.now(UTC)
+    result = await client.command(
+        "recorder/statistics_during_period",
+        start_time=(end - timedelta(days=days)).isoformat(),
+        end_time=end.isoformat(),
+        statistic_ids=[entity_id],
+        period="hour",
+        types=["max"],
+    )
+    full = [row["start"] for row in result.get(entity_id, []) if (row.get("max") or 0) >= FULL_SOC_PCT]
+    return datetime.fromtimestamp(max(full) / 1000, UTC) if full else None
+
+
+async def battery_care(
+    client: HAClient,
+    config: SunflowConfig,
+    profile: dict[str, Any],
+    device: DeviceConfig,
+    snapshot: Snapshot,
+    battery: BatterySpec,
+    inputs: list[SlotInput],
+    tz: tzinfo,
+) -> BatteryCare:
+    """Everyday charge limit, and when a full charge is due the slot to reach it.
+
+    The full charge is aimed at the end of the PV surplus on the day it falls due (or
+    later in the horizon), so it comes from PV rather than the grid.
+    """
+    options = config.optimizer
+    care = BatteryCare()
+    if options.max_soc_pct < 100:
+        care.limit_wh = battery.capacity_wh * options.max_soc_pct / 100
+    every = options.full_charge_every_days
+    if not every or not inputs:
+        return care
+    care.last_full = await last_full_charge(client, soc_entity(profile, device, snapshot), every + 3)
+    due = (care.last_full + timedelta(days=every)) if care.last_full else inputs[0].start
+    if due > inputs[-1].start:
+        return care
+    # Last slot with PV surplus on each day from the due day on
+    candidates: dict[Any, int] = {}
+    due_day = due.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    for t, slot in enumerate(inputs):
+        if slot.start >= due_day and slot.pv_w > slot.load_w:
+            candidates[slot.start.astimezone(tz).date()] = t
+    since = care.last_full.astimezone(tz).strftime("%d.%m.") if care.last_full else "unbekannt"
+    if not candidates:
+        care.notes.append(f"Vollladung fällig (zuletzt voll: {since}) – im Planungszeitraum ist kein PV-Überschuss in Sicht.")
+        return care
+    care.full_charge_slot = candidates[min(candidates)]
+    care.full_charge_at = inputs[care.full_charge_slot].start + SLOT
+    care.notes.append(
+        f"Vollladung fällig (zuletzt voll: {since}) – geplant bis "
+        f"{german_time(care.full_charge_at.astimezone(tz))}."
+    )
+    return care
 
 
 # How old the last valid SoC from the history may be when the live value is missing
@@ -502,7 +588,7 @@ async def compute_plan(
         last = max((p.end for p in points), default=start)
         if last < horizon_end - timedelta(hours=12):
             warnings.append(
-                f"PV-Prognose „{plane.display_name}“ reicht nur bis {last.astimezone(tz):%a %H:%M} – "
+                f"PV-Prognose „{plane.display_name}“ reicht nur bis {german_time(last.astimezone(tz))} – "
                 "danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig)."
             )
     pv = sum_forecasts(series) if series else []
@@ -564,9 +650,13 @@ async def compute_plan(
     )
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings
+    care = await battery_care(client, config, profile, battery_device, snapshot, battery, inputs, tz)
+    settings = replace(settings, soc_limit_wh=care.limit_wh, full_charge_slot=care.full_charge_slot)
+    warnings += care.notes
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
     return PlanResult(
+        care=care,
         plan=plan,
         battery_device=battery_device.id,
         load=load,

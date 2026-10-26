@@ -61,6 +61,9 @@ function socLimits(battery) {
   if (!battery) return [];
   const pct = (wh) => `${Math.round((wh / battery.capacity_wh) * 100)} %`;
   const limits = [{ value: battery.capacity_wh, label: `voll · ${formatValue(battery.capacity_wh, "Wh")}` }];
+  if (battery.limit_wh && battery.limit_wh < battery.capacity_wh && !battery.full_charge_at) {
+    limits.push({ value: battery.limit_wh, label: `Ladegrenze ${pct(battery.limit_wh)}` });
+  }
   if (battery.reserve_wh > battery.min_soc_wh) {
     limits.push({ value: battery.reserve_wh, label: `Notstromreserve ${pct(battery.reserve_wh)}` });
   }
