@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.27.1
+
+- Energy values entered in kWh keep three decimals: small daily needs such as 0,04 kWh
+  were shown as 0 and could be overwritten with 0 when saving again
+
 ## 0.27.0
 
 - Analyse → "Kosten pro Tag" (30/90 days): net electricity cost per day (import minus

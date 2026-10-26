@@ -115,7 +115,8 @@ export function displayUnit(unit) {
 
 export function toDisplay(value, unit) {
   if (value === null || value === undefined) return "";
-  const text = unit === "Wh" ? String(Math.round(value / 100) / 10) : String(value);
+  // Wh are entered in kWh; three decimals keep small consumers (e.g. 40 Wh = 0,04 kWh)
+  const text = unit === "Wh" ? String(Math.round(value) / 1000) : String(value);
   return text.replace(".", ",");
 }
 
