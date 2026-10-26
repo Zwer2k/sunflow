@@ -11,6 +11,7 @@ const STRATEGIES = {
   balanced: "Ausgewogen",
   pv_absorption: "PV aufnehmen",
   backup: "Notstrom",
+  autarky: "Autarkie",
 };
 const MODES = {
   cost: "Kostenoptimal",

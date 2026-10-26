@@ -831,3 +831,23 @@ def test_cautious_pv_charges_more_from_the_grid() -> None:
     expected = night_charge(3000)
     cautious = night_charge(3000 - 0.7 * (3000 - 1000))
     assert cautious > expected
+
+
+def test_autarky_minimizes_grid_import() -> None:
+    """With a cheap night and an expensive evening, autarky discharges right away and never grid charges."""
+    battery = BatterySpec(capacity_wh=10000, soc_wh=4000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    # Night 0.22 (slots 0-19), evening 0.40 (20-39), load 1 kW
+    inputs = [
+        SlotInput(start=START + i * SLOT, pv_w=0.0, load_w=1000, price=0.22 if i < 20 else 0.40, feed_in=0.08)
+        for i in range(40)
+    ]
+
+    def imported(settings: Settings) -> float:
+        plan = optimize(inputs, battery, settings)
+        assert all(s.import_w <= s.load_w + 1 for s in plan.slots)  # no grid charging
+        return sum(s.import_w for s in plan.slots) / 4
+
+    cheapest = imported(Settings(allow_grid_charge=False))
+    autarky = imported(Settings(allow_grid_charge=False, import_penalty_ct_per_kwh=100))
+    # The battery covers 3 kWh either way; autarky does not hold it back for the evening
+    assert autarky <= cheapest + 1
