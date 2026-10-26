@@ -749,3 +749,52 @@ async def test_battery_care_targets_end_of_pv_on_due_day() -> None:
     assert care.limit_wh == 18000
     assert care.full_charge_slot == 96 + 63  # tomorrow 15:45, the last slot with surplus
     assert "Vollladung fällig" in care.notes[0]
+
+
+def test_cheapest_window_end() -> None:
+    """The overdue full charge aims at the end of the first cheapest block (e.g. the night tariff)."""
+    from sunflow.plan import cheapest_window_end
+
+    inputs = _slots(24, price=lambda i: 0.226 if 4 <= i < 24 else 0.326)
+
+    assert cheapest_window_end(inputs) == 23
+
+
+def test_overdue_full_charge_from_grid() -> None:
+    """Overdue and without PV, the battery is charged full from the grid in the cheap slots."""
+    battery = BatterySpec(capacity_wh=10000, soc_wh=2000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(24, price=lambda i: 0.226 if 4 <= i < 24 else 0.326)
+
+    plan = optimize(
+        inputs, battery, Settings(allow_grid_charge=True, soc_limit_wh=9000, full_charge_slot=23, full_charge_penalty=2.0)
+    )
+
+    assert plan.slots[23].soc_wh >= 10000 * 0.98 - 1
+    # Charged in the cheap window only
+    assert all(s.charge_w < 1 for s in plan.slots[:4])
+
+
+async def test_battery_care_overdue_uses_grid(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not full for longer than allowed: grid charge at the cheapest time, with a hint."""
+    from types import SimpleNamespace
+    from zoneinfo import ZoneInfo
+
+    from sunflow.config_store import OptimizerConfig
+    import sunflow.plan as plan_module
+
+    async def never_full(client: object, entity: object, days: int) -> None:
+        return None
+
+    monkeypatch.setattr(plan_module, "last_full_charge", never_full)
+    config = SunflowConfig(optimizer=OptimizerConfig(full_charge_every_days=14, full_charge_grid_after_days=21))
+    battery = BatterySpec(capacity_wh=20000, soc_wh=5000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(24, price=lambda i: 0.226 if 4 <= i < 24 else 0.326)
+
+    care = await plan_module.battery_care(
+        None, config, {"roles": {}}, SimpleNamespace(ha_device_id="x", role_overrides={}),
+        SimpleNamespace(devices=[], entities=[], states={}), battery, inputs, ZoneInfo("Europe/Berlin"),
+    )
+
+    assert care.from_grid
+    assert care.full_charge_slot == 23
+    assert "überfällig" in care.notes[0]

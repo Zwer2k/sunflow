@@ -23,6 +23,7 @@ class SunflowStandards extends LitElement {
     _reserve: { state: true },
     _maxSoc: { state: true },
     _fullEvery: { state: true },
+    _gridAfter: { state: true },
     _daily: { state: true },
     _largeLoad: { state: true },
     _saving: { state: true },
@@ -77,6 +78,7 @@ class SunflowStandards extends LitElement {
       if ("backup_reserve_pct" in changes) this._reserve = undefined;
       if ("max_soc_pct" in changes) this._maxSoc = undefined;
       if ("full_charge_every_days" in changes) this._fullEvery = undefined;
+      if ("full_charge_grid_after_days" in changes) this._gridAfter = undefined;
       if ("daily_consumption_kwh" in changes) this._daily = undefined;
       if ("large_load_threshold_w" in changes) this._largeLoad = undefined;
       await this._load();
@@ -93,7 +95,7 @@ class SunflowStandards extends LitElement {
 
   /** Save edited numbers before the wizard moves on; false when they are invalid. */
   async saveIfChanged() {
-    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._daily, this._largeLoad].some(
+    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._daily, this._largeLoad].some(
       (v) => v !== undefined,
     );
     return !changed || this._saveNumbers(this._settings);
@@ -152,6 +154,14 @@ class SunflowStandards extends LitElement {
         return false;
       }
       changes.full_charge_every_days = days;
+    }
+    if (this._gridAfter !== undefined) {
+      const days = fromDisplay(this._gridAfter, "");
+      if (days === undefined || (days !== null && (!Number.isInteger(days) || days < 1 || days > 120))) {
+        this._error = "Bitte ganze Tage zwischen 1 und 120 eingeben oder das Feld leeren.";
+        return false;
+      }
+      changes.full_charge_grid_after_days = days;
     }
     if (this._reserve !== undefined) {
       const reserve = fromDisplay(this._reserve, "%");
@@ -285,6 +295,15 @@ class SunflowStandards extends LitElement {
             <span class="small muted">Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt.</span>
           </label>
           <label class="field">
+            <span class="field-label">Spätestens nach … aus dem Netz</span>
+            <span class="input-unit">
+              <input inputmode="numeric" placeholder="z. B. 21" .value=${this._gridAfter ?? toDisplay(settings.full_charge_grid_after_days, "")}
+                @input=${(e) => (this._gridAfter = e.target.value)}>
+              <span class="muted">Tage</span>
+            </span>
+            <span class="small muted">War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll – auch wenn Netzladen sonst aus ist. Leer = nie.</span>
+          </label>
+          <label class="field">
             <span class="field-label">Durchschnittlicher Hausverbrauch</span>
             <span class="input-unit">
               <input inputmode="decimal" placeholder="z. B. 14"
@@ -314,7 +333,7 @@ class SunflowStandards extends LitElement {
             </span>
           </label>
         </div>
-        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._daily, this._largeLoad].some((v) => v !== undefined)
+        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._daily, this._largeLoad].some((v) => v !== undefined)
           ? html`<div class="actions">
               <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
                 Speichern und neu planen
