@@ -59,6 +59,7 @@ from .history import fetch_history, history_series
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .settings import Settings
+from .plan import weather_entity
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
 from .site import MEASUREMENTS, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
@@ -825,6 +826,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "cost": plan.cost,
         "baseline_cost": plan.baseline_cost,
         "alternative_cost": plan.alternative_cost,
+        "pv_correction": result.pv_correction.as_dict() if result.pv_correction and result.pv_correction.slots else None,
         "baseline_alternative_cost": plan.baseline_alternative_cost,
         "terminal_value": plan.terminal_value,
         "baseline_terminal_value": plan.baseline_terminal_value,
@@ -854,8 +856,13 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
 async def get_plan(request: Request) -> dict[str, Any]:
     """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
     try:
+        runner = getattr(request.app.state, "runner", None)
         result = await current_plan(
-            request.app.state.ha, request.app.state.store, _library(request), request.app.state.snapshots
+            request.app.state.ha,
+            request.app.state.store,
+            _library(request),
+            request.app.state.snapshots,
+            await runner.pv_correction() if runner else None,
         )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
@@ -1237,6 +1244,34 @@ async def get_efficiency_history(
         days,
         await _local_tz(request),
     )
+
+
+@router.get("/pv-learning")
+async def get_pv_learning(request: Request) -> dict[str, Any]:
+    """What was learned about the PV forecast of this site."""
+    config = request.app.state.store.load()
+    correction = await request.app.state.runner.pv_correction()
+    snapshot = await _snapshot(request)
+    return correction.as_dict() | {
+        "enabled": config.optimizer.pv_learning,
+        "weather_entity": weather_entity(config, snapshot),
+    }
+
+
+@router.get("/weather/entities")
+async def get_weather_entities(request: Request) -> list[dict[str, Any]]:
+    """Weather entities for the cloud coverage, with whether their forecast has it."""
+    snapshot = await _snapshot(request)
+    return [
+        {
+            "entity_id": entity_id,
+            "name": state["attributes"].get("friendly_name", entity_id),
+            "attribution": state["attributes"].get("attribution"),
+            "cloud_coverage": state["attributes"].get("cloud_coverage") is not None,
+        }
+        for entity_id, state in sorted(snapshot.states.items())
+        if entity_id.startswith("weather.")
+    ]
 
 
 @router.get("/live")

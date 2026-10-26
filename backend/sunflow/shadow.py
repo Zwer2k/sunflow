@@ -32,9 +32,13 @@ CREATE TABLE IF NOT EXISTS slots (
     actual_pv_w REAL,
     actual_load_w REAL,
     actual_action TEXT,
-    samples INTEGER
+    samples INTEGER,
+    forecast_pv_w REAL,
+    weather_cloud REAL
 )
 """
+# Columns added after the first release; existing databases get them on open
+ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL"}
 
 
 def slot_start(moment: datetime) -> datetime:
@@ -113,6 +117,10 @@ class ShadowStore:
         # leaves serializing writes to the caller
         self._lock = threading.Lock()
         self._db.execute(SCHEMA)
+        existing = {row[1] for row in self._db.execute("PRAGMA table_info(slots)")}
+        for column, kind in ADDED_COLUMNS.items():
+            if column not in existing:
+                self._db.execute(f"ALTER TABLE slots ADD COLUMN {column} {kind}")
         self._db.commit()
 
     def close(self) -> None:
@@ -126,9 +134,11 @@ class ShadowStore:
             self._db.execute(
                 """
                 INSERT INTO slots (start, planned_action, planned_power_w, planned_soc_wh,
-                                   planned_pv_w, planned_load_w, planned_price)
-                VALUES (:start, :action, :power, :soc, :pv, :load, :price)
+                                   planned_pv_w, planned_load_w, planned_price, forecast_pv_w, weather_cloud)
+                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud)
                 ON CONFLICT(start) DO UPDATE SET
+                    forecast_pv_w = excluded.forecast_pv_w,
+                    weather_cloud = excluded.weather_cloud,
                     planned_action = excluded.planned_action,
                     planned_power_w = excluded.planned_power_w,
                     planned_soc_wh = excluded.planned_soc_wh,
@@ -136,7 +146,7 @@ class ShadowStore:
                     planned_load_w = excluded.planned_load_w,
                     planned_price = excluded.planned_price
                 """,
-                {"start": start.isoformat(), **planned},
+                {"start": start.isoformat(), "forecast_pv": None, "cloud": None, **planned},
             )
             self._db.commit()
 

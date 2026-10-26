@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.18.0
+
+- PV forecast learns from this site: shadow mode now also stores the uncorrected
+  forecast and the forecast cloud coverage of a weather entity (e.g. met.no). From
+  forecast vs. measurement, correction factors are learned per hour and cloud class
+  (clear, mixed, overcast), cautiously with little data, and applied to the plan
+- Standards: switch "PV-Prognose an die Anlage anpassen" and choice of the weather
+  entity; Analyse: learned factors and mean deviation before/after; Planung: hint
+  how much the forecast was adapted
+
 ## 0.17.2
 
 - Fix "401: Unauthorized" after a while inside Home Assistant: the Supervisor expires

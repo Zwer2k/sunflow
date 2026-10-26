@@ -1,0 +1,62 @@
+"""Tests for learning the site's PV forecast correction."""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from sunflow.pv_learning import cloud_class, learn
+
+BERLIN = ZoneInfo("Europe/Berlin")
+
+
+def _rows(days: int, factor_by_cloud: dict[str, float], cloud_by_day: list[float]) -> list[dict[str, Any]]:
+    """Forecast 2 kW from 10 to 14 local; the site delivers factor x forecast, depending on clouds."""
+    rows = []
+    start = datetime(2026, 10, 1, tzinfo=BERLIN)
+    for day in range(days):
+        cloud = cloud_by_day[day % len(cloud_by_day)]
+        for quarter in range(10 * 4, 14 * 4):
+            moment = (start + timedelta(days=day, minutes=15 * quarter)).astimezone(UTC)
+            rows.append(
+                {
+                    "start": moment.isoformat(),
+                    "planned_pv_w": 2000.0,
+                    "actual_pv_w": 2000.0 * factor_by_cloud[cloud_class(cloud)],
+                    "weather_cloud": cloud,
+                }
+            )
+    return rows
+
+
+def test_learns_factor_per_cloud_class() -> None:
+    """Overcast days deliver 60 %, clear days 105 % of the forecast."""
+    rows = _rows(60, {"clear": 1.05, "overcast": 0.6, "mixed": 0.8}, [10, 90])
+
+    correction = learn(rows, BERLIN)
+
+    assert correction.days == 60
+    # Close to the truth after two months; shrinkage keeps a little distance
+    assert correction.factor(11, "overcast") == pytest.approx(0.6, abs=0.05)
+    assert correction.factor(11, "clear") == pytest.approx(1.05, abs=0.05)
+    assert correction.error_after < correction.error_before
+
+
+def test_little_data_stays_cautious() -> None:
+    """One day of data moves the factor only part of the way; no data means no correction."""
+    correction = learn(_rows(1, {"clear": 0.5, "overcast": 0.5, "mixed": 0.5}, [10]), BERLIN)
+
+    assert 0.5 < correction.factor(11, "clear") < 1.0
+    assert learn([], BERLIN).factor(11, None) == 1.0
+
+
+def test_without_weather_uses_hour_factor() -> None:
+    """Old rows without cloud data still teach the per hour factor."""
+    rows = _rows(20, {"clear": 0.8, "overcast": 0.8, "mixed": 0.8}, [10])
+    for row in rows:
+        row["weather_cloud"] = None
+
+    correction = learn(rows, BERLIN)
+
+    assert correction.factor(12, "overcast") == pytest.approx(0.8, abs=0.03)
