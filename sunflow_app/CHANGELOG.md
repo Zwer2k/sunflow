@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.29.1
+
+- Einstellungen: „Netzdienlich“ erklärt genauer, wie die Grenzen wirken (weiches Ziel, keine Abregelung, kein Ersatz für die Begrenzung im Wechselrichter).
+
 ## 0.29.0
 
 - Datenmigration zwischen Versionen: Die Konfiguration wird bei einem Update schrittweise auf den neuen Stand gebracht; das Original bleibt als `config.v<n>.json` erhalten.
