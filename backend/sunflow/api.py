@@ -828,6 +828,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "baseline_cost": plan.baseline_cost,
         "alternative_cost": plan.alternative_cost,
         "pv_correction": result.pv_correction.as_dict() if result.pv_correction and result.pv_correction.slots else None,
+        "load_model": result.load_model.as_dict() if result.load_model else None,
         "baseline_alternative_cost": plan.baseline_alternative_cost,
         "terminal_value": plan.terminal_value,
         "baseline_terminal_value": plan.baseline_terminal_value,
@@ -864,6 +865,7 @@ async def get_plan(request: Request) -> dict[str, Any]:
             _library(request),
             request.app.state.snapshots,
             await runner.pv_correction() if runner else None,
+            runner.load_model if runner else None,
         )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
@@ -1314,9 +1316,11 @@ async def dismiss_recommendation(request: Request, body: Dismiss) -> None:
 async def get_pv_learning(request: Request) -> dict[str, Any]:
     """What was learned about the PV forecast of this site."""
     config = request.app.state.store.load()
-    correction = await request.app.state.runner.pv_correction()
+    runner: ShadowRunner = request.app.state.runner
+    correction = await runner.pv_correction()
     snapshot = await _snapshot(request)
     return correction.as_dict() | {
+        "load_model": runner.load_model.as_dict() if runner.load_model else None,
         "enabled": config.optimizer.pv_learning,
         "weather_entity": weather_entity(config, snapshot),
     }

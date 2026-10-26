@@ -17,6 +17,7 @@ from .load_forecast import (
     subtract_loads,
 )
 from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
+from .load_model import LoadModel
 from .pv_learning import PvCorrection, cloud_class
 from .resolver import preview
 from .site import device_kind, device_parameters
@@ -295,6 +296,8 @@ class PlanResult:
     # Uncorrected PV forecast and forecast cloud coverage per slot (for learning)
     raw_pv: list[float] = field(default_factory=list)
     clouds: list[float | None] = field(default_factory=list)
+    temperatures: list[float | None] = field(default_factory=list)
+    load_model: LoadModel | None = None
     pv_correction: PvCorrection | None = None
 
 
@@ -305,30 +308,31 @@ def weather_entity(config: SunflowConfig, snapshot: Snapshot) -> str | None:
     return next((e for e in sorted(snapshot.states) if e.startswith("weather.")), None)
 
 
-async def cloud_coverage(client: HAClient, entity_id: str | None, slot_starts: list[datetime]) -> list[float | None]:
-    """Forecast cloud coverage (%) per slot from the weather entity's hourly forecast."""
+async def weather_forecast(
+    client: HAClient, entity_id: str | None, slot_starts: list[datetime], attributes: tuple[str, ...]
+) -> dict[str, list[float | None]]:
+    """Values of the weather entity's hourly forecast (e.g. cloud_coverage, temperature) per slot."""
+    empty = {attribute: [None] * len(slot_starts) for attribute in attributes}
     if not entity_id or not slot_starts:
-        return [None] * len(slot_starts)
+        return empty
     try:
         response = await client.call_service(
             "weather", "get_forecasts", {"type": "hourly"}, target={"entity_id": entity_id}, return_response=True
         )
         forecast = response["response"][entity_id]["forecast"]
     except (HAError, KeyError, TypeError):
-        # The correction then uses the per hour factors only
-        return [None] * len(slot_starts)
+        # Corrections and models then work without weather
+        return empty
     by_hour = {
-        datetime.fromisoformat(item["datetime"]).astimezone(UTC).replace(minute=0, second=0, microsecond=0): item.get(
-            "cloud_coverage"
-        )
+        datetime.fromisoformat(item["datetime"]).astimezone(UTC).replace(minute=0, second=0, microsecond=0): item
         for item in forecast
         if "datetime" in item
     }
     if not by_hour:
-        return [None] * len(slot_starts)
+        return empty
     known = sorted(by_hour)
 
-    def nearest(moment: datetime) -> float | None:
+    def nearest(moment: datetime) -> dict[str, Any] | None:
         # The hourly forecast starts with the next hour; the current one takes its neighbour
         hour = moment.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
         if hour in by_hour:
@@ -336,7 +340,13 @@ async def cloud_coverage(client: HAClient, entity_id: str | None, slot_starts: l
         closest = min(known, key=lambda h: abs(h - hour))
         return by_hour[closest] if abs(closest - hour) <= timedelta(hours=2) else None
 
-    return [nearest(start) for start in slot_starts]
+    items = [nearest(start) for start in slot_starts]
+    return {attribute: [item.get(attribute) if item else None for item in items] for attribute in attributes}
+
+
+async def cloud_coverage(client: HAClient, entity_id: str | None, slot_starts: list[datetime]) -> list[float | None]:
+    """Forecast cloud coverage (%) per slot."""
+    return (await weather_forecast(client, entity_id, slot_starts, ("cloud_coverage",)))["cloud_coverage"]
 
 
 @dataclass(kw_only=True)
@@ -608,6 +618,7 @@ async def compute_plan(
     start: datetime,
     tz: tzinfo,
     pv_correction: PvCorrection | None = None,
+    load_model: LoadModel | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule."""
     warnings: list[str] = []
@@ -724,7 +735,19 @@ async def compute_plan(
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
     raw_pv = [slot.pv_w for slot in inputs]
-    clouds = await cloud_coverage(client, weather_entity(config, snapshot), [slot.start for slot in inputs])
+    weather = await weather_forecast(
+        client, weather_entity(config, snapshot), [slot.start for slot in inputs], ("cloud_coverage", "temperature")
+    )
+    clouds = weather["cloud_coverage"]
+    if load_model is not None and load_model.useful:
+        # Learned from this household with the outside temperature; slots without a
+        # temperature keep the statistical forecast
+        inputs = [
+            replace(slot, load_w=load_model.predict(slot.start.astimezone(tz), temperature))
+            if temperature is not None
+            else slot
+            for slot, temperature in zip(inputs, weather["temperature"], strict=True)
+        ]
     if config.optimizer.pv_learning and pv_correction is not None and pv_correction.slots:
         inputs = [
             replace(slot, pv_w=slot.pv_w * pv_correction.factor(slot.start.astimezone(tz).hour, cloud_class(cloud)))
@@ -746,6 +769,8 @@ async def compute_plan(
     return PlanResult(
         raw_pv=raw_pv,
         clouds=clouds,
+        temperatures=weather["temperature"],
+        load_model=load_model if load_model is not None and load_model.useful else None,
         pv_correction=pv_correction if config.optimizer.pv_learning else None,
         care=care,
         plan=plan,
