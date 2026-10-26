@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.0
+
+- Datenmigration zwischen Versionen: Die Konfiguration wird bei einem Update schrittweise auf den neuen Stand gebracht; das Original bleibt als `config.v<n>.json` erhalten.
+- Nach einem Downgrade startet Sunflow auch mit einer Konfiguration der neueren Version: Werte, die die ältere Version nicht kennt, nehmen den Standardwert an (Hinweis im Log).
+- Die Schattendaten-Datenbank hat eine Schema-Version und wird ebenfalls schrittweise aktualisiert. Exporte älterer und neuerer Versionen lassen sich importieren.
+
 ## 0.28.2
 
 - Analyse: Das Diagramm „Kosten pro Tag“ hat eine Legende.

@@ -18,6 +18,7 @@ from .optimizer import Settings
 
 SLOT = timedelta(minutes=15)
 
+# Schema version 1; later changes go into SCHEMA_STEPS only, so new and old databases end up alike
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS slots (
     start TEXT PRIMARY KEY,
@@ -42,8 +43,11 @@ CREATE TABLE IF NOT EXISTS slots (
     actual_strings TEXT
 )
 """
-# Columns added after the first release; existing databases get them on open
+# Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
+SCHEMA_VERSION = 1
+# SQL from version n to n + 1; steps only ever get added
+SCHEMA_STEPS: dict[int, list[str]] = {}
 # Stored as JSON objects (key -> W)
 JSON_COLUMNS = ("plane_forecasts", "actual_strings")
 
@@ -124,6 +128,25 @@ def actual_action(grid: float | None, battery: float | None) -> str | None:
     return "auto"
 
 
+def migrate(db: sqlite3.Connection) -> None:
+    """Bring a shadow database to SCHEMA_VERSION; one of a newer Sunflow is left as it is."""
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version > SCHEMA_VERSION:
+        return
+    with db:
+        db.execute(SCHEMA)
+        if version == 0:
+            existing = {row[1] for row in db.execute("PRAGMA table_info(slots)")}
+            for column, kind in ADDED_COLUMNS.items():
+                if column not in existing:
+                    db.execute(f"ALTER TABLE slots ADD COLUMN {column} {kind}")
+            version = 1
+        for step in range(version, SCHEMA_VERSION):
+            for statement in SCHEMA_STEPS[step]:
+                db.execute(statement)
+        db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
 class ShadowStore:
     """SQLite storage of planned and actual slot values."""
 
@@ -134,12 +157,7 @@ class ShadowStore:
         # The connection is shared by worker threads (runner, export, import); sqlite3
         # leaves serializing writes to the caller
         self._lock = threading.Lock()
-        self._db.execute(SCHEMA)
-        existing = {row[1] for row in self._db.execute("PRAGMA table_info(slots)")}
-        for column, kind in ADDED_COLUMNS.items():
-            if column not in existing:
-                self._db.execute(f"ALTER TABLE slots ADD COLUMN {column} {kind}")
-        self._db.commit()
+        migrate(self._db)
 
     def close(self) -> None:
         """Close the database."""
@@ -197,9 +215,12 @@ class ShadowStore:
         with self._lock:
             other = sqlite3.connect(path)
             try:
-                cursor = other.execute("SELECT * FROM slots")
-                names = [c[0] for c in cursor.description]
-                rows = cursor.fetchall()
+                # An export of an older version is migrated first; columns of a newer one are left out
+                migrate(other)
+                own = {row[1] for row in self._db.execute("PRAGMA table_info(slots)")}
+                theirs = [row[1] for row in other.execute("PRAGMA table_info(slots)")]
+                names = [name for name in theirs if name in own]
+                rows = other.execute(f"SELECT {', '.join(names)} FROM slots").fetchall()  # noqa: S608
             finally:
                 other.close()
             placeholders = ", ".join("?" for _ in names)
