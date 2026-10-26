@@ -17,8 +17,15 @@ fallback: auto
 
 roles:
   battery_soc: {key: battery_capacity_total, unit: "%"}
-  battery_power: {key: battery_power_total, unit: kW, sign: charge_positive}
-  pv_power: {key: pv_power_total, unit: kW}
+  # The totals have 0.1 kW resolution, the values per input 0.01 kW (only connected
+  # inputs are enabled); live values use their sum, statistics the total
+  battery_power:
+    key: battery_power_total
+    unit: kW
+    sign: charge_positive
+    fine_keys: [battery_power_1, battery_power_2, battery_power_3, battery_power_4,
+                battery_power_5, battery_power_6, battery_power_7, battery_power_8]
+  pv_power: {key: pv_power_total, unit: kW, fine_keys: [pv_power_1, pv_power_2]}
   # Per MPPT string (DC), shown in the Live diagram
   pv1_power: {key: pv_power_1, unit: kW, optional: true}
   pv2_power: {key: pv_power_2, unit: kW, optional: true}

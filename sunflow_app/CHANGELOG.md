@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.4
+
+- Sofar battery and PV power in 10 W steps: the live value is the sum of the per input
+  values (0.01 kW) instead of the totals (0.1 kW); statistics keep using the totals
+- Units as before: W below 1 kW, kW above with two decimals (never finer than the
+  source entity resolves)
+
 ## 0.19.3
 
 - Powers in W are always shown without decimals (e.g. Tibber Pulse "75 W" instead

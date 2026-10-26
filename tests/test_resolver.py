@@ -122,3 +122,38 @@ def test_check_balance_needs_grid_and_load() -> None:
     """Without grid or load values no balance is computed."""
     assert check_balance(_values(pv_power=100, load_power=100)) is None
     assert check_balance(_values(grid_power=100, load_power=100)) is None
+
+
+def test_fine_keys_replace_coarse_total() -> None:
+    """Per input values with finer resolution replace the coarse total, with their precision."""
+    from types import SimpleNamespace
+
+    from sunflow.resolver import preview
+
+    profile = {
+        "roles": {
+            "battery_power": {"key": "power_total", "unit": "kW", "fine_keys": ["power_1", "power_2"]},
+        }
+    }
+    entities = [
+        {"entity_id": "sensor.total", "unique_id": "x_power_total", "device_id": "d",
+         "options": {"sensor": {"suggested_display_precision": 1}}},
+        {"entity_id": "sensor.p1", "unique_id": "x_power_1", "device_id": "d",
+         "options": {"sensor": {"suggested_display_precision": 2}}},
+        # Second input disabled: not connected
+        {"entity_id": "sensor.p2", "unique_id": "x_power_2", "device_id": "d", "disabled_by": "integration"},
+    ]
+    states = {
+        "sensor.total": {"state": "-0.5", "attributes": {"unit_of_measurement": "kW"}},
+        "sensor.p1": {"state": "-0.55", "attributes": {"unit_of_measurement": "kW"}},
+    }
+    snapshot = SimpleNamespace(devices=[{"id": "d"}], entities=entities, states=states)
+
+    role = preview(profile, snapshot, "d")[0]
+
+    assert role.value == -550
+    assert role.entity_id == "sensor.total"  # statistics keep using the total
+    assert role.precision == 2
+
+    states["sensor.p1"] = {"state": "unknown", "attributes": {"unit_of_measurement": "kW"}}
+    assert preview(profile, snapshot, "d")[0].value == -500
