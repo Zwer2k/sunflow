@@ -102,3 +102,57 @@ def test_backup_and_merge(tmp_path: Path) -> None:
         dev.close()
 
     assert [r["planned_action"] for r in rows] == ["auto", "hold"]
+
+
+def test_old_database_gets_columns_and_schema_steps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A database from before the schema version is brought up to date step by step."""
+    import sqlite3
+
+    from sunflow import shadow
+
+    db = sqlite3.connect(tmp_path / "shadow.db")
+    db.execute("CREATE TABLE slots (start TEXT PRIMARY KEY, planned_action TEXT, actual_pv_w REAL)")
+    db.execute("INSERT INTO slots (start, actual_pv_w) VALUES ('2026-10-01T10:00:00+00:00', 1200)")
+    db.commit()
+    db.close()
+    monkeypatch.setattr(shadow, "SCHEMA_VERSION", 2)
+    monkeypatch.setattr(shadow, "SCHEMA_STEPS", {1: ["ALTER TABLE slots ADD COLUMN extra REAL"]})
+
+    shadow.ShadowStore(tmp_path).close()
+
+    db = sqlite3.connect(tmp_path / "shadow.db")
+    columns = {row[1] for row in db.execute("PRAGMA table_info(slots)")}
+    assert {"plane_forecasts", "actual_strings", "extra"} <= columns
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert db.execute("SELECT actual_pv_w FROM slots").fetchone()[0] == 1200
+
+
+def test_new_database_has_current_schema_version(tmp_path: Path) -> None:
+    """A fresh database starts at the current version, so no step runs on it twice."""
+    import sqlite3
+
+    from sunflow import shadow
+
+    shadow.ShadowStore(tmp_path).close()
+    shadow.ShadowStore(tmp_path).close()
+
+    db = sqlite3.connect(tmp_path / "shadow.db")
+    assert db.execute("PRAGMA user_version").fetchone()[0] == shadow.SCHEMA_VERSION
+
+
+def test_merge_skips_columns_of_a_newer_version(tmp_path: Path) -> None:
+    """An export of a newer Sunflow can be imported; its unknown columns are left out."""
+    import sqlite3
+
+    newer = ShadowStore(tmp_path / "newer")
+    newer.close()
+    db = sqlite3.connect(tmp_path / "newer" / "shadow.db")
+    db.execute("ALTER TABLE slots ADD COLUMN future REAL")
+    db.execute("INSERT INTO slots (start, actual_pv_w, future) VALUES ('2026-10-01T10:00:00+00:00', 900, 1)")
+    db.execute("PRAGMA user_version = 99")
+    db.commit()
+    db.close()
+    store = ShadowStore(tmp_path / "own")
+
+    assert store.merge_from(tmp_path / "newer" / "shadow.db") == 1
+    assert store.rows(datetime(2026, 10, 1, tzinfo=UTC))[0]["actual_pv_w"] == 900

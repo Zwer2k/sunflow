@@ -85,3 +85,65 @@ def test_wear_from_purchase_price() -> None:
     assert calc.ct_per_kwh() == pytest.approx(8.71, abs=0.01)
     assert OptimizerConfig(wear_ct_per_kwh=1, wear_calculation=calc).wear_ct_per_kwh == pytest.approx(8.71)
     assert OptimizerConfig(wear_ct_per_kwh=4).wear_ct_per_kwh == 4
+
+
+def test_migrates_older_version_and_keeps_original(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Steps run in order on the raw JSON; the original stays next to the migrated file."""
+    import json
+
+    from sunflow import config_store
+
+    def rename_strategy(raw: dict) -> dict:
+        raw.setdefault("optimizer", {})["strategy"] = raw.pop("old_strategy")
+        return raw
+
+    monkeypatch.setattr(config_store, "CONFIG_VERSION", 2)
+    monkeypatch.setattr(config_store, "MIGRATIONS", {1: rename_strategy})
+    (tmp_path / "config.json").write_text(json.dumps({"version": 1, "old_strategy": "autarky"}))
+
+    config = ConfigStore(tmp_path).load()
+
+    assert config.optimizer.strategy == "autarky"
+    assert config.version == 2
+    assert json.loads((tmp_path / "config.v1.json").read_text())["old_strategy"] == "autarky"
+    stored = json.loads((tmp_path / "config.json").read_text())
+    assert stored["version"] == 2
+    assert "old_strategy" not in stored
+
+
+def test_newer_version_falls_back_to_defaults(tmp_path: Path) -> None:
+    """After a downgrade unknown values get their default instead of stopping Sunflow."""
+    import json
+
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "version": 99,
+                "future_field": {"a": 1},
+                "optimizer": {"strategy": "future_strategy", "max_soc_pct": 90},
+                "devices": [
+                    {"ha_device_id": "d", "profile": "p", "profile_version": 1, "name": "Ok"},
+                    {"profile": "p", "profile_version": 1, "name": "Without device"},
+                ],
+            }
+        )
+    )
+
+    config = ConfigStore(tmp_path).load()
+
+    assert config.optimizer.strategy == "balanced"
+    assert config.optimizer.max_soc_pct == 90
+    assert [d.name for d in config.devices] == ["Ok"]
+    # Kept for the newer version when saved again
+    assert config.version == 99
+    assert config.model_extra == {"future_field": {"a": 1}}
+
+
+def test_broken_json_raises_config_error(tmp_path: Path) -> None:
+    """A truncated file is reported, not replaced by an empty configuration."""
+    from sunflow.config_store import ConfigError
+
+    (tmp_path / "config.json").write_text('{"version": 1, "devi')
+
+    with pytest.raises(ConfigError):
+        ConfigStore(tmp_path).load()
