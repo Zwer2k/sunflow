@@ -14,10 +14,27 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 _LOGGER = logging.getLogger(__name__)
 
-CONFIG_VERSION = 1
+CONFIG_VERSION = 2
+
+
+def _backup_reserve_for_all_strategies(raw: dict[str, Any]) -> dict[str, Any]:
+    """The "backup" strategy became a reserve that applies to every strategy."""
+    optimizer = raw.get("optimizer") or {}
+    if optimizer.get("strategy") == "backup":
+        optimizer["strategy"] = "balanced"
+        optimizer["backup_reserve"] = True
+    override = raw.get("strategy_override") or {}
+    if override.get("strategy") == "backup":
+        raw["strategy_override"] = None
+        optimizer["backup_reserve"] = True
+    if optimizer:
+        raw["optimizer"] = optimizer
+    return raw
+
+
 # Version n -> n + 1 on the raw JSON, before validation. Steps only ever get added:
 # a step that renames or restructures a field goes here instead of a silent default
-MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {1: _backup_reserve_for_all_strategies}
 # A configuration of a newer Sunflow can hold values this one does not know
 MAX_REPAIRS = 20
 _warned: set[str] = set()
@@ -141,8 +158,10 @@ class OptimizerConfig(BaseModel):
     # When set, wear_ct_per_kwh is derived from it
     wear_calculation: WearCalculation | None = None
     allow_grid_charge: bool = True
-    strategy: Literal["balanced", "pv_absorption", "backup", "autarky"] = "balanced"
-    backup_reserve_pct: float = 30.0
+    strategy: Literal["balanced", "pv_absorption", "autarky"] = "balanced"
+    # Kept in the battery in every strategy; only an outage (EPS) may use it
+    backup_reserve: bool = False
+    backup_reserve_pct: float = Field(default=30.0, ge=0, le=100)
     # Load forecast: average daily household consumption and the threshold above
     # which hours count as large sporadic loads (e.g. EV charging) and are left out
     daily_consumption_kwh: float | None = None
@@ -170,7 +189,7 @@ class OptimizerConfig(BaseModel):
         return self
 
 
-Strategy = Literal["balanced", "pv_absorption", "backup", "autarky"]
+Strategy = Literal["balanced", "pv_absorption", "autarky"]
 # Position of the home battery in the priority list
 BATTERY_PRIORITY_ID = "battery"
 

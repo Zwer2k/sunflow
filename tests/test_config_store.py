@@ -147,3 +147,50 @@ def test_broken_json_raises_config_error(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError):
         ConfigStore(tmp_path).load()
+
+
+@pytest.mark.parametrize(
+    ("stored", "strategy", "override"),
+    [
+        pytest.param({"optimizer": {"strategy": "backup", "backup_reserve_pct": 40}}, "balanced", None, id="default"),
+        pytest.param(
+            {"optimizer": {"strategy": "autarky"}, "strategy_override": {"strategy": "backup"}},
+            "autarky",
+            None,
+            id="temporary",
+        ),
+    ],
+)
+def test_backup_strategy_becomes_reserve(tmp_path: Path, stored: dict, strategy: str, override: None) -> None:
+    """Version 1 had backup power as a strategy; version 2 keeps the reserve in every strategy."""
+    import json
+
+    (tmp_path / "config.json").write_text(json.dumps({"version": 1} | stored))
+
+    config = ConfigStore(tmp_path).load()
+
+    assert config.optimizer.strategy == strategy
+    assert config.optimizer.backup_reserve
+    assert config.optimizer.backup_reserve_pct == stored["optimizer"].get("backup_reserve_pct", 30)
+    assert config.strategy_override is override
+
+
+@pytest.mark.parametrize(
+    ("strategy", "reserve", "expected"),
+    [
+        pytest.param("balanced", True, 5000, id="balanced"),
+        pytest.param("pv_absorption", True, 5000, id="pv_absorption"),
+        pytest.param("autarky", True, 5000, id="autarky"),
+        pytest.param("balanced", False, 0, id="off"),
+    ],
+)
+def test_reserve_applies_in_every_strategy(strategy: str, reserve: bool, expected: float) -> None:
+    """The reserve is a floor for the optimizer whatever the strategy."""
+    from sunflow.config_store import OptimizerConfig
+    from sunflow.optimizer import BatterySpec
+    from sunflow.plan import optimizer_settings
+
+    battery = BatterySpec(capacity_wh=20_000, soc_wh=10_000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    config = SunflowConfig(optimizer=OptimizerConfig(strategy=strategy, backup_reserve=reserve, backup_reserve_pct=25))
+
+    assert optimizer_settings(config, battery).reserve_wh == expected

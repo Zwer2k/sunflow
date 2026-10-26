@@ -645,7 +645,7 @@ def optimizer_settings(config: SunflowConfig, battery: BatterySpec) -> Settings:
         export_soft_limit_w=options.export_limit_w if options.grid_friendly else None,
         import_soft_limit_w=options.import_limit_w if options.grid_friendly else None,
         export_penalty_ct_per_kwh=PV_ABSORPTION_PENALTY_CT if strategy == "pv_absorption" else 0.0,
-        reserve_wh=battery.capacity_wh * options.backup_reserve_pct / 100 if strategy == "backup" else 0.0,
+        reserve_wh=battery.capacity_wh * options.backup_reserve_pct / 100 if options.backup_reserve else 0.0,
     )
 
 

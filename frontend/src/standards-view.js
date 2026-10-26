@@ -8,7 +8,6 @@ const STRATEGIES = {
     label: "Möglichst viel PV aufnehmen",
     hint: "Hält Platz für Solarstrom frei und lädt vor sonnigen Tagen nicht aus dem Netz – sinnvoll bei Einspeisebegrenzung.",
   },
-  backup: { label: "Notstrom sicherstellen", hint: "Hält eine Reserve für Stromausfälle (EPS) im Speicher." },
   autarky: {
     label: "Möglichst autark",
     hint: "So wenig Netzbezug wie möglich: kein Netzladen, der Speicher deckt jeden Bedarf sofort. Kann mit Zeittarifen etwas mehr kosten.",
@@ -288,17 +287,24 @@ class SunflowStandards extends LitElement {
           )}
         </fieldset>
         <div class="fields">
-          ${settings.strategy === "backup"
-            ? html`<label class="field">
-                <span class="field-label">Notstrom-Reserve</span>
-                <span class="input-unit">
-                  <input inputmode="decimal" .value=${this._reserve ?? toDisplay(settings.backup_reserve_pct, "%")}
-                    @input=${(e) => (this._reserve = e.target.value)}>
-                  <span class="muted">%</span>
-                </span>
-                <span class="small muted">Wird nie unterschritten – zusätzlich zum Mindest-Ladestand.</span>
-              </label>`
-            : nothing}
+          <div class="field">
+            <span class="field-label">Notstrom-Reserve</span>
+            <span class="inline">
+              <input type="checkbox" aria-label="Notstrom-Reserve freihalten" .checked=${settings.backup_reserve}
+                ?disabled=${this._saving} @change=${(e) => this._saveSettings({ backup_reserve: e.target.checked })}>
+              ${settings.backup_reserve
+                ? html`<span class="input-unit">
+                    <input inputmode="decimal" aria-label="Notstrom-Reserve in Prozent"
+                      .value=${this._reserve ?? toDisplay(settings.backup_reserve_pct, "%")}
+                      @input=${(e) => (this._reserve = e.target.value)}>
+                    <span class="muted">%</span>
+                  </span>`
+                : html`freihalten`}
+            </span>
+            <span class="small muted">Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand,
+              die Reserve bleibt dem Notstrom (EPS) bei Stromausfall vorbehalten. Liegt der Speicher darunter, wird er
+              nicht weiter entladen.</span>
+          </div>
           <label class="field">
             <span class="field-label">Ladegrenze im Alltag</span>
             <span class="input-unit">

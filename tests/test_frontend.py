@@ -142,8 +142,8 @@ def test_control_overrides_and_priorities(tmp_path: Path) -> None:
     effective, paused = config.effective_flex(config.devices[0], datetime.now(UTC))
     assert effective.strategy == "fast" and not paused
 
-    assert client.put("/api/v1/control/strategy", json={"strategy": "backup"}).status_code == 200
-    assert store.load().effective_strategy(datetime.now(UTC)) == "backup"
+    assert client.put("/api/v1/control/strategy", json={"strategy": "autarky"}).status_code == 200
+    assert store.load().effective_strategy(datetime.now(UTC)) == "autarky"
 
     assert client.put("/api/v1/control/priorities", json=["battery", "ev"]).json() == ["battery", "ev"]
     assert client.put("/api/v1/control/priorities", json=["nope"]).status_code == 422
