@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.17.1
+
+- Battery care: "Spätestens nach … Tagen aus dem Netz". When the battery was not full
+  for that long (e.g. in winter), the full charge is planned from the grid by the end of
+  the cheapest price window of the next 24 h, also when grid charging is otherwise off;
+  PV available before is still used first
+
 ## 0.17.0
 
 - Battery care (Standards): everyday charge limit (e.g. 90 %) and a full charge every

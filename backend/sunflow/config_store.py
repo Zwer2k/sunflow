@@ -133,6 +133,8 @@ class OptimizerConfig(BaseModel):
     # Battery care: everyday charge limit and how often a full charge (balancing) is wanted
     max_soc_pct: float = Field(default=100, ge=50, le=100)
     full_charge_every_days: int | None = Field(default=None, ge=1, le=90)
+    # When PV did not fill the battery for this long, charge it full from the grid at the cheapest time
+    full_charge_grid_after_days: int | None = Field(default=None, ge=1, le=120)
 
     @model_validator(mode="after")
     def _derive_wear(self) -> "OptimizerConfig":

@@ -301,6 +301,8 @@ class BatteryCare:
     last_full: datetime | None = None
     full_charge_slot: int | None = None
     full_charge_at: datetime | None = None
+    # Overdue: charge full from the grid if PV does not do it in time
+    from_grid: bool = False
     notes: list[str] = field(default_factory=list)
 
 
@@ -310,6 +312,21 @@ WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 def german_time(moment: datetime) -> str:
     """'Mo 16:30' independent of the system locale."""
     return f"{WEEKDAYS[moment.weekday()]} {moment:%H:%M}"
+
+
+def cheapest_window_end(inputs: list[SlotInput], hours: int = 24) -> int:
+    """Last slot of the first block with the lowest price within the next hours."""
+    ahead = inputs[: hours * 4]
+    lowest = min(slot.price for slot in ahead)
+    first = next(t for t, slot in enumerate(ahead) if slot.price <= lowest + 1e-9)
+    last = first
+    while last + 1 < len(ahead) and ahead[last + 1].price <= lowest + 1e-9:
+        last += 1
+    return last
+
+
+# A due full charge is worth this much per kWh missing; overdue it must happen
+OVERDUE_FULL_CHARGE_PENALTY = 2.0
 
 
 # The SoC counts as full from here (BMS readings rarely show exactly 100)
@@ -353,9 +370,24 @@ async def battery_care(
     if options.max_soc_pct < 100:
         care.limit_wh = battery.capacity_wh * options.max_soc_pct / 100
     every = options.full_charge_every_days
-    if not every or not inputs:
+    grid_after = options.full_charge_grid_after_days
+    if not (every or grid_after) or not inputs:
         return care
-    care.last_full = await last_full_charge(client, soc_entity(profile, device, snapshot), every + 3)
+    window = max(every or 0, grid_after or 0) + 3
+    care.last_full = await last_full_charge(client, soc_entity(profile, device, snapshot), window)
+    since = care.last_full.astimezone(tz).strftime("%d.%m.") if care.last_full else f"vor über {window} Tagen"
+    # Not full within the queried window counts as overdue as well
+    if grid_after and (care.last_full is None or inputs[0].start - care.last_full >= timedelta(days=grid_after)):
+        care.full_charge_slot = cheapest_window_end(inputs)
+        care.full_charge_at = inputs[care.full_charge_slot].start + SLOT
+        care.from_grid = True
+        care.notes.append(
+            f"Vollladung überfällig (zuletzt voll: {since}) – wird bis {german_time(care.full_charge_at.astimezone(tz))} "
+            "zum günstigsten Preis aus dem Netz nachgeholt, falls PV nicht reicht."
+        )
+        return care
+    if not every:
+        return care
     due = (care.last_full + timedelta(days=every)) if care.last_full else inputs[0].start
     if due > inputs[-1].start:
         return care
@@ -365,7 +397,6 @@ async def battery_care(
     for t, slot in enumerate(inputs):
         if slot.start >= due_day and slot.pv_w > slot.load_w:
             candidates[slot.start.astimezone(tz).date()] = t
-    since = care.last_full.astimezone(tz).strftime("%d.%m.") if care.last_full else "unbekannt"
     if not candidates:
         care.notes.append(f"Vollladung fällig (zuletzt voll: {since}) – im Planungszeitraum ist kein PV-Überschuss in Sicht.")
         return care
@@ -652,6 +683,9 @@ async def compute_plan(
     warnings += flex_warnings
     care = await battery_care(client, config, profile, battery_device, snapshot, battery, inputs, tz)
     settings = replace(settings, soc_limit_wh=care.limit_wh, full_charge_slot=care.full_charge_slot)
+    if care.from_grid:
+        # Explicitly wanted by the user: grid charging for the overdue full charge
+        settings = replace(settings, allow_grid_charge=True, full_charge_penalty=OVERDUE_FULL_CHARGE_PENALTY)
     warnings += care.notes
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
