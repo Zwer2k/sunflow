@@ -59,7 +59,7 @@ from .history import fetch_history, history_series
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .settings import Settings
-from .plan import weather_entity
+from .plan import cloud_coverage, weather_entity
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
 from .site import MEASUREMENTS, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
@@ -1262,16 +1262,31 @@ async def get_pv_learning(request: Request) -> dict[str, Any]:
 async def get_weather_entities(request: Request) -> list[dict[str, Any]]:
     """Weather entities for the cloud coverage, with whether their forecast has it."""
     snapshot = await _snapshot(request)
-    return [
-        {
-            "entity_id": entity_id,
-            "name": state["attributes"].get("friendly_name", entity_id),
-            "attribution": state["attributes"].get("attribution"),
-            "cloud_coverage": state["attributes"].get("cloud_coverage") is not None,
-        }
-        for entity_id, state in sorted(snapshot.states.items())
-        if entity_id.startswith("weather.")
-    ]
+    client: HAClient = request.app.state.ha
+    result = []
+    for entity_id, state in sorted(snapshot.states.items()):
+        if not entity_id.startswith("weather."):
+            continue
+        # Sunflow uses the hourly forecast; some providers (e.g. Open-Meteo) have the cloud
+        # coverage only there, not in the current state
+        clouds = await cloud_coverage(client, entity_id, [datetime.now(UTC) + timedelta(hours=h) for h in range(1, 7)])
+        result.append(
+            {
+                "entity_id": entity_id,
+                "name": state["attributes"].get("friendly_name", entity_id),
+                "provider": weather_provider(entity_id, snapshot),
+                "cloud_coverage": any(c is not None for c in clouds),
+            }
+        )
+    return result
+
+
+def weather_provider(entity_id: str, snapshot: Snapshot) -> str | None:
+    """Name of the integration behind a weather entity (e.g. "Open-Meteo", "Meteorologisk institutt")."""
+    entry = next((e for e in snapshot.entities if e["entity_id"] == entity_id), None)
+    if entry is None:
+        return None
+    return snapshot.integration_names.get(entry.get("platform"), entry.get("platform"))
 
 
 @router.get("/live")

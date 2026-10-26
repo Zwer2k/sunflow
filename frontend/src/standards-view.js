@@ -350,7 +350,7 @@ class SunflowStandards extends LitElement {
               <option value="" ?selected=${!settings.weather_entity}>Automatisch (erste Wetter-Entität)</option>
               ${(this._weather ?? []).map(
                 (w) => html`<option value=${w.entity_id} ?selected=${settings.weather_entity === w.entity_id}>
-                  ${w.name}${w.cloud_coverage ? "" : " – ohne Bewölkungsangabe"}</option>`,
+                  ${w.name}${w.provider ? ` (${w.provider})` : ""}${w.cloud_coverage ? "" : " – ohne Bewölkungsangabe"}</option>`,
               )}
             </select>
             <span class="small muted">Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.</span>
