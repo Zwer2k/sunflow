@@ -17,6 +17,9 @@ class SunflowStandards extends LitElement {
     _settings: { state: true },
     _error: { state: true },
     _wear: { state: true },
+    _wearMode: { state: true },
+    _wearCalc: { state: true },
+    _batteryKwh: { state: true },
     _reserve: { state: true },
     _daily: { state: true },
     _largeLoad: { state: true },
@@ -39,6 +42,8 @@ class SunflowStandards extends LitElement {
     try {
       this._settings = (await api.config()).optimizer;
       this._error = null;
+      // Capacity as default for the wear calculation (derived from the battery modules)
+      api.latestPlan().then((plan) => (this._batteryKwh = plan.battery ? plan.battery.capacity_wh / 1000 : null)).catch(() => {});
     } catch (err) {
       this._error = `Einstellungen konnten nicht geladen werden: ${err.message}`;
     }
@@ -63,6 +68,10 @@ class SunflowStandards extends LitElement {
       await api.setOptimizer({ ...this._settings, ...changes });
       // Only the saved fields drop their edit; numbers typed elsewhere stay
       if ("wear_ct_per_kwh" in changes) this._wear = undefined;
+      if ("wear_calculation" in changes) {
+        this._wearMode = undefined;
+        this._wearCalc = undefined;
+      }
       if ("backup_reserve_pct" in changes) this._reserve = undefined;
       if ("daily_consumption_kwh" in changes) this._daily = undefined;
       if ("large_load_threshold_w" in changes) this._largeLoad = undefined;
@@ -80,14 +89,27 @@ class SunflowStandards extends LitElement {
 
   /** Save edited numbers before the wizard moves on; false when they are invalid. */
   async saveIfChanged() {
-    const changed = [this._wear, this._reserve, this._daily, this._largeLoad].some((v) => v !== undefined);
+    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._daily, this._largeLoad].some(
+      (v) => v !== undefined,
+    );
     return !changed || this._saveNumbers(this._settings);
   }
 
 
   _saveNumbers(settings) {
     const changes = {};
-    if (this._wear !== undefined) {
+    const mode = this._wearMode ?? (settings.wear_calculation ? "calc" : "direct");
+    if (mode === "calc" && (this._wearCalc !== undefined || this._wearMode !== undefined)) {
+      const calc = this._parseWearCalc(settings);
+      if (!calc) {
+        this._error = "Bitte Preis, Zyklen und Kapazität für den Verschleiß angeben.";
+        return false;
+      }
+      changes.wear_calculation = calc;
+    } else if (mode === "direct" && this._wearMode !== undefined) {
+      changes.wear_calculation = null;
+    }
+    if (mode === "direct" && this._wear !== undefined) {
       const wear = fromDisplay(this._wear, "ct");
       if (wear === undefined || wear === null || wear < 0) {
         this._error = "Bitte gültige Verschleißkosten eingeben.";
@@ -122,6 +144,79 @@ class SunflowStandards extends LitElement {
     return this._saveSettings({ ...settings, ...changes });
   }
 
+
+  _wearInputs(settings) {
+    const stored = settings.wear_calculation ?? {};
+    return {
+      price: toDisplay(stored.price_eur, "ct"),
+      cycles: toDisplay(stored.cycles, "ct"),
+      capacity: toDisplay(stored.capacity_kwh ?? this._batteryKwh, "ct"),
+      dod: toDisplay(stored.depth_of_discharge_pct ?? 90, "ct"),
+      eol: toDisplay(stored.end_of_life_pct ?? 70, "ct"),
+      ...(this._wearCalc ?? {}),
+    };
+  }
+
+  _parseWearCalc(settings) {
+    const inputs = this._wearInputs(settings);
+    const number = (text) => fromDisplay(text ?? "", "ct");
+    const calc = {
+      price_eur: number(inputs.price),
+      cycles: number(inputs.cycles),
+      capacity_kwh: number(inputs.capacity),
+      depth_of_discharge_pct: number(inputs.dod),
+      end_of_life_pct: number(inputs.eol),
+    };
+    const valid = Object.values(calc).every((v) => typeof v === "number" && v > 0)
+      && calc.depth_of_discharge_pct <= 100 && calc.end_of_life_pct <= 100;
+    return valid ? calc : null;
+  }
+
+  _renderWear(settings) {
+    const mode = this._wearMode ?? (settings.wear_calculation ? "calc" : "direct");
+    const inputs = this._wearInputs(settings);
+    const set = (field, value) => (this._wearCalc = { ...(this._wearCalc ?? {}), [field]: value });
+    const calc = mode === "calc" ? this._parseWearCalc(settings) : null;
+    // Same formula as the backend: price / (cycles x mean capacity x depth of discharge)
+    const result = calc
+      ? (calc.price_eur * 100) / (calc.cycles * calc.capacity_kwh * ((1 + calc.end_of_life_pct / 100) / 2) * (calc.depth_of_discharge_pct / 100))
+      : null;
+    const field = (label, key, unit, hint = null) => html`
+      <label class="field">
+        <span class="field-label">${label}</span>
+        <span class="input-unit"><input inputmode="decimal" .value=${inputs[key] ?? ""} @input=${(e) => set(key, e.target.value)}>
+          <span class="muted">${unit}</span></span>
+        ${hint ? html`<span class="small muted">${hint}</span>` : nothing}
+      </label>`;
+    return html`
+      <div class="field wide">
+        <span class="field-label">Verschleißkosten Speicher</span>
+        <div class="segmented" role="group" aria-label="Verschleißkosten angeben">
+          ${[["direct", "Direkt in ct/kWh"], ["calc", "Aus Preis und Zyklen"]].map(
+            ([value, label]) => html`<button class=${mode === value ? "on" : ""} aria-pressed=${mode === value}
+              @click=${() => (this._wearMode = value)}>${label}</button>`,
+          )}
+        </div>
+        ${mode === "direct"
+          ? html`<span class="input-unit">
+                <input inputmode="decimal" aria-label="Verschleißkosten in ct/kWh"
+                  .value=${this._wear ?? toDisplay(settings.wear_ct_per_kwh, "ct")} @input=${(e) => (this._wear = e.target.value)}>
+                <span class="muted">ct/kWh</span>
+              </span>`
+          : html`<div class="fields">
+                ${field("Anschaffungspreis", "price", "€", "Speicher ohne Wechselrichter, inkl. Montage")}
+                ${field("Zyklen laut Hersteller", "cycles", "Zyklen")}
+                ${field("Kapazität", "capacity", "kWh")}
+                ${field("bei Entladetiefe", "dod", "%")}
+                ${field("Restkapazität danach", "eol", "%", "z. B. 70 % – die Kapazität sinkt bis dahin")}
+              </div>
+              <span class="small">${result !== null
+                ? html`ergibt <strong>${toDisplay(Math.round(result * 100) / 100, "ct")} ct/kWh</strong> je entladener kWh`
+                : html`<span class="muted">Preis, Zyklen und Kapazität eingeben</span>`}</span>`}
+        <span class="small muted">Je entladener kWh – verhindert Zyklen für Kleinstbeträge.</span>
+      </div>
+    `;
+  }
 
   _renderSettings(settings) {
     return html`
@@ -171,15 +266,7 @@ class SunflowStandards extends LitElement {
             </span>
             <span class="small muted">Stunden darüber (z. B. Wallbox) zählen nicht zur Lastprognose. Leer = nichts ausklammern.</span>
           </label>
-          <label class="field">
-            <span class="field-label">Verschleißkosten Speicher</span>
-            <span class="input-unit">
-              <input inputmode="decimal" .value=${this._wear ?? toDisplay(settings.wear_ct_per_kwh, "ct")}
-                @input=${(e) => (this._wear = e.target.value)}>
-              <span class="muted">ct/kWh</span>
-            </span>
-            <span class="small muted">Je entladener kWh – verhindert Zyklen für Kleinstbeträge.</span>
-          </label>
+          ${this._renderWear(settings)}
           <label class="field">
             <span class="field-label">Laden aus dem Netz</span>
             <span class="inline">
@@ -189,7 +276,7 @@ class SunflowStandards extends LitElement {
             </span>
           </label>
         </div>
-        ${this._wear !== undefined || this._reserve !== undefined || this._daily !== undefined || this._largeLoad !== undefined
+        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._daily, this._largeLoad].some((v) => v !== undefined)
           ? html`<div class="actions">
               <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
                 Speichern und neu planen
@@ -271,6 +358,13 @@ class SunflowStandards extends LitElement {
     .option.selected { border-color: var(--sf-primary); background: var(--sf-primary-bg); }
     .option input { margin-top: 3px; width: 18px; height: 18px; }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    .field.wide { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; }
+    .segmented { display: flex; flex-wrap: wrap; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; align-self: flex-start; }
+    .segmented button {
+      min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent;
+      cursor: pointer; font: inherit; font-size: 14px; color: var(--sf-muted);
+    }
+    .segmented button.on { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
     .field-label { font-weight: 500; }
     .input-unit { display: flex; align-items: center; gap: 8px; }

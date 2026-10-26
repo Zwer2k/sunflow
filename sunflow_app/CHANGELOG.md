@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.0
+
+- Standards: battery wear either directly in ct/kWh or calculated from purchase price,
+  rated cycles, capacity, depth of discharge and remaining capacity at end of life
+  (price / (cycles x mean capacity x depth of discharge)); the inputs are kept
+
 ## 0.15.3
 
 - Planung: the measured lines (SoC, PV, consumption, grid import and export) reach up

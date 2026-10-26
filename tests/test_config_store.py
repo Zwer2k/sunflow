@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from sunflow.config_store import ConfigStore, DeviceConfig, RoleOverride, SunflowConfig
 
 
@@ -72,3 +74,14 @@ def test_invalid_config_raises_config_error(tmp_path: Path) -> None:
     (tmp_path / "config.json").write_text('{"devices": "broken"}')
     with pytest.raises(ConfigError, match="ungültig"):
         ConfigStore(tmp_path).load()
+
+
+def test_wear_from_purchase_price() -> None:
+    """Price / (cycles x mean capacity x depth of discharge) gives the wear per kWh."""
+    from sunflow.config_store import OptimizerConfig, WearCalculation
+
+    calc = WearCalculation(price_eur=8000, cycles=6000, capacity_kwh=20, depth_of_discharge_pct=90, end_of_life_pct=70)
+    # 6000 x 17 kWh x 0.9 = 91 800 kWh -> 8,71 ct/kWh
+    assert calc.ct_per_kwh() == pytest.approx(8.71, abs=0.01)
+    assert OptimizerConfig(wear_ct_per_kwh=1, wear_calculation=calc).wear_ct_per_kwh == pytest.approx(8.71)
+    assert OptimizerConfig(wear_ct_per_kwh=4).wear_ct_per_kwh == 4
