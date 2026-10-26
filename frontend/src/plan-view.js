@@ -55,6 +55,11 @@ function flexWindows(slots, name) {
   }));
 }
 
+/** A fixed color per controllable consumer, in the order of the plan; load and PV keep the first two. */
+function consumerColors(flex) {
+  return new Map((flex ?? []).map((f, i) => [f.device_id, SERIES_COLORS[i + 2] ?? UNASSIGNED_COLOR]));
+}
+
 /** Group consecutive slots with the same action. */
 /** Reference lines for the SoC chart: full, backup reserve (if active) and discharge limit. */
 function socLimits(battery) {
@@ -94,6 +99,7 @@ class SunflowPlan extends LitElement {
     _error: { state: true },
     _history: { state: true },
     _historyHours: { state: true },
+    _focus: { state: true },
   };
 
   constructor() {
@@ -166,6 +172,8 @@ class SunflowPlan extends LitElement {
     const nowDate = new Date(slots[0].start);
     const hasLoadpoints =
       history.some((p) => p.loadpoint_w !== null && p.loadpoint_w !== undefined) || Boolean(plan.flex?.length);
+    const colors = consumerColors(plan.flex);
+    const consumers = (plan.flex ?? []).map((f) => ({ key: f.device_id, name: f.name, color: colors.get(f.device_id) }));
     return html`
       ${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
       <div class="tiles">
@@ -249,15 +257,17 @@ class SunflowPlan extends LitElement {
       <section>
         <h3>PV-Erzeugung und Hausverbrauch</h3>
         <div class="legend">
-          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>PV-Erzeugung
+          <span class="legend-item">${this._legendButton("pv", SERIES_COLORS[1], "PV-Erzeugung")}
             ${plan.pv_correction
               ? html`<span class="muted">(Prognose an die Anlage angepasst: Ø ${Math.round(plan.pv_correction.overall * 100)} %
                   aus ${plan.pv_correction.days} Tagen)</span>`
               : nothing}</span>
-          ${hasLoadpoints
-            ? html`<span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>steuerbare Verbraucher</span>`
-            : nothing}
-          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Hausverbrauch
+          ${consumers.length
+            ? consumers.map((c) => this._legendButton(c.key, c.color, c.name))
+            : hasLoadpoints
+              ? this._legendButton("consumers", UNASSIGNED_COLOR, "steuerbare Verbraucher")
+              : nothing}
+          <span class="legend-item">${this._legendButton("load", SERIES_COLORS[0], "Hausverbrauch")}
             <span class="muted">(Prognose: ${plan.load_model
               ? `gelerntes Modell mit Außentemperatur aus ${plan.load_model.days} Tagen, Abweichung ${formatValue(plan.load_model.error_model, "W")} statt ${formatValue(plan.load_model.error_average, "W")}`
               : html`${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
@@ -265,23 +275,26 @@ class SunflowPlan extends LitElement {
               : ""}${plan.load_separated_hours ? `, ohne steuerbare Verbraucher (${plan.load_separated_hours} h getrennt)` : ""}`})</span></span>
         </div>
         ${lineChart(
-          [
-            { name: "Verbrauch gemessen", color: SERIES_COLORS[0], points: this._past("load_w") },
-            { name: "Verbrauch Prognose", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
-            { name: "PV gemessen", color: SERIES_COLORS[1], points: this._past("pv_w") },
-            ...(hasLoadpoints
-              ? [{ name: "Verbraucher gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
-              : []),
-            ...(plan.flex?.length
-              ? [{
-                  name: "Verbraucher geplant",
-                  color: UNASSIGNED_COLOR,
-                  dashed: true,
-                  points: slots.map((s) => ({ start: s.start, end: s.end, value: Object.values(s.flex_w ?? {}).reduce((a, b) => a + b, 0) })),
-                }]
-              : []),
-            { name: "PV Prognose", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "pv_w") },
-          ],
+          this._focused([
+            { key: "load", name: "Verbrauch gemessen", color: SERIES_COLORS[0], points: this._past("load_w") },
+            { key: "load", name: "Verbrauch Prognose", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
+            { key: "pv", name: "PV gemessen", color: SERIES_COLORS[1], points: this._past("pv_w") },
+            ...(consumers.length
+              ? consumers.flatMap((c) => [
+                  { key: c.key, name: `${c.name} gemessen`, color: c.color, points: this._pastConsumer(c.key) },
+                  {
+                    key: c.key,
+                    name: `${c.name} geplant`,
+                    color: c.color,
+                    dashed: true,
+                    points: slots.map((s) => ({ start: s.start, end: s.end, value: s.flex_w?.[c.name] ?? 0 })),
+                  },
+                ])
+              : hasLoadpoints
+                ? [{ key: "consumers", name: "Verbraucher gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
+                : []),
+            { key: "pv", name: "PV Prognose", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "pv_w") },
+          ]),
           { label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose", formatY: (v) => formatValue(v, "W"), now: nowDate },
         )}
       </section>
@@ -320,6 +333,7 @@ class SunflowPlan extends LitElement {
   }
 
   _renderFlex(plan) {
+    const colors = consumerColors(plan.flex);
     const fmt = (v, unit) => (v === null || v === undefined ? "–" : `${Math.round(v * 10) / 10} ${unit}`.replace(".", ","));
     return html`
       <section>
@@ -330,7 +344,7 @@ class SunflowPlan extends LitElement {
             return html`
               <div class="flex-card">
                 <div class="flex-head">
-                  <strong>${f.name}</strong>
+                  <strong><span class="swatch inline" style="background:${colors.get(f.device_id)}"></span>${f.name}</strong>
                   <span class="small muted">${{ heater: "Warmwasser", vehicle: "Fahrzeug" }[f.kind] ?? "Verbraucher"}</span>
                 </div>
                 <div class="small">
@@ -418,6 +432,27 @@ class SunflowPlan extends LitElement {
     return this._withLive(points, this._plan?.actual?.[key]);
   }
 
+  _pastConsumer(deviceId) {
+    return (this._history?.points ?? []).map((p) => ({
+      start: p.start,
+      end: p.end,
+      value: p.consumers ? (p.consumers[deviceId] ?? null) : null,
+    }));
+  }
+
+  /** Legend entry that highlights its lines in the chart; a second click shows all again. */
+  _legendButton(key, color, label) {
+    const active = this._focus === key;
+    return html`<button type="button" class="legend-item legend-button ${active ? "active" : ""}" aria-pressed=${active}
+      title=${active ? "Alle Linien zeigen" : "Hervorheben"} @click=${() => (this._focus = active ? null : key)}>
+      <span class="swatch" style="background:${color}"></span>${label}</button>`;
+  }
+
+  _focused(series) {
+    if (!this._focus || !series.some((s) => s.key === this._focus)) return series;
+    return series.map((s) => ({ ...s, dim: s.key !== this._focus }));
+  }
+
   _pastGrid(transform) {
     const points = (this._history?.points ?? []).map((p) => ({
       start: p.start,
@@ -488,7 +523,12 @@ class SunflowPlan extends LitElement {
     .chart .hit:hover { fill: var(--sf-text); fill-opacity: 0.06; }
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
-    .swatch { width: 12px; height: 12px; border-radius: 3px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+    .swatch.inline { display: inline-block; margin-right: 6px; vertical-align: -1px; }
+    .legend-button { font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: 999px;
+      padding: 2px 8px; margin: -3px 0 -3px -9px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .legend-button:hover { background: var(--sf-subtle); }
+    .legend-button.active { border-color: var(--sf-border, var(--sf-muted)); background: var(--sf-subtle); font-weight: 600; }
     .warn-text { color: var(--sf-warn-text); }
     .flex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
     .flex-card { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }

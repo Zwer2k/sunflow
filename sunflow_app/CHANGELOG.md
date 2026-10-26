@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.28.1
+
+- Planung: Jeder steuerbare Verbraucher hat im Diagramm „PV-Erzeugung und Hausverbrauch“ eine eigene Farbe (gemessen und geplant), passend zur Karte unter „Steuerbare Verbraucher“.
+- Ein Klick auf einen Legendeneintrag hebt dessen Linien hervor und blendet die anderen ab; ein zweiter Klick zeigt wieder alle.
+
 ## 0.28.0
 
 - PV-Prognose lernt je Dachfläche: Unter Einstellungen → Tarif & Prognose lässt sich jeder Prognose-Fläche zuordnen, von welchen PV-Strings sie gemessen wird. Sunflow lernt dann die Abweichung jeder Fläche einzeln (z. B. Verschattung am Vormittag) und korrigiert die Planung flächengenau. Anzeige unter Analyse → Lernen.

@@ -22,6 +22,8 @@ class Series:
     key: str  # soc_wh, pv_w, load_w, grid_w, loadpoint_w
     statistic_id: str
     factor: float  # sign flip and unit conversion (e.g. % -> Wh)
+    # Controllable consumers are also returned one by one
+    device_id: str | None = None
 
 
 def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot) -> list[Series]:
@@ -41,12 +43,12 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             )
         }
 
-        def add(key: str, role: str, factor: float = 1.0) -> None:
+        def add(key: str, role: str, factor: float = 1.0, device_id: str | None = None) -> None:
             value = roles.get(role)
             if value is None or value.entity_id is None:
                 return
             sign = -1.0 if value.sign is not None and value.sign not in CANONICAL_SIGNS else 1.0
-            series.append(Series(key=key, statistic_id=value.entity_id, factor=factor * sign))
+            series.append(Series(key=key, statistic_id=value.entity_id, factor=factor * sign, device_id=device_id))
 
         if "battery_window" in profile["capabilities"]:
             params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
@@ -57,7 +59,9 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
         if grid_device is not None and device.id == grid_device.id:
             add("grid_w", "grid_power")
         if "loadpoint" in profile["capabilities"]:
-            add("loadpoint_w", "charge_power")
+            add("loadpoint_w", "charge_power", device_id=device.id)
+        elif "load" in profile["capabilities"]:
+            add("loadpoint_w", "power", device_id=device.id)
         if "pv" in profile["capabilities"]:
             role = next((r for r in PV_OUTPUT_ROLES if r in roles and roles[r].entity_id), None)
             if role:
@@ -83,6 +87,7 @@ async def fetch_history(
     )
     # bucket start -> key -> statistic -> values
     buckets: dict[datetime, dict[str, dict[str, list[float]]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    consumers: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for s in series:
         for row in result.get(s.statistic_id, []):
             if row.get("mean") is None:
@@ -90,6 +95,8 @@ async def fetch_history(
             moment = datetime.fromtimestamp(row["start"] / 1000, UTC)
             offset = (moment - start) // bucket
             buckets[start + offset * bucket][s.key][s.statistic_id].append(row["mean"] * s.factor)
+            if s.device_id is not None:
+                consumers[start + offset * bucket][s.device_id].append(max(row["mean"] * s.factor, 0.0))
 
     points = []
     for bucket_start in sorted(buckets):
@@ -101,5 +108,6 @@ async def fetch_history(
             point[key] = (
                 sum(sum(v) / len(v) for v in per_statistic.values()) if per_statistic else None
             )
+        point["consumers"] = {device_id: sum(v) / len(v) for device_id, v in consumers[bucket_start].items()}
         points.append(point)
     return points
