@@ -127,6 +127,7 @@ class SunflowApp extends LitElement {
     _discoveryError: { state: true },
     _pendingRestore: { state: true },
     _recommendationCount: { state: true },
+    _usages: { state: true },
     _restoring: { state: true },
     _measurements: { state: true },
     _sources: { state: true },
@@ -233,6 +234,7 @@ class SunflowApp extends LitElement {
       return;
     }
     this._loadPendingRestore();
+    api.latestPlan().then((plan) => (this._usages = plan.usages ?? {})).catch(() => {});
     await this._loadDiscovery();
   }
 
@@ -994,7 +996,12 @@ class SunflowApp extends LitElement {
               (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
                 <div class="small muted">${d.role_overrides.switch?.entity_id ?? "–"}${d.role_overrides.power?.entity_id
                   ? ` · Leistung: ${d.role_overrides.power.entity_id}`
-                  : ""} · Strategie in „Kenndaten“</div></div>
+                  : ""} · Strategie in „Kenndaten“</div>
+                ${this._usages?.[d.id]
+                  ? html`<div class="small">gemessen: ${formatValue(this._usages[d.id].daily_wh, "Wh")} pro Tag${this._usages[d.id].running_w
+                      ? html` · läuft mit ${formatValue(this._usages[d.id].running_w, "W")}`
+                      : nothing}</div>`
+                  : nothing}</div>
                 <span class="item-actions">
                   <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>Bearbeiten</button>
                   <button class="secondary danger" @click=${() => this._removeDevice(d)}>Entfernen</button>

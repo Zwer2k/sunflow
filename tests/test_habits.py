@@ -41,3 +41,22 @@ def test_too_few_sessions_learn_nothing() -> None:
 
     assert departure.workday is None
     assert departure.next_after(monday, BERLIN) is None
+
+
+def test_consumer_usage_from_power_means() -> None:
+    """An e-bike charger: 2 h at 250 W each day, 1 W standby otherwise."""
+    from sunflow.habits import usage_from
+
+    start = datetime(2026, 10, 1, tzinfo=BERLIN)
+    means = [
+        (start + timedelta(minutes=5 * i), 250.0 if (i % 288) < 24 else 1.0)
+        for i in range(288 * 5)
+    ]
+
+    usage = usage_from(means)
+
+    assert usage.days == 5
+    assert usage.running_w == 250
+    # 2 h x 250 W plus 22 h x 1 W standby
+    assert round(usage.daily_wh) == 500 + 22
+    assert usage_from(means[:288 * 2]) is None  # two days are too few

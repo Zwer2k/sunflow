@@ -55,3 +55,21 @@ def test_weather_without_cloud_coverage() -> None:
     found = build(_config(), None, {}, [], 0, None, [{"entity_id": "weather.x", "cloud_coverage": False}])
 
     assert any(r["id"] == "weather_without_clouds" for r in found)
+
+
+def test_consumer_usage_recommendations() -> None:
+    """Measured use far from the settings is offered to take over."""
+    from types import SimpleNamespace
+
+    from sunflow.habits import ConsumerUsage
+
+    config = SunflowConfig(devices=[
+        DeviceConfig(id="bike", ha_device_id="manual:1", profile="generic/switch", profile_version=1, name="E-Bike",
+                     parameters={"max_power": 500}),
+    ])
+    latest = SimpleNamespace(usages={"bike": ConsumerUsage(daily_wh=520, running_w=250, days=5)}, flex=[], plan=SimpleNamespace(flex=[], slots=[]))
+
+    found = {r["id"]: r for r in build(config, latest, {}, [], 0, None, [])}
+
+    assert found["consumer_daily:bike"]["action"]["value"] == 520
+    assert found["consumer_power:bike"]["action"] == {"type": "set_parameter", "device_id": "bike", "name": "max_power", "value": 250}

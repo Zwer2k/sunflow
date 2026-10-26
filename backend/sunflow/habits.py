@@ -79,3 +79,51 @@ async def learn_departure(client: HAClient, entity_id: str, tz: tzinfo) -> Depar
         no_attributes=True,
     )
     return departures_from(result.get(entity_id, []), tz)
+
+
+# A consumer counts as running above this power (standby of smart plugs stays below)
+RUNNING_ABOVE_W = 20.0
+# Five minute statistics are kept 10 days by default
+CONSUMER_DAYS = 10
+MIN_CONSUMER_DAYS = 3
+
+
+@dataclass(frozen=True, kw_only=True)
+class ConsumerUsage:
+    """What a switchable consumer with a power sensor typically needs."""
+
+    daily_wh: float
+    running_w: float | None
+    days: int
+
+
+def usage_from(means: list[tuple[datetime, float]]) -> ConsumerUsage | None:
+    """From five minute power means (W); None with less than MIN_CONSUMER_DAYS days."""
+    days = len({moment.date() for moment, _ in means})
+    if days < MIN_CONSUMER_DAYS:
+        return None
+    energy_wh = sum(max(power, 0.0) for _, power in means) * 5 / 60
+    running = sorted(power for _, power in means if power > RUNNING_ABOVE_W)
+    # A high quantile: the power when it runs, not the average with switching on and off
+    running_w = running[int(0.9 * (len(running) - 1))] if running else None
+    return ConsumerUsage(daily_wh=energy_wh / days, running_w=running_w, days=days)
+
+
+async def learn_usage(client: HAClient, entity_id: str) -> ConsumerUsage | None:
+    """Typical daily energy and running power from the power sensor's statistics."""
+    end = datetime.now(UTC)
+    result = await client.command(
+        "recorder/statistics_during_period",
+        start_time=(end - timedelta(days=CONSUMER_DAYS)).isoformat(),
+        end_time=end.isoformat(),
+        statistic_ids=[entity_id],
+        period="5minute",
+        types=["mean"],
+        units={"power": "W"},
+    )
+    means = [
+        (datetime.fromtimestamp(row["start"] / 1000, UTC), row["mean"])
+        for row in result.get(entity_id, [])
+        if row.get("mean") is not None
+    ]
+    return usage_from(means)
