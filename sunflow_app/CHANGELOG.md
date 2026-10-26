@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.0
+
+- PV-Prognose lernt je Dachfläche: Unter Einstellungen → Tarif & Prognose lässt sich jeder Prognose-Fläche zuordnen, von welchen PV-Strings sie gemessen wird. Sunflow lernt dann die Abweichung jeder Fläche einzeln (z. B. Verschattung am Vormittag) und korrigiert die Planung flächengenau. Anzeige unter Analyse → Lernen.
+
 ## 0.27.1
 
 - Energy values entered in kWh keep three decimals: small daily needs such as 0,04 kWh

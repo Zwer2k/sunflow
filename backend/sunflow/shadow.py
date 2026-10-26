@@ -7,6 +7,7 @@ first slot of a fresh plan is what Sunflow would command right now.
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+import json
 from pathlib import Path
 import sqlite3
 import threading
@@ -36,11 +37,15 @@ CREATE TABLE IF NOT EXISTS slots (
     forecast_pv_w REAL,
     weather_cloud REAL,
     actual_loadpoint_w REAL,
-    weather_temp REAL
+    weather_temp REAL,
+    plane_forecasts TEXT,
+    actual_strings TEXT
 )
 """
 # Columns added after the first release; existing databases get them on open
-ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL"}
+ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
+# Stored as JSON objects (key -> W)
+JSON_COLUMNS = ("plane_forecasts", "actual_strings")
 
 
 def slot_start(moment: datetime) -> datetime:
@@ -60,6 +65,8 @@ class Sample:
     load_w: float | None
     # Power of all controllable consumers (wallbox, heating rod, own consumers)
     loadpoint_w: float | None = None
+    # DC power per PV string ("<device id>:<string>")
+    strings: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(kw_only=True)
@@ -84,6 +91,12 @@ class SlotRecorder:
             "actual_pv_w": mean("pv_w"),
             "actual_load_w": mean("load_w"),
             "actual_loadpoint_w": mean("loadpoint_w"),
+            "actual_strings": json.dumps(
+                {
+                    key: fmean(s.strings[key] for s in self.samples if key in s.strings)
+                    for key in {k for s in self.samples for k in s.strings}
+                }
+            ),
             "samples": len(self.samples),
         }
         result["actual_action"] = actual_action(result["actual_grid_w"], result["actual_battery_w"])
@@ -140,12 +153,13 @@ class ShadowStore:
                 """
                 INSERT INTO slots (start, planned_action, planned_power_w, planned_soc_wh,
                                    planned_pv_w, planned_load_w, planned_price, forecast_pv_w, weather_cloud,
-                                   weather_temp)
-                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud, :temp)
+                                   weather_temp, plane_forecasts)
+                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud, :temp, :planes)
                 ON CONFLICT(start) DO UPDATE SET
                     forecast_pv_w = excluded.forecast_pv_w,
                     weather_cloud = excluded.weather_cloud,
                     weather_temp = excluded.weather_temp,
+                    plane_forecasts = excluded.plane_forecasts,
                     planned_action = excluded.planned_action,
                     planned_power_w = excluded.planned_power_w,
                     planned_soc_wh = excluded.planned_soc_wh,
@@ -153,7 +167,7 @@ class ShadowStore:
                     planned_load_w = excluded.planned_load_w,
                     planned_price = excluded.planned_price
                 """,
-                {"start": start.isoformat(), "forecast_pv": None, "cloud": None, "temp": None, **planned},
+                {"start": start.isoformat(), "forecast_pv": None, "cloud": None, "temp": None, "planes": None, **planned},
             )
             self._db.commit()
 
@@ -203,6 +217,9 @@ class ShadowStore:
             )
             names = [c[0] for c in cursor.description]
             rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+            for row in rows:
+                for column in JSON_COLUMNS:
+                    row[column] = json.loads(row[column]) if row.get(column) else {}
             # Classify from the stored values so older rows follow the current rules
             for row in rows:
                 if row["actual_grid_w"] is not None and row["actual_battery_w"] is not None:

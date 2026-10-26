@@ -1,6 +1,7 @@
 """Background loop: periodic planning and shadow recording."""
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import logging
@@ -14,9 +15,9 @@ from .plan import PlanResult, compute_plan
 from .profiles import ProfileLibrary
 from .resolver import preview
 from .load_model import LoadModel, fit as fit_load_model
-from .pv_learning import PvCorrection, learn
+from .pv_learning import PvCorrection, learn, learn_planes
 from .shadow import Sample, ShadowStore, SlotRecorder, slot_start
-from .site import device_parameters, measurement_device, site_status
+from .site import device_parameters, measurement_device, pv_strings, site_status
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ async def current_plan(
     snapshots: SnapshotCache | None = None,
     pv_correction: PvCorrection | None = None,
     load_model: LoadModel | None = None,
+    plane_corrections: dict[str, PvCorrection] | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -54,6 +56,7 @@ async def current_plan(
         await local_timezone(client),
         pv_correction,
         load_model,
+        plane_corrections,
     )
 
 
@@ -94,7 +97,24 @@ async def take_sample(
         pv_w=site_status(config.devices, profiles, snapshot).pv_total,
         load_w=values(measurement_device(config, profiles, "load")).get("load_power"),
         loadpoint_w=consumer_power(config, profiles, values),
+        strings=string_powers(config, profiles, snapshot),
     )
+
+
+def string_powers(config: SunflowConfig, profiles: dict[str, Any], snapshot: Any) -> dict[str, float]:
+    """DC power per PV string of all plants, keyed "<device id>:<string>"."""
+    result = {}
+    for device in config.devices:
+        profile = profiles[device.profile]
+        if "pv" not in profile["capabilities"]:
+            continue
+        roles = {
+            r.role: r
+            for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+        }
+        for string in pv_strings(roles):
+            result[f"{device.id}:{string['index']}"] = string["power_w"]
+    return result
 
 
 def consumer_power(config: SunflowConfig, profiles: dict[str, Any], values: Any) -> float | None:
@@ -143,6 +163,7 @@ class ShadowRunner:
         self.last_sample_at: datetime | None = None
         self._correction: PvCorrection | None = None
         self.load_model: LoadModel | None = None
+        self.plane_corrections: dict[str, PvCorrection] = {}
         self._correction_at = datetime.min.replace(tzinfo=UTC)
         self._recorder: SlotRecorder | None = None
         self._replan_task: asyncio.Task[None] | None = None
@@ -224,6 +245,10 @@ class ShadowRunner:
             rows = await asyncio.to_thread(self.shadow.rows, now - LEARNING_WINDOW)
             tz = await local_timezone(self._client)
             self._correction = learn(rows, tz)
+            config = self._store.load()
+            self.plane_corrections = learn_planes(
+                rows, {plane.key: plane.strings for plane in config.forecast_planes if plane.strings}, tz
+            )
             self.load_model = await asyncio.to_thread(
                 fit_load_model, rows, tz, self._store.load().optimizer.large_load_threshold_w
             )
@@ -233,7 +258,7 @@ class ShadowRunner:
     async def _replan(self, start: datetime) -> None:
         correction = await self.pv_correction()
         result = await current_plan(
-            self._client, self._store, self._library, self.snapshots, correction, self.load_model
+            self._client, self._store, self._library, self.snapshots, correction, self.load_model, self.plane_corrections
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
@@ -252,5 +277,6 @@ class ShadowRunner:
             "forecast_pv": result.raw_pv[0] if result.raw_pv else None,
             "cloud": result.clouds[0] if result.clouds else None,
             "temp": result.temperatures[0] if result.temperatures else None,
+            "planes": json.dumps(result.plane_forecasts_now),
         }
         await asyncio.to_thread(self.shadow.store_planned, start, planned)
