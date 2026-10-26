@@ -2,7 +2,7 @@ import { LitElement, html, svg, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
 import { poll } from "./poll.js";
 import { dailyRatios, splitFlows } from "./flows.js";
-import { formatValue } from "./format.js";
+import { formatPower, formatValue } from "./format.js";
 
 const REFRESH_MS = 5000;
 const TODAY_REFRESH_MS = 5 * 60 * 1000;
@@ -192,6 +192,8 @@ class SunflowLive extends LitElement {
 
   _renderFlow(live) {
     const battery = live.battery;
+    const displays = live.displays ?? {};
+    const pvDisplay = live.pv.find((p) => p.display)?.display;
     const flows = splitFlows({ pv: live.pv_w, battery: battery?.power_w, grid: live.grid_w, load: live.load_w });
     const consumers = live.consumers.slice(0, MAX_CONSUMERS);
     const consumerPower = consumers.reduce((s, c) => s + Math.max(c.power_w ?? 0, 0), 0);
@@ -217,13 +219,13 @@ class SunflowLive extends LitElement {
       Math.min(Math.max(NODE.pv[0] + (i - (strings.length - 1) / 2) * STRING_GAP, 40), width - 40);
     const hasGrid = live.grid_w !== null && live.grid_w !== undefined;
     const summary = [
-      hasPv ? `PV ${formatValue(live.pv_w, "W")}` : null,
+      hasPv ? `PV ${formatPower(live.pv_w, pvDisplay)}` : null,
       battery
-        ? `Batterie ${formatValue(battery.power_w, "W")}${battery.soc_pct === null ? "" : ` bei ${Math.round(battery.soc_pct)} %`}`
+        ? `Batterie ${formatPower(battery.power_w, battery.display)}${battery.soc_pct === null ? "" : ` bei ${Math.round(battery.soc_pct)} %`}`
         : null,
-      hasGrid ? `Netz ${formatValue(live.grid_w, "W")}` : null,
-      `Haus ${formatValue(flows.house, "W")}`,
-      ...consumers.map((c) => `${c.name} ${formatValue(c.power_w, "W")}`),
+      hasGrid ? `Netz ${formatPower(live.grid_w, displays.grid)}` : null,
+      `Haus ${formatPower(flows.house, displays.load)}`,
+      ...consumers.map((c) => `${c.name} ${formatPower(c.power_w, c.display)}`),
     ]
       .filter(Boolean)
       .join(", ");
@@ -251,29 +253,29 @@ class SunflowLive extends LitElement {
         )}
 
         ${hasPv
-          ? this._node("pv", NODE.pv, COLOR.pv, "PV", formatValue(live.pv_w, "W"),
+          ? this._node("pv", NODE.pv, COLOR.pv, "PV", formatPower(live.pv_w, pvDisplay),
               // The string row above already shows the parts
-              live.pv.length > 1 && !strings.length ? live.pv.map((p) => formatValue(p.power_w, "W")).join(" + ") : null)
+              live.pv.length > 1 && !strings.length ? live.pv.map((p) => formatPower(p.power_w, p.display)).join(" + ") : null)
           : nothing}
-        ${this._node("grid", NODE.grid, COLOR.grid, "Netz", hasGrid ? formatValue(Math.abs(live.grid_w), "W") : "–",
+        ${this._node("grid", NODE.grid, COLOR.grid, "Netz", hasGrid ? formatPower(Math.abs(live.grid_w), displays.grid) : "–",
           !hasGrid ? "keine Messung" : live.grid_w > ACTIVE_W ? "Bezug" : live.grid_w < -ACTIVE_W ? "Einspeisung" : "ausgeglichen")}
         ${battery
           ? this._batteryNode(battery)
           : nothing}
-        ${this._node("home", NODE.home, COLOR.home, "Haus", formatValue(homeBase, "W"),
-          consumers.length ? `gesamt ${formatValue(flows.house, "W")}` : null)}
+        ${this._node("home", NODE.home, COLOR.home, "Haus", formatPower(homeBase, displays.load),
+          consumers.length ? `gesamt ${formatPower(flows.house, displays.load)}` : null)}
         ${consumers.map((c, i) => this._consumerNode(c, [680, consumerY(i)], COLOR.consumers[i]))}
         </g>
       </svg>
       ${battery?.parts?.length
         ? html`<p class="small muted">Speicher: ${battery.parts
-            .map((b) => `${b.name} ${b.soc_pct === null ? "–" : `${Math.round(b.soc_pct)} %`} · ${formatValue(b.power_w, "W")}`)
+            .map((b) => `${b.name} ${b.soc_pct === null ? "–" : `${Math.round(b.soc_pct)} %`} · ${formatPower(b.power_w, b.display)}`)
             .join(" · ")}</p>`
         : nothing}
       ${live.consumers.length > MAX_CONSUMERS
         ? html`<p class="small muted">Weitere Verbraucher: ${live.consumers
             .slice(MAX_CONSUMERS)
-            .map((c) => `${c.name} ${formatValue(c.power_w, "W")}`)
+            .map((c) => `${c.name} ${formatPower(c.power_w, c.display)}`)
             .join(", ")}</p>`
         : nothing}
     `;
@@ -297,7 +299,7 @@ class SunflowLive extends LitElement {
     return svg`
       <g class="node">
         <circle cx=${x} cy=${STRING_Y} r=${STRING_R} class="disc thin" style="stroke: ${COLOR.pv}"></circle>
-        <text x=${x} y=${STRING_Y + 5} class="string-value" text-anchor="middle">${formatValue(string.power_w, "W")}</text>
+        <text x=${x} y=${STRING_Y + 5} class="string-value" text-anchor="middle">${formatPower(string.power_w, string.display)}</text>
         <text x=${x} y=${STRING_Y - STRING_R - 6} class="detail" text-anchor="middle">${string.label}</text>
       </g>
     `;
@@ -335,7 +337,7 @@ class SunflowLive extends LitElement {
         [x, y],
         COLOR.battery,
         `${battery.count > 1 ? `${battery.count} Speicher` : "Batterie"} ${battery.soc_pct === null ? "" : `${Math.round(battery.soc_pct)} %`}`,
-        formatValue(Math.abs(power), "W"),
+        formatPower(Math.abs(power), battery.display),
         state,
       )}
     `;
@@ -352,7 +354,7 @@ class SunflowLive extends LitElement {
       position,
       color,
       consumer.name,
-      formatValue(consumer.power_w ?? 0, "W"),
+      formatPower(consumer.power_w ?? 0, consumer.display),
       detail,
       38,
     );

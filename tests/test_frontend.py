@@ -332,7 +332,7 @@ def test_pv_strings() -> None:
     from sunflow.api import pv_strings
 
     def role(value: float | None, entity: str | None = "sensor.x") -> SimpleNamespace:
-        return SimpleNamespace(value=value, entity_id=entity)
+        return SimpleNamespace(value=value, entity_id=entity, display={"unit": "kW", "precision": 2})
 
     sofar = {"pv1_power": role(1200.0), "pv2_power": role(None)}
     huawei = {
@@ -340,5 +340,20 @@ def test_pv_strings() -> None:
         "pv2_voltage": role(None, entity=None), "pv2_current": role(None, entity=None),
     }
 
-    assert pv_strings(sofar) == [{"name": "String 1", "power_w": 1200.0}, {"name": "String 2", "power_w": 0.0}]
-    assert pv_strings(huawei) == [{"name": "String 1", "power_w": 1000.0}]
+    kw = {"unit": "kW", "precision": 2}
+    assert pv_strings(sofar) == [
+        {"name": "String 1", "power_w": 1200.0, "display": kw},
+        {"name": "String 2", "power_w": 0.0, "display": kw},
+    ]
+    # Computed from voltage x current: whole watts
+    assert pv_strings(huawei) == [{"name": "String 1", "power_w": 1000.0, "display": {"unit": "W", "precision": 0}}]
+
+
+def test_display_precision_from_registry() -> None:
+    """The user's display precision wins over the integration's suggestion."""
+    from sunflow.resolver import display_precision
+
+    assert display_precision({"options": {"sensor": {"suggested_display_precision": 1}}}) == 1
+    assert display_precision({"options": {"sensor": {"suggested_display_precision": 1, "display_precision": 3}}}) == 3
+    assert display_precision({"options": {}}) is None
+    assert display_precision(None) is None
