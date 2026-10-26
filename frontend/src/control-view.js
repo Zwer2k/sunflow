@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
 import { poll } from "./poll.js";
-import { formatValue } from "./format.js";
+import { formatPower, formatValue } from "./format.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -199,7 +199,7 @@ class SunflowControl extends LitElement {
     const targets = TARGETS[device.kind];
     const targetOverride = device.override?.target ?? null;
     const status = [
-      formatValue(device.power_w, "W"),
+      formatPower(device.power_w, device.power_display),
       device.level !== null && device.level !== undefined ? `${Math.round(device.level)} ${unit}` : null,
       device.kind === "vehicle" && device.connected === false ? "nicht angesteckt" : null,
     ].filter(Boolean);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.1
+
+- Live and Steuerung show powers like their source entity in Home Assistant: in the
+  entity's unit (W or kW) with its display precision (the user's setting, else the
+  integration's). Values coming from a coarse entity (e.g. Sofar battery power total
+  in 0.1 kW steps) therefore look exactly like in the integration
+
 ## 0.19.0
 
 - Live: weather strip below the title with the current condition, temperature and

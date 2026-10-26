@@ -37,6 +37,13 @@ class RoleValue:
     sign: str | None = None
     profile_entity_id: str | None = None
     profile_sign: str | None = None
+    # Decimals Home Assistant shows for the entity (user setting, else the integration's)
+    precision: int | None = None
+
+    @property
+    def display(self) -> dict[str, Any]:
+        """Unit and decimals to show the value like the entity does in Home Assistant."""
+        return {"unit": self.raw_unit, "precision": self.precision}
 
     @property
     def missing(self) -> bool:
@@ -138,6 +145,15 @@ def check_balance(
     )
 
 
+def display_precision(entry: dict[str, Any] | None) -> int | None:
+    """Decimals of a sensor as Home Assistant displays it."""
+    if not entry:
+        return None
+    options = (entry.get("options") or {}).get("sensor") or {}
+    precision = options.get("display_precision")
+    return precision if precision is not None else options.get("suggested_display_precision")
+
+
 def preview(
     profile: dict[str, Any],
     snapshot: Snapshot,
@@ -149,7 +165,9 @@ def preview(
     Overrides (advanced mode) replace entity, unit or sign of a role.
     """
     overrides = overrides or {}
-    bindings = bind_roles(profile, device_entities(snapshot, device_id))
+    entities = device_entities(snapshot, device_id)
+    bindings = bind_roles(profile, entities)
+    registry = {e["entity_id"]: e for e in entities}
     result: list[RoleValue] = []
     for role, spec in profile["roles"].items():
         override = {k: v for k, v in overrides.get(role, {}).items() if v is not None}
@@ -174,6 +192,7 @@ def preview(
                 sign=sign,
                 profile_entity_id=bindings[role],
                 profile_sign=spec.get("sign"),
+                precision=display_precision(registry.get(entity_id) if entity_id else None),
             )
         )
     return result

@@ -24,6 +24,20 @@ export function roleLabel(role) {
   return ROLE_LABELS[role] ?? role;
 }
 
+const POWER_FACTORS = { W: 1, kW: 1000, MW: 1_000_000 };
+
+/**
+ * Power (W) shown like its source entity in Home Assistant: in the entity's unit with
+ * its display precision. display: {unit, precision} from the API; without it as usual.
+ */
+export function formatPower(watts, display) {
+  const factor = POWER_FACTORS[display?.unit];
+  if (watts === null || watts === undefined || !factor) return formatValue(watts, "W");
+  const digits = display.precision ?? (display.unit === "W" ? 0 : 2);
+  const number = new Intl.NumberFormat("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return `${number.format(watts / factor)} ${display.unit}`;
+}
+
 export function formatValue(value, unit) {
   if (value === null || value === undefined) return "–";
   if (unit === "W") {

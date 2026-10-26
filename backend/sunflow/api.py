@@ -62,7 +62,7 @@ from .settings import Settings
 from .plan import cloud_coverage, weather_entity
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
-from .site import MEASUREMENTS, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
+from .site import MEASUREMENTS, PV_OUTPUT_ROLES, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
 from .summary import SetupSummary, build_summary
 from .sources import (
     ForecastPoint,
@@ -941,6 +941,9 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "effective": effective.model_dump(),
                 "paused": paused,
                 "power_w": next((roles[r].value for r in ("charge_power", "power") if r in roles), None),
+                "power_display": next(
+                    (roles[r].display for r in ("charge_power", "power") if r in roles and roles[r].entity_id), None
+                ),
                 "level": roles["vehicle_soc"].value if "vehicle_soc" in roles else None,
                 "target": info.target if info else None,
                 "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
@@ -1309,6 +1312,8 @@ async def get_live(request: Request) -> dict[str, Any]:
     consumers: list[dict[str, Any]] = []
     grid_w: float | None = None
     load_w: float | None = None
+    # Unit and decimals of the source entities, so values look like in Home Assistant
+    displays: dict[str, dict[str, Any]] = {}
     for status in site.devices:
         device = by_id[status.device_id]
         profile = profiles[device.profile]
@@ -1316,6 +1321,9 @@ async def get_live(request: Request) -> dict[str, Any]:
 
         def value(role: str) -> float | None:
             return roles[role].value if role in roles else None
+
+        def display(role: str) -> dict[str, Any] | None:
+            return roles[role].display if role in roles and roles[role].entity_id else None
 
         capabilities = status.capabilities
         if "pv" in capabilities:
@@ -1325,6 +1333,8 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "name": device.name,
                     "power_w": status.pv_output or 0.0,
                     "available": status.pv_output is not None,
+                    "display": next((display(r) for r in PV_OUTPUT_ROLES if value(r) is not None), None)
+                    or next((display(r) for r in PV_OUTPUT_ROLES if display(r)), None),
                     "strings": pv_strings(roles),
                 }
             )
@@ -1337,12 +1347,15 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "soc_pct": value("battery_soc"),
                     "capacity_wh": params.get("capacity_wh"),
                     "power_w": value("battery_power"),
+                    "display": display("battery_power"),
                 }
             )
         if grid_device is not None and device.id == grid_device.id:
             grid_w = value("grid_power")
+            displays["grid"] = display("grid_power")
         if load_device is not None and device.id == load_device.id:
             load_w = value("load_power")
+            displays["load"] = display("load_power")
         if "loadpoint" in capabilities or "load" in capabilities:
             kind = device_kind(profile, device, snapshot) or "load"
             consumers.append(
@@ -1350,6 +1363,7 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "name": device.name,
                     "kind": kind,
                     "power_w": value("charge_power") if "loadpoint" in capabilities else value("power"),
+                    "display": display("charge_power" if "loadpoint" in capabilities else "power"),
                     "level": value("vehicle_soc"),
                     "level_unit": {"heater": "°C", "vehicle": "%"}.get(kind),
                     "charging": roles["charging"].raw_state == "on" if "charging" in roles else None,
@@ -1364,6 +1378,7 @@ async def get_live(request: Request) -> dict[str, Any]:
         "grid_w": grid_w,
         "load_w": load_w,
         "consumers": consumers,
+        "displays": displays,
         "weather": await _live_weather(request, config, snapshot),
     }
 
@@ -1429,7 +1444,13 @@ def pv_strings(roles: dict[str, Any]) -> list[dict[str, Any]]:
             value = power.value
         else:
             value = voltage.value * current.value if voltage.value is not None and current.value is not None else None
-        strings.append({"name": f"String {index}", "power_w": max(value or 0.0, 0.0)})
+        strings.append(
+            {
+                "name": f"String {index}",
+                "power_w": max(value or 0.0, 0.0),
+                "display": power.display if power is not None else {"unit": "W", "precision": 0},
+            }
+        )
     return strings
 
 
@@ -1447,6 +1468,7 @@ def combine_batteries(batteries: list[dict[str, Any]]) -> dict[str, Any] | None:
         "soc_pct": soc,
         "power_w": sum(powers) if powers else None,
         "parts": batteries if len(batteries) > 1 else [],
+        "display": next((b["display"] for b in batteries if b.get("display")), None),
     }
 
 
