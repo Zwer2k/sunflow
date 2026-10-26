@@ -152,8 +152,8 @@ class SunflowLive extends LitElement {
       <div class="heading">
         <h1>Live</h1>
         <span class="small muted">Aktuelle Energieflüsse${live ? html` · Stand ${dayFormat.format(new Date(live.time))}` : nothing}</span>
+        ${live?.weather ? this._renderWeather(live.weather) : nothing}
       </div>
-      ${live?.weather ? this._renderWeather(live.weather) : nothing}
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${live === null && !this._error ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
       ${live ? this._renderFlow(live) : nothing}
@@ -397,9 +397,11 @@ class SunflowLive extends LitElement {
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
-    .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+    .heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+    /* Weather on the right of the title line; on narrow screens it wraps below */
+    .heading .weather { margin-left: auto; min-width: 0; max-width: 100%; }
     /* Header, title and today's tiles stay visible below the diagram without scrolling */
-    .flow { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 400px)); display: block; margin: 0 auto; }
+    .flow { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 340px)); display: block; margin: 0 auto; }
     .edge { fill: none; stroke-linecap: round; }
     .edge.idle { stroke: var(--sf-border); stroke-width: 1.5; }
     .edge.base { opacity: 0.25; }
@@ -427,7 +429,7 @@ class SunflowLive extends LitElement {
     .weather-now { display: flex; align-items: center; gap: 10px; }
     .weather-symbol { font-size: 32px; line-height: 1; }
     /* Next hours scroll sideways on narrow screens instead of wrapping */
-    .weather-hours { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; flex: 1; min-width: 0; }
+    .weather-hours { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; flex: 0 1 auto; min-width: 0; }
     .weather-hours li {
       flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 52px;
       padding: 4px 6px; border-radius: 8px; background: var(--sf-subtle);
