@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.30.0
+
+- Notstrom-Reserve gilt jetzt in jeder Strategie (Ausgewogen, PV aufnehmen, Autarkie): eigener Schalter mit Prozentwert unter Einstellungen → Planung. Im Alltag wird der Speicher nie unter die Reserve geplant; sie bleibt dem Notstrom bei Stromausfall vorbehalten.
+- Die Strategie „Notstrom sicherstellen“ entfällt. Bestehende Einstellungen werden automatisch umgestellt (Strategie „Ausgewogen“, Reserve eingeschaltet mit dem bisherigen Wert); das Original bleibt als `config.v1.json` erhalten.
+
 ## 0.29.1
 
 - Einstellungen: „Netzdienlich“ erklärt genauer, wie die Grenzen wirken (weiches Ziel, keine Abregelung, kein Ersatz für die Begrenzung im Wechselrichter).

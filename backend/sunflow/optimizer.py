@@ -51,7 +51,7 @@ class Settings:
     export_soft_limit_w: float | None = None
     import_soft_limit_w: float | None = None
     peak_penalty_ct_per_kwh: float = 20.0
-    # Energy that must stay in the battery, e.g. for backup power ("backup")
+    # Energy that must stay in the battery for backup power
     reserve_wh: float = 0.0
     # A fixed feed-in tariff only pays for PV; exporting stored grid energy is not
     # remunerated, so export is limited to the current PV unless allowed explicitly

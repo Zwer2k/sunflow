@@ -10,7 +10,6 @@ const REPLAN_DELAY_MS = 2500;
 const STRATEGIES = {
   balanced: "Ausgewogen",
   pv_absorption: "PV aufnehmen",
-  backup: "Notstrom",
   autarky: "Autarkie",
 };
 const MODES = {
