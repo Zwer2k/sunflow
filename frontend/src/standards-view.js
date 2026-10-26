@@ -376,6 +376,10 @@ class SunflowStandards extends LitElement {
                 @change=${(e) => this._saveSettings({ grid_friendly: e.target.checked })}>
               Einspeise- und Bezugsspitzen vermeiden, wo es wenig kostet
             </span>
+            <span class="small muted">Weiches Ziel, keine harte Grenze: Sunflow verschiebt Speicherladen und Verbraucher, damit
+              möglichst wenig über den Werten liegt. Jede kWh darüber zählt in der Planung wie 20 ct Mehrkosten (nicht in den
+              angezeigten Kosten). Lässt sich eine Spitze nicht vermeiden – Speicher voll, kein Verbraucher –, wird sie
+              trotzdem zugelassen; PV wird nie abgeregelt.</span>
             ${settings.grid_friendly
               ? html`<div class="fields">
                   <label class="field">
@@ -383,14 +387,17 @@ class SunflowStandards extends LitElement {
                     <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 6"
                       .value=${this._exportLimit ?? toDisplay(settings.export_limit_w === null ? null : settings.export_limit_w / 1000, "kW")}
                       @input=${(e) => (this._exportLimit = e.target.value)}><span class="muted">kW</span></span>
-                    <span class="small muted">Der Speicher lädt dann bevorzugt in der Mittagsspitze. Solarspitzengesetz: oft 60 % der PV-Leistung.</span>
+                    <span class="small muted">Der Speicher wird morgens nicht schon voll, sondern nimmt die Mittagsspitze auf; Wallbox und
+                      Heizstab laufen bevorzugt dann. Ersetzt keine vorgeschriebene Begrenzung im Wechselrichter
+                      (Solarspitzengesetz: oft 60 % der PV-Leistung).</span>
                   </label>
                   <label class="field">
                     <span class="field-label">Netzbezug möglichst unter</span>
                     <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 11"
                       .value=${this._importLimit ?? toDisplay(settings.import_limit_w === null ? null : settings.import_limit_w / 1000, "kW")}
                       @input=${(e) => (this._importLimit = e.target.value)}><span class="muted">kW</span></span>
-                    <span class="small muted">Wallbox, Heizstab und Netzladen laufen dann eher nacheinander als gleichzeitig.</span>
+                    <span class="small muted">Wallbox, Heizstab und Laden aus dem Netz laufen dann eher nacheinander als gleichzeitig,
+                      z. B. damit der Hausanschluss nicht überlastet wird.</span>
                   </label>
                 </div>`
               : nothing}
