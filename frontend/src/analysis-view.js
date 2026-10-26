@@ -209,6 +209,11 @@ class SunflowAnalysis extends LitElement {
                 <div class="tile"><div class="small muted">Ersparnis durch PV und Speicher</div><div class="value">${euro.format(sum("savings"))}</div></div>`
             : nothing}
         </div>
+        <div class="legend">
+          ${lines.map((l) => html`<span class="legend-item"><span class="swatch" style="background:${l.color}"></span>${l.name === "Nettokosten"
+            ? "Nettokosten (Bezug − Einspeisung)"
+            : "ohne PV und Speicher (alles aus dem Netz)"}</span>`)}
+        </div>
         ${lineChart(lines, { label: "Stromkosten pro Tag", formatY: (v) => euro.format(v), yMin: lowest })}
         <p class="small muted">Aus Energiezählern und dem Preisverlauf der Tarif-Entität; Einspeisung zur eingestellten Vergütung.
           ${incomplete ? `${incomplete} Tag(e) mit Lücken in der Statistik.` : ""}</p>
