@@ -17,6 +17,7 @@ from .load_forecast import (
     subtract_loads,
 )
 from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
+from .habits import Departure, learn_departure
 from .load_model import LoadModel
 from .pv_learning import PvCorrection, cloud_class
 from .resolver import preview
@@ -64,6 +65,8 @@ class FlexInfo:
     max_power_w: float
     # Need in every following 24 h window (hot water used, daily consumption)
     daily_wh: float = 0.0
+    # The deadline is the typical departure learned from the history
+    learned_departure: bool = False
     reason: str | None = None  # why nothing is planned
 
 
@@ -74,6 +77,7 @@ def flex_loads(
     slot_starts: list[datetime],
     tz: tzinfo,
     battery_capacity_wh: float | None = None,
+    departures: dict[str, Departure] | None = None,
 ) -> tuple[list[FlexLoad], list[FlexInfo], list[str], tuple[tuple[str, float], ...]]:
     """Derive the energy need of every flexible consumer from live values and its settings.
 
@@ -162,7 +166,15 @@ def flex_loads(
             if current is None:
                 info.reason = "Ladestand des Fahrzeugs unbekannt"
                 continue
-            info.deadline = min(ready_by, horizon_end) if ready_by else horizon_end
+            learned = (departures or {}).get(device.id)
+            if ready_by:
+                info.deadline = min(ready_by, horizon_end)
+            elif learned and (departure := learned.next_after(slot_starts[0], tz)) is not None:
+                # No departure set: the car usually leaves at this time
+                info.deadline = min(departure, horizon_end)
+                info.learned_departure = True
+            else:
+                info.deadline = horizon_end
             plan_soc = roles["plan_soc"].value if "plan_soc" in roles else None
             plan_time = roles["plan_time"].raw_state if "plan_time" in roles else None
             if plan_soc and plan_time and plan_time not in ("unknown", "unavailable"):
@@ -299,6 +311,32 @@ class PlanResult:
     temperatures: list[float | None] = field(default_factory=list)
     load_model: LoadModel | None = None
     pv_correction: PvCorrection | None = None
+
+
+async def vehicle_departures(
+    client: HAClient, config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot, tz: tzinfo
+) -> dict[str, Departure]:
+    """Typical departure per loadpoint with a connected sensor (vehicles only)."""
+    result = {}
+    for device in config.devices:
+        profile = profiles[device.profile]
+        if "loadpoint" not in profile["capabilities"] or device_kind(profile, device, snapshot) != "vehicle":
+            continue
+        role = next(
+            (
+                r
+                for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+                if r.role == "connected"
+            ),
+            None,
+        )
+        if role is None or not role.entity_id:
+            continue
+        try:
+            result[device.id] = await learn_departure(client, role.entity_id, tz)
+        except HAError:
+            continue
+    return result
 
 
 def weather_entity(config: SunflowConfig, snapshot: Snapshot) -> str | None:
@@ -768,8 +806,15 @@ async def compute_plan(
             else slot
             for slot in inputs
         ]
+    departures = await vehicle_departures(client, config, profiles, snapshot, tz)
     loads, flex_infos, flex_warnings, battery_gate = flex_loads(
-        config, profiles, snapshot, [i.start for i in inputs], tz, battery_capacity_wh=battery.capacity_wh
+        config,
+        profiles,
+        snapshot,
+        [i.start for i in inputs],
+        tz,
+        battery_capacity_wh=battery.capacity_wh,
+        departures=departures,
     )
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings

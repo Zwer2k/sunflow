@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.23.0
+
+- Learned departure of the car: from the last 14 days of the loadpoint's "connected"
+  history, the typical unplug time per workday/weekend (median of stays of at least
+  2 h, from 3 sessions on) becomes the deadline when the car is plugged in without an
+  evcc plan or a "ready by" time. Planung marks it as "übliche Abfahrt, gelernt"
+
 ## 0.22.0
 
 - PV forecast uncertainty: the plan can lean towards the pessimistic forecast (Solcast
