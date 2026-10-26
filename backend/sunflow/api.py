@@ -53,13 +53,14 @@ from .executor import (
     plan_setup,
 )
 from .ha import HAClient, HAError
-from .efficiency import estimate_from_counters, estimate_from_history
+from .efficiency import EfficiencyEstimate, estimate_from_counters, estimate_from_history
 from .energy import battery_counters, efficiency_history, energy_balance, energy_sources
 from .history import fetch_history, history_series
 from .profiles import ProfileLibrary, load_profiles, load_schema
 from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .settings import Settings
 from .plan import cloud_coverage, weather_entity
+from .recommendations import build as build_recommendations
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
 from .site import MEASUREMENTS, PV_OUTPUT_ROLES, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
@@ -1169,7 +1170,12 @@ async def get_shadow(request: Request, hours: Annotated[int, Query(ge=1, le=90 *
 @router.get("/config/devices/{device_id}/efficiency")
 async def get_efficiency(request: Request, device_id: str, days: int = 10) -> dict[str, Any] | None:
     """Estimate the battery efficiency from the measured history (suggestion only)."""
-    device = _configured_device(request, device_id)
+    result = await _efficiency_estimate(request, _configured_device(request, device_id), days)
+    return asdict(result) if result else None
+
+
+async def _efficiency_estimate(request: Request, device: DeviceConfig, days: int = 10) -> EfficiencyEstimate | None:
+    """From the battery energy counters if there are some, else from the power history."""
     profile = _library(request).profiles[device.profile]
     snapshot = await _snapshot(request)
     roles = {
@@ -1192,13 +1198,13 @@ async def get_efficiency(request: Request, device_id: str, days: int = 10) -> di
         except HAError as err:
             raise HTTPException(status_code=502, detail=str(err)) from err
         if result:
-            return asdict(result)
+            return result
     if power is None or not power.entity_id:
         return None
     # The sensor's sign convention applies to its statistics as well
     sign = -1.0 if power.sign is not None and power.sign not in CANONICAL_SIGNS else 1.0
     try:
-        result = await estimate_from_history(
+        return await estimate_from_history(
             request.app.state.ha,
             power.entity_id,
             soc.entity_id,
@@ -1208,7 +1214,6 @@ async def get_efficiency(request: Request, device_id: str, days: int = 10) -> di
         )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
-    return asdict(result) if result else None
 
 
 ENERGY_PERIODS = {"today": 0, "7d": 7, "30d": 30}
@@ -1247,6 +1252,62 @@ async def get_efficiency_history(
         days,
         await _local_tz(request),
     )
+
+
+RECOMMENDATION_ESTIMATES_TTL = timedelta(hours=1)
+
+
+@router.get("/recommendations")
+async def get_recommendations(request: Request) -> list[dict[str, Any]]:
+    """Settings the measured data or the plan suggest to change."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    runner: ShadowRunner = request.app.state.runner
+    # The counter estimates query 90 days of statistics; an hour old is recent enough
+    cache = getattr(request.app.state, "efficiency_cache", None)
+    now = datetime.now(UTC)
+    if cache is None or now - cache[0] > RECOMMENDATION_ESTIMATES_TTL:
+        estimates = {}
+        for device in config.devices:
+            if "efficiency_pct" in device.parameters or "battery_window" in profiles[device.profile]["capabilities"]:
+                try:
+                    estimates[device.id] = await _efficiency_estimate(request, device)
+                except HTTPException:
+                    estimates[device.id] = None
+        cache = (now, estimates)
+        request.app.state.efficiency_cache = cache
+    rows = await asyncio.to_thread(runner.shadow.rows, now - timedelta(days=14))
+    days = len({row["start"][:10] for row in rows if row.get("actual_load_w") is not None})
+    return build_recommendations(
+        config,
+        runner.latest,
+        cache[1],
+        rows,
+        days,
+        await runner.pv_correction(),
+        await get_weather_entities(request),
+    )
+
+
+class Dismiss(BaseModel):
+    """A recommendation to hide until its numbers change."""
+
+    id: str
+    fingerprint: str = ""
+
+
+@router.post("/recommendations/dismiss")
+async def dismiss_recommendation(request: Request, body: Dismiss) -> None:
+    """Hide a recommendation."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    key = f"{body.id}#{body.fingerprint}"
+    if key not in config.dismissed_recommendations:
+        # Old entries of the same recommendation are no longer needed
+        config.dismissed_recommendations = [
+            k for k in config.dismissed_recommendations if not k.startswith(f"{body.id}#")
+        ] + [key]
+        store.save(config)
 
 
 @router.get("/pv-learning")

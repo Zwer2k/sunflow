@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.20.0
+
+- Recommendations (Analyse, count as badge on the menu): Sunflow checks settings, plan,
+  shadow mode and energy counters and suggests changes, where possible with one click:
+  battery efficiency from the counters, missing daily energy or heating price, priority
+  limits that keep PV from hot water, plan more expensive than self-consumption, base
+  load forecast off by more than 10 % (large loads left out), implausible hot water
+  demand, PV learning off or no weather entity with cloud coverage. Dismissed
+  recommendations return when their numbers change
+
 ## 0.19.5
 
 - Entity assignment: German names for all roles (PV strings, energy counters, plan
