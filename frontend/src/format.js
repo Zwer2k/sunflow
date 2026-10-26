@@ -33,7 +33,8 @@ const POWER_FACTORS = { W: 1, kW: 1000, MW: 1_000_000 };
 export function formatPower(watts, display) {
   const factor = POWER_FACTORS[display?.unit];
   if (watts === null || watts === undefined || !factor) return formatValue(watts, "W");
-  const digits = display.precision ?? (display.unit === "W" ? 0 : 2);
+  // Decimals of a watt are false precision, whatever the integration suggests
+  const digits = display.unit === "W" ? 0 : display.precision ?? 2;
   const number = new Intl.NumberFormat("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
   return `${number.format(watts / factor)} ${display.unit}`;
 }

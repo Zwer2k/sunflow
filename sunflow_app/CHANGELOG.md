@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.3
+
+- Powers in W are always shown without decimals (e.g. Tibber Pulse "75 W" instead
+  of "75,00 W"); kW keeps the entity's precision
+
 ## 0.19.2
 
 - Live: weather on the right in the title line (wraps below on narrow screens)
