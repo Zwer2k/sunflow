@@ -150,7 +150,12 @@
         },
         "unit": {"type": "string"},
         "sign": {"enum": ["charge_positive", "discharge_positive", "import_positive", "export_positive"]},
-        "optional": {"type": "boolean", "default": false}
+        "optional": {"type": "boolean", "default": false},
+        "fine_keys": {
+          "description": "Entities with a finer resolution (e.g. per battery input) whose sum replaces the live value when any is readable; the key's entity stays for statistics.",
+          "type": "array",
+          "items": {"type": "string"}
+        }
       }
     },
     "storage": {

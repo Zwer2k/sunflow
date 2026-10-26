@@ -145,6 +145,28 @@ def check_balance(
     )
 
 
+def _fine_value(
+    spec: dict[str, Any],
+    entities: list[dict[str, Any]],
+    snapshot: Snapshot,
+    sign: str | None,
+    unit: str | None,
+) -> tuple[float | None, str | None]:
+    """Sum of the finer entities that can be read (None if none can) and one of them."""
+    parts = []
+    first = None
+    for key in spec["fine_keys"]:
+        entity = next((e for e in entities if entity_has_key(e, key)), None)
+        state = snapshot.states.get(entity["entity_id"]) if entity else None
+        if state is None:
+            continue
+        part, part_unit = normalize(state["state"], state["attributes"].get("unit_of_measurement") or spec.get("unit"), sign)
+        if part is not None and part_unit == unit:
+            parts.append(part)
+            first = first or entity["entity_id"]
+    return (sum(parts), first) if parts else (None, None)
+
+
 def display_precision(entry: dict[str, Any] | None) -> int | None:
     """Decimals of a sensor as Home Assistant displays it."""
     if not entry:
@@ -179,6 +201,12 @@ def preview(
             state["attributes"].get("unit_of_measurement") if state else None
         ) or spec.get("unit")
         value, unit = normalize(raw_state, raw_unit, sign)
+        precision = display_precision(registry.get(entity_id) if entity_id else None)
+        if "entity_id" not in override and spec.get("fine_keys"):
+            fine, fine_entity = _fine_value(spec, entities, snapshot, sign, unit)
+            if fine is not None:
+                # The finer entities also set how precisely the value can be shown
+                value, precision = fine, display_precision(registry.get(fine_entity))
         result.append(
             RoleValue(
                 role=role,
@@ -192,7 +220,7 @@ def preview(
                 sign=sign,
                 profile_entity_id=bindings[role],
                 profile_sign=spec.get("sign"),
-                precision=display_precision(registry.get(entity_id) if entity_id else None),
+                precision=precision,
             )
         )
     return result

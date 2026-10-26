@@ -31,12 +31,15 @@ const POWER_FACTORS = { W: 1, kW: 1000, MW: 1_000_000 };
  * its display precision. display: {unit, precision} from the API; without it as usual.
  */
 export function formatPower(watts, display) {
-  const factor = POWER_FACTORS[display?.unit];
-  if (watts === null || watts === undefined || !factor) return formatValue(watts, "W");
-  // Decimals of a watt are false precision, whatever the integration suggests
-  const digits = display.unit === "W" ? 0 : display.precision ?? 2;
+  if (watts === null || watts === undefined) return "–";
+  // W below 1 kW, kW above; never finer than the entity resolves (e.g. 0.1 kW steps)
+  const step = POWER_FACTORS[display?.unit] && display.precision !== null && display.precision !== undefined
+    ? POWER_FACTORS[display.unit] / 10 ** display.precision
+    : 1;
+  if (Math.abs(watts) < 1000) return `${number0.format(Math.round(watts / step) * step)} W`;
+  const digits = Math.min(2, Math.max(0, Math.round(3 - Math.log10(Math.max(step, 1)))));
   const number = new Intl.NumberFormat("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${number.format(watts / factor)} ${display.unit}`;
+  return `${number.format(watts / 1000)} kW`;
 }
 
 export function formatValue(value, unit) {
