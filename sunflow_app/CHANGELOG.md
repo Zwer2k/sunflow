@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.5
+
+- Live: „Aktuelle Energieflüsse · Stand …“ bricht neben dem Wetter höchstens in zwei Zeilen um statt Wort für Wort.
+
 ## 0.32.4
 
 - Live: Die Wetteranzeige ist kompakter und bleibt auf breiten Bildschirmen rechts neben dem Titel; die Vorhersage wird dafür schmaler und lässt sich weiterhin wischen oder per Pfeil blättern.
