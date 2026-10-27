@@ -65,7 +65,7 @@ function timeScale(start, end, left) {
 
 /**
  * onScale(value) makes the value labels clickable: the chart is scaled to that value (values
- * above are not drawn); while scaled, any label calls onScale(null) to reset.
+ * above are cut off at the top edge); while scaled, any label calls onScale(null) to reset.
  */
 function frame(start, end, scale, formatY, { onScale = null, zoomed = false } = {}) {
   const { min: yMin = 0, max: yMax, ticks } = scale;
@@ -163,6 +163,8 @@ function isolated(points) {
  * values (left) from forecasts (right). `limits` ([{value, label}]) draws labeled
  * horizontal reference lines.
  */
+let clipCount = 0;
+
 export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, now = null, limits = [], scaleMax = null, onScale = null }) {
   fit();
   const all = series.flatMap((s) => s.points).filter((p) => p.value !== null && p.value !== undefined);
@@ -173,10 +175,9 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, no
   // A chosen maximum keeps its value as top line, above it the lines are cut off
   const scale = niceScale(zoomed ? scaleMax : (fixedMax ?? Math.max(...all.map((p) => p.value)) * 1.05), yMin);
   const { x, y, axes, values, left } = frame(start, end, scale, formatY, { onScale, zoomed });
-  // Above a chosen maximum nothing is drawn: the line has a gap there (the hover still tells the value)
-  const drawn = zoomed
-    ? series.map((s) => ({ ...s, points: s.points.map((p) => (p.value > scale.max ? { ...p, value: null } : p)) }))
-    : series;
+  // Lines are drawn in full and cut at the plot's top edge: a peak above a chosen maximum
+  // rises to the edge and leaves it, nothing is drawn above
+  const clip = `plot-${++clipCount}`;
   const pathOf = (points) => {
     let pen = "M";
     return points
@@ -204,6 +205,7 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, no
   const nowX = now ? x(now) : null;
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
+      <defs><clipPath id=${clip}><rect x="0" y=${PAD.top} width=${W} height=${H - PAD.top}></rect></clipPath></defs>
       ${axes}
       ${nowX !== null && nowX > left && nowX < W - PAD.right
         ? svg`
@@ -218,15 +220,17 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, no
           <text x=${W - PAD.right - 4} y=${y(l.value) - 4} text-anchor="end" class="axis limit-label">${l.label}</text>
         `,
       )}
-      ${drawn.flatMap((s) => isolated(s.points).map(
+      <g clip-path=${zoomed ? `url(#${clip})` : nothing}>
+      ${series.flatMap((s) => isolated(s.points).map(
         (p) => svg`<circle cx=${(x(new Date(p.start)) + x(new Date(p.end))) / 2} cy=${y(p.value)} r="4"
           style="fill: ${s.color}" fill-opacity=${s.dim ? 0.15 : 1}></circle>`,
       ))}
-      ${[...drawn.filter((s) => s.dim), ...drawn.filter((s) => !s.dim)].map(
+      ${[...series.filter((s) => s.dim), ...series.filter((s) => !s.dim)].map(
         (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width=${s.dim === false ? 3 : 2}
           stroke-opacity=${s.dim ? 0.15 : 1}
           stroke-dasharray=${s.dashed ? "5 4" : "none"} stroke-linejoin="round" stroke-linecap="round"></path>`,
       )}
+      </g>
       ${[...slots.values()].map(
         (slot) => svg`<rect x=${x(slot.start)} y=${PAD.top}
           width=${Math.max(x(slot.end) - x(slot.start), 1)} height=${H - PAD.top - PAD.bottom} class="hit">

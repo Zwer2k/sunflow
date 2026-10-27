@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.4
+
+- Planung: Bei gewählter Skalierung steigt eine Linie bis zum oberen Rand, wenn der Wert darüber liegt, und wird dort abgeschnitten; oberhalb wird nichts gezeichnet.
+
 ## 0.33.3
 
 - Planung: Bei gewählter Skalierung werden Werte über dem gewählten Maximum nicht gezeichnet; die Linie setzt dort aus. Beim Darüberfahren erscheint weiterhin der tatsächliche Wert.
