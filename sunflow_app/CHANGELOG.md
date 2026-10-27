@@ -1,12 +1,22 @@
 # Changelog
 
-## 0.30.8
+## 0.31.2
 
+- Die Änderungen aus 0.31.0 und 0.31.1 (Schonung der Home-Assistant-Datenbank, kein Protokoll pro Anfrage) waren mit 0.30.7 versehentlich zurückgenommen worden und sind wieder enthalten.
+- Einstellungen: Das Prozentfeld der Notstrom-Reserve war auf Häkchengröße geschrumpft und ließ sich nicht bedienen.
 - Einstellungen: Die Notstrom-Reserve steht jetzt nach „Spätestens nach … aus dem Netz“.
 
-## 0.30.7
+## 0.31.1
 
-- Einstellungen: Das Prozentfeld der Notstrom-Reserve war auf Häkchengröße geschrumpft und ließ sich nicht bedienen.
+- Keine Protokollzeile mehr pro Anfrage der Oberfläche (die Live-Ansicht fragt alle 5 Sekunden ab); das Protokoll der App bleibt klein und zeigt nur noch Hinweise und Fehler.
+
+## 0.31.0
+
+Schonung der Home-Assistant-Datenbank:
+
+- Vor Abfragen von Statistik und Verlauf prüft Sunflow, ob die Datenbank von Home Assistant hinterherkommt (Warteschlange, Recorder läuft). Ist sie ausgelastet oder antwortet sie nicht (Zeitüberschreitung, „unknown_error“), pausiert Sunflow alle Datenbankabfragen für 5 Minuten, statt weitere hinterherzuschicken.
+- Verläufe für die Planung (Hausverbrauch, Verbraucher, letzte Vollladung) werden höchstens einmal pro Stunde abgefragt, gelernte Gewohnheiten (Abfahrtszeit, Verbrauch eigener Geräte) alle 6 Stunden. Bei einem Fehler rechnet Sunflow mit den zuletzt bekannten Werten weiter.
+- Eine fehlgeschlagene Neuplanung wird mit wachsendem Abstand wiederholt: 5, 10, 20, höchstens 30 Minuten.
 
 ## 0.30.6
 
