@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.1
+
+- Keine Protokollzeile mehr pro Anfrage der Oberfläche (die Live-Ansicht fragt alle 5 Sekunden ab); das Protokoll der App bleibt klein und zeigt nur noch Hinweise und Fehler.
+
 ## 0.31.0
 
 Schonung der Home-Assistant-Datenbank:
