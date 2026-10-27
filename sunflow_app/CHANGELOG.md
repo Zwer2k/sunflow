@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.9
+
+- Live: Die Tageskennzahlen verschwinden nicht mehr, wenn die Datenbank von Home Assistant nicht antwortet. Die zuletzt geladenen Werte bleiben stehen, mit dem Hinweis „nicht aktuell“; ohne frühere Werte erscheint der Grund.
+
 ## 0.32.8
 
 - Live: „Aktuelle Energieflüsse“ und „Stand …“ linksbündig.
