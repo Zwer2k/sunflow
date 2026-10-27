@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.0
+
+- Planung: In „PV-Erzeugung und Hausverbrauch“ und „Netzbezug und Einspeisung“ skaliert ein Klick auf eine Zahl der senkrechten Achse das Diagramm bis zu diesem Wert; Leistungsspitzen darüber werden abgeschnitten, damit der Rest lesbar bleibt. „↺ ganze Höhe“ oben rechts stellt die automatische Skalierung wieder her.
+
 ## 0.32.11
 
 - Der Schutz der Home-Assistant-Datenbank löst seltener aus: Ein einzelner „unknown_error“ sperrt nicht mehr alle Abfragen, sondern Sunflow fragt zuerst den Recorder, ob er wirklich hinterherhängt. Nur dann – oder wenn eine Abfrage 60 s ohne Antwort bleibt – wird pausiert, jetzt für 2 statt 5 Minuten.
