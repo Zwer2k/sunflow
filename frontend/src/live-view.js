@@ -481,6 +481,11 @@ class SunflowLive extends LitElement {
     .heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
     /* Weather on the right of the title line; on narrow screens it wraps below */
     .heading .weather { margin-left: auto; min-width: 0; max-width: 100%; }
+    /* Wide screens: the forecast shrinks (scrolls) instead of pushing the weather below the title */
+    @media (min-width: 601px) {
+      .heading { flex-wrap: nowrap; }
+      .heading .weather { flex: 0 1 auto; flex-wrap: nowrap; justify-content: flex-end; }
+    }
     /* Header, title and today's tiles stay visible below the diagram without scrolling */
     .flow { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 340px)); display: block; margin: 0 auto; }
     .edge { fill: none; stroke-linecap: round; }
@@ -506,37 +511,38 @@ class SunflowLive extends LitElement {
       .flow { max-height: none; }
     }
     .soc-track { fill: none; stroke: var(--sf-border); stroke-width: 4; }
-    .weather { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
-    .weather-now { display: flex; align-items: center; gap: 10px; }
-    .weather-symbol { font-size: 32px; line-height: 1; }
-    .range { display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; }
+    .weather { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; }
+    .weather-now { display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
+    .weather-symbol { font-size: 24px; line-height: 1; }
+    .range { display: flex; flex: none; gap: 2px; background: var(--sf-subtle); padding: 2px; border-radius: 8px; }
     .range button {
-      min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
-      font-size: 13px; color: var(--sf-muted);
+      min-height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+      font-size: 12px; color: var(--sf-muted);
     }
     .range button.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; }
     /* Next hours scroll sideways on narrow screens instead of wrapping */
     .weather-hours {
-      display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; flex: 0 1 auto; min-width: 0;
+      display: flex; gap: 3px; margin: 0; padding: 0; list-style: none; flex: 0 1 auto; min-width: 0;
       /* Swipe (touch) or drag (mouse) through all forecast hours or days */
       overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none;
-      max-width: min(100%, 520px); cursor: grab; user-select: none; touch-action: pan-x pan-y;
+      cursor: grab; user-select: none; touch-action: pan-x pan-y;
     }
     .weather-hours::-webkit-scrollbar { display: none; }
-    .forecast { position: relative; display: flex; min-width: 0; flex: 0 1 auto; max-width: min(100%, 520px); }
+    .forecast { position: relative; display: flex; min-width: 0; flex: 0 1 auto; max-width: min(100%, 420px); }
     .forecast .weather-hours { max-width: 100%; }
     .arrow {
-      position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 28px; height: 28px; padding: 0;
+      position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 24px; height: 24px; padding: 0;
       border: 1px solid var(--sf-border); border-radius: 50%; background: var(--sf-surface); color: var(--sf-text);
-      font-size: 18px; line-height: 1; cursor: pointer; box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+      font-size: 16px; line-height: 1; cursor: pointer; box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
     }
     .arrow.left { left: -6px; }
     .arrow.right { right: -6px; }
     .weather-hours.dragging { cursor: grabbing; scroll-snap-type: none; }
     .weather-hours li {
-      scroll-snap-align: start; flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 52px;
-      padding: 4px 6px; border-radius: 8px; background: var(--sf-subtle);
+      scroll-snap-align: start; flex: none; display: flex; flex-direction: column; align-items: center; gap: 0; min-width: 42px;
+      padding: 2px 4px; border-radius: 6px; background: var(--sf-subtle); font-size: 12px; line-height: 1.3;
     }
+    .weather-hours li .small { font-size: 11px; }
     .soc-ring { fill: none; stroke-width: 4; stroke-linecap: round; }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 8px 12px; }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.4
+
+- Live: Die Wetteranzeige ist kompakter und bleibt auf breiten Bildschirmen rechts neben dem Titel; die Vorhersage wird dafür schmaler und lässt sich weiterhin wischen oder per Pfeil blättern.
+
 ## 0.32.3
 
 - Live: Pfeile links und rechts an der Wettervorhersage blättern weiter; sie erscheinen nur, wenn in die Richtung noch Stunden oder Tage verborgen sind.
