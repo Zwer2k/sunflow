@@ -483,8 +483,8 @@ class SunflowLive extends LitElement {
     .heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
     /* Weather on the right of the title line; on narrow screens it wraps below */
     /* Breaks only between its two parts: at most two lines next to the weather */
-    /* Gap only between parts on the same line; a wrapped line starts flush right */
-    .subtitle { flex: 0 1 auto; display: flex; flex-wrap: wrap; justify-content: flex-end; column-gap: 6px; text-align: right; }
+    /* Gap only between parts on the same line; a wrapped line starts flush left */
+    .subtitle { flex: 0 1 auto; display: flex; flex-wrap: wrap; column-gap: 6px; }
     .subtitle > span { white-space: nowrap; }
     .subtitle .stand { opacity: 0.7; }
     .heading .weather { margin-left: auto; min-width: 0; max-width: 100%; }
