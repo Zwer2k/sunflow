@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.2
+
+- Planung: Bei gewählter Skalierung laufen Spitzen darüber als waagerechte Linie am oberen Rand entlang, statt zu verschwinden. Ein erneuter Klick auf eine Zahl der Achse stellt die ganze Höhe wieder her.
+
 ## 0.33.1
 
 Empfehlung „Wirkungsgrad Speicher“ springt nicht mehr:
