@@ -1504,6 +1504,28 @@ async def get_live(request: Request) -> dict[str, Any]:
 
 WEATHER_CACHE = timedelta(minutes=10)
 WEATHER_HOURS = 8
+WEATHER_DAYS = 7
+
+
+async def _forecast(request: Request, entity_id: str, kind: str) -> list[dict[str, Any]]:
+    """Hourly or daily forecast of a weather entity, cached; empty if the integration has none."""
+    caches = getattr(request.app.state, "weather_cache", None)
+    if not isinstance(caches, dict) or caches.get("entity") != entity_id:
+        caches = {"entity": entity_id}
+        request.app.state.weather_cache = caches
+    now = datetime.now(UTC)
+    cache = caches.get(kind)
+    if cache is None or now - cache["at"] > WEATHER_CACHE:
+        try:
+            response = await request.app.state.ha.call_service(
+                "weather", "get_forecasts", {"type": kind}, target={"entity_id": entity_id}, return_response=True
+            )
+            forecast = response["response"][entity_id]["forecast"]
+        except (HAError, KeyError, TypeError):
+            forecast = []
+        cache = {"at": now, "forecast": forecast}
+        caches[kind] = cache
+    return cache["forecast"]
 
 
 async def _live_weather(request: Request, config: SunflowConfig, snapshot: Snapshot) -> dict[str, Any] | None:
@@ -1512,19 +1534,16 @@ async def _live_weather(request: Request, config: SunflowConfig, snapshot: Snaps
     state = snapshot.states.get(entity_id or "")
     if not entity_id or state is None:
         return None
-    cache = getattr(request.app.state, "weather_cache", None)
     now = datetime.now(UTC)
-    if cache is None or cache["entity"] != entity_id or now - cache["at"] > WEATHER_CACHE:
-        try:
-            response = await request.app.state.ha.call_service(
-                "weather", "get_forecasts", {"type": "hourly"}, target={"entity_id": entity_id}, return_response=True
-            )
-            forecast = response["response"][entity_id]["forecast"]
-        except (HAError, KeyError, TypeError):
-            forecast = []
-        cache = {"entity": entity_id, "at": now, "forecast": forecast}
-        request.app.state.weather_cache = cache
-    upcoming = [f for f in cache["forecast"] if "datetime" in f and datetime.fromisoformat(f["datetime"]) > now]
+    hourly = await _forecast(request, entity_id, "hourly")
+    upcoming = [f for f in hourly if "datetime" in f and datetime.fromisoformat(f["datetime"]) > now]
+    tz = await _local_tz(request)
+    today = now.astimezone(tz).date()
+    # Daily entries are dated at local midnight (some integrations at noon); today included
+    daily = [
+        f for f in await _forecast(request, entity_id, "daily")
+        if "datetime" in f and datetime.fromisoformat(f["datetime"]).astimezone(tz).date() >= today
+    ]
     attributes = state["attributes"]
     return {
         "condition": state["state"],
@@ -1541,6 +1560,17 @@ async def _live_weather(request: Request, config: SunflowConfig, snapshot: Snaps
                 "precipitation": f.get("precipitation"),
             }
             for f in upcoming[:WEATHER_HOURS]
+        ],
+        "days": [
+            {
+                "time": f["datetime"],
+                "condition": f.get("condition"),
+                "temperature": f.get("temperature"),
+                "templow": f.get("templow"),
+                "cloud": f.get("cloud_coverage"),
+                "precipitation": f.get("precipitation"),
+            }
+            for f in daily[:WEATHER_DAYS]
         ],
     }
 

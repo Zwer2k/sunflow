@@ -49,6 +49,10 @@ const ICONS = {
 const dayFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const hourFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 
+// Remembered per browser; storage may be unavailable (private mode, previews)
+const WEATHER_DAYS_KEY = "sunflow.live.weatherDays";
+const weekday = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
+
 // Home Assistant weather conditions: symbol and German name
 const WEATHER = {
   "clear-night": ["🌙", "klar"],
@@ -77,6 +81,7 @@ class SunflowLive extends LitElement {
     _live: { state: true },
     _today: { state: true },
     _error: { state: true },
+    _weatherDays: { state: true },
   };
 
   constructor() {
@@ -84,6 +89,11 @@ class SunflowLive extends LitElement {
     this._live = null;
     this._today = null;
     this._error = null;
+    try {
+      this._weatherDays = localStorage.getItem(WEATHER_DAYS_KEY) === "1";
+    } catch {
+      this._weatherDays = false;
+    }
   }
 
   connectedCallback() {
@@ -164,6 +174,7 @@ class SunflowLive extends LitElement {
   _renderWeather(weather) {
     const [symbol, name] = WEATHER[weather.condition] ?? ["", weather.condition ?? ""];
     const temp = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)}${weather.temperature_unit ?? "°C"}`);
+    const showDays = this._weatherDays && Boolean(weather.days?.length);
     return html`
       <div class="weather" aria-label="Wetter">
         <div class="weather-now">
@@ -175,19 +186,41 @@ class SunflowLive extends LitElement {
               : nothing}
           </div>
         </div>
+        ${weather.days?.length
+          ? html`<div class="range" role="group" aria-label="Wettervorhersage">
+              ${[[false, "Stunden"], [true, "Tage"]].map(
+                ([days, label]) => html`<button class=${days === showDays ? "active" : ""} aria-pressed=${days === showDays}
+                  @click=${() => this._setWeatherDays(days)}>${label}</button>`,
+              )}
+            </div>`
+          : nothing}
         <ol class="weather-hours">
-          ${weather.hours.map((h) => {
+          ${(showDays ? weather.days : weather.hours).map((h) => {
             const [hourSymbol, hourName] = WEATHER[h.condition] ?? ["·", h.condition ?? ""];
+            const when = new Date(h.time);
             return html`<li title="${hourName}${h.precipitation ? `, ${String(h.precipitation).replace(".", ",")} mm` : ""}">
-              <span class="small muted">${hourFormat.format(new Date(h.time))}</span>
+              <span class="small muted">${showDays
+                ? (when.toDateString() === new Date().toDateString() ? "heute" : weekday.format(when))
+                : hourFormat.format(when)}</span>
               <span aria-label=${hourName}>${hourSymbol}</span>
               <span class="small">${temp(h.temperature)}</span>
-              ${h.cloud !== null && h.cloud !== undefined ? html`<span class="small muted">${Math.round(h.cloud)} %</span>` : nothing}
+              ${showDays && h.templow !== null && h.templow !== undefined
+                ? html`<span class="small muted">${temp(h.templow)}</span>`
+                : h.cloud !== null && h.cloud !== undefined ? html`<span class="small muted">${Math.round(h.cloud)} %</span>` : nothing}
             </li>`;
           })}
         </ol>
       </div>
     `;
+  }
+
+  _setWeatherDays(days) {
+    this._weatherDays = days;
+    try {
+      localStorage.setItem(WEATHER_DAYS_KEY, days ? "1" : "0");
+    } catch {
+      // Not remembered, the switch still works for this visit
+    }
   }
 
   _renderFlow(live) {
@@ -428,6 +461,12 @@ class SunflowLive extends LitElement {
     .weather { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
     .weather-now { display: flex; align-items: center; gap: 10px; }
     .weather-symbol { font-size: 32px; line-height: 1; }
+    .range { display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; }
+    .range button {
+      min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+      font-size: 13px; color: var(--sf-muted);
+    }
+    .range button.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; }
     /* Next hours scroll sideways on narrow screens instead of wrapping */
     .weather-hours { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; flex: 0 1 auto; min-width: 0; }
     .weather-hours li {

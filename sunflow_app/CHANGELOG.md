@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.0
+
+- Live: Die Wetteranzeige lässt sich zwischen Stunden und Tagen umschalten. Die Tagesansicht zeigt bis zu 7 Tage mit Höchst- und Tiefsttemperatur (Regenmenge beim Darüberfahren). Die Auswahl wird im Browser gemerkt; liefert die Wetter-Entität keine Tagesvorhersage, bleibt es bei den Stunden.
+
 ## 0.31.2
 
 - Die Änderungen aus 0.31.0 und 0.31.1 (Schonung der Home-Assistant-Datenbank, kein Protokoll pro Anfrage) waren mit 0.30.7 versehentlich zurückgenommen worden und sind wieder enthalten.
