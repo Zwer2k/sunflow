@@ -184,7 +184,9 @@ class SunflowLive extends LitElement {
     return html`
       <div class="heading">
         <h1>Live</h1>
-        <span class="small muted">Aktuelle Energieflüsse${live ? html` · Stand ${dayFormat.format(new Date(live.time))}` : nothing}</span>
+        <span class="small muted subtitle"><span>Aktuelle Energieflüsse</span>${live
+          ? html` <span>· Stand ${dayFormat.format(new Date(live.time))}</span>`
+          : nothing}</span>
         ${live?.weather ? this._renderWeather(live.weather) : nothing}
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
@@ -480,6 +482,9 @@ class SunflowLive extends LitElement {
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     .heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
     /* Weather on the right of the title line; on narrow screens it wraps below */
+    /* Breaks only between its two parts: at most two lines next to the weather */
+    .subtitle { flex: 0 1 auto; }
+    .subtitle > span { display: inline-block; white-space: nowrap; }
     .heading .weather { margin-left: auto; min-width: 0; max-width: 100%; }
     /* Wide screens: the forecast shrinks (scrolls) instead of pushing the weather below the title */
     @media (min-width: 601px) {
