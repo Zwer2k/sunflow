@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Callable
 import itertools
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -13,6 +14,12 @@ _LOGGER = logging.getLogger(__name__)
 # A command without an answer must not block callers forever (e.g. a stalled Core
 # behind a proxy that still answers the heartbeat); large get_states take seconds
 COMMAND_TIMEOUT = 60
+# Statistics and history are read from the recorder's database. When it is gone or
+# behind, every query waits in Home Assistant; more queries only add to the load
+RECORDER_COMMANDS = ("recorder/", "history/")
+RECORDER_CHECK_SECONDS = 60
+RECORDER_MAX_BACKLOG = 1000
+RECORDER_PAUSE_SECONDS = 300
 
 type EventCallback = Callable[[dict[str, Any]], None]
 
@@ -23,6 +30,14 @@ class HAError(Exception):
 
 class HACommandError(HAError):
     """Home Assistant answered, but the command or action failed (the connection is fine)."""
+
+
+class RecorderUnavailable(HACommandError):
+    """The recorder database is not keeping up; its queries are paused."""
+
+
+class HATimeout(HAError):
+    """No answer within COMMAND_TIMEOUT."""
 
 
 class HAClient:
@@ -49,6 +64,8 @@ class HAClient:
         self.ha_version: str | None = None
         # Increases with every successful connect so caches can detect reconnects
         self.generation = 0
+        self._recorder_checked = float("-inf")
+        self._recorder_paused_until = float("-inf")
 
     @property
     def connected(self) -> bool:
@@ -100,7 +117,44 @@ class HAClient:
         self._fail_pending(HAError("Connection closed"))
 
     async def command(self, msg_type: str, **data: Any) -> Any:
-        """Send a command and return its result."""
+        """Send a command and return its result; database queries only while the recorder keeps up."""
+        if not msg_type.startswith(RECORDER_COMMANDS) or msg_type == "recorder/info":
+            return await self._send(msg_type, **data)
+        await self._check_recorder()
+        try:
+            return await self._send(msg_type, **data)
+        except (HATimeout, HACommandError) as err:
+            # A hanging or crashing database answers with a timeout or an unknown error
+            if isinstance(err, HATimeout) or str(err).startswith("unknown_error"):
+                self._pause_recorder(f"{msg_type}: {err}")
+            raise
+
+    def _pause_recorder(self, reason: str) -> None:
+        self._recorder_paused_until = time.monotonic() + RECORDER_PAUSE_SECONDS
+        _LOGGER.warning("Pausing database queries for %s s: %s", RECORDER_PAUSE_SECONDS, reason)
+
+    async def _check_recorder(self) -> None:
+        now = time.monotonic()
+        if now < self._recorder_paused_until:
+            raise RecorderUnavailable("recorder_unavailable: Datenbank von Home Assistant antwortet nicht, Abfragen pausiert")
+        if now - self._recorder_checked < RECORDER_CHECK_SECONDS:
+            return
+        self._recorder_checked = now
+        try:
+            info = await self._send("recorder/info")
+        except HACommandError:
+            # Without the info command nothing is known; do not block
+            return
+        except HATimeout as err:
+            # The info waits for the database connection
+            self._pause_recorder(f"recorder/info: {err}")
+            raise RecorderUnavailable("recorder_unavailable: Datenbank von Home Assistant antwortet nicht, Abfragen pausiert") from err
+        backlog = info.get("backlog") or 0
+        if not info.get("thread_running", True) or info.get("migration_in_progress") or backlog > RECORDER_MAX_BACKLOG:
+            self._pause_recorder(f"recorder busy (backlog {backlog}, running {info.get('thread_running')})")
+            raise RecorderUnavailable("recorder_unavailable: Datenbank von Home Assistant ist ausgelastet, Abfragen pausiert")
+
+    async def _send(self, msg_type: str, **data: Any) -> Any:
         if self._ws is None:
             raise HAError("Not connected")
         msg_id = next(self._ids)
@@ -110,7 +164,7 @@ class HAClient:
             await self._ws.send_json({"id": msg_id, "type": msg_type, **data})
             return await asyncio.wait_for(future, COMMAND_TIMEOUT)
         except TimeoutError as err:
-            raise HAError(f"No answer to {msg_type} within {COMMAND_TIMEOUT} s") from err
+            raise HATimeout(f"No answer to {msg_type} within {COMMAND_TIMEOUT} s") from err
         except (aiohttp.ClientError, ConnectionError, RuntimeError) as err:
             raise HAError(f"Sending {msg_type} failed: {err}") from err
         finally:
