@@ -65,7 +65,7 @@ function timeScale(start, end, left) {
 
 /**
  * onScale(value) makes the value labels clickable: the chart is scaled to that value (values
- * above run along the top line); while scaled, any label calls onScale(null) to reset.
+ * above are not drawn); while scaled, any label calls onScale(null) to reset.
  */
 function frame(start, end, scale, formatY, { onScale = null, zoomed = false } = {}) {
   const { min: yMin = 0, max: yMax, ticks } = scale;
@@ -172,10 +172,11 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, no
   const zoomed = scaleMax !== null && scaleMax > yMin;
   // A chosen maximum keeps its value as top line, above it the lines are cut off
   const scale = niceScale(zoomed ? scaleMax : (fixedMax ?? Math.max(...all.map((p) => p.value)) * 1.05), yMin);
-  const frameParts = frame(start, end, scale, formatY, { onScale, zoomed });
-  const { x, axes, values, left } = frameParts;
-  // Peaks above a chosen maximum run along the top line instead of leaving the plot
-  const y = zoomed ? (v) => frameParts.y(Math.min(v, scale.max)) : frameParts.y;
+  const { x, y, axes, values, left } = frame(start, end, scale, formatY, { onScale, zoomed });
+  // Above a chosen maximum nothing is drawn: the line has a gap there (the hover still tells the value)
+  const drawn = zoomed
+    ? series.map((s) => ({ ...s, points: s.points.map((p) => (p.value > scale.max ? { ...p, value: null } : p)) }))
+    : series;
   const pathOf = (points) => {
     let pen = "M";
     return points
@@ -217,11 +218,11 @@ export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, no
           <text x=${W - PAD.right - 4} y=${y(l.value) - 4} text-anchor="end" class="axis limit-label">${l.label}</text>
         `,
       )}
-      ${series.flatMap((s) => isolated(s.points).map(
+      ${drawn.flatMap((s) => isolated(s.points).map(
         (p) => svg`<circle cx=${(x(new Date(p.start)) + x(new Date(p.end))) / 2} cy=${y(p.value)} r="4"
           style="fill: ${s.color}" fill-opacity=${s.dim ? 0.15 : 1}></circle>`,
       ))}
-      ${[...series.filter((s) => s.dim), ...series.filter((s) => !s.dim)].map(
+      ${[...drawn.filter((s) => s.dim), ...drawn.filter((s) => !s.dim)].map(
         (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width=${s.dim === false ? 3 : 2}
           stroke-opacity=${s.dim ? 0.15 : 1}
           stroke-dasharray=${s.dashed ? "5 4" : "none"} stroke-linejoin="round" stroke-linecap="round"></path>`,
