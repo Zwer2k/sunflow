@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.10
+
+- Planung: Antwortet die Datenbank von Home Assistant nicht, wird der Plan trotzdem angezeigt. Vorher meldete die Seite „Plan konnte nicht berechnet werden“, obwohl nur der gemessene Verlauf für die Diagramme fehlte. Jetzt erscheint ein Hinweis beim Verlauf, der zuletzt geladene bleibt stehen.
+
 ## 0.32.9
 
 - Live: Die Tageskennzahlen verschwinden nicht mehr, wenn die Datenbank von Home Assistant nicht antwortet. Die zuletzt geladenen Werte bleiben stehen, mit dem Hinweis „nicht aktuell“; ohne frühere Werte erscheint der Grund.

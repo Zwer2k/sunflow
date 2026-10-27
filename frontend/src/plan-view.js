@@ -103,6 +103,7 @@ class SunflowPlan extends LitElement {
     _historyHours: { state: true },
     _focus: { state: true },
     _showTotal: { state: true },
+    _historyError: { state: true },
   };
 
   constructor() {
@@ -133,15 +134,15 @@ class SunflowPlan extends LitElement {
 
   async _load(fresh = false) {
     this._loading = true;
+    // The measured history comes from Home Assistant's database; without it the plan still shows
+    const history = this._loadHistory(this._historyHours);
     try {
-      [this._plan, this._history] = await Promise.all([
-        fresh ? api.plan() : api.latestPlan(),
-        api.history(this._historyHours),
-      ]);
+      this._plan = await (fresh ? api.plan() : api.latestPlan());
       this._error = null;
     } catch (err) {
       this._error = `Plan konnte nicht berechnet werden: ${err.message}`;
     } finally {
+      await history;
       this._loading = false;
     }
   }
@@ -239,6 +240,11 @@ class SunflowPlan extends LitElement {
             )}
           </div>
         </div>
+        ${this._historyError
+          ? html`<div class="alert warn">⚠ Gemessener Verlauf nicht abrufbar (${this._historyError})${this._history
+              ? " – angezeigt wird der zuletzt geladene."
+              : " – die Diagramme zeigen nur die Planung."}</div>`
+          : nothing}
         <div class="legend">
           <span class="legend-item"><span class="line solid"></span>gemessen</span>
           <span class="legend-item"><span class="line dashed"></span>Prognose / Planung</span>
@@ -530,10 +536,19 @@ class SunflowPlan extends LitElement {
 
   async _setHistoryHours(hours) {
     this._historyHours = hours;
+    await this._loadHistory(hours);
+  }
+
+  /** Keeps the last history on failure; the charts then show it with a hint. */
+  async _loadHistory(hours) {
     try {
-      this._history = await api.history(hours);
+      const history = await api.history(hours);
+      if (hours === this._historyHours) {
+        this._history = history;
+        this._historyError = null;
+      }
     } catch (err) {
-      this._error = `Verlauf konnte nicht geladen werden: ${err.message}`;
+      if (hours === this._historyHours) this._historyError = err.message;
     }
   }
 
