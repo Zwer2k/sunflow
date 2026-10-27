@@ -33,6 +33,8 @@ async def local_timezone(client: HAClient) -> ZoneInfo:
 # PV correction: learned from this many days of shadow data, refreshed this often
 LEARNING_WINDOW = timedelta(days=120)
 CORRECTION_REFRESH = timedelta(hours=1)
+# A failed replan runs every query again; not every minute while Home Assistant has a problem
+REPLAN_RETRY = timedelta(minutes=5)
 
 
 async def current_plan(
@@ -171,6 +173,7 @@ class ShadowRunner:
         self._planned_slot: datetime | None = None
         # A change arrived while a replan was running: plan once more afterwards
         self._replan_again = False
+        self._replan_retry_at = datetime.min.replace(tzinfo=UTC)
 
     async def run(self) -> None:
         """Run until cancelled."""
@@ -192,20 +195,25 @@ class ShadowRunner:
             return
         now = datetime.now(UTC)
         start = slot_start(now)
-        try:
-            if self._recorder is None or self._recorder.start != start:
-                await self._finish_slot()
-                self._recorder = SlotRecorder(start=start)
-            if self._planned_slot != start:
+        if self._recorder is None or self._recorder.start != start:
+            await self._finish_slot()
+            self._recorder = SlotRecorder(start=start)
+        # Measuring goes on while planning fails, so the shadow data has no holes
+        if self._planned_slot != start and now >= self._replan_retry_at:
+            try:
                 await self._replan(start)
+                self.status.last_error = None
+            except (HAError, KeyError, ValueError) as err:
+                _LOGGER.warning("Replan failed, retrying in %s: %s", REPLAN_RETRY, err)
+                self.status.last_error = f"Plan: {err}"
+                self._replan_retry_at = now + REPLAN_RETRY
+        try:
             if (sample := await take_sample(self._client, self._store, self._library, self.snapshots)) is not None:
                 self._recorder.samples.append(sample)
                 self.last_sample = sample
                 self.last_sample_at = datetime.now(UTC)
-            self.status.last_error = None
         except (HAError, KeyError, ValueError) as err:
-            _LOGGER.warning("Shadow tick failed: %s", err)
-            self.status.last_error = str(err)
+            _LOGGER.warning("Sample failed: %s", err)
 
     async def _finish_slot(self) -> None:
         if self._recorder is None or not self._recorder.samples:
@@ -232,9 +240,10 @@ class ShadowRunner:
             self._replan_again = False
             try:
                 await self._replan(slot_start(datetime.now(UTC)))
+                self.status.last_error = None
             except Exception as err:  # noqa: BLE001 - logged, the next tick retries
                 _LOGGER.warning("Replan failed: %s", err)
-                self.status.last_error = str(err)
+                self.status.last_error = f"Plan: {err}"
             if not self._replan_again:
                 return
 
