@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.2
+
+- Live: Die Wettervorhersage scrollt ohne sichtbaren Scrollbalken.
+
 ## 0.32.1
 
 - Live: Durch die Wettervorhersage lässt sich wischen (am PC mit gedrückter Maustaste ziehen): bis zu 48 Stunden bzw. 16 Tage, so weit die Wetter-Entität sie liefert.

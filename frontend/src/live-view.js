@@ -488,11 +488,12 @@ class SunflowLive extends LitElement {
     .range button.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; }
     /* Next hours scroll sideways on narrow screens instead of wrapping */
     .weather-hours {
-      display: flex; gap: 4px; margin: 0; padding: 0 0 4px; list-style: none; flex: 0 1 auto; min-width: 0;
+      display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; flex: 0 1 auto; min-width: 0;
       /* Swipe (touch) or drag (mouse) through all forecast hours or days */
-      overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin;
+      overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none;
       max-width: min(100%, 520px); cursor: grab; user-select: none; touch-action: pan-x pan-y;
     }
+    .weather-hours::-webkit-scrollbar { display: none; }
     .weather-hours.dragging { cursor: grabbing; scroll-snap-type: none; }
     .weather-hours li {
       scroll-snap-align: start; flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 52px;
