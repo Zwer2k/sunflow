@@ -251,7 +251,7 @@ class SunflowPlan extends LitElement {
         <div class="legend">
           <span class="legend-item"><span class="line solid"></span>gemessen</span>
           <span class="legend-item"><span class="line dashed"></span>Prognose / Planung</span>
-          <span class="legend-item muted">Klick auf eine Zahl der Leistungsachse skaliert bis dorthin</span>
+          <span class="legend-item muted">Klick auf eine Zahl der Leistungsachse skaliert bis dorthin, erneuter Klick zeigt wieder alles</span>
         </div>
       </section>
 
