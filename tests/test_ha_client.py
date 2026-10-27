@@ -1,15 +1,17 @@
 """Tests for the Home Assistant websocket client against a fake server."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 from aiohttp import WSMsgType, web
 from aiohttp.test_utils import TestServer
 import pytest
 
-from sunflow.ha import HAClient, HACommandError, HAError
+from sunflow.ha import HAClient, HACommandError, HAError, RecorderUnavailable
 
 TOKEN = "secret"
+# What the fake recorder reports and how its database queries end
+RECORDER = {"info": {"backlog": 0, "thread_running": True, "migration_in_progress": False}, "statistics": "ok"}
 
 
 async def _fake_ha(request: web.Request) -> web.WebSocketResponse:
@@ -41,6 +43,13 @@ async def _fake_ha(request: web.Request) -> web.WebSocketResponse:
                 pass
             case "malformed":
                 await ws.send_json({"id": msg_id, "type": "result"})
+            case "recorder/info":
+                await ws.send_json({"id": msg_id, "type": "result", "success": True, "result": RECORDER["info"]})
+            case "recorder/statistics_during_period":
+                if RECORDER["statistics"] == "ok":
+                    await ws.send_json({"id": msg_id, "type": "result", "success": True, "result": {}})
+                else:
+                    await ws.send_json({"id": msg_id, "type": "result", "success": False, "error": {"code": "unknown_error", "message": "Unknown error"}})
             case "call_service":
                 await ws.send_json({"id": msg_id, "type": "result", "success": True, "result": {"echo": msg}})
             case _:
@@ -136,3 +145,36 @@ async def test_malformed_result_keeps_reader(client: HAClient) -> None:
     with pytest.raises(HAError):
         await client.command("malformed")
     assert (await client.get_states())[0]["entity_id"] == "sun.sun"
+
+
+@pytest.fixture
+def recorder() -> Iterator[dict[str, Any]]:
+    """Reset the fake recorder after a test."""
+    saved = {"info": dict(RECORDER["info"]), "statistics": RECORDER["statistics"]}
+    yield RECORDER
+    RECORDER.update(saved)
+
+
+async def test_database_queries_paused_while_recorder_is_behind(client: HAClient, recorder: dict[str, Any]) -> None:
+    """With a large backlog no statistics query is sent; other commands still work."""
+    recorder["info"]["backlog"] = 50_000
+
+    with pytest.raises(RecorderUnavailable):
+        await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"])
+    assert await client.get_states()
+
+
+async def test_database_queries_paused_after_unknown_error(client: HAClient, recorder: dict[str, Any]) -> None:
+    """A crashing database answers unknown_error; the next queries are not sent at all."""
+    recorder["statistics"] = "error"
+    with pytest.raises(HACommandError, match="unknown_error"):
+        await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"])
+
+    recorder["statistics"] = "ok"
+    with pytest.raises(RecorderUnavailable):
+        await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"])
+
+
+async def test_database_queries_when_recorder_is_fine(client: HAClient, recorder: dict[str, Any]) -> None:
+    """Normally the recorder check is invisible."""
+    assert await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"]) == {}

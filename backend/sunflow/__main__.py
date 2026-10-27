@@ -12,7 +12,8 @@ def main() -> None:
     """Start the backend."""
     logging.basicConfig(level=logging.INFO)
     settings = load_settings()
-    uvicorn.run(create_app(settings), host="0.0.0.0", port=settings.port)
+    # The UI polls every few seconds; a log line per request only fills the host's journal
+    uvicorn.run(create_app(settings), host="0.0.0.0", port=settings.port, access_log=False)
 
 
 if __name__ == "__main__":
