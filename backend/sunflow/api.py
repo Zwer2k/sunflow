@@ -903,7 +903,15 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
     if (latest := await runner.ensure_plan()) is None:
         raise HTTPException(status_code=503, detail=runner.status.last_error or "Plan wird noch berechnet")
     sample = runner.last_sample
-    return plan_response(latest, request.app.state.store.load()) | {
+    response = plan_response(latest, request.app.state.store.load())
+    if runner.status.last_error and runner.status.last_plan:
+        # An older plan is still shown; say that newer attempts failed and why
+        since = runner.status.last_plan.astimezone(await _local_tz(request)).strftime("%H:%M")
+        response["warnings"] = [
+            f"Neuberechnung fehlgeschlagen, angezeigt wird der Plan von {since} ({runner.status.last_error}).",
+            *response["warnings"],
+        ]
+    return response | {
         "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
         # What the battery does right now (Sunflow does not control yet; another system may)
         "actual": asdict(sample)
