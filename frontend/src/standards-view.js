@@ -536,7 +536,7 @@ class SunflowStandards extends LitElement {
       border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
     }
     .inline { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
-    .inline input { width: 18px; height: 18px; }
+    .inline input[type="checkbox"] { width: 18px; height: 18px; }
     .actions { display: flex; gap: 10px; margin-top: 12px; }
     .secondary, .ok { min-height: 44px; padding: 0 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
