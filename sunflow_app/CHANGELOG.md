@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.3
+
+- Planung: Bei gewählter Skalierung werden Werte über dem gewählten Maximum nicht gezeichnet; die Linie setzt dort aus. Beim Darüberfahren erscheint weiterhin der tatsächliche Wert.
+
 ## 0.33.2
 
 - Planung: Bei gewählter Skalierung laufen Spitzen darüber als waagerechte Linie am oberen Rand entlang, statt zu verschwinden. Ein erneuter Klick auf eine Zahl der Achse stellt die ganze Höhe wieder her.
