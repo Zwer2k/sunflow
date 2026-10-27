@@ -19,7 +19,7 @@ COMMAND_TIMEOUT = 60
 RECORDER_COMMANDS = ("recorder/", "history/")
 RECORDER_CHECK_SECONDS = 60
 RECORDER_MAX_BACKLOG = 1000
-RECORDER_PAUSE_SECONDS = 300
+RECORDER_PAUSE_SECONDS = 120
 
 type EventCallback = Callable[[dict[str, Any]], None]
 
@@ -66,6 +66,7 @@ class HAClient:
         self.generation = 0
         self._recorder_checked = float("-inf")
         self._recorder_paused_until = float("-inf")
+        self._recorder_pause_reason = ""
 
     @property
     def connected(self) -> bool:
@@ -123,20 +124,29 @@ class HAClient:
         await self._check_recorder()
         try:
             return await self._send(msg_type, **data)
-        except (HATimeout, HACommandError) as err:
-            # A hanging or crashing database answers with a timeout or an unknown error
-            if isinstance(err, HATimeout) or str(err).startswith("unknown_error"):
-                self._pause_recorder(f"{msg_type}: {err}")
+        except HATimeout as err:
+            # A hanging database leaves every query waiting
+            self._pause_recorder(f"{msg_type}: {err}")
+            raise
+        except HACommandError as err:
+            # Often a single query failing (e.g. one statistic), not the database: the
+            # next query asks the recorder first and only pauses if it is really behind
+            if str(err).startswith("unknown_error"):
+                self._recorder_checked = 0.0
             raise
 
     def _pause_recorder(self, reason: str) -> None:
         self._recorder_paused_until = time.monotonic() + RECORDER_PAUSE_SECONDS
+        self._recorder_pause_reason = reason
         _LOGGER.warning("Pausing database queries for %s s: %s", RECORDER_PAUSE_SECONDS, reason)
 
     async def _check_recorder(self) -> None:
         now = time.monotonic()
         if now < self._recorder_paused_until:
-            raise RecorderUnavailable("recorder_unavailable: Datenbank von Home Assistant antwortet nicht, Abfragen pausiert")
+            raise RecorderUnavailable(
+                "recorder_unavailable: Datenbank von Home Assistant antwortet nicht, Abfragen für "
+                f"{int(self._recorder_paused_until - now)} s pausiert (Auslöser: {self._recorder_pause_reason})"
+            )
         if now - self._recorder_checked < RECORDER_CHECK_SECONDS:
             return
         self._recorder_checked = now
