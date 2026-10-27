@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.5
+
+- Planung: Schlägt in Home Assistant eine einzelne Abfrage fehl (z. B. die PV-Prognose einer Fläche, der Verlauf des Hausverbrauchs oder eines Verbrauchers, die Statistik zur letzten Vollladung), wird der Plan trotzdem berechnet. Eine Warnung nennt, welche Quelle fehlte und mit welcher Fehlermeldung. Vorher brach der Plan mit „unknown_error: Unknown error“ ohne Hinweis auf die Ursache ab.
+
 ## 0.30.4
 
 - Planung: Der eingeblendete Gesamtverbrauch lässt sich über seinen Legendeneintrag hervorheben wie die anderen Linien; ein- und ausgeblendet wird nur über das Häkchen.

@@ -7,7 +7,7 @@ from aiohttp import WSMsgType, web
 from aiohttp.test_utils import TestServer
 import pytest
 
-from sunflow.ha import HAClient, HAError
+from sunflow.ha import HAClient, HACommandError, HAError
 
 TOKEN = "secret"
 
@@ -82,8 +82,8 @@ async def test_invalid_token(server: TestServer) -> None:
 
 
 async def test_error_result(client: HAClient) -> None:
-    """A failed command raises HAError with the error code."""
-    with pytest.raises(HAError, match="unknown_command"):
+    """A failed command raises HACommandError with the error code: the connection itself is fine."""
+    with pytest.raises(HACommandError, match="unknown_command"):
         await client.command("does/not/exist")
 
 

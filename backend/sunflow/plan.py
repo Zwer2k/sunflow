@@ -8,7 +8,7 @@ from typing import Any
 
 from .config_store import BATTERY_PRIORITY_ID, DeviceConfig, SunflowConfig
 from .discovery import Snapshot
-from .ha import HAClient, HAError
+from .ha import HAClient, HACommandError, HAError
 from .load_forecast import (
     LoadForecast,
     build_load_forecast,
@@ -505,7 +505,11 @@ async def battery_care(
     if not (every or grid_after) or not inputs:
         return care
     window = max(every or 0, grid_after or 0) + 3
-    care.last_full = await last_full_charge(client, soc_entity(profile, device, snapshot), window)
+    try:
+        care.last_full = await last_full_charge(client, soc_entity(profile, device, snapshot), window)
+    except HACommandError:
+        # Unknown counts as not full within the window: a full charge gets planned
+        care.last_full = None
     since = care.last_full.astimezone(tz).strftime("%d.%m.") if care.last_full else f"vor über {window} Tagen"
     # Not full within the queried window counts as overdue as well
     if grid_after and (care.last_full is None or inputs[0].start - care.last_full >= timedelta(days=grid_after)):
@@ -719,7 +723,10 @@ async def compute_plan(
     if battery is None and problem and "Ladestand" in problem:
         # Inverter integrations drop single reads ("unknown"); the last valid value from
         # the history is good enough, the SoC changes slowly
-        fallback = await last_valid_value(client, soc_entity(profile, battery_device, snapshot), SOC_FALLBACK_AGE)
+        try:
+            fallback = await last_valid_value(client, soc_entity(profile, battery_device, snapshot), SOC_FALLBACK_AGE)
+        except HACommandError:
+            fallback = None
         if fallback is not None:
             value, since = fallback
             battery, problem = battery_spec(profile, battery_device, snapshot, soc_fallback=value)
@@ -747,18 +754,27 @@ async def compute_plan(
 
     # PV forecast of all used planes
     series = []
+    used_planes = []
     for plane in config.forecast_planes:
         if plane.device_id is None:
             continue
-        match plane.source:
-            case "solcast":
-                series.append(await solcast_forecast(client, plane.ref, start, HORIZON_HOURS))
-            case "forecast_solar":
-                series.append(await forecast_solar_forecast(client, plane.ref, start, HORIZON_HOURS))
+        # One failing forecast integration must not stop the plan; the others still count
+        try:
+            match plane.source:
+                case "solcast":
+                    points = await solcast_forecast(client, plane.ref, start, HORIZON_HOURS)
+                case "forecast_solar":
+                    points = await forecast_solar_forecast(client, plane.ref, start, HORIZON_HOURS)
+                case _:
+                    continue
+        except HACommandError as err:
+            warnings.append(f"PV-Prognose „{plane.display_name}“ nicht abrufbar ({err}) – geplant wird ohne diese Fläche.")
+            continue
+        series.append(points)
+        used_planes.append(plane)
     if not series:
         warnings.append("Keine PV-Prognose – geplant wird ohne PV-Ertrag.")
     horizon_end = start + timedelta(hours=HORIZON_HOURS)
-    used_planes = [p for p in config.forecast_planes if p.device_id is not None]
     for plane, points in zip(used_planes, series, strict=False):
         last = max((p.end for p in points), default=start)
         if last < horizon_end - timedelta(hours=12):
@@ -777,7 +793,10 @@ async def compute_plan(
     )
     history = []
     if load_entity := find_load_entity(roles):
-        history = await fetch_hourly_means(client, load_entity, start)
+        try:
+            history = await fetch_hourly_means(client, load_entity, start)
+        except HACommandError as err:
+            warnings.append(f"Verlauf des Hausverbrauchs nicht abrufbar ({err}) – Lastprognose mit Standardwerten.")
     # Loadpoints (wallbox, heater) are part of the measured household load
     loadpoint_histories = []
     for device in config.devices:
@@ -793,7 +812,10 @@ async def compute_plan(
         if entity := next(
             (r.entity_id for r in lp_roles if r.role in ("charge_power", "power") and r.entity_id), None
         ):
-            loadpoint_histories.append(await fetch_hourly_means(client, entity, start))
+            try:
+                loadpoint_histories.append(await fetch_hourly_means(client, entity, start))
+            except HACommandError as err:
+                warnings.append(f"Verlauf von {device.name} nicht abrufbar ({err}) – bleibt im Hausverbrauch.")
     history, separated = subtract_loads(history, loadpoint_histories)
     load = build_load_forecast(
         history,

@@ -21,6 +21,10 @@ class HAError(Exception):
     """Error returned by Home Assistant or the connection."""
 
 
+class HACommandError(HAError):
+    """Home Assistant answered, but the command or action failed (the connection is fine)."""
+
+
 class HAClient:
     """Minimal Home Assistant websocket client.
 
@@ -221,7 +225,7 @@ class HAClient:
         else:
             error = msg.get("error", {})
             future.set_exception(
-                HAError(f"{error.get('code')}: {error.get('message')}")
+                HACommandError(f"{error.get('code')}: {error.get('message')}")
             )
 
     def _fail_pending(self, err: HAError) -> None:
