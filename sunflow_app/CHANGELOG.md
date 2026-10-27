@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.8
+
+- Live: „Aktuelle Energieflüsse“ und „Stand …“ linksbündig.
+
 ## 0.32.7
 
 - Live: „Aktuelle Energieflüsse“ und „Stand …“ rechtsbündig, ohne Einzug vor „Stand“.
