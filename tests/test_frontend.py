@@ -357,3 +357,43 @@ def test_display_precision_from_registry() -> None:
     assert display_precision({"options": {"sensor": {"suggested_display_precision": 1, "display_precision": 3}}}) == 3
     assert display_precision({"options": {}}) is None
     assert display_precision(None) is None
+
+
+async def test_live_weather_hours_and_days() -> None:
+    """Hourly and daily forecast are fetched once each and cached; past days are left out."""
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from sunflow import api
+
+    now = datetime.now(UTC)
+    calls = []
+
+    class Client:
+        async def call_service(self, domain: str, service: str, data: dict, **kwargs: object) -> dict:
+            calls.append(data["type"])
+            if data["type"] == "hourly":
+                forecast = [{"datetime": (now + timedelta(hours=1)).isoformat(), "condition": "sunny", "temperature": 12}]
+            else:
+                forecast = [
+                    {"datetime": (now - timedelta(days=2)).isoformat(), "condition": "rainy"},
+                    {"datetime": (now + timedelta(days=1)).isoformat(), "condition": "cloudy", "temperature": 14, "templow": 6},
+                ]
+            return {"response": {"weather.home": {"forecast": forecast}}}
+
+        async def command(self, msg_type: str, **data: object) -> dict:
+            return {"time_zone": "Europe/Berlin"}
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(ha=Client())))
+    config = api.SunflowConfig()
+    config.optimizer.weather_entity = "weather.home"
+    snapshot = SimpleNamespace(states={"weather.home": {"state": "sunny", "attributes": {"temperature": 11}}})
+
+    weather = await api._live_weather(request, config, snapshot)
+    await api._live_weather(request, config, snapshot)
+
+    assert [h["condition"] for h in weather["hours"]] == ["sunny"]
+    assert weather["days"] == [
+        {"time": (now + timedelta(days=1)).isoformat(), "condition": "cloudy", "temperature": 14, "templow": 6, "cloud": None, "precipitation": None}
+    ]
+    assert calls == ["hourly", "daily"]
