@@ -104,6 +104,7 @@ class SunflowPlan extends LitElement {
     _focus: { state: true },
     _showTotal: { state: true },
     _historyError: { state: true },
+    _scales: { state: true },
   };
 
   constructor() {
@@ -113,6 +114,8 @@ class SunflowPlan extends LitElement {
     this._error = null;
     this._history = null;
     this._historyHours = 24;
+    // Chosen axis maximum per chart; peaks otherwise squeeze everything else to the bottom
+    this._scales = {};
     this._timer = null;
     try {
       this._showTotal = localStorage.getItem(TOTAL_KEY) === "1";
@@ -248,6 +251,7 @@ class SunflowPlan extends LitElement {
         <div class="legend">
           <span class="legend-item"><span class="line solid"></span>gemessen</span>
           <span class="legend-item"><span class="line dashed"></span>Prognose / Planung</span>
+          <span class="legend-item muted">Klick auf eine Zahl der Leistungsachse skaliert bis dorthin</span>
         </div>
       </section>
 
@@ -334,7 +338,12 @@ class SunflowPlan extends LitElement {
                 ]
               : []),
           ]),
-          { label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose", formatY: (v) => formatValue(v, "W"), now: nowDate },
+          {
+            label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose",
+            formatY: (v) => formatValue(v, "W"),
+            now: nowDate,
+            ...this._scaling("power"),
+          },
         )}
       </section>
 
@@ -353,7 +362,12 @@ class SunflowPlan extends LitElement {
             { name: "Einspeisung gemessen", color: SERIES_COLORS[1], points: this._pastGrid((g) => Math.max(-g, 0)) },
             { name: "Einspeisung erwartet", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "export_w") },
           ],
-          { label: "Netzbezug und Einspeisung, gemessen und erwartet", formatY: (v) => formatValue(v, "W"), now: nowDate },
+          {
+            label: "Netzbezug und Einspeisung, gemessen und erwartet",
+            formatY: (v) => formatValue(v, "W"),
+            now: nowDate,
+            ...this._scaling("grid"),
+          },
         )}
       </section>
 
@@ -471,6 +485,13 @@ class SunflowPlan extends LitElement {
     return this._withLive(points, this._plan?.actual?.[key]);
   }
 
+  _scaling(chart) {
+    return {
+      scaleMax: this._scales[chart] ?? null,
+      onScale: (value) => (this._scales = { ...this._scales, [chart]: value }),
+    };
+  }
+
   _setShowTotal(show) {
     this._showTotal = show;
     if (!show && this._focus === "total") this._focus = null;
@@ -585,6 +606,8 @@ class SunflowPlan extends LitElement {
     .chart { width: 100%; height: auto; display: block; }
     .chart .grid { stroke: var(--sf-border); stroke-width: 1; }
     .chart .axis { fill: var(--sf-muted); font-size: 11px; }
+    .chart .scalable { cursor: pointer; }
+    .chart .scalable:hover { fill: var(--sf-text); text-decoration: underline; }
     .chart .hit { fill: transparent; }
     .chart .hit:hover { fill: var(--sf-text); fill-opacity: 0.06; }
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
