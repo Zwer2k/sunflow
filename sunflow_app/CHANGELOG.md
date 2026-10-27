@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.3
+
+- Live: Pfeile links und rechts an der Wettervorhersage blättern weiter; sie erscheinen nur, wenn in die Richtung noch Stunden oder Tage verborgen sind.
+
 ## 0.32.2
 
 - Live: Die Wettervorhersage scrollt ohne sichtbaren Scrollbalken.

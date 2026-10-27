@@ -101,6 +101,7 @@ class SunflowLive extends LitElement {
     _today: { state: true },
     _error: { state: true },
     _weatherDays: { state: true },
+    _scroll: { state: true },
   };
 
   constructor() {
@@ -121,12 +122,15 @@ class SunflowLive extends LitElement {
     this._loadToday();
     this._stopLive = poll(() => this._loadLive(), REFRESH_MS);
     this._stopToday = poll(() => this._loadToday(), TODAY_REFRESH_MS);
+    this._onResize = () => this._updateScroll();
+    window.addEventListener("resize", this._onResize);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopLive();
     this._stopToday();
+    window.removeEventListener("resize", this._onResize);
   }
 
   async _loadLive() {
@@ -213,7 +217,11 @@ class SunflowLive extends LitElement {
               )}
             </div>`
           : nothing}
-        <ol class="weather-hours" @pointerdown=${dragScroll}>
+        <div class="forecast">
+        ${this._scroll?.left
+          ? html`<button class="arrow left" aria-label="Früher" @click=${() => this._page(-1)}>‹</button>`
+          : nothing}
+        <ol class="weather-hours" @pointerdown=${dragScroll} @scroll=${() => this._updateScroll()}>
           ${(showDays ? weather.days : weather.hours).map((h) => {
             const [hourSymbol, hourName] = WEATHER[h.condition] ?? ["·", h.condition ?? ""];
             const when = new Date(h.time);
@@ -229,8 +237,29 @@ class SunflowLive extends LitElement {
             </li>`;
           })}
         </ol>
+        ${this._scroll?.right
+          ? html`<button class="arrow right" aria-label="Später" @click=${() => this._page(1)}>›</button>`
+          : nothing}
+        </div>
       </div>
     `;
+  }
+
+  updated() {
+    this._updateScroll();
+  }
+
+  /** Arrows only where more forecast is hidden. */
+  _updateScroll() {
+    const list = this.renderRoot.querySelector(".weather-hours");
+    const left = Boolean(list) && list.scrollLeft > 2;
+    const right = Boolean(list) && list.scrollLeft + list.clientWidth < list.scrollWidth - 2;
+    if (left !== Boolean(this._scroll?.left) || right !== Boolean(this._scroll?.right)) this._scroll = { left, right };
+  }
+
+  _page(direction) {
+    const list = this.renderRoot.querySelector(".weather-hours");
+    list?.scrollBy({ left: direction * list.clientWidth * 0.8, behavior: "smooth" });
   }
 
   _setWeatherDays(days) {
@@ -494,6 +523,15 @@ class SunflowLive extends LitElement {
       max-width: min(100%, 520px); cursor: grab; user-select: none; touch-action: pan-x pan-y;
     }
     .weather-hours::-webkit-scrollbar { display: none; }
+    .forecast { position: relative; display: flex; min-width: 0; flex: 0 1 auto; max-width: min(100%, 520px); }
+    .forecast .weather-hours { max-width: 100%; }
+    .arrow {
+      position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 28px; height: 28px; padding: 0;
+      border: 1px solid var(--sf-border); border-radius: 50%; background: var(--sf-surface); color: var(--sf-text);
+      font-size: 18px; line-height: 1; cursor: pointer; box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+    }
+    .arrow.left { left: -6px; }
+    .arrow.right { right: -6px; }
     .weather-hours.dragging { cursor: grabbing; scroll-snap-type: none; }
     .weather-hours li {
       scroll-snap-align: start; flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 52px;
