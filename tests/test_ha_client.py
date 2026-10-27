@@ -164,14 +164,27 @@ async def test_database_queries_paused_while_recorder_is_behind(client: HAClient
     assert await client.get_states()
 
 
-async def test_database_queries_paused_after_unknown_error(client: HAClient, recorder: dict[str, Any]) -> None:
-    """A crashing database answers unknown_error; the next queries are not sent at all."""
+async def test_unknown_error_checks_recorder_before_pausing(client: HAClient, recorder: dict[str, Any]) -> None:
+    """A single failing query does not pause the database while the recorder keeps up."""
     recorder["statistics"] = "error"
     with pytest.raises(HACommandError, match="unknown_error"):
         await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"])
 
     recorder["statistics"] = "ok"
-    with pytest.raises(RecorderUnavailable):
+    assert await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"]) == {}
+
+
+async def test_unknown_error_pauses_when_recorder_is_behind(client: HAClient, recorder: dict[str, Any]) -> None:
+    """After an unknown error the recorder is asked again; behind, queries pause with the reason."""
+    recorder["statistics"] = "error"
+    with pytest.raises(HACommandError, match="unknown_error"):
+        await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"])
+
+    recorder["statistics"] = "ok"
+    recorder["info"]["backlog"] = 50_000
+    with pytest.raises(RecorderUnavailable, match="ausgelastet"):
+        await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"])
+    with pytest.raises(RecorderUnavailable, match="Auslöser: recorder busy"):
         await client.command("recorder/statistics_during_period", statistic_ids=["sensor.x"])
 
 

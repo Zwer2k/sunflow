@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.32.11
+
+- Der Schutz der Home-Assistant-Datenbank löst seltener aus: Ein einzelner „unknown_error“ sperrt nicht mehr alle Abfragen, sondern Sunflow fragt zuerst den Recorder, ob er wirklich hinterherhängt. Nur dann – oder wenn eine Abfrage 60 s ohne Antwort bleibt – wird pausiert, jetzt für 2 statt 5 Minuten.
+- Die Meldung „Abfragen pausiert“ nennt die verbleibende Zeit und den Auslöser.
+
 ## 0.32.10
 
 - Planung: Antwortet die Datenbank von Home Assistant nicht, wird der Plan trotzdem angezeigt. Vorher meldete die Seite „Plan konnte nicht berechnet werden“, obwohl nur der gemessene Verlauf für die Diagramme fehlte. Jetzt erscheint ein Hinweis beim Verlauf, der zuletzt geladene bleibt stehen.
