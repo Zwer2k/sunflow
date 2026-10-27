@@ -1,9 +1,7 @@
 """Collect forecasts, prices and battery state and run the optimizer."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
 import math
-import time
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any
@@ -35,27 +33,6 @@ from .sources import (
 )
 
 HORIZON_HOURS = 48
-# Database queries change slowly; every replan (each quarter hour) reusing them keeps
-# the load on the recorder low. On a failure the last result stays good enough
-HOURLY_TTL = timedelta(hours=1)
-HABITS_TTL = timedelta(hours=6)
-_query_cache: dict[tuple[str, ...], tuple[float, Any]] = {}
-
-
-async def cached[T](key: tuple[str, ...], ttl: timedelta, fetch: Callable[[], Awaitable[T]]) -> T:
-    """Result of fetch, at most ttl old; the last known one when Home Assistant fails."""
-    hit = _query_cache.get(key)
-    if hit is not None and time.monotonic() - hit[0] < ttl.total_seconds():
-        return hit[1]
-    try:
-        value = await fetch()
-    except HACommandError:
-        if hit is not None:
-            return hit[1]
-        raise
-    _query_cache[key] = (time.monotonic(), value)
-    return value
-
 MIN_HORIZON_HOURS = 4
 SLOT = timedelta(minutes=15)
 # Without any price, a nominal one makes the optimizer maximize self-consumption
@@ -362,7 +339,7 @@ async def consumer_usages(
         if role is None or not role.entity_id:
             continue
         try:
-            usage = await cached(("usage", role.entity_id), HABITS_TTL, lambda entity=role.entity_id: learn_usage(client, entity))
+            usage = await learn_usage(client, role.entity_id)
         except HAError:
             continue
         if usage is not None:
@@ -390,9 +367,7 @@ async def vehicle_departures(
         if role is None or not role.entity_id:
             continue
         try:
-            result[device.id] = await cached(
-                ("departure", role.entity_id), HABITS_TTL, lambda entity=role.entity_id: learn_departure(client, entity, tz)
-            )
+            result[device.id] = await learn_departure(client, role.entity_id, tz)
         except HAError:
             continue
     return result
@@ -531,10 +506,7 @@ async def battery_care(
         return care
     window = max(every or 0, grid_after or 0) + 3
     try:
-        entity = soc_entity(profile, device, snapshot)
-        care.last_full = await cached(
-            ("full", str(entity), str(window)), HOURLY_TTL, lambda: last_full_charge(client, entity, window)
-        )
+        care.last_full = await last_full_charge(client, soc_entity(profile, device, snapshot), window)
     except HACommandError:
         # Unknown counts as not full within the window: a full charge gets planned
         care.last_full = None
@@ -822,7 +794,7 @@ async def compute_plan(
     history = []
     if load_entity := find_load_entity(roles):
         try:
-            history = await cached(("hourly", load_entity), HOURLY_TTL, lambda: fetch_hourly_means(client, load_entity, start))
+            history = await fetch_hourly_means(client, load_entity, start)
         except HACommandError as err:
             warnings.append(f"Verlauf des Hausverbrauchs nicht abrufbar ({err}) – Lastprognose mit Standardwerten.")
     # Loadpoints (wallbox, heater) are part of the measured household load
@@ -841,9 +813,7 @@ async def compute_plan(
             (r.entity_id for r in lp_roles if r.role in ("charge_power", "power") and r.entity_id), None
         ):
             try:
-                loadpoint_histories.append(
-                    await cached(("hourly", entity), HOURLY_TTL, lambda: fetch_hourly_means(client, entity, start))
-                )
+                loadpoint_histories.append(await fetch_hourly_means(client, entity, start))
             except HACommandError as err:
                 warnings.append(f"Verlauf von {device.name} nicht abrufbar ({err}) – bleibt im Hausverbrauch.")
     history, separated = subtract_loads(history, loadpoint_histories)

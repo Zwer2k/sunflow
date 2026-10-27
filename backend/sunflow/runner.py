@@ -33,10 +33,8 @@ async def local_timezone(client: HAClient) -> ZoneInfo:
 # PV correction: learned from this many days of shadow data, refreshed this often
 LEARNING_WINDOW = timedelta(days=120)
 CORRECTION_REFRESH = timedelta(hours=1)
-# A failed replan runs every query again; not every minute while Home Assistant has a
-# problem. The pause doubles with each failure up to the maximum
+# A failed replan runs every query again; not every minute while Home Assistant has a problem
 REPLAN_RETRY = timedelta(minutes=5)
-REPLAN_RETRY_MAX = timedelta(minutes=30)
 
 
 async def current_plan(
@@ -176,7 +174,6 @@ class ShadowRunner:
         # A change arrived while a replan was running: plan once more afterwards
         self._replan_again = False
         self._replan_retry_at = datetime.min.replace(tzinfo=UTC)
-        self._replan_failures = 0
 
     async def run(self) -> None:
         """Run until cancelled."""
@@ -206,13 +203,10 @@ class ShadowRunner:
             try:
                 await self._replan(start)
                 self.status.last_error = None
-                self._replan_failures = 0
             except (HAError, KeyError, ValueError) as err:
-                pause = min(REPLAN_RETRY * 2**self._replan_failures, REPLAN_RETRY_MAX)
-                self._replan_failures += 1
-                _LOGGER.warning("Replan failed, retrying in %s: %s", pause, err)
+                _LOGGER.warning("Replan failed, retrying in %s: %s", REPLAN_RETRY, err)
                 self.status.last_error = f"Plan: {err}"
-                self._replan_retry_at = now + pause
+                self._replan_retry_at = now + REPLAN_RETRY
         try:
             if (sample := await take_sample(self._client, self._store, self._library, self.snapshots)) is not None:
                 self._recorder.samples.append(sample)
