@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.31.0
+
+Schonung der Home-Assistant-Datenbank:
+
+- Vor Abfragen von Statistik und Verlauf prüft Sunflow, ob die Datenbank von Home Assistant hinterherkommt (Warteschlange, Recorder läuft). Ist sie ausgelastet oder antwortet sie nicht (Zeitüberschreitung, „unknown_error“), pausiert Sunflow alle Datenbankabfragen für 5 Minuten, statt weitere hinterherzuschicken.
+- Verläufe für die Planung (Hausverbrauch, Verbraucher, letzte Vollladung) werden höchstens einmal pro Stunde abgefragt, gelernte Gewohnheiten (Abfahrtszeit, Verbrauch eigener Geräte) alle 6 Stunden. Bei einem Fehler rechnet Sunflow mit den zuletzt bekannten Werten weiter.
+- Eine fehlgeschlagene Neuplanung wird mit wachsendem Abstand wiederholt: 5, 10, 20, höchstens 30 Minuten.
+
 ## 0.30.6
 
 - Schattenbetrieb: Schlägt die Neuplanung fehl, wird trotzdem weiter gemessen. Vorher fehlten dann alle Messwerte, bis wieder ein Plan gelang.
