@@ -1,5 +1,5 @@
 """Home Assistant access."""
 
-from .client import HAClient, HAError
+from .client import HAClient, HACommandError, HAError
 
-__all__ = ["HAClient", "HAError"]
+__all__ = ["HACommandError", "HAClient", "HAError"]
