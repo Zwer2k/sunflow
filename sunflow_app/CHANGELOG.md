@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.8
+
+- Einstellungen: Die Notstrom-Reserve steht jetzt nach „Spätestens nach … aus dem Netz“.
+
 ## 0.30.7
 
 - Einstellungen: Das Prozentfeld der Notstrom-Reserve war auf Häkchengröße geschrumpft und ließ sich nicht bedienen.
