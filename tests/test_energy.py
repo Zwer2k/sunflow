@@ -142,6 +142,31 @@ def test_split_losses_separates_standby() -> None:
     assert found_standby == pytest.approx(standby, abs=2)
 
 
+def test_split_losses_ignores_outlier_days() -> None:
+    """A day with a SoC jump (calibration) does not move the result."""
+    from sunflow.efficiency import split_losses
+
+    eta, standby = 0.968, 89.0
+    days = [(c, 0.9 * c, eta * c - 0.9 * c / eta - standby * 24) for c in range(4000, 16000, 800)]
+    found = split_losses([*days, (8000, 7200, 4000)])
+
+    assert found == pytest.approx(split_losses(days), abs=0.002)
+
+
+def test_daily_balances_fixed_day_start() -> None:
+    """Days start at UTC midnight, whatever hour the queried window starts with."""
+    from sunflow.efficiency import DAY_MS, daily_balances
+
+    hour = 3_600_000
+    midnight = 1_761_523_200_000  # 2025-10-27 00:00 UTC
+    rows = [{"start": midnight - 5 * hour + h * hour, "change": 100.0, "mean": 50.0} for h in range(5 + 48)]
+
+    days = daily_balances(rows, rows, rows, 20000)
+
+    assert len(days) == 1
+    assert midnight % DAY_MS == 0
+
+
 def test_split_losses_needs_enough_varied_days() -> None:
     """Too few days or always the same cycle give no split."""
     from sunflow.efficiency import split_losses

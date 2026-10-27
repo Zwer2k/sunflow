@@ -167,7 +167,9 @@ def daily_balances(
     by_hour_discharge = {r["start"]: r["change"] for r in discharge}
     soc_at = {r["start"]: r["mean"] for r in soc}
     days = []
-    start = soc[0]["start"]
+    # Days start at a fixed hour (UTC midnight): with the first row as start the windows
+    # moved with every hour of the sliding 90 days, and the estimate jumped each time
+    start = -(-soc[0]["start"] // DAY_MS) * DAY_MS
     while start + DAY_MS in soc_at:
         hours = [start + h * 3_600_000 for h in range(24)]
         if all(h in by_hour_charge and h in by_hour_discharge for h in hours) and start in soc_at:
@@ -189,6 +191,19 @@ def split_losses(days: list[tuple[float, float, float]]) -> tuple[float, float] 
     different throughput separate the per-kWh losses from the constant draw; the
     efficiency is searched on a grid, the standby follows in closed form.
     """
+    fit = _fit_losses(days)
+    if fit is None:
+        return None
+    # SoC reading jumps or a day with a calibration make single days far off; they
+    # would pull the fit, so the fit is repeated without them
+    eta, standby = fit
+    residuals = [eta * c - d / eta - s - standby * 24 for c, d, s in days]
+    spread = sorted(abs(r) for r in residuals)[len(residuals) // 2]
+    kept = [day for day, r in zip(days, residuals, strict=True) if abs(r) <= 3 * spread] if spread else days
+    return _fit_losses(kept) if len(kept) < len(days) else fit
+
+
+def _fit_losses(days: list[tuple[float, float, float]]) -> tuple[float, float] | None:
     if len(days) < MIN_DAYS:
         return None
     throughput = [c + d for c, d, _ in days]

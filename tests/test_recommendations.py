@@ -29,8 +29,15 @@ def test_efficiency_suggests_conversion_value() -> None:
 
     rec = next(r for r in found if r["id"] == "battery_efficiency:bat")
     assert rec["severity"] == "warn"
-    assert rec["action"] == {"type": "set_parameter", "device_id": "bat", "name": "efficiency_pct", "value": 93.7}
+    assert rec["action"] == {"type": "set_parameter", "device_id": "bat", "name": "efficiency_pct", "value": 93.5}
     assert "89 W" in rec["text"]
+
+
+def test_efficiency_without_split_is_not_suggested() -> None:
+    """The overall round trip includes the standby draw; offering it alternated with the split value."""
+    found = build(_config(), None, {"bat": _estimate(0.85)}, [], 0, None, [])
+
+    assert not any(r["id"] == "battery_efficiency:bat" for r in found)
 
 
 def test_hot_water_demand_plausibility() -> None:

@@ -54,11 +54,13 @@ def battery_efficiency(
     for device in config.devices:
         estimate = estimates.get(device.id)
         current = device.parameters.get("efficiency_pct")
-        if estimate is None or current is None or not estimate.plausible:
+        # Only the counter based split: the overall round trip includes the standby draw and
+        # would alternate with it by several points whenever the split is not possible
+        if estimate is None or current is None or not estimate.plausible or estimate.conversion_round_trip is None:
             continue
-        # Without the split the overall round trip includes the standby draw
-        suggested = (estimate.conversion_round_trip or estimate.round_trip or 0) * 100
-        if not suggested or abs(suggested - current) < EFFICIENCY_GAP:
+        # Half points: the estimate moves a little with every day of data
+        suggested = round(estimate.conversion_round_trip * 200) / 2
+        if abs(suggested - current) < EFFICIENCY_GAP:
             continue
         standby = (
             f" Der Eigenverbrauch der Batterie (etwa {estimate.standby_w:.0f} W) ist darin nicht enthalten – "

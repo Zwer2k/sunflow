@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.33.1
+
+Empfehlung „Wirkungsgrad Speicher“ springt nicht mehr:
+
+- Die Tagesbilanzen für die Aufteilung in Umwandlungsverlust und Eigenverbrauch beginnen immer um Mitternacht (UTC). Vorher verschoben sich alle Tagesfenster mit jeder Stunde des gleitenden 90-Tage-Zeitraums, und der Wert änderte sich stündlich deutlich.
+- Einzelne Ausreißertage (z. B. ein Sprung im Ladestand durch Kalibrierung) werden erkannt und fließen nicht ein.
+- Empfohlen wird nur noch der Wert ohne Eigenverbrauch. Vorher wechselte die Empfehlung zum Gesamtwert mit Eigenverbrauch, wenn die Aufteilung gerade nicht möglich war – mehrere Prozentpunkte Unterschied.
+- Der Vorschlag ist auf halbe Prozent gerundet.
+
 ## 0.33.0
 
 - Planung: In „PV-Erzeugung und Hausverbrauch“ und „Netzbezug und Einspeisung“ skaliert ein Klick auf eine Zahl der senkrechten Achse das Diagramm bis zu diesem Wert; Leistungsspitzen darüber werden abgeschnitten, damit der Rest lesbar bleibt. „↺ ganze Höhe“ oben rechts stellt die automatische Skalierung wieder her.
