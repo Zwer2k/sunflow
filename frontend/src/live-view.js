@@ -49,6 +49,25 @@ const ICONS = {
 const dayFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const hourFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 
+/** Mouse drag scrolls the forecast sideways like a swipe does on touch screens. */
+function dragScroll(event) {
+  if (event.pointerType !== "mouse" || event.button !== 0) return;
+  const list = event.currentTarget;
+  const startX = event.clientX;
+  const startScroll = list.scrollLeft;
+  const move = (e) => {
+    list.scrollLeft = startScroll - (e.clientX - startX);
+    list.classList.add("dragging");
+  };
+  const up = () => {
+    list.classList.remove("dragging");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const WEATHER_DAYS_KEY = "sunflow.live.weatherDays";
 const weekday = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
@@ -194,7 +213,7 @@ class SunflowLive extends LitElement {
               )}
             </div>`
           : nothing}
-        <ol class="weather-hours">
+        <ol class="weather-hours" @pointerdown=${dragScroll}>
           ${(showDays ? weather.days : weather.hours).map((h) => {
             const [hourSymbol, hourName] = WEATHER[h.condition] ?? ["·", h.condition ?? ""];
             const when = new Date(h.time);
@@ -468,9 +487,15 @@ class SunflowLive extends LitElement {
     }
     .range button.active { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; }
     /* Next hours scroll sideways on narrow screens instead of wrapping */
-    .weather-hours { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; flex: 0 1 auto; min-width: 0; }
+    .weather-hours {
+      display: flex; gap: 4px; margin: 0; padding: 0 0 4px; list-style: none; flex: 0 1 auto; min-width: 0;
+      /* Swipe (touch) or drag (mouse) through all forecast hours or days */
+      overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin;
+      max-width: min(100%, 520px); cursor: grab; user-select: none; touch-action: pan-x pan-y;
+    }
+    .weather-hours.dragging { cursor: grabbing; scroll-snap-type: none; }
     .weather-hours li {
-      flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 52px;
+      scroll-snap-align: start; flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 52px;
       padding: 4px 6px; border-radius: 8px; background: var(--sf-subtle);
     }
     .soc-ring { fill: none; stroke-width: 4; stroke-linecap: round; }

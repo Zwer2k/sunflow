@@ -1503,8 +1503,9 @@ async def get_live(request: Request) -> dict[str, Any]:
 
 
 WEATHER_CACHE = timedelta(minutes=10)
-WEATHER_HOURS = 8
-WEATHER_DAYS = 7
+# As far as the integration forecasts; the UI scrolls through them
+WEATHER_HOURS = 48
+WEATHER_DAYS = 16
 
 
 async def _forecast(request: Request, entity_id: str, kind: str) -> list[dict[str, Any]]:

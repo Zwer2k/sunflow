@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.1
+
+- Live: Durch die Wettervorhersage lässt sich wischen (am PC mit gedrückter Maustaste ziehen): bis zu 48 Stunden bzw. 16 Tage, so weit die Wetter-Entität sie liefert.
+
 ## 0.32.0
 
 - Live: Die Wetteranzeige lässt sich zwischen Stunden und Tagen umschalten. Die Tagesansicht zeigt bis zu 7 Tage mit Höchst- und Tiefsttemperatur (Regenmenge beim Darüberfahren). Die Auswahl wird im Browser gemerkt; liefert die Wetter-Entität keine Tagesvorhersage, bleibt es bei den Stunden.
