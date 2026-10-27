@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.6
+
+- Live: „Stand …“ ohne vorangestellten Punkt und etwas heller.
+
 ## 0.32.5
 
 - Live: „Aktuelle Energieflüsse · Stand …“ bricht neben dem Wetter höchstens in zwei Zeilen um statt Wort für Wort.
