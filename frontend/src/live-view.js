@@ -101,6 +101,7 @@ class SunflowLive extends LitElement {
     _today: { state: true },
     _error: { state: true },
     _weatherDays: { state: true },
+    _todayError: { state: true },
     _scroll: { state: true },
   };
 
@@ -158,6 +159,7 @@ class SunflowLive extends LitElement {
           selfConsumption: energy.self_consumption,
           source: "Energiezähler",
         };
+        this._todayError = null;
         return;
       }
       const history = await api.history(24);
@@ -173,9 +175,10 @@ class SunflowLive extends LitElement {
         pv, consumption, imported, exported, ...dailyRatios({ pv, consumption, imported, exported }),
         source: "Leistungsmittelwerte (keine Energiezähler gefunden)",
       };
-    } catch {
-      // The daily summary is optional; the live diagram still works
-      this._today = null;
+      this._todayError = null;
+    } catch (err) {
+      // The last values stay (e.g. while Home Assistant's database is paused), with a hint
+      this._todayError = err.message;
     }
   }
 
@@ -445,11 +448,18 @@ class SunflowLive extends LitElement {
 
   _renderToday() {
     const t = this._today;
-    if (!t) return nothing;
+    if (!t) {
+      return this._todayError
+        ? html`<section class="today"><h2>Heute</h2>
+            <p class="small muted">Tageswerte gerade nicht abrufbar (${this._todayError}) – neuer Versuch in Kürze.</p></section>`
+        : nothing;
+    }
     const kwh = (v) => formatValue(v * 1000, "Wh");
     return html`
       <section class="today">
-        <h2>Heute <span class="small muted source">aus ${t.source}</span></h2>
+        <h2>Heute <span class="small muted source">aus ${t.source}${this._todayError
+          ? html` · <span class="warn-text" title=${this._todayError}>nicht aktuell, Abruf fehlgeschlagen</span>`
+          : nothing}</span></h2>
         <div class="tiles">
           <div class="tile"><div class="small muted">PV erzeugt</div><div class="value">${kwh(t.pv)}</div></div>
           <div class="tile"><div class="small muted">Verbraucht</div><div class="value">${kwh(t.consumption)}</div></div>
@@ -478,6 +488,7 @@ class SunflowLive extends LitElement {
     h2 { margin: 0 0 8px; font-size: 16px; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
+    .warn-text { color: var(--sf-warn-text); }
     .small { font-size: 13px; }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     .heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
