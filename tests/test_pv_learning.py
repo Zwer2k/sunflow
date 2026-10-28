@@ -82,3 +82,19 @@ def test_learns_each_plane_from_its_strings() -> None:
 
     assert corrections["solcast:ne"].factor(9, None) == pytest.approx(0.6, abs=0.05)
     assert corrections["solcast:se"].factor(9, None) == pytest.approx(1.0, abs=0.03)
+
+
+def test_shaded_plane_learns_below_a_third() -> None:
+    """A plane delivering a fifth of its forecast for weeks gets a factor close to that."""
+    from datetime import UTC, datetime, timedelta
+
+    from sunflow.pv_learning import learn
+
+    start = datetime(2026, 10, 1, 11, tzinfo=UTC)
+    rows = [
+        {"start": (start + timedelta(days=d, minutes=15 * q)).isoformat(), "forecast_pv_w": 2000.0, "actual_pv_w": 400.0}
+        for d in range(28)
+        for q in range(16)
+    ]
+
+    assert learn(rows, UTC).factor(12, None) < 0.25

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.5
+
+- PV-Lernen: Die Korrektur der Prognose kann jetzt bis auf 10 % statt nur 30 % sinken. Eine im Winter stark verschattete Fläche (z. B. der Carport mit etwa 20 % der Solcast-Prognose) wurde sonst dauerhaft zu hoch eingeplant.
+
 ## 0.33.4
 
 - Planung: Bei gewählter Skalierung steigt eine Linie bis zum oberen Rand, wenn der Wert darüber liegt, und wird dort abgeschnitten; oberhalb wird nichts gezeichnet.
