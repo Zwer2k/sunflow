@@ -19,7 +19,9 @@ PRIOR_WEIGHT_OVERALL = 150_000.0
 PRIOR_WEIGHT = 30_000.0
 # Night and twilight slots say nothing about the forecast quality
 MIN_FORECAST_W = 50.0
-FACTOR_RANGE = (0.3, 1.7)
+# A single plane can be shaded to a fifth of its forecast in winter (low sun behind trees
+# or buildings); the shrinkage keeps such low factors from coming out of few data
+FACTOR_RANGE = (0.1, 1.7)
 
 
 def cloud_class(coverage: float | None) -> str | None:
