@@ -397,3 +397,27 @@ async def test_live_weather_hours_and_days() -> None:
         {"time": (now + timedelta(days=1)).isoformat(), "condition": "cloudy", "temperature": 14, "templow": 6, "cloud": None, "precipitation": None}
     ]
     assert calls == ["hourly", "daily"]
+
+
+def test_restart_plane_learning_survives_setup_save(tmp_path: Path) -> None:
+    """The restart is stored with the plane; saving the planes from the setup keeps it."""
+    from sunflow.config_store import ConfigStore, ForecastPlane, SunflowConfig
+
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(forecast_planes=[ForecastPlane(source="solcast", ref="cp", name="Carport", strings=["h:1"])]))
+    relearned: list[bool] = []
+    app = create_app()
+    app.state.store = store
+    app.state.runner = type(
+        "Runner", (), {"request_replan": lambda self: None, "relearn": lambda self: relearned.append(True)}
+    )()
+    client = TestClient(app)
+
+    assert client.post("/api/v1/pv-learning/planes/solcast:cp/restart").status_code == 200
+    since = store.load().forecast_planes[0].learn_since
+    assert since is not None and relearned == [True]
+
+    planes = [{"source": "solcast", "ref": "cp", "name": "Carport", "custom_name": "Carport", "strings": ["h:1"]}]
+    assert client.put("/api/v1/config/forecast", json=planes).status_code == 200
+    assert store.load().forecast_planes[0].learn_since == since
+    assert client.post("/api/v1/pv-learning/planes/solcast:nope/restart").status_code == 404

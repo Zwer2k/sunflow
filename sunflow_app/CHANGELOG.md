@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.34.0
+
+- PV-Lernen: Unter Analyse → Lernen gibt es je Dachfläche „Neu lernen ab heute“. Ältere Messwerte dieser Fläche (z. B. mit Laub bedeckt, vor einem Baumschnitt oder Modultausch) zählen dann nicht mehr; bis genug neue Tage da sind, gilt für sie die Korrektur der ganzen Anlage.
+- PV-Lernen: Neuere Tage zählen mehr (Halbwertszeit 30 Tage). Die Korrektur folgt dadurch Verschmutzung, Laub und dem Lauf der Jahreszeit, statt alle 120 Tage gleich zu gewichten.
+
 ## 0.33.5
 
 - PV-Lernen: Die Korrektur der Prognose kann jetzt bis auf 10 % statt nur 30 % sinken. Eine im Winter stark verschattete Fläche (z. B. der Carport mit etwa 20 % der Solcast-Prognose) wurde sonst dauerhaft zu hoch eingeplant.

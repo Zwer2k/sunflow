@@ -117,6 +117,8 @@ class ForecastPlane(BaseModel):
     custom_name: str | None = None
     # Measured PV strings of this plane ("<device id>:<string>"), for learning per plane
     strings: list[str] = Field(default_factory=list)
+    # Learning ignores older data, e.g. from before the modules were cleaned
+    learn_since: datetime | None = None
 
     @property
     def key(self) -> str:

@@ -340,7 +340,13 @@ class SunflowAnalysis extends LitElement {
                       ? html`<span class="muted">(${p.days} Tage${p.by_cloud.clear !== null ? ` · klar ${pct(p.by_cloud.clear)}` : ""}${p.by_cloud.overcast !== null
                           ? ` · bedeckt ${pct(p.by_cloud.overcast)}`
                           : ""})</span>`
-                      : nothing}</li>`,
+                      : nothing}
+                    ${p.learn_since
+                      ? html`<span class="muted">· neu gelernt seit ${new Date(p.learn_since).toLocaleDateString("de-DE")}</span>`
+                      : nothing}
+                    <button class="link" @click=${() => this._restartPlane(p)}
+                      title="Nach Reinigung, Baumschnitt oder Modultausch: ältere Messwerte dieser Fläche nicht mehr verwenden">
+                      Neu lernen ab heute</button></li>`,
                 )}
               </ul>`
           : html`<p class="small muted">Tipp: Unter Einstellungen → Tarif & Prognose lassen sich Dachflächen ihren PV-Strings
@@ -357,6 +363,17 @@ class SunflowAnalysis extends LitElement {
               Schattenbetrieb. Bis dahin plant Sunflow mit den Stundenmitteln der Historie.</p>`}
       </section>
     `;
+  }
+
+  async _restartPlane(plane) {
+    const text = `Für „${plane.name}“ ab heute neu lernen? Die bisherigen Messwerte dieser Fläche werden nicht mehr verwendet; bis genug neue Tage da sind, plant Sunflow sie mit der Korrektur der ganzen Anlage.`;
+    if (!window.confirm(text)) return;
+    try {
+      await api.restartPlaneLearning(plane.key);
+      this._pvLearning = await api.pvLearning();
+    } catch (err) {
+      this._error = `Neu lernen fehlgeschlagen: ${err.message}`;
+    }
   }
 
   _renderEfficiency() {
@@ -632,6 +649,10 @@ class SunflowAnalysis extends LitElement {
     .actions { display: flex; gap: 10px; margin-top: 12px; }
     .secondary, .ok { min-height: 44px; padding: 0 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
+    button.link {
+      border: 0; background: none; padding: 0 0 0 6px; font: inherit; color: var(--sf-primary); cursor: pointer;
+      text-decoration: underline;
+    }
     .button-link {
       display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 8px;
       text-decoration: none; color: var(--sf-text); cursor: pointer; font-size: 14px;
