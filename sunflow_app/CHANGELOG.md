@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.0
+
+Steuerung des Hausspeichers (abschaltbar, standardmäßig aus):
+
+- Unter „Steuerung“ gibt es „Sunflow steuert“ mit Hauptschalter und einem Schalter je Speicher. Erst wenn beide an sind und der Gerätetest bestanden ist, setzt Sunflow den Plan am Wechselrichter um; das Einschalten muss bestätigt werden.
+- Jede Minute wird die Aktion der laufenden Viertelstunde übertragen (beim Sofar das Fenster im Passiv-Modus). Geschrieben wird nur, wenn der Wechselrichter andere Werte zeigt – nach einem Neustart des Wechselrichters stehen sie so spätestens nach einer Minute wieder.
+- Beim ersten Einschalten wird der Betriebsmodus einmal umgestellt (beim Sofar „Passive Mode“, EEPROM-Schutz bleibt aktiv). Ausschalten stellt Eigenverbrauch und den vorherigen Modus wieder her; der vorherige Modus wird in einer Datei gemerkt und übersteht einen Neustart der App.
+- Absicherung: Ohne aktuellen Plan (älter als 30 Minuten) oder beim Beenden der App wird auf Eigenverbrauch gestellt. Steuert evcc gerade selbst den Hausspeicher (Halten/Laden), pausiert Sunflow.
+- Die Planung unterscheidet jetzt, ob eine Abweichung vom Plan von einer anderen Steuerung kommt oder trotz Sunflow-Steuerung auftritt.
+
 ## 0.34.0
 
 - PV-Lernen: Unter Analyse → Lernen gibt es je Dachfläche „Neu lernen ab heute“. Ältere Messwerte dieser Fläche (z. B. mit Laub bedeckt, vor einem Baumschnitt oder Modultausch) zählen dann nicht mehr; bis genug neue Tage da sind, gilt für sie die Korrektur der ganzen Anlage.

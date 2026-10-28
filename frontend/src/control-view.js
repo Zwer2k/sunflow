@@ -7,6 +7,14 @@ const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
 const REPLAN_DELAY_MS = 2500;
 
+const ACTION_LABELS = {
+  auto: "Eigenverbrauch",
+  hold: "Speicher halten",
+  force_charge: "Laden aus dem Netz",
+  force_discharge: "Entladen ins Netz",
+  limit_discharge: "Entladen begrenzt",
+  limit_charge: "Laden begrenzt",
+};
 const STRATEGIES = {
   balanced: "Ausgewogen",
   pv_absorption: "PV aufnehmen",
@@ -53,6 +61,7 @@ class SunflowControl extends LitElement {
     _duration: { state: true },
     _busy: { state: true },
     _editing: { state: true },
+    _takeover: { state: true },
   };
 
   constructor() {
@@ -78,7 +87,7 @@ class SunflowControl extends LitElement {
 
   async _load() {
     try {
-      this._data = await api.control();
+      [this._data, this._takeover] = await Promise.all([api.control(), api.takeover()]);
       this._error = null;
     } catch (err) {
       this._error = `Steuerung nicht verfügbar: ${err.message}`;
@@ -150,6 +159,7 @@ class SunflowControl extends LitElement {
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${data === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
+      ${this._takeover?.devices.length ? this._renderTakeover(this._takeover) : nothing}
       ${data ? html`
           ${data.strategy.available ? this._renderBattery(data.strategy) : nothing}
           ${data.devices.length
@@ -161,6 +171,71 @@ class SunflowControl extends LitElement {
           ${data.priorities.length > 1 ? this._renderPriorities(data.priorities, data.condition_sources) : nothing}
         ` : nothing}
     `;
+  }
+
+  _renderTakeover(t) {
+    const time = (iso) => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    return html`
+      <section class="card takeover ${t.enabled ? "on" : ""}">
+        <div class="card-head">
+          <div>
+            <h2>Sunflow steuert</h2>
+            <p class="small muted">${t.enabled
+              ? "Sunflow setzt den Plan am Gerät um. Ausschalten stellt Eigenverbrauch und den vorherigen Betriebsmodus wieder her."
+              : "Aus: Sunflow plant nur, die Geräte arbeiten wie bisher."}</p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" .checked=${t.enabled} ?disabled=${this._busy}
+              @change=${(e) => this._switchTakeover({ enabled: e.target.checked }, e.target)}>
+            <span>${t.enabled ? "An" : "Aus"}</span>
+          </label>
+        </div>
+        ${t.paused ? html`<div class="alert warn">⚠ ${t.paused}</div>` : nothing}
+        <ul class="takeover-devices">
+          ${t.devices.map((d) => {
+            const s = d.status;
+            return html`<li>
+              <label class="switch">
+                <input type="checkbox" .checked=${d.enabled} ?disabled=${this._busy || Boolean(d.blocked)}
+                  @change=${(e) => this._switchTakeover({ device_id: d.device_id, device_enabled: e.target.checked }, e.target)}>
+                <strong>${d.name}</strong>
+              </label>
+              <span class="small muted">${d.blocked
+                ? `nicht möglich: ${d.blocked}`
+                : !d.enabled || !t.enabled
+                  ? "nicht gesteuert"
+                  : s?.active
+                    ? `${ACTION_LABELS[s.action] ?? s.action}${s.power_w ? ` · ${Math.round(s.power_w)} W` : ""} · ${s.reason}${s.last_write ? ` · zuletzt geschrieben ${time(s.last_write)}` : ""}`
+                    : s?.reason ?? "startet mit der nächsten Minute"}</span>
+              ${s?.error ? html`<span class="small warn-text">Fehler: ${s.error} – nächster Versuch in einer Minute</span>` : nothing}
+            </li>`;
+          })}
+        </ul>
+      </section>
+    `;
+  }
+
+  async _switchTakeover(body, input) {
+    const on = body.enabled === true || body.device_enabled === true;
+    const t = this._takeover;
+    const willControl = on && (body.enabled ?? t.enabled) && t.devices.some((d) => (d.device_id === body.device_id ? body.device_enabled : d.enabled));
+    if (willControl && !window.confirm(
+      "Sunflow schreibt dann laufend an den Wechselrichter (Passiv-Modus, Lade- und Entladefenster) und schaltet einmalig " +
+      "seinen Betriebsmodus um. Ausschalten stellt Eigenverbrauch und den vorherigen Modus wieder her. Jetzt einschalten?",
+    )) {
+      input.checked = !input.checked;
+      return;
+    }
+    this._busy = true;
+    try {
+      this._takeover = await api.setTakeover(body, willControl);
+      this._error = null;
+    } catch (err) {
+      this._error = `Steuerung nicht umgeschaltet: ${err.message}`;
+      input.checked = !input.checked;
+    } finally {
+      this._busy = false;
+    }
   }
 
   _orderedDevices(data) {
@@ -354,6 +429,13 @@ class SunflowControl extends LitElement {
       border: 1px solid var(--sf-border); border-radius: 10px; padding: 14px 16px;
       display: flex; flex-direction: column; gap: 12px;
     }
+    .takeover.on { border-color: var(--sf-primary); }
+    .takeover-devices { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+    .takeover-devices li { display: flex; flex-direction: column; gap: 2px; }
+    .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+    .switch input { width: 18px; height: 18px; margin: 0; }
+    .alert.warn { padding: 10px 14px; border-radius: 8px; background: var(--sf-warn-bg); color: var(--sf-warn-text); margin-top: 8px; }
+    .warn-text { color: var(--sf-warn-text); }
     .card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: flex-start; }
     .chip {
       font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px;

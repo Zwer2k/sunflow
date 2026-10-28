@@ -1,21 +1,22 @@
 """Background loop: periodic planning and shadow recording."""
 
 import asyncio
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import json
 import logging
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from .config_store import ConfigStore, DeviceConfig, SunflowConfig
+from .control import BatteryController
 from .discovery import SnapshotCache, fetch_snapshot
 from .ha import HAClient, HAError
+from .load_model import LoadModel, fit as fit_load_model
 from .plan import PlanResult, compute_plan
 from .profiles import ProfileLibrary
-from .resolver import preview
-from .load_model import LoadModel, fit as fit_load_model
 from .pv_learning import PvCorrection, learn, learn_planes
+from .resolver import preview
 from .shadow import Sample, ShadowStore, SlotRecorder, slot_start
 from .site import device_parameters, measurement_device, pv_strings, site_status
 
@@ -160,6 +161,8 @@ class ShadowRunner:
         self._library = library
         self.shadow = shadow
         self.snapshots = snapshots
+        # Set by the app; carries out the plan where the user switched control on
+        self.controller: BatteryController | None = None
         self.status = RunnerStatus()
         self.latest: PlanResult | None = None
         # Latest live reading, to show what the battery really does next to the plan
@@ -220,6 +223,12 @@ class ShadowRunner:
                 self.last_sample_at = datetime.now(UTC)
         except (HAError, KeyError, ValueError) as err:
             _LOGGER.warning("Sample failed: %s", err)
+        if self.controller is not None and self.snapshots is not None:
+            try:
+                snapshot = await self.snapshots.get()
+                await self.controller.tick(self._store.load(), self.latest, self.status.last_plan, snapshot, now)
+            except HAError as err:
+                _LOGGER.warning("Control step failed: %s", err)
 
     async def _finish_slot(self) -> None:
         if self._recorder is None or not self._recorder.samples:

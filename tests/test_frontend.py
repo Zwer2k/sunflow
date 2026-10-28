@@ -421,3 +421,36 @@ def test_restart_plane_learning_survives_setup_save(tmp_path: Path) -> None:
     assert client.put("/api/v1/config/forecast", json=planes).status_code == 200
     assert store.load().forecast_planes[0].learn_since == since
     assert client.post("/api/v1/pv-learning/planes/solcast:nope/restart").status_code == 404
+
+
+def test_takeover_needs_confirmation_and_a_passed_test(tmp_path: Path) -> None:
+    """Switching control on writes to the inverter: confirm=true and a passed device test are required."""
+    from datetime import UTC, datetime
+
+    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+    from sunflow.control import BatteryController, TakeoverMarker
+    from sunflow.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[
+        DeviceConfig(id="bat", ha_device_id="x", profile="solax_modbus/sofar", profile_version=1, name="Sofar"),
+    ]))
+    app = create_app()
+    app.state.store = store
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    app.state.controller = BatteryController(TakeoverMarker(tmp_path), lambda d: None, lambda: app.state.profiles.profiles)
+    client = TestClient(app)
+
+    assert client.put("/api/v1/control/takeover", json={"device_id": "bat", "device_enabled": True}).status_code == 422
+
+    config = store.load()
+    config.devices[0].test_passed_at = datetime.now(UTC)
+    store.save(config)
+    assert client.put("/api/v1/control/takeover", json={"device_id": "bat", "device_enabled": True}).status_code == 200
+    assert client.put("/api/v1/control/takeover", json={"enabled": True}).status_code == 400
+    response = client.put("/api/v1/control/takeover?confirm=true", json={"enabled": True})
+    assert response.status_code == 200
+    assert response.json()["enabled"] and response.json()["devices"][0]["enabled"]
+    # Switching off needs no confirmation
+    assert client.put("/api/v1/control/takeover", json={"enabled": False}).status_code == 200
