@@ -62,6 +62,7 @@ from .settings import Settings
 from .costs import cost_history
 from .plan import cloud_coverage, feed_in_price, weather_entity
 from .recommendations import build as build_recommendations
+from .control import BatteryController, DeviceAccess, TakeoverMarker, device_access
 from .runner import ShadowRunner, current_plan
 from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
 from .site import MEASUREMENTS, PV_OUTPUT_ROLES, pv_strings, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
@@ -123,6 +124,15 @@ def display_name(device: Any, profile: dict[str, Any]) -> str:
     if len(name.split()) <= 1:
         name = " ".join(filter(None, (device.manufacturer, device.model))) or name
     return name
+
+
+def _battery_controller(app: FastAPI, settings: Settings) -> BatteryController:
+    def access_for(device: DeviceConfig) -> DeviceAccess:
+        profile = app.state.profiles.profiles[device.profile]
+        limit = profile.get("eeprom_guard", {}).get("max_writes_per_day", DEFAULT_MAX_EEPROM_WRITES)
+        return device_access(app.state.ha, profile, device, EepromGuard(settings.data_dir, limit))
+
+    return BatteryController(TakeoverMarker(settings.data_dir), access_for, lambda: app.state.profiles.profiles)
 
 
 def _guard(request: Request, profile: dict[str, Any]) -> EepromGuard:
@@ -929,7 +939,9 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
             f"Neuberechnung fehlgeschlagen, angezeigt wird der Plan von {since} ({runner.status.last_error}).",
             *response["warnings"],
         ]
+    controller: BatteryController | None = getattr(request.app.state, "controller", None)
     return response | {
+        "controlling": bool(controller and any(s.active for s in controller.statuses.values())),
         "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
         # What the battery does right now (Sunflow does not control yet; another system may)
         "actual": asdict(sample)
@@ -1065,6 +1077,61 @@ async def clear_device_override(request: Request, device_id: str) -> None:
     config.overrides.pop(device_id, None)
     store.save(config)
     _replan(request)
+
+
+class ControlSwitch(BaseModel):
+    """Main switch and/or one device switch of the control."""
+
+    enabled: bool | None = None
+    device_id: str | None = None
+    device_enabled: bool | None = None
+
+
+def _control_status(request: Request, config: SunflowConfig) -> dict[str, Any]:
+    controller: BatteryController = request.app.state.controller
+    devices = []
+    for device in config.devices:
+        if "battery_window" not in _library(request).profiles[device.profile]["capabilities"]:
+            continue
+        status = controller.statuses.get(device.id)
+        devices.append(
+            {
+                "device_id": device.id,
+                "name": device.name,
+                "enabled": config.control.devices.get(device.id, False),
+                "blocked": controller.eligible(config, device),
+                "status": asdict(status) if status else None,
+            }
+        )
+    return {"enabled": config.control.enabled, "paused": controller.paused, "devices": devices}
+
+
+@router.get("/control/takeover")
+async def get_takeover(request: Request) -> dict[str, Any]:
+    """Whether Sunflow controls which device, and what it did last."""
+    return _control_status(request, request.app.state.store.load())
+
+
+@router.put("/control/takeover")
+async def set_takeover(request: Request, body: ControlSwitch, confirm: bool = False) -> dict[str, Any]:
+    """Switch control on or off. Switching on writes to the devices, so confirm=true is required."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if body.device_id is not None:
+        device = _configured_device(request, body.device_id)
+        if body.device_enabled:
+            if (blocked := request.app.state.controller.eligible(config, device)) is not None:
+                raise HTTPException(status_code=422, detail=f"{device.name}: {blocked}")
+        config.control.devices[device.id] = bool(body.device_enabled)
+    if body.enabled is not None:
+        config.control.enabled = body.enabled
+    # Only switching on needs the confirmation; switching off hands the devices back
+    switching_on = (body.enabled or body.device_enabled) and config.control.enabled and any(config.control.devices.values())
+    if switching_on and not confirm:
+        raise HTTPException(status_code=400, detail="Control writes to the devices; pass confirm=true")
+    store.save(config)
+    # Applied (or handed back) within the next minute by the background loop
+    return _control_status(request, config)
 
 
 @router.put("/control/strategy")
@@ -1735,6 +1802,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
         shadow = ShadowStore(settings.data_dir)
         app.state.runner = ShadowRunner(app.state.ha, app.state.store, app.state.profiles, shadow, app.state.snapshots)
+        app.state.controller = app.state.runner.controller = _battery_controller(app, settings)
         runner_task = asyncio.create_task(app.state.runner.run())
         try:
             yield
@@ -1742,6 +1810,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner_task.cancel()
             with suppress(asyncio.CancelledError):
                 await runner_task
+            # Without Sunflow running no plan is followed: leave the batteries in self-consumption
+            with suppress(Exception):
+                await asyncio.wait_for(app.state.controller.release_all(app.state.store.load()), 15)
             shadow.close()
             # A running device test restores self-consumption when cancelled
             for _, task in app.state.device_tests.values():

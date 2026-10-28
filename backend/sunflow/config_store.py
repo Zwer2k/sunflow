@@ -236,6 +236,14 @@ class StrategyOverride(BaseModel):
         return self.until is None or self.until > now
 
 
+class ControlSettings(BaseModel):
+    """Whether Sunflow carries out its plan on the devices (off: planning only)."""
+
+    enabled: bool = False
+    # Per device id; a device is controlled only when both switches are on
+    devices: dict[str, bool] = Field(default_factory=dict)
+
+
 class SunflowConfig(BaseModel):
     """The complete configuration."""
 
@@ -258,6 +266,7 @@ class SunflowConfig(BaseModel):
     measurement_sources: dict[str, str] = Field(default_factory=dict)
     # Per consumer id: all conditions must hold before it gets PV or battery energy
     priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
+    control: ControlSettings = Field(default_factory=ControlSettings)
 
     def device(self, device_id: str) -> DeviceConfig | None:
         """Return a configured device by its Sunflow id."""
