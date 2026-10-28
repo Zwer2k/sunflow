@@ -253,6 +253,10 @@ class ShadowRunner:
             if not self._replan_again:
                 return
 
+    def relearn(self) -> None:
+        """Learn again with the next plan instead of within the hour."""
+        self._correction_at = datetime.min.replace(tzinfo=UTC)
+
     async def pv_correction(self) -> PvCorrection | None:
         """Correction learned from the shadow data, refreshed hourly."""
         now = datetime.now(UTC)
@@ -262,7 +266,10 @@ class ShadowRunner:
             self._correction = learn(rows, tz)
             config = self._store.load()
             self.plane_corrections = learn_planes(
-                rows, {plane.key: plane.strings for plane in config.forecast_planes if plane.strings}, tz
+                rows,
+                {plane.key: plane.strings for plane in config.forecast_planes if plane.strings},
+                tz,
+                {plane.key: plane.learn_since for plane in config.forecast_planes if plane.learn_since},
             )
             self.load_model = await asyncio.to_thread(
                 fit_load_model, rows, tz, self._store.load().optimizer.large_load_threshold_w

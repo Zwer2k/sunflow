@@ -98,3 +98,40 @@ def test_shaded_plane_learns_below_a_third() -> None:
     ]
 
     assert learn(rows, UTC).factor(12, None) < 0.25
+
+
+def test_plane_restart_ignores_older_rows() -> None:
+    """After cleaning the modules only the new days count for that plane."""
+    from sunflow.pv_learning import learn_planes
+
+    start = datetime(2026, 10, 1, tzinfo=BERLIN)
+    cleaned = start + timedelta(days=20)
+    rows = [
+        {
+            "start": (moment := (start + timedelta(days=day, minutes=15 * quarter)).astimezone(UTC)).isoformat(),
+            "plane_forecasts": {"solcast:carport": 1000.0},
+            # Covered by leaves before, as forecast afterwards
+            "actual_strings": {"huawei:1": 200.0 if moment < cleaned else 1000.0},
+            "weather_cloud": None,
+        }
+        for day in range(30)
+        for quarter in range(10 * 4, 14 * 4)
+    ]
+
+    corrections = learn_planes(rows, {"solcast:carport": ["huawei:1"]}, BERLIN, {"solcast:carport": cleaned})
+
+    assert corrections["solcast:carport"].days == 10
+    assert corrections["solcast:carport"].factor(11, None) == pytest.approx(1.0, abs=0.03)
+
+
+def test_recent_days_count_more() -> None:
+    """A change weeks ago is followed: the factor ends closer to the recent level than the mean."""
+    rows = []
+    start = datetime(2026, 9, 1, tzinfo=BERLIN)
+    for day in range(90):
+        for quarter in range(10 * 4, 14 * 4):
+            moment = (start + timedelta(days=day, minutes=15 * quarter)).astimezone(UTC)
+            rows.append({"start": moment.isoformat(), "forecast_pv_w": 2000.0, "actual_pv_w": 1000.0 if day < 60 else 2000.0})
+
+    # Plain mean over all days would be 0.67
+    assert learn(rows, BERLIN).factor(11, None) > 0.75

@@ -526,10 +526,28 @@ async def set_forecast(
     known = {d.id for d in config.devices}
     if any(p.device_id is not None and p.device_id not in known for p in planes):
         raise HTTPException(status_code=422, detail="Plant not configured")
-    config.forecast_planes = planes
+    # The setup does not know the learning restart; it stays with its plane
+    since = {p.key: p.learn_since for p in config.forecast_planes}
+    config.forecast_planes = [p if p.learn_since else p.model_copy(update={"learn_since": since.get(p.key)}) for p in planes]
     store.save(config)
     _replan(request)
-    return [p.model_dump() for p in planes]
+    return [p.model_dump(mode="json") for p in config.forecast_planes]
+
+
+@router.post("/pv-learning/planes/{key}/restart")
+async def restart_plane_learning(request: Request, key: str) -> dict[str, Any]:
+    """Learn the correction of one plane anew from now on (after cleaning, new shading)."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    plane = next((p for p in config.forecast_planes if p.key == key), None)
+    if plane is None:
+        raise HTTPException(status_code=404, detail="Unknown forecast plane")
+    plane.learn_since = datetime.now(UTC)
+    store.save(config)
+    runner: ShadowRunner = request.app.state.runner
+    runner.relearn()
+    _replan(request)
+    return {"key": key, "learn_since": plane.learn_since.isoformat()}
 
 
 @router.get("/tariff/series")
@@ -1350,7 +1368,13 @@ async def get_pv_learning(request: Request) -> dict[str, Any]:
     return correction.as_dict() | {
         "load_model": runner.load_model.as_dict() if runner.load_model else None,
         "planes": [
-            {"name": plane.display_name, "strings": len(plane.strings)} | runner.plane_corrections[plane.key].as_dict()
+            {
+                "key": plane.key,
+                "name": plane.display_name,
+                "strings": len(plane.strings),
+                "learn_since": plane.learn_since.isoformat() if plane.learn_since else None,
+            }
+            | runner.plane_corrections[plane.key].as_dict()
             for plane in config.forecast_planes
             if plane.strings and plane.key in runner.plane_corrections
         ],

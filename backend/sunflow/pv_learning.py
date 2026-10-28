@@ -17,6 +17,8 @@ from typing import Any
 # weather); per hour and cloud class about a week of data
 PRIOR_WEIGHT_OVERALL = 150_000.0
 PRIOR_WEIGHT = 30_000.0
+# Recent days count more: soiling, leaves and the sun's path change over weeks
+HALF_LIFE_DAYS = 30
 # Night and twilight slots say nothing about the forecast quality
 MIN_FORECAST_W = 50.0
 # A single plane can be shaded to a fifth of its forecast in winter (low sun behind trees
@@ -79,17 +81,26 @@ def _shrunk(actual: float, forecast: float, prior: float, weight: float = PRIOR_
     return min(max(factor, FACTOR_RANGE[0]), FACTOR_RANGE[1])
 
 
-def learn_planes(rows: list[dict[str, Any]], planes: dict[str, list[str]], tz: tzinfo) -> dict[str, PvCorrection]:
+def learn_planes(
+    rows: list[dict[str, Any]],
+    planes: dict[str, list[str]],
+    tz: tzinfo,
+    since: dict[str, datetime] | None = None,
+) -> dict[str, PvCorrection]:
     """A correction per forecast plane from the strings it is measured by.
 
     planes: plane key -> string keys. Rows need plane_forecasts and actual_strings.
+    since: plane key -> learning restart; older rows do not count for that plane.
     """
     result = {}
     for key, strings in planes.items():
         if not strings:
             continue
+        start = (since or {}).get(key)
         plane_rows = []
         for row in rows:
+            if start is not None and datetime.fromisoformat(row["start"]) < start:
+                continue
             forecast = (row.get("plane_forecasts") or {}).get(key)
             measured = row.get("actual_strings") or {}
             if forecast is None or not all(s in measured for s in strings):
@@ -122,6 +133,14 @@ def learn(rows: list[dict[str, Any]], tz: tzinfo) -> PvCorrection:
     correction = PvCorrection(slots=len(samples), days=len({s[0].date() for s in samples}))
     if not samples:
         return correction
+    newest = max(s[0] for s in samples)
+    measured = samples
+    # Weighted copies for the factors; the error check below uses the plain samples
+    samples = [
+        (local, forecast * w, actual * w, cloud)
+        for local, forecast, actual, cloud in samples
+        if (w := 0.5 ** ((newest - local).total_seconds() / 86400 / HALF_LIFE_DAYS))
+    ]
 
     total_forecast = sum(s[1] for s in samples)
     correction.overall = _shrunk(sum(s[2] for s in samples), total_forecast, 1.0, PRIOR_WEIGHT_OVERALL)
@@ -141,8 +160,8 @@ def learn(rows: list[dict[str, Any]], tz: tzinfo) -> PvCorrection:
             correction.by_hour_cloud[key] = _shrunk(actual, forecast, correction.by_hour.get(key[0], correction.overall))
 
     # In-sample check of how much closer the corrected forecast comes
-    correction.error_before = sum(abs(a - f) for _, f, a, _ in samples) / len(samples)
+    correction.error_before = sum(abs(a - f) for _, f, a, _ in measured) / len(measured)
     correction.error_after = (
-        sum(abs(a - f * correction.factor(local.hour, cloud)) for local, f, a, cloud in samples) / len(samples)
+        sum(abs(a - f * correction.factor(local.hour, cloud)) for local, f, a, cloud in measured) / len(measured)
     )
     return correction
