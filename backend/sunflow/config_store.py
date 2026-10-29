@@ -79,6 +79,40 @@ class FlexSettings(BaseModel):
     alternative_cost_ct: float | None = None
 
 
+class Vehicle(BaseModel):
+    """A car that charges at one or more wallboxes; recognized by card, sensor or choice."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    name: str = Field(min_length=1)
+    capacity_wh: float = Field(gt=0)
+    charge_efficiency_pct: float = Field(default=90, ge=50, le=100)
+    # State of charge in % from the car's integration (e.g. MQTT)
+    soc_entity: str | None = None
+    # "on"/"home"/"connected" while the car is plugged in or at home (optional)
+    plugged_entity: str | None = None
+    # RFID card number of the charger (1..10 at the go-e)
+    card: int | None = Field(default=None, ge=1, le=10)
+    # Device ids of the wallboxes it may charge at
+    wallboxes: list[str] = Field(default_factory=list)
+    flex: FlexSettings = Field(default_factory=FlexSettings)
+
+
+class VehicleDetection(BaseModel):
+    """How a wallbox recognizes the connected vehicle; tried in this order."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    card: bool = True
+    manual: bool = True
+    sensor: bool = True
+    single: bool = True
+    # A card is required at the charger and the car was recognized surely without one
+    # (sensor of the car, choice in the app): Sunflow may start the transaction
+    authorize: bool = True
+
+
 class DeviceConfig(BaseModel):
     """A device managed by Sunflow."""
 
@@ -95,6 +129,8 @@ class DeviceConfig(BaseModel):
     measured_by: MeasuredBy | None = None
     test_passed_at: datetime | None = None
     flex: FlexSettings = Field(default_factory=FlexSettings)
+    # Wallboxes with assigned vehicles
+    vehicle_detection: VehicleDetection = Field(default_factory=VehicleDetection)
 
 
 class TariffConfig(BaseModel):
@@ -267,6 +303,17 @@ class SunflowConfig(BaseModel):
     # Per consumer id: all conditions must hold before it gets PV or battery energy
     priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
     control: ControlSettings = Field(default_factory=ControlSettings)
+    vehicles: list[Vehicle] = Field(default_factory=list)
+    # Wallbox id -> vehicle chosen in the control tab (until the car is unplugged)
+    selected_vehicles: dict[str, str] = Field(default_factory=dict)
+
+    def vehicles_at(self, wallbox_id: str) -> list[Vehicle]:
+        """Vehicles that may charge at a wallbox."""
+        return [v for v in self.vehicles if wallbox_id in v.wallboxes]
+
+    def vehicle(self, vehicle_id: str) -> Vehicle | None:
+        """Return a vehicle by its id."""
+        return next((v for v in self.vehicles if v.id == vehicle_id), None)
 
     def device(self, device_id: str) -> DeviceConfig | None:
         """Return a configured device by its Sunflow id."""

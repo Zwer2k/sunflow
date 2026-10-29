@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from .config_store import ConfigStore, DeviceConfig, SunflowConfig
 from .control import PlanController
-from .discovery import SnapshotCache, fetch_snapshot
+from .discovery import Snapshot, SnapshotCache, fetch_snapshot
 from .ha import HAClient, HAError
 from .load_model import LoadModel, fit as fit_load_model
 from .plan import PlanResult, compute_plan
@@ -19,6 +19,7 @@ from .pv_learning import PvCorrection, learn, learn_planes
 from .resolver import preview
 from .shadow import Sample, ShadowStore, SlotRecorder, slot_start
 from .site import device_parameters, measurement_device, pv_strings, site_status
+from .vehicles import unplugged_choices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -223,12 +224,38 @@ class ShadowRunner:
                 self.last_sample_at = datetime.now(UTC)
         except (HAError, KeyError, ValueError) as err:
             _LOGGER.warning("Sample failed: %s", err)
-        if self.controller is not None and self.snapshots is not None:
+        if self.snapshots is not None:
             try:
                 snapshot = await self.snapshots.get()
-                await self.controller.tick(self._store.load(), self.latest, self.status.last_plan, snapshot, now)
+                self._end_vehicle_choices(snapshot)
+                if self.controller is not None:
+                    await self.controller.tick(self._store.load(), self.latest, self.status.last_plan, snapshot, now)
             except HAError as err:
                 _LOGGER.warning("Control step failed: %s", err)
+
+    def _end_vehicle_choices(self, snapshot: Snapshot) -> None:
+        """A vehicle chosen in the control tab counts until it is unplugged."""
+        config = self._store.load()
+        if not config.selected_vehicles:
+            return
+        connected = {}
+        for device in config.devices:
+            if device.id in config.selected_vehicles:
+                roles = {
+                    r.role: r
+                    for r in preview(
+                        self._library.profiles[device.profile],
+                        snapshot,
+                        device.ha_device_id,
+                        {k: o.model_dump() for k, o in device.role_overrides.items()},
+                    )
+                }
+                if "connected" in roles and roles["connected"].raw_state in ("on", "off"):
+                    connected[device.id] = roles["connected"].raw_state == "on"
+        if ended := unplugged_choices(config, connected):
+            for wallbox_id in ended:
+                config.selected_vehicles.pop(wallbox_id)
+            self._store.save(config)
 
     async def _finish_slot(self) -> None:
         if self._recorder is None or not self._recorder.samples:

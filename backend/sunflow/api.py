@@ -48,6 +48,8 @@ from .config_store import (
     StrategyOverride,
     SunflowConfig,
     TariffConfig,
+    Vehicle,
+    VehicleDetection,
 )
 from .control import DeviceAccess, PlanController, TakeoverMarker, device_access
 from .costs import cost_history
@@ -95,7 +97,6 @@ from .site import (
     site_status,
 )
 from .sources import (
-    ForecastPoint,
     PricePoint,
     detect_price_adapter,
     forecast_solar_forecast,
@@ -107,6 +108,7 @@ from .sources import (
     sum_forecasts,
 )
 from .summary import SetupSummary, build_summary
+from .vehicles import METHODS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -348,7 +350,7 @@ SWITCH_DOMAINS = ("switch.", "input_boolean.")
 async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]:
     """Entities that can switch a consumer, power sensors to measure it and % sensors (vehicle SoC)."""
     snapshot = await _snapshot(request)
-    switches, power, percent = [], [], []
+    switches, power, percent, presence = [], [], [], []
     for entity_id, state in sorted(snapshot.states.items()):
         attributes = state.get("attributes", {})
         item = {
@@ -363,7 +365,10 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
             power.append(item)
         elif entity_id.startswith("sensor.") and attributes.get("unit_of_measurement") == "%":
             percent.append(item)
-    return {"switches": switches, "power": power, "percent": percent}
+        if entity_id.startswith(("binary_sensor.", "device_tracker.")):
+            # "Plugged in" or "at home" of a car
+            presence.append(item)
+    return {"switches": switches, "power": power, "percent": percent, "presence": presence}
 
 
 @router.post("/config/devices/manual")
@@ -998,6 +1003,77 @@ def _flex_windows(slots: list[Any], name: str) -> list[dict[str, Any]]:
     return [{k: v for k, v in w.items() if k != "closed"} for w in windows]
 
 
+@router.get("/config/vehicles")
+async def get_vehicles(request: Request) -> dict[str, Any]:
+    """Vehicles, the wallboxes they may charge at and how each wallbox recognizes them."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    snapshot = await _snapshot(request)
+    wallboxes = [
+        {"id": d.id, "name": d.name, "detection": d.vehicle_detection.model_dump(), "cards": "transaction" in profiles[d.profile]["roles"]}
+        for d in config.devices
+        if "loadpoint" in profiles[d.profile]["capabilities"] and device_kind(profiles[d.profile], d, snapshot) != "heater"
+    ]
+    return {"vehicles": [v.model_dump() for v in config.vehicles], "wallboxes": wallboxes}
+
+
+@router.put("/config/vehicles")
+async def set_vehicles(request: Request, vehicles: list[Vehicle]) -> dict[str, Any]:
+    """Store all vehicles."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    known = {d.id for d in config.devices}
+    if any(w not in known for v in vehicles for w in v.wallboxes):
+        raise HTTPException(status_code=422, detail="Unknown wallbox")
+    cards = [(w, v.card) for v in vehicles if v.card for w in v.wallboxes]
+    if len(cards) != len(set(cards)):
+        raise HTTPException(status_code=422, detail="Eine Karte ist an einer Wallbox mehreren Fahrzeugen zugeordnet")
+    config.vehicles = vehicles
+    ids = {v.id for v in vehicles}
+    config.selected_vehicles = {w: v for w, v in config.selected_vehicles.items() if v in ids}
+    store.save(config)
+    _replan(request)
+    return await get_vehicles(request)
+
+
+@router.put("/config/devices/{device_id}/vehicle-detection")
+async def set_vehicle_detection(request: Request, device_id: str, body: VehicleDetection) -> dict[str, Any]:
+    """How a wallbox recognizes the connected vehicle."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    device = config.device(device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Unknown device")
+    device.vehicle_detection = body
+    store.save(config)
+    _replan(request)
+    return body.model_dump()
+
+
+class VehicleChoice(BaseModel):
+    """The vehicle at a wallbox, chosen in the control tab; None: recognize it."""
+
+    vehicle_id: str | None = None
+
+
+@router.put("/control/vehicles/{wallbox_id}")
+async def choose_vehicle(request: Request, wallbox_id: str, body: VehicleChoice) -> dict[str, Any]:
+    """Which vehicle is plugged in; counts until it is unplugged."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if config.device(wallbox_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown wallbox")
+    if body.vehicle_id is None:
+        config.selected_vehicles.pop(wallbox_id, None)
+    elif body.vehicle_id not in {v.id for v in config.vehicles_at(wallbox_id)}:
+        raise HTTPException(status_code=422, detail="Vehicle not assigned to this wallbox")
+    else:
+        config.selected_vehicles[wallbox_id] = body.vehicle_id
+    store.save(config)
+    _replan(request)
+    return {"wallbox_id": wallbox_id, "vehicle_id": body.vehicle_id}
+
+
 @router.get("/control")
 async def get_control(request: Request) -> dict[str, Any]:
     """Everything the control tab needs: strategies, overrides, live values, next windows, priorities."""
@@ -1035,8 +1111,14 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "power_display": next(
                     (roles[r].display for r in ("charge_power", "power") if r in roles and roles[r].entity_id), None
                 ),
-                "level": roles["vehicle_soc"].value if "vehicle_soc" in roles else None,
+                "level": info.current if info and info.vehicle_id else roles["vehicle_soc"].value if "vehicle_soc" in roles else None,
                 "target": info.target if info else None,
+                "vehicles": [{"id": v.id, "name": v.name} for v in config.vehicles_at(device.id)],
+                "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": METHODS.get(info.vehicle_method or "")}
+                if info and info.vehicle_id
+                else None,
+                "selected_vehicle": config.selected_vehicles.get(device.id),
+                "manual_choice": device.vehicle_detection.manual,
                 "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
                 "need_wh": info.need_wh if info else None,
                 "reason": info.reason if info else None,

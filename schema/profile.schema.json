@@ -90,6 +90,12 @@
         "charge": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
         "stop": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
         "release": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+        "authorize": {
+          "description": "Starts the charging transaction when a card is required (runtime transaction: option of the vehicle's card).",
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/step"}
+        },
         "follow": {
           "description": "Used instead of charge when less than full power is planned and the device can follow the PV surplus itself.",
           "type": "array",

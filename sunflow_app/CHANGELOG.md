@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.37.0
+
+Mehrere Fahrzeuge an einer Wallbox:
+
+- Unter Geräte gibt es den Bereich „Fahrzeuge“: Name, Akku, Ladestand-Sensor (z. B. MQTT des Autos), optional „angesteckt/zuhause“-Sensor, Karte an der Wallbox, Ziel-Ladestand, „fertig bis“, und an welchen Wallboxen es lädt. Eine Karte gehört je Wallbox zu höchstens einem Fahrzeug.
+- Erkennung des angesteckten Fahrzeugs, je Wallbox einzeln abschaltbar und in dieser Reihenfolge: gescannte Karte, Auswahl unter Steuerung (gilt bis zum Abstecken), Sensor des Fahrzeugs, einziges zugeordnetes Fahrzeug. Sunflow plant dann mit Ladestand, Akku und Zielen dieses Fahrzeugs.
+- Ist eine Karte nötig und das Fahrzeug über Sensor oder Auswahl sicher erkannt, startet Sunflow den Ladevorgang selbst mit der Karte des Fahrzeugs (je Wallbox abschaltbar). „Einziges Fahrzeug“ allein genügt dafür nicht.
+- Fremde Karte oder nichts erkannt: Sunflow hält sich raus, die Wallbox regelt selbst.
+
 ## 0.36.0
 
 Steuerung von Ladepunkten (abschaltbar, standardmäßig aus):

@@ -7,6 +7,7 @@ import "./plan-view.js";
 import "./control-view.js";
 import "./analysis-view.js";
 import "./standards-view.js";
+import "./vehicles-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import {
   devicePurpose,
@@ -1000,6 +1001,7 @@ class SunflowApp extends LitElement {
       ${devices.length === 0 ? html`<p class="muted">Keine Geräte mit passendem Profil ausgewählt.</p>` : nothing}
       ${devices.map((d) => this._renderDevice(d))}
       ${this._renderManualDevices()}
+      <sf-vehicles></sf-vehicles>
     `;
   }
 
