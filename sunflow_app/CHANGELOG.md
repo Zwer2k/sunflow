@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.36.0
+
+Steuerung von Ladepunkten (abschaltbar, standardmäßig aus):
+
+- Wallbox und Heizstab lassen sich wahlweise über evcc oder direkt steuern. Neues Geräteprofil für den go-e Charger über die Integration „go-eCharger (MQTT)“.
+- Den Ladestand des Fahrzeugs wählt man beim go-e frei aus (z. B. ein MQTT-Sensor des Autos), unter Geräte direkt bei der Wallbox.
+- Unter „Steuerung → Sunflow steuert“ erscheinen auch die Ladepunkte mit eigenem Schalter. In den geplanten Viertelstunden wird geladen, sonst gesperrt; ohne aktuellen Plan oder beim Beenden der App regelt das Gerät wieder selbst.
+- go-e: Ladestrom aus der geplanten Leistung (Phasen, 6–16 A einstellbar). Der Strom wird im Flash der Wallbox gespeichert und deshalb erst ab 2 A Unterschied geändert, höchstens 20-mal am Tag.
+- evcc: „Schnell“ bei voller geplanter Leistung, „PV“ bei weniger (evcc folgt dem Überschuss), „Aus“ sonst; beim Zurückgeben gilt wieder der vorherige Modus.
+
 ## 0.35.0
 
 Steuerung des Hausspeichers (abschaltbar, standardmäßig aus):

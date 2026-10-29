@@ -33,6 +33,8 @@ class PlannedCall:
     write: str
     status: str = "planned"
     reason: str | None = None
+    # A number this close to the current value counts as already set (spares flash writes)
+    tolerance: float = 0.0
 
 
 @dataclass(kw_only=True)
@@ -112,7 +114,11 @@ def plan_steps(
             raise ExecutorError(f"No {domain} entity for key {spec['key']}")
         match kind:
             case "number":
-                service, data = "set_value", {"value": render(spec["value"], variables)}
+                value = render(spec["value"], variables)
+                # Number entities have limits (e.g. 6..32 A)
+                if isinstance(value, int | float):
+                    value = min(max(value, spec.get("min", value)), spec.get("max", value))
+                service, data = "set_value", {"value": value}
             case "select":
                 service, data = "select_option", {"option": spec["option"]}
             case "switch":
@@ -127,6 +133,7 @@ def plan_steps(
                 entity_id=entity_id,
                 storage=storage,
                 write=write,
+                tolerance=spec.get("tolerance", 0.0),
             )
         )
     return calls
@@ -157,6 +164,17 @@ def plan_action(
         primitive["steps"], params, entities, primitive.get("storage", "eeprom")
     )
     return params, calls
+
+
+def plan_charge(
+    profile: dict[str, Any], action: str, parameters: dict[str, float], runtime: dict[str, float], entities: list[dict[str, Any]]
+) -> list[PlannedCall]:
+    """Calls of a charge control action ("charge", "stop", "release") of a loadpoint profile."""
+    control = profile.get("charge_control", {})
+    if action not in control:
+        raise ExecutorError(f"Unknown charge action {action}")
+    defaults = {name: spec["default"] for name, spec in profile.get("parameters", {}).items() if "default" in spec}
+    return plan_steps(control[action], {**defaults, **parameters, **runtime}, entities, "volatile")
 
 
 def plan_setup(
@@ -201,7 +219,7 @@ def current_matches(call: PlannedCall, states: dict[str, dict[str, Any]]) -> boo
             return state == call.data["option"]
         case "set_value":
             try:
-                return float(state) == float(call.data["value"])
+                return abs(float(state) - float(call.data["value"])) <= call.tolerance
             except TypeError, ValueError:
                 return False
         case "turn_on" | "turn_off":

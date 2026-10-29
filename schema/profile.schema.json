@@ -81,6 +81,29 @@
       "type": "array",
       "items": {"$ref": "#/$defs/step"}
     },
+    "charge_control": {
+      "description": "Charging control of a loadpoint: steps for charge (runtime current_a), stop and release (back to the device's own logic). remember: a select whose option is stored on takeover and restored on hand back.",
+      "type": "object",
+      "required": ["charge", "stop"],
+      "additionalProperties": false,
+      "properties": {
+        "charge": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+        "stop": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+        "release": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+        "follow": {
+          "description": "Used instead of charge when less than full power is planned and the device can follow the PV surplus itself.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/step"}
+        },
+        "remember": {
+          "type": "object",
+          "required": ["key"],
+          "additionalProperties": false,
+          "properties": {"key": {"type": "string"}}
+        }
+      }
+    },
     "eeprom_guard": {
       "type": "object",
       "additionalProperties": false,
@@ -199,7 +222,15 @@
         "number": {
           "allOf": [
             {"$ref": "#/$defs/step_options"},
-            {"required": ["key", "value"], "properties": {"value": {"type": ["number", "string"]}}}
+            {
+              "required": ["key", "value"],
+              "properties": {
+                "value": {"type": ["number", "string"]},
+                "min": {"type": "number"},
+                "max": {"type": "number"},
+                "tolerance": {"description": "Current values this close count as set; spares writes to flash.", "type": "number", "minimum": 0}
+              }
+            }
           ]
         },
         "select": {

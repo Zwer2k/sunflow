@@ -9,7 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .config_store import ConfigStore, DeviceConfig, SunflowConfig
-from .control import BatteryController
+from .control import PlanController
 from .discovery import SnapshotCache, fetch_snapshot
 from .ha import HAClient, HAError
 from .load_model import LoadModel, fit as fit_load_model
@@ -162,7 +162,7 @@ class ShadowRunner:
         self.shadow = shadow
         self.snapshots = snapshots
         # Set by the app; carries out the plan where the user switched control on
-        self.controller: BatteryController | None = None
+        self.controller: PlanController | None = None
         self.status = RunnerStatus()
         self.latest: PlanResult | None = None
         # Latest live reading, to show what the battery really does next to the plan

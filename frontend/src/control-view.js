@@ -14,6 +14,10 @@ const ACTION_LABELS = {
   force_discharge: "Entladen ins Netz",
   limit_discharge: "Entladen begrenzt",
   limit_charge: "Laden begrenzt",
+  charge: "Lädt",
+  follow: "Lädt mit PV-Überschuss",
+  stop: "Laden gesperrt",
+  release: "Gerät regelt selbst",
 };
 const STRATEGIES = {
   balanced: "Ausgewogen",
@@ -181,7 +185,7 @@ class SunflowControl extends LitElement {
           <div>
             <h2>Sunflow steuert</h2>
             <p class="small muted">${t.enabled
-              ? "Sunflow setzt den Plan am Gerät um. Ausschalten stellt Eigenverbrauch und den vorherigen Betriebsmodus wieder her."
+              ? "Sunflow setzt den Plan an den Geräten um. Ausschalten gibt sie zurück: Speicher in Eigenverbrauch und vorherigen Modus, Ladepunkte an ihre eigene Logik."
               : "Aus: Sunflow plant nur, die Geräte arbeiten wie bisher."}</p>
           </div>
           <label class="switch">
@@ -200,6 +204,10 @@ class SunflowControl extends LitElement {
                   @change=${(e) => this._switchTakeover({ device_id: d.device_id, device_enabled: e.target.checked }, e.target)}>
                 <strong>${d.name}</strong>
               </label>
+              ${d.kind === "loadpoint" && d.enabled
+                ? html`<span class="small muted">Wird der Ladepunkt auch von evcc oder einer Automation gesteuert, dort ausschalten –
+                    sonst schalten zwei Steuerungen gegeneinander.</span>`
+                : nothing}
               <span class="small muted">${d.blocked
                 ? `nicht möglich: ${d.blocked}`
                 : !d.enabled || !t.enabled
@@ -208,6 +216,7 @@ class SunflowControl extends LitElement {
                     ? `${ACTION_LABELS[s.action] ?? s.action}${s.power_w ? ` · ${Math.round(s.power_w)} W` : ""} · ${s.reason}${s.last_write ? ` · zuletzt geschrieben ${time(s.last_write)}` : ""}`
                     : s?.reason ?? "startet mit der nächsten Minute"}</span>
               ${s?.error ? html`<span class="small warn-text">Fehler: ${s.error} – nächster Versuch in einer Minute</span>` : nothing}
+              ${s?.note ? html`<span class="small muted">${s.note}</span>` : nothing}
             </li>`;
           })}
         </ul>
@@ -220,8 +229,9 @@ class SunflowControl extends LitElement {
     const t = this._takeover;
     const willControl = on && (body.enabled ?? t.enabled) && t.devices.some((d) => (d.device_id === body.device_id ? body.device_enabled : d.enabled));
     if (willControl && !window.confirm(
-      "Sunflow schreibt dann laufend an den Wechselrichter (Passiv-Modus, Lade- und Entladefenster) und schaltet einmalig " +
-      "seinen Betriebsmodus um. Ausschalten stellt Eigenverbrauch und den vorherigen Modus wieder her. Jetzt einschalten?",
+      "Sunflow schaltet dann laufend an den Geräten: am Wechselrichter Passiv-Modus mit Lade- und Entladefenster " +
+      "(Betriebsmodus wird einmalig umgestellt), an Ladepunkten Laden starten und sperren. Ausschalten gibt alles zurück. " +
+      "Jetzt einschalten?",
     )) {
       input.checked = !input.checked;
       return;

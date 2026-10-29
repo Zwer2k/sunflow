@@ -4,20 +4,29 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import asdict
-import io
 from datetime import UTC, datetime, timedelta
 import hashlib
+import io
 import json
 import logging
 from pathlib import Path
+import sqlite3
 import tempfile
 from typing import Annotated, Any
-import sqlite3
 import uuid
 import zipfile
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Body, FastAPI, HTTPException, Query, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Body,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, FiniteFloat
@@ -27,21 +36,35 @@ from .config_store import (
     BATTERY_PRIORITY_ID,
     ConfigError,
     ConfigStore,
-    DeviceOverride,
-    PriorityCondition,
-    StrategyOverride,
-    SunflowConfig,
     DeviceConfig,
+    DeviceOverride,
     FeedIn,
     FlexSettings,
     ForecastPlane,
     MeasuredBy,
     OptimizerConfig,
+    PriorityCondition,
     RoleOverride,
+    StrategyOverride,
+    SunflowConfig,
     TariffConfig,
 )
-from .device_test import DeviceTestState, ModeControl, RestoreMarker, run_device_test, state_response
+from .control import DeviceAccess, PlanController, TakeoverMarker, device_access
+from .costs import cost_history
+from .device_test import (
+    DeviceTestState,
+    ModeControl,
+    RestoreMarker,
+    run_device_test,
+    state_response,
+)
 from .discovery import Snapshot, SnapshotCache, discover, fetch_snapshot
+from .efficiency import (
+    EfficiencyEstimate,
+    estimate_from_counters,
+    estimate_from_history,
+)
+from .energy import battery_counters, efficiency_history, energy_balance, energy_sources
 from .executor import (
     ActionResult,
     EepromGuard,
@@ -53,20 +76,24 @@ from .executor import (
     plan_setup,
 )
 from .ha import HAClient, HAError
-from .efficiency import EfficiencyEstimate, estimate_from_counters, estimate_from_history
-from .energy import battery_counters, efficiency_history, energy_balance, energy_sources
 from .history import fetch_history, history_series
-from .profiles import ProfileLibrary, load_profiles, load_schema
-from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
-from .settings import Settings
-from .costs import cost_history
 from .plan import cloud_coverage, feed_in_price, weather_entity
+from .profiles import ProfileLibrary, load_profiles, load_schema
 from .recommendations import build as build_recommendations
-from .control import BatteryController, DeviceAccess, TakeoverMarker, device_access
+from .resolver import CANONICAL_SIGNS, check_balance, device_entities, preview
 from .runner import ShadowRunner, current_plan
+from .settings import Settings
 from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
-from .site import MEASUREMENTS, PV_OUTPUT_ROLES, pv_strings, device_kind, device_parameters, measurement_candidates, measurement_device, site_status
-from .summary import SetupSummary, build_summary
+from .site import (
+    MEASUREMENTS,
+    PV_OUTPUT_ROLES,
+    device_kind,
+    device_parameters,
+    measurement_candidates,
+    measurement_device,
+    pv_strings,
+    site_status,
+)
 from .sources import (
     ForecastPoint,
     PricePoint,
@@ -79,6 +106,7 @@ from .sources import (
     solcast_sites,
     sum_forecasts,
 )
+from .summary import SetupSummary, build_summary
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -126,13 +154,13 @@ def display_name(device: Any, profile: dict[str, Any]) -> str:
     return name
 
 
-def _battery_controller(app: FastAPI, settings: Settings) -> BatteryController:
+def _plan_controller(app: FastAPI, settings: Settings) -> PlanController:
     def access_for(device: DeviceConfig) -> DeviceAccess:
         profile = app.state.profiles.profiles[device.profile]
         limit = profile.get("eeprom_guard", {}).get("max_writes_per_day", DEFAULT_MAX_EEPROM_WRITES)
         return device_access(app.state.ha, profile, device, EepromGuard(settings.data_dir, limit))
 
-    return BatteryController(TakeoverMarker(settings.data_dir), access_for, lambda: app.state.profiles.profiles)
+    return PlanController(TakeoverMarker(settings.data_dir), access_for, lambda: app.state.profiles.profiles)
 
 
 def _guard(request: Request, profile: dict[str, Any]) -> EepromGuard:
@@ -318,9 +346,9 @@ SWITCH_DOMAINS = ("switch.", "input_boolean.")
 
 @router.get("/entities/candidates")
 async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]:
-    """Entities that can switch a consumer, and power sensors to measure it."""
+    """Entities that can switch a consumer, power sensors to measure it and % sensors (vehicle SoC)."""
     snapshot = await _snapshot(request)
-    switches, power = [], []
+    switches, power, percent = [], [], []
     for entity_id, state in sorted(snapshot.states.items()):
         attributes = state.get("attributes", {})
         item = {
@@ -333,7 +361,9 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
             switches.append(item)
         elif entity_id.startswith("sensor.") and attributes.get("device_class") == "power":
             power.append(item)
-    return {"switches": switches, "power": power}
+        elif entity_id.startswith("sensor.") and attributes.get("unit_of_measurement") == "%":
+            percent.append(item)
+    return {"switches": switches, "power": power, "percent": percent}
 
 
 @router.post("/config/devices/manual")
@@ -939,7 +969,7 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
             f"Neuberechnung fehlgeschlagen, angezeigt wird der Plan von {since} ({runner.status.last_error}).",
             *response["warnings"],
         ]
-    controller: BatteryController | None = getattr(request.app.state, "controller", None)
+    controller: PlanController | None = getattr(request.app.state, "controller", None)
     return response | {
         "controlling": bool(controller and any(s.active for s in controller.statuses.values())),
         "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
@@ -1088,10 +1118,10 @@ class ControlSwitch(BaseModel):
 
 
 def _control_status(request: Request, config: SunflowConfig) -> dict[str, Any]:
-    controller: BatteryController = request.app.state.controller
+    controller: PlanController = request.app.state.controller
     devices = []
     for device in config.devices:
-        if "battery_window" not in _library(request).profiles[device.profile]["capabilities"]:
+        if not controller.controllable(device):
             continue
         status = controller.statuses.get(device.id)
         devices.append(
@@ -1101,6 +1131,7 @@ def _control_status(request: Request, config: SunflowConfig) -> dict[str, Any]:
                 "enabled": config.control.devices.get(device.id, False),
                 "blocked": controller.eligible(config, device),
                 "status": asdict(status) if status else None,
+                "kind": "loadpoint" if "charge_control" in _library(request).profiles[device.profile] else "battery",
             }
         )
     return {"enabled": config.control.enabled, "paused": controller.paused, "devices": devices}
@@ -1802,7 +1833,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
         shadow = ShadowStore(settings.data_dir)
         app.state.runner = ShadowRunner(app.state.ha, app.state.store, app.state.profiles, shadow, app.state.snapshots)
-        app.state.controller = app.state.runner.controller = _battery_controller(app, settings)
+        app.state.controller = app.state.runner.controller = _plan_controller(app, settings)
         runner_task = asyncio.create_task(app.state.runner.run())
         try:
             yield
