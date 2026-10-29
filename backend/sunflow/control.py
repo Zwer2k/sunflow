@@ -1,10 +1,14 @@
-"""Carry out the plan on the home battery (only when the user switched control on).
+"""Carry out the plan on the devices (only when the user switched control on).
 
 Every minute the action of the current plan slot is translated into the device's
 primitive (e.g. the Sofar's passive mode window). Values are written only when the
 device shows something else, so a rebooted inverter (window reset to 0/0/0) gets
 them again within a minute. Without a current plan the battery falls back to
 self-consumption ("auto").
+
+Loadpoints (wallbox, heating rod) charge in the slots the plan gives them energy
+and are stopped otherwise; without a current plan they are released to their own
+logic (e.g. the go-e charges when plugged in, evcc follows its previous mode).
 
 Switching control off (main switch or per device) restores self-consumption and
 the operating mode the device had before Sunflow took over. That previous mode is
@@ -16,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +34,7 @@ from .executor import (
     execute,
     find_entity,
     plan_action,
+    plan_charge,
 )
 from .ha import HAClient
 from .resolver import device_entities
@@ -37,6 +43,11 @@ _LOGGER = logging.getLogger(__name__)
 
 # An older plan is not followed any more; the battery returns to self-consumption
 MAX_PLAN_AGE = timedelta(minutes=30)
+# Planned consumer power from which a loadpoint is switched on
+MIN_CHARGE_W = 100.0
+# Share of the maximum power below which a loadpoint without current setpoint follows the surplus
+FOLLOW_BELOW = 0.9
+VOLTS = 230.0
 # evcc states that mean evcc itself controls the home battery
 EVCC_BATTERY_CONTROL = {"hold", "charge", "holdcharge"}
 
@@ -54,6 +65,7 @@ class DeviceControl:
     last_write: datetime | None = None
     last_check: datetime | None = None
     error: str | None = None
+    note: str | None = None
     calls: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -67,6 +79,27 @@ def desired_action(plan: Any, plan_at: datetime | None, now: datetime) -> tuple[
         if datetime.fromisoformat(str(slot.start)) <= now < datetime.fromisoformat(str(slot.end)):
             return slot.action, slot.action_power_w, "nach Plan"
     return "auto", None, "Plan deckt die aktuelle Zeit nicht ab – Eigenverbrauch"
+
+
+def desired_charge(
+    plan: Any, plan_at: datetime | None, now: datetime, name: str
+) -> tuple[str, float | None, str]:
+    """charge (with power), stop, or release when there is no current plan."""
+    _, _, reason = desired_action(plan, plan_at, now)
+    if reason != "nach Plan":
+        return "release", None, reason.replace("Eigenverbrauch", "Gerät regelt selbst")
+    slot = next(s for s in plan.plan.slots if datetime.fromisoformat(str(s.start)) <= now < datetime.fromisoformat(str(s.end)))
+    power = (getattr(slot, "flex_w", None) or {}).get(name, 0.0)
+    if power >= MIN_CHARGE_W:
+        return "charge", power, "nach Plan"
+    return "stop", None, "nach Plan: jetzt nicht"
+
+
+def charge_current(power: float, params: dict[str, float]) -> float:
+    """Whole amperes for a power on the configured phases, within the allowed range."""
+    phases = params.get("phases") or 3
+    amps = math.ceil(power / (VOLTS * phases))
+    return float(min(max(amps, params.get("min_current_a") or 6), params.get("max_current_a") or 16))
 
 
 def evcc_controls_battery(snapshot: Snapshot) -> bool:
@@ -121,14 +154,24 @@ class DeviceAccess:
     # Plan the calls of an action without writing: (calls, current states)
     plan: Callable[[str, dict[str, float]], Awaitable[tuple[list[PlannedCall], dict[str, dict[str, Any]]]]]
     run: Callable[[list[PlannedCall], dict[str, dict[str, Any]]], Awaitable[None]]
-    # Switch into the control mode; returns the previous option if it switched
+    # Switch into the control mode; returns the previous option to restore later
     ensure_mode: Callable[[], Awaitable[str | None]] | None = None
     set_mode: Callable[[str], Awaitable[None]] | None = None
+    # Written when handing back ("auto" for batteries); None: only the mode is restored
+    release: str | None = "auto"
 
 
-async def apply(access: DeviceAccess, status: DeviceControl, action: str, power: float | None, now: datetime) -> None:
+async def apply(
+    access: DeviceAccess,
+    status: DeviceControl,
+    action: str,
+    power: float | None,
+    now: datetime,
+    runtime: dict[str, float] | None = None,
+) -> None:
     """Write the action if the device shows other values; status is updated in place."""
-    runtime = {"P": abs(power)} if power is not None else {}
+    if runtime is None:
+        runtime = {"P": abs(power)} if power is not None else {}
     calls, states = await access.plan(action, runtime)
     status.last_check = now
     # Numbers and selects that already hold the value need no write; a press commits them
@@ -136,11 +179,17 @@ async def apply(access: DeviceAccess, status: DeviceControl, action: str, power:
         return
     await access.run(calls, states)
     status.calls = [{"entity_id": c.entity_id, "service": c.service, "data": c.data, "status": c.status} for c in calls]
-    failed = [c for c in calls if c.status not in ("done", "skipped")]
+    # The daily write limit of a flash value keeps the last value; the rest still applies
+    failed = [c for c in calls if c.status not in ("done", "skipped", "blocked")]
     if failed:
         raise RuntimeError(f"{failed[0].entity_id}: {failed[0].status} ({failed[0].reason})")
+    status.note = (
+        f"{blocked[0].entity_id}: Schreiblimit für heute erreicht, bleibt beim letzten Wert"
+        if (blocked := [c for c in calls if c.status == "blocked"])
+        else None
+    )
     status.last_write = now
-    _LOGGER.info("Battery %s: %s %s", status.name, action, f"{power:.0f} W" if power is not None else "")
+    _LOGGER.info("%s: %s %s", status.name, action, f"{power:.0f} W" if power is not None else "")
 
 
 async def take_over(access: DeviceAccess, marker: TakeoverMarker, device_id: str) -> None:
@@ -156,7 +205,8 @@ async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str
     taken = marker.get()
     if device_id not in taken:
         return
-    await apply(access, status, "auto", None, datetime.now(UTC))
+    if access.release is not None:
+        await apply(access, status, access.release, None, datetime.now(UTC))
     if (previous := taken[device_id]) and access.set_mode:
         await access.set_mode(previous)
     marker.clear(device_id)
@@ -168,13 +218,42 @@ async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str
 def device_access(client: HAClient, profile: dict[str, Any], device: DeviceConfig, guard: EepromGuard) -> DeviceAccess:
     """Home Assistant calls for one device; every write passes the executor and its EEPROM guard."""
 
+    charging = profile.get("charge_control")
+
     async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, dict[str, Any]]]:
         snapshot = await fetch_snapshot(client)
-        _, calls = plan_action(profile, action, device.parameters, runtime, device_entities(snapshot, device.ha_device_id))
+        entities = device_entities(snapshot, device.ha_device_id)
+        if charging:
+            return plan_charge(profile, action, device.parameters, runtime, entities), snapshot.states
+        _, calls = plan_action(profile, action, device.parameters, runtime, entities)
         return calls, snapshot.states
 
     async def run(calls: list[PlannedCall], states: dict[str, dict[str, Any]]) -> None:
         await execute(client, calls, states, guard, dry_run=False)
+
+    if charging:
+        release = "release" if "release" in charging else None
+        if not (remember := charging.get("remember")):
+            return DeviceAccess(plan=plan, run=run, release=release)
+
+        async def remembered_entity() -> tuple[str | None, dict[str, dict[str, Any]]]:
+            snapshot = await fetch_snapshot(client)
+            return find_entity(device_entities(snapshot, device.ha_device_id), "select", remember["key"]), snapshot.states
+
+        async def current_option() -> str | None:
+            # Only remembered here; charge and stop switch it
+            entity_id, states = await remembered_entity()
+            return states.get(entity_id or "", {}).get("state")
+
+        async def restore(option: str) -> None:
+            entity_id, states = await remembered_entity()
+            call = PlannedCall(
+                domain="select", service="select_option", data={"option": option}, entity_id=entity_id,
+                storage="volatile", write="if_differs",
+            )
+            await execute(client, [call], states, guard, dry_run=False)
+
+        return DeviceAccess(plan=plan, run=run, ensure_mode=current_option, set_mode=restore, release=release)
 
     if not (control_mode := profile.get("control_mode")):
         return DeviceAccess(plan=plan, run=run)
@@ -204,8 +283,8 @@ def device_access(client: HAClient, profile: dict[str, Any], device: DeviceConfi
     return DeviceAccess(plan=plan, run=run, ensure_mode=ensure_mode, set_mode=set_mode)
 
 
-class BatteryController:
-    """Applies the plan to the batteries the user switched control on for."""
+class PlanController:
+    """Applies the plan to the batteries and loadpoints the user switched control on for."""
 
     def __init__(
         self,
@@ -220,10 +299,18 @@ class BatteryController:
         self.statuses: dict[str, DeviceControl] = {}
         self.paused: str | None = None
 
+    def controllable(self, device: DeviceConfig) -> bool:
+        """A battery with a control primitive or a loadpoint with charge control."""
+        profile = self._profiles()[device.profile]
+        return "battery_window" in profile["capabilities"] or "charge_control" in profile
+
     def eligible(self, config: SunflowConfig, device: DeviceConfig) -> str | None:
         """Why a device cannot be controlled, None if it can."""
-        if "battery_window" not in self._profiles()[device.profile]["capabilities"]:
-            return "kein steuerbarer Speicher"
+        profile = self._profiles()[device.profile]
+        if "charge_control" in profile:
+            return None
+        if "battery_window" not in profile["capabilities"]:
+            return "nicht steuerbar"
         if device.test_passed_at is None:
             return "Gerätetest noch nicht bestanden"
         return None
@@ -241,27 +328,51 @@ class BatteryController:
             if device is None or not self.wanted(config, device):
                 await self._safely(device_id, device, lambda d, s: hand_back(self._access_for(d), self._marker, d.id, s))
         self.paused = "evcc steuert gerade den Hausspeicher – Sunflow wartet" if evcc_controls_battery(snapshot) else None
-        action, power, reason = desired_action(plan, plan_at, now)
         for device in config.devices:
             if not self.wanted(config, device):
                 continue
-            status = self._status(device)
-            if self.paused:
-                status.reason = self.paused
-                continue
+            if "charge_control" in self._profiles()[device.profile]:
+                await self._safely(device.id, device, lambda d, s: self._charge(d, s, plan, plan_at, now))
+            elif self.paused:
+                self._status(device).reason = self.paused
+            else:
+                await self._safely(device.id, device, lambda d, s: self._battery(d, s, plan, plan_at, now))
 
-            async def step(d: DeviceConfig, s: DeviceControl) -> None:
-                access = self._access_for(d)
-                await take_over(access, self._marker, d.id)
-                await apply(access, s, action, power, now)
-                s.active, s.action, s.power_w, s.reason = True, action, power, reason
+    async def _battery(self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime) -> None:
+        action, power, reason = desired_action(plan, plan_at, now)
+        access = self._access_for(device)
+        await take_over(access, self._marker, device.id)
+        await apply(access, status, action, power, now)
+        status.active, status.action, status.power_w, status.reason = True, action, power, reason
 
-            await self._safely(device.id, device, step)
+    async def _charge(self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime) -> None:
+        action, power, reason = desired_charge(plan, plan_at, now, device.name)
+        access = self._access_for(device)
+        await take_over(access, self._marker, device.id)
+        if action == "release" and access.release is None:
+            # Nothing of its own to fall back to (evcc): its previous mode until a plan is there again
+            if (previous := self._marker.get().get(device.id)) and access.set_mode:
+                await access.set_mode(previous)
+        else:
+            profile = self._profiles()[device.profile]
+            defaults = {n: spec["default"] for n, spec in profile.get("parameters", {}).items() if "default" in spec}
+            params = defaults | device.parameters
+            # Without a current setpoint the device charges at full power: below that it follows the surplus
+            if action == "charge" and "follow" in profile["charge_control"] and power < FOLLOW_BELOW * (params.get("max_power") or 0):
+                action = "follow"
+            runtime = {"current_a": charge_current(power, params)} if power else {}
+            await apply(access, status, action, power, now, runtime)
+        status.active, status.action, status.power_w, status.reason = True, action, power, reason
 
     async def release_all(self, config: SunflowConfig) -> None:
-        """Hand every device back (app shutdown keeps the mode: self-consumption only)."""
+        """App shutdown: batteries to self-consumption (mode kept), loadpoints back to their own logic."""
         for device in config.devices:
-            if device.id in self._marker.get():
+            if device.id not in self._marker.get():
+                continue
+            if "charge_control" in self._profiles()[device.profile]:
+                # Without Sunflow nobody would start or stop charging
+                await self._safely(device.id, device, lambda d, s: hand_back(self._access_for(d), self._marker, d.id, s))
+            else:
                 await self._safely(device.id, device, lambda d, s: apply(self._access_for(d), s, "auto", None, datetime.now(UTC)))
 
     def _status(self, device: DeviceConfig) -> DeviceControl:

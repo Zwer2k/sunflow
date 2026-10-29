@@ -428,7 +428,7 @@ def test_takeover_needs_confirmation_and_a_passed_test(tmp_path: Path) -> None:
     from datetime import UTC, datetime
 
     from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
-    from sunflow.control import BatteryController, TakeoverMarker
+    from sunflow.control import PlanController, TakeoverMarker
     from sunflow.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
@@ -439,7 +439,7 @@ def test_takeover_needs_confirmation_and_a_passed_test(tmp_path: Path) -> None:
     app = create_app()
     app.state.store = store
     app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
-    app.state.controller = BatteryController(TakeoverMarker(tmp_path), lambda d: None, lambda: app.state.profiles.profiles)
+    app.state.controller = PlanController(TakeoverMarker(tmp_path), lambda d: None, lambda: app.state.profiles.profiles)
     client = TestClient(app)
 
     assert client.put("/api/v1/control/takeover", json={"device_id": "bat", "device_enabled": True}).status_code == 422

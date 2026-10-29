@@ -160,7 +160,8 @@ def energy_entity_ids(prefs: dict[str, Any] | None) -> set[str]:
 def entity_has_key(entity: dict[str, Any], key: str) -> bool:
     """Return True if the entity's unique_id ends with the given key."""
     unique_id = entity.get("unique_id") or ""
-    return unique_id == key or unique_id.endswith(f"_{key}")
+    # Integrations join with "_" (solax_modbus, evcc) or "-" (go-e: "216505-select-frc-frc")
+    return unique_id == key or unique_id.endswith((f"_{key}", f"-{key}"))
 
 
 def match_profile(

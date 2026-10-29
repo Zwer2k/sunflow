@@ -1,0 +1,42 @@
+# go-e Charger (Gemini, HOME) via the goecharger_mqtt custom integration (HACS).
+# Sunflow controls the charger directly; evcc must not control the same charger then.
+# Unique ids look like "216505-select-frc-frc", so keys include the platform.
+# The requested current ("amp") is stored in the charger's flash: it is only changed
+# by at least the tolerance and counted by the EEPROM guard. Charging is started and
+# stopped with the force state.
+profile: goecharger_mqtt/charger
+version: 1
+match:
+  integration: goecharger_mqtt
+  model: ["go-eCharger*", "go-e Charger*"]
+  requires: [select-frc-frc, number-amp-0]
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: sensor-nrg-11, unit: W}
+  connected: {key: binary_sensor-car-1}
+  charged_energy: {key: sensor-wh-0, unit: Wh, optional: true}
+  # The charger does not know the vehicle's SoC: bind a sensor of the car's integration
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - number: {key: number-amp-0, value: "{{ current_a }}", min: 6, max: 32, storage: eeprom, write: if_differs, tolerance: 2}
+    - select: {key: select-frc-frc, option: "charge", write: if_differs}
+  stop:
+    - select: {key: select-frc-frc, option: "dont_charge", write: if_differs}
+  # The charger's own logic again (charges when plugged in, unless its schedule says otherwise)
+  release:
+    - select: {key: select-frc-frc, option: "neutral", write: if_differs}
+
+eeprom_guard:
+  max_writes_per_day: 20

@@ -32,3 +32,17 @@ parameters:
   tank_l: {unit: L, min: 0, kind: heater}
   # Reheating per day (hot water used plus standby losses); default: tank cools by 10 K
   daily_energy_wh: {unit: Wh, min: 0, kind: heater}
+
+# Sunflow decides when a loadpoint charges or heats; evcc keeps handling the charger
+# (vehicle detection, phases, minimum current). "now" charges at full power, "pv" with
+# the surplus, "off" stops.
+# On hand back evcc returns to the mode it had before.
+charge_control:
+  remember: {key: mode}
+  charge:
+    - select: {key: mode, option: "now", write: if_differs}
+  # Less than full power planned (PV surplus): evcc follows the surplus itself
+  follow:
+    - select: {key: mode, option: "pv", write: if_differs}
+  stop:
+    - select: {key: mode, option: "off", write: if_differs}

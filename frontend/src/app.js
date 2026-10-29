@@ -1148,6 +1148,7 @@ class SunflowApp extends LitElement {
         ${preview === undefined ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
         ${preview?.error ? html`<div class="alert error">${preview.error}</div>` : nothing}
         ${preview?.roles ? this._renderTiles(preview) : nothing}
+        ${preview?.roles ? this._renderVehicleSoc(device, preview) : nothing}
         ${preview?.balance ? this._renderBalance(device.device_id) : nothing}
         ${editing && preview?.roles ? this._renderRoleEditor(device, preview) : nothing}
         ${!editing && this._advanced && preview?.roles ? this._renderRoleTable(preview) : nothing}
@@ -1166,6 +1167,29 @@ class SunflowApp extends LitElement {
             : nothing}
         </div>
       </section>
+    `;
+  }
+
+  /** A charger that does not know the car: its SoC comes from another integration (e.g. MQTT). */
+  _renderVehicleSoc(device, preview) {
+    const role = preview.roles.find((r) => r.role === "vehicle_soc");
+    const chosen = this._overrides[device.device_id]?.vehicle_soc?.entity_id ?? "";
+    // evcc knows the vehicle; only chargers without an own SoC entity get the choice
+    if (!role || (role.entity_id && !role.missing && !chosen)) return nothing;
+    if (this._candidates === null && !this._loadingCandidates) {
+      this._loadingCandidates = true;
+      this._loadCandidates().finally(() => (this._loadingCandidates = false));
+    }
+    return html`
+      <div class="field vehicle-soc">
+        <span class="field-label">Ladestand des Fahrzeugs</span>
+        <sf-picker label="Ladestand des Fahrzeugs" empty-label="keiner" placeholder="z. B. MQTT-Sensor des Autos suchen …"
+          .value=${chosen}
+          .options=${(this._candidates?.percent ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} %` }))}
+          @change=${(e) => this._setOverride(device.device_id, "vehicle_soc", "entity_id", e.detail.value)}></sf-picker>
+        <span class="small muted">Die Wallbox kennt den Ladestand nicht. Ohne ihn plant Sunflow das Laden nicht ein; danach
+          „Anpassungen speichern“.</span>
+      </div>
     `;
   }
 
@@ -2126,6 +2150,7 @@ class SunflowApp extends LitElement {
 
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+    .vehicle-soc { margin: 10px 0; max-width: 520px; }
     .field.wide { max-width: 520px; }
     .field-label { font-weight: 500; }
     .field select { min-height: 44px; font-size: 14px; }

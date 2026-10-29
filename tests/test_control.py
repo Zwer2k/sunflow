@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from sunflow.config_store import ControlSettings, DeviceConfig, SunflowConfig
 from sunflow.control import (
-    BatteryController,
+    PlanController,
     DeviceAccess,
     TakeoverMarker,
     desired_action,
@@ -72,8 +72,8 @@ def _config(enabled: bool = True, device: bool = True, tested: bool = True) -> S
     return SunflowConfig(devices=[battery], control=ControlSettings(enabled=enabled, devices={"bat": device}))
 
 
-def _controller(tmp_path: Path, device: FakeDevice) -> BatteryController:
-    return BatteryController(TakeoverMarker(tmp_path), lambda d: device.access(), lambda: {"sofar": SOFAR})
+def _controller(tmp_path: Path, device: FakeDevice) -> PlanController:
+    return PlanController(TakeoverMarker(tmp_path), lambda d: device.access(), lambda: {"sofar": SOFAR})
 
 
 SNAPSHOT = SimpleNamespace(states={})
@@ -184,3 +184,110 @@ async def test_shutdown_leaves_self_consumption(tmp_path: Path) -> None:
     assert device.values == {"number.min": -10000}
     # The mode stays: after a restart Sunflow continues
     assert TakeoverMarker(tmp_path).get() == {"bat": "Self Use"}
+
+
+class FakeCharger:
+    """A loadpoint: force state select (go-e) or evcc mode, plus the current."""
+
+    def __init__(self, remember: bool = False) -> None:
+        """go-e like without remember, evcc like with."""
+        self.option = "pv" if remember else "neutral"
+        self.current = 16.0
+        self.remember = remember
+        self.writes: list[str] = []
+
+    def access(self) -> DeviceAccess:
+        """Calls as built by device_access for a charge_control profile."""
+        options = {"charge": "now" if self.remember else "charge", "follow": "pv", "stop": "off" if self.remember else "dont_charge", "release": "neutral"}
+
+        async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, Any]]:
+            calls = [PlannedCall(domain="select", service="select_option", data={"option": options[action]}, entity_id="select.frc", storage="volatile", write="if_differs")]
+            if action == "charge" and not self.remember:
+                calls.insert(0, PlannedCall(domain="number", service="set_value", data={"value": runtime["current_a"]}, entity_id="number.amp", storage="eeprom", write="if_differs", tolerance=2))
+            return calls, {"select.frc": {"state": self.option}, "number.amp": {"state": str(self.current)}}
+
+        async def run(calls: list[PlannedCall], states: dict[str, Any]) -> None:
+            for call in calls:
+                from sunflow.executor import current_matches
+
+                if call.write == "if_differs" and current_matches(call, states):
+                    call.status = "skipped"
+                    continue
+                if call.entity_id == "number.amp":
+                    self.current = call.data["value"]
+                else:
+                    self.option = call.data["option"]
+                self.writes.append(call.entity_id)
+                call.status = "done"
+
+        async def current_option() -> str | None:
+            return self.option
+
+        async def restore(option: str) -> None:
+            self.option = option
+
+        if self.remember:
+            return DeviceAccess(plan=plan, run=run, ensure_mode=current_option, set_mode=restore, release=None)
+        return DeviceAccess(plan=plan, run=run, release="release")
+
+
+GOE = {"capabilities": ["loadpoint"], "charge_control": {"charge": [], "stop": [], "release": []}, "parameters": {"phases": {"default": 3}, "min_current_a": {"default": 6}, "max_current_a": {"default": 16}, "max_power": {"default": 11000}}}
+EVCC = {"capabilities": ["loadpoint"], "charge_control": {"charge": [], "stop": [], "follow": []}, "parameters": {"max_power": {"default": 11000}}}
+
+
+def _charge_plan(power: float) -> SimpleNamespace:
+    slot = SimpleNamespace(start=NOW.replace(minute=0), end=NOW.replace(minute=15), action="auto", action_power_w=None, flex_w={"Wallbox": power})
+    return SimpleNamespace(plan=SimpleNamespace(slots=[slot]))
+
+
+def _charger_config(profile: str, enabled: bool = True) -> SunflowConfig:
+    wallbox = DeviceConfig(id="wb", ha_device_id="w", profile=profile, profile_version=1, name="Wallbox")
+    return SunflowConfig(devices=[wallbox], control=ControlSettings(enabled=enabled, devices={"wb": True}))
+
+
+async def test_goe_charges_with_planned_current_and_stops(tmp_path: Path) -> None:
+    """Planned 4.1 kW on 3 phases are 6 A; small current changes are not written to flash."""
+    charger = FakeCharger()
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE})
+
+    await controller.tick(_charger_config("goe"), _charge_plan(4100), NOW, SNAPSHOT, NOW)
+    assert (charger.option, charger.current) == ("charge", 6.0)
+
+    # 7 A would be 1 A more: within the tolerance, the flash value stays
+    await controller.tick(_charger_config("goe"), _charge_plan(4700), NOW, SNAPSHOT, NOW + timedelta(minutes=1))
+    assert charger.current == 6.0
+
+    await controller.tick(_charger_config("goe"), _charge_plan(0), NOW, SNAPSHOT, NOW + timedelta(minutes=2))
+    assert charger.option == "dont_charge"
+
+    # Without a current plan the charger's own logic takes over again
+    await controller.tick(_charger_config("goe"), _charge_plan(0), NOW - timedelta(hours=1), SNAPSHOT, NOW + timedelta(minutes=3))
+    assert charger.option == "neutral"
+
+
+async def test_evcc_follows_surplus_and_gets_its_mode_back(tmp_path: Path) -> None:
+    """Part power means evcc's PV mode; switching off restores the mode evcc had before."""
+    charger = FakeCharger(remember=True)
+    charger.option = "minpv"
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"evcc": EVCC})
+
+    await controller.tick(_charger_config("evcc"), _charge_plan(11000), NOW, SNAPSHOT, NOW)
+    assert charger.option == "now"
+    await controller.tick(_charger_config("evcc"), _charge_plan(3000), NOW, SNAPSHOT, NOW + timedelta(minutes=1))
+    assert charger.option == "pv"
+
+    await controller.tick(_charger_config("evcc", enabled=False), _charge_plan(3000), NOW, SNAPSHOT, NOW + timedelta(minutes=2))
+    assert charger.option == "minpv"
+    assert TakeoverMarker(tmp_path).get() == {}
+
+
+async def test_shutdown_releases_loadpoints(tmp_path: Path) -> None:
+    """Without Sunflow nobody would start or stop charging: the charger regulates itself again."""
+    charger = FakeCharger()
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE})
+    await controller.tick(_charger_config("goe"), _charge_plan(0), NOW, SNAPSHOT, NOW)
+
+    await controller.release_all(_charger_config("goe"))
+
+    assert charger.option == "neutral"
+    assert TakeoverMarker(tmp_path).get() == {}

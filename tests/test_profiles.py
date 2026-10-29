@@ -10,9 +10,10 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
     """All shipped profiles pass the schema."""
     assert library.errors == []
     assert set(library.profiles) == {
-        "solax_modbus/sofar", "huawei_solar/pv_only", "evcc_intg/loadpoint", "generic/switch", "tibber_local/pulse"
+        "solax_modbus/sofar", "huawei_solar/pv_only", "evcc_intg/loadpoint", "generic/switch", "tibber_local/pulse",
+        "goecharger_mqtt/charger",
     }
-    assert library.integrations == {"solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local"}
+    assert library.integrations == {"solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "goecharger_mqtt"}
 
 
 def test_invalid_profile_is_reported(tmp_path: Path, schema: dict[str, Any]) -> None:
