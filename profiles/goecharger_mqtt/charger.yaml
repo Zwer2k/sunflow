@@ -17,6 +17,9 @@ roles:
   charge_power: {key: sensor-nrg-11, unit: W}
   connected: {key: binary_sensor-car-1}
   charged_energy: {key: sensor-wh-0, unit: Wh, optional: true}
+  # RFID: the scanned card ("card_0" = card 1) and whether one is required to charge
+  transaction: {key: select-trx-trx, optional: true}
+  card_required: {key: switch-acs-0, optional: true}
   # The charger does not know the vehicle's SoC: bind a sensor of the car's integration
   vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
 
@@ -34,6 +37,9 @@ charge_control:
     - select: {key: select-frc-frc, option: "charge", write: if_differs}
   stop:
     - select: {key: select-frc-frc, option: "dont_charge", write: if_differs}
+  # Start the transaction for a vehicle recognized without its card (if allowed)
+  authorize:
+    - select: {key: select-trx-trx, option: "{{ transaction }}"}
   # The charger's own logic again (charges when plugged in, unless its schedule says otherwise)
   release:
     - select: {key: select-frc-frc, option: "neutral", write: if_differs}

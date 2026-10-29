@@ -278,6 +278,24 @@ class SunflowControl extends LitElement {
     `;
   }
 
+  /** Wallbox with several vehicles: which one is plugged in, and the choice by hand. */
+  _renderVehicle(device) {
+    const v = device.vehicle;
+    return html`
+      <div class="row">
+        <span class="small muted">Fahrzeug</span>
+        ${device.manual_choice
+          ? html`<select aria-label="Fahrzeug an ${device.name}" ?disabled=${this._busy}
+              @change=${(e) => this._apply(() => api.chooseVehicle(device.id, e.target.value || null))}>
+              <option value="" ?selected=${!device.selected_vehicle}>automatisch erkennen</option>
+              ${device.vehicles.map((o) => html`<option value=${o.id} ?selected=${device.selected_vehicle === o.id}>${o.name}</option>`)}
+            </select>`
+          : nothing}
+        <span class="small">${v ? html`<strong>${v.name}</strong> <span class="muted">(${v.method})</span>` : html`<span class="muted">nicht erkannt</span>`}</span>
+      </div>
+    `;
+  }
+
   _renderDevice(device) {
     const mode = device.paused ? "pause" : device.override?.strategy ?? device.default.strategy;
     const unit = device.kind === "heater" ? "°C" : "%";
@@ -297,6 +315,7 @@ class SunflowControl extends LitElement {
           </div>
           ${device.override ? html`<span class="chip">angepasst · ${untilText(device.override.until)}</span>` : nothing}
         </div>
+        ${device.vehicles?.length ? this._renderVehicle(device) : nothing}
         <div class="segmented" role="group" aria-label="Modus ${device.name}">
           ${Object.entries(MODES).map(
             ([value, label]) => html`<button aria-pressed=${mode === value} ?disabled=${this._busy}

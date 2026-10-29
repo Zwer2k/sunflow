@@ -107,6 +107,10 @@ export const api = {
     request("PUT", `/control/priorities/${encodeURIComponent(deviceId)}/conditions`, conditions),
   live: () => request("GET", "/live"),
   candidates: () => request("GET", "/entities/candidates"),
+  vehicles: () => request("GET", "/config/vehicles"),
+  setVehicles: (vehicles) => request("PUT", "/config/vehicles", vehicles),
+  setVehicleDetection: (id, body) => request("PUT", `/config/devices/${encodeURIComponent(id)}/vehicle-detection`, body),
+  chooseVehicle: (wallboxId, vehicleId) => request("PUT", `/control/vehicles/${encodeURIComponent(wallboxId)}`, { vehicle_id: vehicleId }),
   addManual: (body) => request("POST", "/config/devices/manual", body),
   updateManual: (configDeviceId, body) =>
     request("PUT", `/config/devices/manual/${encodeURIComponent(configDeviceId)}`, body),

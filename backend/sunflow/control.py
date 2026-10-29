@@ -298,6 +298,7 @@ class PlanController:
         self._profiles = profiles
         self.statuses: dict[str, DeviceControl] = {}
         self.paused: str | None = None
+        self._vehicles: dict[str, Any] = {}
 
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive or a loadpoint with charge control."""
@@ -322,6 +323,7 @@ class PlanController:
     async def tick(self, config: SunflowConfig, plan: Any, plan_at: datetime | None, snapshot: Snapshot, now: datetime) -> None:
         """One control step; a failure on one device does not stop the others."""
         devices = {d.id: d for d in config.devices}
+        self._vehicles = {v.id: v for v in config.vehicles}
         # Devices taken over earlier but no longer wanted (switched off, removed, test reset)
         for device_id in list(self._marker.get()):
             device = devices.get(device_id)
@@ -347,8 +349,23 @@ class PlanController:
 
     async def _charge(self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime) -> None:
         action, power, reason = desired_charge(plan, plan_at, now, device.name)
+        info = next((f for f in getattr(plan, "flex", None) or [] if f.device_id == device.id), None)
+        if info is not None and info.unknown_vehicle:
+            action, power, reason = "release", None, info.reason
         access = self._access_for(device)
         await take_over(access, self._marker, device.id)
+        if (
+            action == "charge"
+            and info is not None
+            # Only a sure recognition: "the only vehicle" would also let a foreign car charge
+            and info.vehicle_method in ("manual", "sensor")
+            and device.vehicle_detection.authorize
+            and "authorize" in self._profiles()[device.profile]["charge_control"]
+            and (vehicle := self._vehicles.get(info.vehicle_id or "")) is not None
+        ):
+            # Recognized without its card: start the transaction as if the card had been scanned
+            transaction = f"card_{vehicle.card - 1}" if vehicle.card else "without_card"
+            await apply(access, status, "authorize", None, now, {"transaction": transaction})
         if action == "release" and access.release is None:
             # Nothing of its own to fall back to (evcc): its previous mode until a plan is there again
             if (previous := self._marker.get().get(device.id)) and access.set_mode:

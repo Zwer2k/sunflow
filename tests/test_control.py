@@ -291,3 +291,75 @@ async def test_shutdown_releases_loadpoints(tmp_path: Path) -> None:
 
     assert charger.option == "neutral"
     assert TakeoverMarker(tmp_path).get() == {}
+
+
+class AuthorizingCharger(FakeCharger):
+    """go-e with card authorization: records the transaction Sunflow starts."""
+
+    def __init__(self) -> None:
+        """No transaction yet."""
+        super().__init__()
+        self.transaction = "none"
+
+    def access(self) -> DeviceAccess:
+        """Like the go-e profile, with the authorize action."""
+        base = super().access()
+
+        async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, Any]]:
+            if action != "authorize":
+                return await base.plan(action, runtime)
+            call = PlannedCall(domain="select", service="select_option", data={"option": runtime["transaction"]}, entity_id="select.trx", storage="volatile", write="always")
+            return [call], {"select.trx": {"state": self.transaction}}
+
+        async def run(calls: list[PlannedCall], states: dict[str, Any]) -> None:
+            if calls[0].entity_id == "select.trx":
+                self.transaction = calls[0].data["option"]
+                calls[0].status = "done"
+                return
+            await base.run(calls, states)
+
+        return DeviceAccess(plan=plan, run=run, release="release")
+
+
+GOE_CARDS = GOE | {"charge_control": {"charge": [], "stop": [], "release": [], "authorize": []}}
+
+
+@pytest.mark.parametrize(
+    ("method", "transaction"),
+    [
+        pytest.param("sensor", "card_1", id="sensor-authorizes"),
+        pytest.param("manual", "card_1", id="choice-authorizes"),
+        # "The only vehicle" is no proof: a foreign car without card must not get charging
+        pytest.param("single", "none", id="single-does-not"),
+        pytest.param("card", "none", id="scanned-needs-nothing"),
+    ],
+)
+async def test_authorizes_only_surely_recognized_vehicles(tmp_path: Path, method: str, transaction: str) -> None:
+    """With a card required, Sunflow starts the transaction for a car recognized by sensor or choice."""
+    from sunflow.config_store import Vehicle
+
+    charger = AuthorizingCharger()
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE_CARDS})
+    config = _charger_config("goe")
+    config.vehicles = [Vehicle(id="tesla", name="Model 3", capacity_wh=60000, card=2, wallboxes=["wb"])]
+    plan = _charge_plan(11000)
+    plan.flex = [SimpleNamespace(device_id="wb", unknown_vehicle=False, vehicle_id="tesla", vehicle_method=method, reason=None)]
+
+    await controller.tick(config, plan, NOW, SNAPSHOT, NOW)
+
+    assert charger.transaction == transaction
+    assert charger.option == "charge"
+
+
+async def test_unknown_vehicle_leaves_the_wallbox_to_itself(tmp_path: Path) -> None:
+    """A foreign car: Sunflow does not start or stop it."""
+    charger = FakeCharger()
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE})
+    plan = _charge_plan(0)
+    plan.flex = [SimpleNamespace(device_id="wb", unknown_vehicle=True, vehicle_id=None, vehicle_method=None, reason="Fahrzeug nicht erkannt – Wallbox regelt selbst")]
+    charger.option = "dont_charge"
+
+    await controller.tick(_charger_config("goe"), plan, NOW, SNAPSHOT, NOW)
+
+    assert charger.option == "neutral"
+    assert controller.statuses["wb"].reason.startswith("Fahrzeug nicht erkannt")

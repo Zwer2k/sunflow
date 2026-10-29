@@ -454,3 +454,46 @@ def test_takeover_needs_confirmation_and_a_passed_test(tmp_path: Path) -> None:
     assert response.json()["enabled"] and response.json()["devices"][0]["enabled"]
     # Switching off needs no confirmation
     assert client.put("/api/v1/control/takeover", json={"enabled": False}).status_code == 200
+
+
+def test_vehicles_cards_and_manual_choice(tmp_path: Path) -> None:
+    """Vehicles are stored per wallbox; a card may belong to one vehicle per wallbox; the choice is validated."""
+    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[DeviceConfig(id="wb", ha_device_id="x", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")]))
+    from types import SimpleNamespace
+
+    from sunflow.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    app = create_app()
+    app.state.store = store
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: None})()
+
+    async def snapshot(fresh: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(states={}, entities=[], devices=[])
+
+    app.state.snapshots = SimpleNamespace(get=snapshot)
+    client = TestClient(app)
+
+    fiat = {"id": "fiat", "name": "Fiat", "capacity_wh": 37500, "card": 1, "wallboxes": ["wb"]}
+    tesla = {"id": "tesla", "name": "Tesla", "capacity_wh": 60000, "card": 1, "wallboxes": ["wb"]}
+    assert client.put("/api/v1/config/vehicles", json=[fiat, tesla]).status_code == 422
+    assert client.put("/api/v1/config/vehicles", json=[fiat, tesla | {"card": 2}, {"name": "X", "capacity_wh": 1, "wallboxes": ["nope"]}]).status_code == 422
+
+    stored = client.put("/api/v1/config/vehicles", json=[fiat, tesla | {"card": 2}])
+    assert stored.status_code == 200
+    assert stored.json()["wallboxes"][0]["cards"] is True
+    assert [v.name for v in store.load().vehicles] == ["Fiat", "Tesla"]
+
+    assert client.put("/api/v1/control/vehicles/wb", json={"vehicle_id": "tesla"}).status_code == 200
+    assert store.load().selected_vehicles == {"wb": "tesla"}
+    assert client.put("/api/v1/control/vehicles/wb", json={"vehicle_id": "other"}).status_code == 422
+    assert client.put("/api/v1/control/vehicles/wb", json={"vehicle_id": None}).status_code == 200
+    assert store.load().selected_vehicles == {}
+
+    detection = {"card": True, "manual": True, "sensor": False, "single": True, "authorize": False}
+    assert client.put("/api/v1/config/devices/wb/vehicle-detection", json=detection).status_code == 200
+    assert store.load().devices[0].vehicle_detection.authorize is False

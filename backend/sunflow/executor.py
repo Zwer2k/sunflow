@@ -120,7 +120,7 @@ def plan_steps(
                     value = min(max(value, spec.get("min", value)), spec.get("max", value))
                 service, data = "set_value", {"value": value}
             case "select":
-                service, data = "select_option", {"option": spec["option"]}
+                service, data = "select_option", {"option": str(render(spec["option"], variables))}
             case "switch":
                 service, data = f"turn_{spec['state']}", {}
             case _:

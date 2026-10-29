@@ -2,15 +2,16 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
-import math
-import time
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, tzinfo
+import math
+import time
 from typing import Any
 
 from .config_store import BATTERY_PRIORITY_ID, DeviceConfig, SunflowConfig
 from .discovery import Snapshot
 from .ha import HAClient, HACommandError, HAError
+from .habits import ConsumerUsage, Departure, learn_departure, learn_usage
 from .load_forecast import (
     LoadForecast,
     build_load_forecast,
@@ -18,9 +19,8 @@ from .load_forecast import (
     find_load_entity,
     subtract_loads,
 )
-from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
-from .habits import ConsumerUsage, Departure, learn_departure, learn_usage
 from .load_model import LoadModel
+from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
 from .pv_learning import PvCorrection, cloud_class
 from .resolver import preview
 from .site import device_kind, device_parameters
@@ -33,6 +33,7 @@ from .sources import (
     solcast_forecast,
     sum_forecasts,
 )
+from .vehicles import recognize, soc_of
 
 HORIZON_HOURS = 48
 # Database queries change slowly; every replan (each quarter hour) reusing them keeps
@@ -91,6 +92,12 @@ class FlexInfo:
     # The deadline is the typical departure learned from the history
     learned_departure: bool = False
     reason: str | None = None  # why nothing is planned
+    # Wallboxes with assigned vehicles: the one recognized, and how
+    vehicle_id: str | None = None
+    vehicle: str | None = None
+    vehicle_method: str | None = None
+    # A car is connected but not one of the assigned: the wallbox regulates itself
+    unknown_vehicle: bool = False
 
 
 def flex_loads(
@@ -184,6 +191,19 @@ def flex_loads(
             if roles.get("connected") is None or roles["connected"].raw_state != "on":
                 info.reason = "Fahrzeug nicht angesteckt"
                 continue
+            if config.vehicles_at(device.id):
+                recognized = recognize(config, device, roles, snapshot.states)
+                if (vehicle := recognized.vehicle) is None:
+                    info.reason = f"{recognized.reason} – Wallbox regelt selbst"
+                    info.unknown_vehicle = True
+                    continue
+                info.vehicle_id, info.vehicle, info.vehicle_method = vehicle.id, vehicle.name, recognized.method
+                params = params | {"vehicle_capacity_wh": vehicle.capacity_wh, "charge_efficiency_pct": vehicle.charge_efficiency_pct}
+                current = info.current = soc_of(vehicle, snapshot.states)
+                # The vehicle's own settings; a change in the control tab still applies on top
+                settings, paused = config.effective_flex(device.model_copy(update={"flex": vehicle.flex}), slot_starts[0])
+                ready_by = next_time(settings.ready_by, slot_starts[0], tz) if settings.ready_by else None
+                target = info.target = settings.target if settings.target is not None else target
             capacity = params.get("vehicle_capacity_wh")
             if not capacity:
                 info.reason = "Akkukapazität fehlt in den Kenndaten"
