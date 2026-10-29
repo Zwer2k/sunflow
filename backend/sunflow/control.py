@@ -84,7 +84,7 @@ def desired_action(plan: Any, plan_at: datetime | None, now: datetime) -> tuple[
 def desired_charge(
     plan: Any, plan_at: datetime | None, now: datetime, name: str
 ) -> tuple[str, float | None, str]:
-    """charge (with power), stop, or release when there is no current plan."""
+    """Charge (with power), stop, or release when there is no current plan."""
     _, _, reason = desired_action(plan, plan_at, now)
     if reason != "nach Plan":
         return "release", None, reason.replace("Eigenverbrauch", "Gerät regelt selbst")
