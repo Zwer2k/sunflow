@@ -3,7 +3,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from sunflow.config_store import DeviceConfig, SunflowConfig, Vehicle, VehicleDetection
 from sunflow.vehicles import recognize, scanned_card
 
