@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.48.1
+
+- Vorrang „erst ab Hausspeicher …%“: Sunflow prüft den Ladestand jetzt am Ende der Viertelstunde statt am Anfang. In der Viertelstunde, in der der Speicher die Schwelle erreicht, bekommt der Verbraucher (z. B. der Heizstab) den restlichen Überschuss. Vorher wurde dieser Rest eingespeist – besonders sichtbar, wenn die Schwelle gleich der Ladegrenze im Alltag ist.
+
 ## 0.48.0
 
 Sunflow-Integration für Home Assistant (Integration 0.2.0, siehe docs/integration.md):

@@ -531,8 +531,26 @@ def test_gate_waits_for_battery_level() -> None:
 
     running = [t for t, s in enumerate(plan.slots) if s.flex_w["Warmwasser"] > 10]
     assert running
-    assert all(plan.slots[t - 1].soc_wh >= 8000 - 1 for t in running)
+    # Released in the slot by whose end the battery holds the level
+    assert all(plan.slots[t].soc_wh >= 8000 - 1 for t in running)
     assert all(plan.slots[t].import_w >= plan.slots[t].flex_w["Warmwasser"] - 1 for t in running if t < 40)
+
+
+def test_gate_at_the_charge_limit_leaves_nothing_for_export() -> None:
+    """Battery level of the gate = charge limit: the slot that fills the battery gives the rest to the heater."""
+    from sunflow.planning.optimizer import FlexLoad
+
+    battery = BatterySpec(capacity_wh=20000, soc_wh=17760, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(2, price=lambda i: 0.326, pv=lambda i: 2400.0 if i < 4 else 0.0, load=1200)
+    heater = FlexLoad(
+        name="Warmwasser", energy_wh=8000, max_power_w=2800, available=[True] * 8,
+        unmet_cost=0.228, pv_only=True, uses_battery=False, below_battery=True, gate_battery_wh=18000,
+    )
+
+    plan = optimize(inputs, battery, Settings(soc_limit_wh=18000), [heater])
+
+    assert plan.slots[0].export_w == pytest.approx(0, abs=1)
+    assert plan.slots[0].flex_w["Warmwasser"] > 100
 
 
 def test_gate_waits_for_vehicle() -> None:
