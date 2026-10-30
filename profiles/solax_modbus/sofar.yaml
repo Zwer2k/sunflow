@@ -62,7 +62,8 @@ parameters:
   min_soc: {unit: "%", default: 10, min: 0, max: 100}
   max_charge: {unit: W, default: 20000, min: 0}
   max_discharge: {unit: W, default: 20000, min: 0}
-  grid_offset: {unit: W, default: -200, advanced: true}
+  # Written as "Passive Desired Grid Power": the grid power the inverter regulates to
+  grid_offset: {unit: W, default: -200}
   # Battery round trip at its terminals (cells and DC/DC converters), as the battery
   # energy counters measure it; split evenly between both directions
   efficiency_pct: {unit: "%", default: 93, min: 40, max: 100}

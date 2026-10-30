@@ -82,7 +82,8 @@ def test_device_parameters_precedence(snapshot: Snapshot, library: ProfileLibrar
     assert params["max_charge"]["effective"] == 8000
     assert params["capacity_wh"]["effective"] == params["capacity_wh"]["derived"]
     assert params["min_soc"]["effective"] == 10
-    assert params["grid_offset"]["advanced"] is True
+    # Visible since Sunflow controls: the grid target matters for everyone then
+    assert params["grid_offset"]["advanced"] is False
 
 
 def test_site_cross_check_and_total(snapshot: Snapshot, library: ProfileLibrary) -> None:
