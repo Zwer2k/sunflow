@@ -45,16 +45,17 @@ def _device_control(
     guard = _guard(request, profile)
 
     async def read() -> tuple[float | None, float | None]:
-        snapshot = await fetch_snapshot(client)
+        snapshot = await fetch_snapshot(client, request.app.state.direct)
         roles = {r.role: r.value for r in preview(profile, snapshot, device.ha_device_id, overrides)}
         return roles.get("battery_power"), roles.get("battery_soc")
 
     async def apply_action(action: str, runtime: dict[str, float]) -> list[PlannedCall]:
-        snapshot = await fetch_snapshot(client)
+        snapshot = await fetch_snapshot(client, request.app.state.direct)
         _, planned = plan_action(
             profile, action, device.parameters, runtime, device_entities(snapshot, device.ha_device_id)
         )
-        await execute(client, planned, snapshot.states, guard, dry_run=False)
+        direct = request.app.state.direct.by_ha_device(device.ha_device_id)
+        await execute(client, planned, snapshot.states, guard, dry_run=False, direct=direct)
         return planned
 
     if not (control_mode := profile.get("control_mode")):
@@ -62,7 +63,7 @@ def _device_control(
 
     async def set_mode(option: str) -> str | None:
         """Select option if needed; return the previous option when switched."""
-        snapshot = await fetch_snapshot(client)
+        snapshot = await fetch_snapshot(client, request.app.state.direct)
         entities = device_entities(snapshot, device.ha_device_id)
         if (entity_id := find_entity(entities, "select", control_mode["key"])) is None:
             raise ExecutorError(f"No select entity for key {control_mode['key']}")

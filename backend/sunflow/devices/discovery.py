@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from fnmatch import fnmatch
-from typing import Any
+from typing import Any, Protocol
 
 from sunflow.ha import HAClient
 
@@ -71,10 +71,18 @@ async def _fetch_registries(client: HAClient) -> Snapshot:
     )
 
 
-async def fetch_snapshot(client: HAClient) -> Snapshot:
+class Contributor(Protocol):
+    """Adds devices that are not in Home Assistant (sunflow.direct.hub.DirectHub)."""
+
+    def contribute(self, snapshot: Snapshot) -> Snapshot:
+        """Snapshot with the own devices added."""
+
+
+async def fetch_snapshot(client: HAClient, direct: Contributor | None = None) -> Snapshot:
     """Fetch registries, states and energy preferences."""
     registries, states = await asyncio.gather(_fetch_registries(client), client.get_states())
-    return replace(registries, states={s["entity_id"]: s for s in states})
+    snapshot = replace(registries, states={s["entity_id"]: s for s in states})
+    return direct.contribute(snapshot) if direct else snapshot
 
 
 GAP_STATES = {"unknown", "unavailable"}
@@ -95,9 +103,11 @@ class SnapshotCache:
         client: HAClient,
         registry_ttl: timedelta = timedelta(minutes=2),
         states_ttl: timedelta = timedelta(seconds=4),
+        direct: Contributor | None = None,
     ) -> None:
         """Initialize the cache."""
         self._client = client
+        self._direct = direct
         self._registry_ttl = registry_ttl
         self._states_ttl = states_ttl
         self._lock = asyncio.Lock()
@@ -125,7 +135,8 @@ class SnapshotCache:
                 states = await self._client.get_states()
                 self._snapshot = replace(self._registries, states=self._bridge_gaps(states, now))
                 self._states_at = now
-            return self._snapshot
+            # Direct devices are polled on their own; their latest values are always added
+            return self._direct.contribute(self._snapshot) if self._direct else self._snapshot
 
     def _bridge_gaps(self, states: list[dict[str, Any]], now: datetime) -> dict[str, dict[str, Any]]:
         """States by entity; a briefly unavailable value keeps its last valid state."""

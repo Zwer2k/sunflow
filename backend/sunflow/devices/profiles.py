@@ -30,13 +30,18 @@ class ProfileLibrary:
     @property
     def integrations(self) -> set[str]:
         """Return the integration domains with at least one profile."""
-        return {p["match"]["integration"] for p in self.profiles.values()}
+        return {p["match"]["integration"] for p in self.profiles.values() if "match" in p}
 
     def for_integration(self, domain: str) -> list[dict[str, Any]]:
         """Return the profiles for an integration domain."""
         return [
-            p for p in self.profiles.values() if p["match"]["integration"] == domain
+            p for p in self.profiles.values() if p.get("match", {}).get("integration") == domain
         ]
+
+    @property
+    def direct(self) -> list[dict[str, Any]]:
+        """Return the profiles of devices Sunflow connects to itself (no integration)."""
+        return [p for p in self.profiles.values() if "connection" in p]
 
 
 def load_schema(schema_dir: Path) -> dict[str, Any]:

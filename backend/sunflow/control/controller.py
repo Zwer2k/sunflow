@@ -37,6 +37,7 @@ from sunflow.devices.executor import (
     plan_charge,
 )
 from sunflow.devices.resolver import device_entities, preview
+from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -301,13 +302,18 @@ def device_variables(profile: dict[str, Any], device: DeviceConfig, snapshot: Sn
     return values
 
 
-def device_access(client: HAClient, profile: dict[str, Any], device: DeviceConfig, guard: EepromGuard) -> DeviceAccess:
-    """Home Assistant calls for one device; every write passes the executor and its EEPROM guard."""
+def device_access(
+    client: HAClient, profile: dict[str, Any], device: DeviceConfig, guard: EepromGuard, hub: DirectHub | None = None
+) -> DeviceAccess:
+    """Home Assistant calls for one device; every write passes the executor and its EEPROM guard.
+
+    A directly connected device is read through the hub and written to without Home Assistant.
+    """
 
     charging = profile.get("charge_control")
 
     async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, dict[str, Any]]]:
-        snapshot = await fetch_snapshot(client)
+        snapshot = await fetch_snapshot(client, hub)
         entities = device_entities(snapshot, device.ha_device_id)
         if charging:
             # Own consumers have no HA device: their steps address the entities chosen per role
@@ -318,7 +324,8 @@ def device_access(client: HAClient, profile: dict[str, Any], device: DeviceConfi
         return calls, snapshot.states
 
     async def run(calls: list[PlannedCall], states: dict[str, dict[str, Any]]) -> None:
-        await execute(client, calls, states, guard, dry_run=False)
+        direct = hub.by_ha_device(device.ha_device_id) if hub else None
+        await execute(client, calls, states, guard, dry_run=False, direct=direct)
 
     if charging:
         release = "release" if "release" in charging else None
@@ -326,7 +333,7 @@ def device_access(client: HAClient, profile: dict[str, Any], device: DeviceConfi
             return DeviceAccess(plan=plan, run=run, release=release)
 
         async def remembered_entity() -> tuple[str | None, dict[str, dict[str, Any]]]:
-            snapshot = await fetch_snapshot(client)
+            snapshot = await fetch_snapshot(client, hub)
             return find_entity(device_entities(snapshot, device.ha_device_id), "select", remember["key"]), snapshot.states
 
         async def current_option() -> str | None:
@@ -348,7 +355,7 @@ def device_access(client: HAClient, profile: dict[str, Any], device: DeviceConfi
         return DeviceAccess(plan=plan, run=run)
 
     async def select(option: str) -> str | None:
-        snapshot = await fetch_snapshot(client)
+        snapshot = await fetch_snapshot(client, hub)
         entity_id = find_entity(device_entities(snapshot, device.ha_device_id), "select", control_mode["key"])
         if entity_id is None:
             raise ExecutorError(f"No select entity for key {control_mode['key']}")
