@@ -13,6 +13,7 @@ from sunflow.devices.executor import plan_battery, plan_pv_limit
 from sunflow.devices.profiles import ProfileLibrary, battery_actions, controls_battery
 from sunflow.devices.executor import EepromGuard, execute
 from sunflow.devices.resolver import bind_roles, preview
+from sunflow.devices.site import derive_parameter
 from sunflow.direct.hub import DirectHub, direct_device_id
 
 # Entity keys per domain as the integrations create them (unique_id = "<prefix>_<key>")
@@ -56,6 +57,20 @@ DUMMIES: dict[str, dict[str, Any]] = {
             "number": ["active_power_fixed_value_derating"],
         },
     },
+    "solaredge_modbus/storedge": {
+        "integration": "solaredge_modbus",
+        "prefix": "7E123456",
+        "keys": {
+            "sensor": [
+                "dc_power", "ac_power", "ac_energy", "battery_4A1B2C_dc_power", "battery_4A1B2C_state_of_energy",
+                "battery_4A1B2C_energy_max", "battery_4A1B2C_max_charge_power", "battery_4A1B2C_max_discharge_power",
+                "battery_4A1B2C_energy_imported", "battery_4A1B2C_energy_exported",
+                "meter_slot_1_ac_power", "meter_slot_1_energy_imported", "meter_slot_1_energy_exported",
+            ],
+            "select": ["storage_control_mode", "storage_command_mode", "storage_default_mode"],
+            "number": ["charge_limit", "discharge_limit", "backup_reserve"],
+        },
+    },
 }
 
 
@@ -88,7 +103,10 @@ def test_every_action_resolves(library: ProfileLibrary, profile_id: str) -> None
     profile = library.profiles[profile_id]
     entities = dummy_entities(profile_id)
     existing = {e["entity_id"] for e in entities}
-    variables = {"P": 2000, "limit_w": 1500, "max_discharge": 5000, "max_ac_power": 10000, "device_id_batteries": "b"}
+    variables = {
+        "P": 2000, "limit_w": 1500, "max_charge": 5000, "max_discharge": 5000, "max_ac_power": 10000,
+        "device_id_batteries": "b",
+    }
     actions = [*battery_actions(profile), "release"] if controls_battery(profile) else []
     for action in actions:
         for call in plan_battery(profile, action, {"capacity_wh": 10000}, variables, entities):
@@ -176,3 +194,24 @@ async def test_victron_over_modbus(library: ProfileLibrary, tmp_path: Path) -> N
             await execute(None, calls, {}, EepromGuard(tmp_path, 30), dry_run=False, direct=direct)
         await hub.stop()
     assert dummy.writes == [(2901, [620]), (2901, [1000]), (2901, [100])]
+
+
+def test_solaredge_reads_attached_battery_and_meter(library: ProfileLibrary) -> None:
+    """Wildcard keys find the battery and meter by serial; PV adds the battery's charge to the DC power."""
+    profile = library.profiles["solaredge_modbus/storedge"]
+    entities = dummy_entities("solaredge_modbus/storedge")
+    bound = bind_roles(profile, entities)
+    assert bound["battery_power"] == "sensor.7E123456_battery_4A1B2C_dc_power"
+    assert bound["grid_power"] == "sensor.7E123456_meter_slot_1_ac_power"
+    assert bound["ac_power"] == "sensor.7E123456_ac_power"
+    states = {
+        "sensor.7E123456_dc_power": {"state": "2600", "attributes": {"unit_of_measurement": "W"}},
+        "sensor.7E123456_battery_4A1B2C_dc_power": {"state": "1400", "attributes": {"unit_of_measurement": "W"}},
+        "sensor.7E123456_battery_4A1B2C_energy_max": {"state": "9.7", "attributes": {"unit_of_measurement": "kWh"}},
+    }
+    snapshot = Snapshot(entries=[], devices=[], entities=entities, states=states, energy_prefs=None)
+    values = {r.role: r.value for r in preview(profile, snapshot, "dev", {})}
+    assert values["pv_power"] == 4000
+    assert derive_parameter(profile["parameters"]["capacity_wh"], snapshot, "dev") == 9700
+    hold = plan_battery(profile, "hold", {}, {"max_charge": 5000}, entities)
+    assert [c.data for c in hold] == [{"option": "maximize_self_consumption"}, {"value": 5000}, {"value": 0}]

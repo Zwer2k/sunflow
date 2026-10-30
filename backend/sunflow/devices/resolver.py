@@ -156,7 +156,8 @@ def _fine_value(
     parts = []
     first = None
     for key in spec["fine_keys"]:
-        entity = next((e for e in entities if entity_has_key(e, key)), None)
+        # The shortest unique_id, as for roles: "sn_dc_power" rather than "sn_battery_1_dc_power"
+        entity = min((e for e in entities if entity_has_key(e, key)), key=lambda e: len(e.get("unique_id") or ""), default=None)
         state = snapshot.states.get(entity["entity_id"]) if entity else None
         if state is None:
             continue
