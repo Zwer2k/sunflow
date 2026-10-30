@@ -1,0 +1,64 @@
+# Fronius Symo/Primo GEN24 Plus with battery via the core fronius integration (Solar API
+# for values, Modbus TCP for the controls: enable "Modbus TCP" with "Storage control" in
+# the inverter's web interface). Matched on the SolarNet device; inverter, storage and
+# meter are its sub-devices.
+# Battery control by the charge/discharge limits (percent of the maximum power): hold as
+# discharge limit 0. Forced charging and discharging are not offered by the integration.
+# Signs (Solar API power flow): power_battery + = discharge, power_grid + = import.
+# Not verified on hardware yet.
+profile: fronius/gen24
+version: 1
+match:
+  integration: fronius
+  requires: [power_flow-power_battery, power_flow-power_grid]
+
+capabilities: [pv, battery, grid_meter, battery_control, curtail]
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: state_of_charge, unit: "%"}
+  battery_power: {key: power_flow-power_battery, unit: W, sign: discharge_positive}
+  pv_power: {key: power_flow-power_photovoltaics, unit: W}
+  grid_power: {key: power_flow-power_grid, unit: W, sign: import_positive}
+  load_power: {key: power_flow-power_load, unit: W, optional: true}
+  pv_energy: {key: energy_total, unit: kWh, optional: true}
+  # Meter counters: "plus" is drawn from the grid, "minus" fed into it
+  grid_import_energy: {key: energy_real_ac_plus, unit: kWh, optional: true}
+  grid_export_energy: {key: energy_real_ac_minus, unit: kWh, optional: true}
+
+parameters:
+  capacity_wh: {unit: Wh, min: 1000}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, default: 5000, min: 0}
+  max_discharge: {unit: W, default: 5000, min: 0}
+  max_ac_power: {unit: W, default: 10000, min: 0}
+  efficiency_pct: {unit: "%", default: 93, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 97, min: 80, max: 100}
+
+battery_control:
+  auto:
+    - switch: {key: modbus-battery_charge_power_limit_enabled, state: "off", write: if_differs}
+    - switch: {key: modbus-battery_discharge_power_limit_enabled, state: "off", write: if_differs}
+  hold:
+    - switch: {key: modbus-battery_charge_power_limit_enabled, state: "off", write: if_differs}
+    - number: {key: modbus-battery_discharge_power_limit, value: 0, write: if_differs}
+    - switch: {key: modbus-battery_discharge_power_limit_enabled, state: "on", write: if_differs}
+  limit_charge:
+    - number: {key: modbus-battery_charge_power_limit, value: "{{ P_pct }}", write: if_differs, tolerance: 2}
+    - switch: {key: modbus-battery_charge_power_limit_enabled, state: "on", write: if_differs}
+    - switch: {key: modbus-battery_discharge_power_limit_enabled, state: "off", write: if_differs}
+  limit_discharge:
+    - switch: {key: modbus-battery_charge_power_limit_enabled, state: "off", write: if_differs}
+    - number: {key: modbus-battery_discharge_power_limit, value: "{{ P_pct }}", write: if_differs, tolerance: 2}
+    - switch: {key: modbus-battery_discharge_power_limit_enabled, state: "on", write: if_differs}
+  # Storage control over Modbus may revert after a timeout set in the inverter
+  refresh: 5min
+
+pv_limit:
+  set:
+    - number: {key: modbus-ac_power_limit, value: "{{ limit_pct }}", write: if_differs, tolerance: 2}
+    - switch: {key: modbus-ac_power_limit_enabled, state: "on", write: if_differs}
+  release:
+    - switch: {key: modbus-ac_power_limit_enabled, state: "off", write: if_differs}
+  refresh: 5min
