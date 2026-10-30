@@ -18,6 +18,7 @@ from sunflow.devices.site import (
 )
 from sunflow.ha import HAError
 from sunflow.planning.plan import weather_entity
+from sunflow.planning.vehicles import vehicle_at
 
 from .common import _library, _local_tz, _snapshot
 
@@ -93,13 +94,19 @@ async def get_live(request: Request) -> dict[str, Any]:
             displays["load"] = display("load_power")
         if "loadpoint" in capabilities or "load" in capabilities:
             kind = device_kind(profile, device, snapshot) or "load"
+            # A wallbox with assigned vehicles shows the car it recognized, with the car's own SoC
+            vehicle, vehicle_soc = None, None
+            if kind == "vehicle":
+                recognized, vehicle_soc = vehicle_at(config, device, roles, snapshot.states)
+                vehicle = recognized.vehicle
             consumers.append(
                 {
                     "name": device.name,
                     "kind": kind,
                     "power_w": value("charge_power") if "loadpoint" in capabilities else value("power"),
                     "display": display("charge_power" if "loadpoint" in capabilities else "power"),
-                    "level": value("vehicle_soc"),
+                    "level": vehicle_soc if vehicle_soc is not None else value("vehicle_soc"),
+                    "vehicle": vehicle.name if vehicle else None,
                     "level_unit": {"heater": "°C", "vehicle": "%"}.get(kind),
                     "charging": roles["charging"].raw_state == "on" if "charging" in roles else None,
                     "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,

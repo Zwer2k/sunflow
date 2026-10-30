@@ -434,7 +434,11 @@ class SunflowLive extends LitElement {
       consumer.level !== null && consumer.level !== undefined
         ? `${Math.round(consumer.level)}${consumer.level_unit === "°C" ? " °C" : " %"}`
         : null;
-    const detail = consumer.kind === "vehicle" && consumer.connected === false ? "kein Auto" : level;
+    // A wallbox with assigned cars names the one it recognized
+    const detail =
+      consumer.kind === "vehicle" && consumer.connected === false
+        ? "kein Auto"
+        : [consumer.vehicle, level].filter(Boolean).join(" ") || null;
     return this._node(
       consumer.kind in ICONS ? consumer.kind : "load",
       position,

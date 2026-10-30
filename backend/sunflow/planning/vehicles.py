@@ -74,6 +74,16 @@ def soc_of(vehicle: Vehicle, states: dict[str, dict[str, Any]]) -> float | None:
         return None
 
 
+def vehicle_at(
+    config: SunflowConfig, wallbox: DeviceConfig, roles: dict[str, Any], states: dict[str, dict[str, Any]]
+) -> tuple[Recognized, float | None]:
+    """The vehicle recognized at a wallbox with assigned vehicles, and its SoC from the car's own sensor."""
+    if not config.vehicles_at(wallbox.id):
+        return Recognized(vehicle=None, method=None), None
+    recognized = recognize(config, wallbox, roles, states)
+    return recognized, soc_of(recognized.vehicle, states) if recognized.vehicle else None
+
+
 def unplugged_choices(config: SunflowConfig, connected: dict[str, bool]) -> list[str]:
     """Wallboxes whose manual vehicle choice ends because the car was unplugged."""
     return [wallbox_id for wallbox_id in config.selected_vehicles if connected.get(wallbox_id) is False]
