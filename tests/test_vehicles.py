@@ -152,3 +152,19 @@ def test_vehicle_live_values(states: dict, expected: dict) -> None:
     vehicle = Vehicle(name="Fiat", capacity_wh=37500, soc_entity="sensor.soc", plugged_entity="binary_sensor.plug")
     live = vehicle_live(vehicle, states)
     assert {k: live[k] for k in expected} == expected
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        pytest.param(_config([FIAT.model_copy(update={"soc_entity": "sensor.fiat_soc"})]), ("fiat", 71.0), id="recognized"),
+        pytest.param(_config([FIAT]), ("fiat", None), id="no-soc-sensor"),
+        pytest.param(_config([]), (None, None), id="no-vehicles"),
+    ],
+)
+def test_vehicle_at_wallbox(config: SunflowConfig, expected: tuple) -> None:
+    """Overviews show the car recognized at the wallbox with the SoC of its own sensor."""
+    from sunflow.planning.vehicles import vehicle_at
+
+    recognized, soc = vehicle_at(config, config.devices[0], _roles(), {"sensor.fiat_soc": {"state": "71"}})
+    assert (recognized.vehicle.id if recognized.vehicle else None, soc) == expected

@@ -19,7 +19,7 @@ from sunflow.control.controller import PlanController
 from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_category, device_kind
-from sunflow.planning.vehicles import METHODS
+from sunflow.planning.vehicles import METHODS, vehicle_at
 from sunflow.shadow.runner import ShadowRunner
 
 from .common import _configured_device, _library, _replan, _snapshot
@@ -50,6 +50,8 @@ async def get_control(request: Request) -> dict[str, Any]:
             for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
         }
         effective, paused = config.effective_flex(device, now)
+        recognized, vehicle_soc = vehicle_at(config, device, roles, snapshot.states)
+        vehicle = recognized.vehicle
         override = config.overrides.get(device.id)
         info = infos.get(device.id)
         devices.append(
@@ -66,11 +68,20 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "power_display": next(
                     (roles[r].display for r in ("charge_power", "power") if r in roles and roles[r].entity_id), None
                 ),
-                "level": info.current if info and info.vehicle_id else roles["vehicle_soc"].value if "vehicle_soc" in roles else None,
+                # The car's sensor now; the plan's value may be up to a slot old
+                "level": vehicle_soc
+                if vehicle_soc is not None
+                else info.current
+                if info and info.vehicle_id
+                else roles["vehicle_soc"].value
+                if "vehicle_soc" in roles
+                else None,
                 "target": info.target if info else None,
                 "vehicles": [{"id": v.id, "name": v.name} for v in config.vehicles_at(device.id)],
                 "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": METHODS.get(info.vehicle_method or "")}
                 if info and info.vehicle_id
+                else {"id": vehicle.id, "name": vehicle.name, "method": METHODS.get(recognized.method or "")}
+                if vehicle
                 else None,
                 "selected_vehicle": config.selected_vehicles.get(device.id),
                 "manual_choice": config.detection_of(device.id).manual,
