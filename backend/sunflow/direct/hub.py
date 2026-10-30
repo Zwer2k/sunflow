@@ -8,13 +8,14 @@ from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any
 
-from sunflow.devices.discovery import Snapshot
+from sunflow.devices.discovery import DIRECT_DOMAIN, Snapshot
 
 from .transports import HttpTransport, Transport, TransportError, make_transport
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "sunflow_direct"
+DOMAIN = DIRECT_DOMAIN
+ENTRY = {"entry_id": DIRECT_DOMAIN, "domain": DIRECT_DOMAIN, "title": "Direkt angebunden", "state": "loaded"}
 DEVICE_PREFIX = "direct_"
 DEFAULT_POLL = timedelta(seconds=10)
 
@@ -85,7 +86,7 @@ class DirectDevice:
                 "unique_id": f"{self.id}_{key}",
                 "platform": DOMAIN,
                 "device_id": self.ha_device_id,
-                "config_entry_id": None,
+                "config_entry_id": DOMAIN,
                 "disabled_by": None,
             }
             for key in self.points
@@ -204,7 +205,7 @@ class DirectHub:
                 "name": d.name,
                 "manufacturer": d.profile["connection"].get("manufacturer"),
                 "model": d.profile["profile"],
-                "config_entries": [],
+                "config_entries": [DOMAIN],
                 "via_device_id": None,
             }
             for d in self.devices.values()
@@ -213,6 +214,8 @@ class DirectHub:
         states = {k: v for d in self.devices.values() for k, v in d.states().items()}
         return replace(
             snapshot,
+            entries=[*snapshot.entries, ENTRY],
+            integration_names={**snapshot.integration_names, DOMAIN: "Direkt angebunden (Modbus/HTTP)"},
             devices=[*snapshot.devices, *devices],
             entities=[*snapshot.entities, *entities],
             states={**snapshot.states, **states},

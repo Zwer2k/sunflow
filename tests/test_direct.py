@@ -7,7 +7,7 @@ from dummy_inverter import DummyInverter
 import jsonschema
 import pytest
 from sunflow.config.models import Connection, DeviceConfig, SunflowConfig
-from sunflow.devices.discovery import Snapshot
+from sunflow.devices.discovery import Snapshot, discover
 from sunflow.devices.executor import EepromGuard, ExecutorError, execute, plan_steps
 from sunflow.devices.profiles import ProfileLibrary, load_schema
 from sunflow.devices.resolver import bind_roles, device_entities
@@ -175,3 +175,19 @@ async def test_register_step_needs_a_direct_device(tmp_path: Path) -> None:
     calls = plan_steps(PROFILE["battery_control"]["auto"], {}, [], "volatile")
     with pytest.raises(ExecutorError):
         await execute(None, calls, {}, EepromGuard(tmp_path, 10), dry_run=False)
+
+
+async def test_direct_devices_appear_in_discovery() -> None:
+    """A configured direct device shows up like a device of an integration, with its profile."""
+    async with DummyInverter(holding(), {10: 523}) as dummy:
+        config, library, device = config_for(dummy.port)
+        hub = DirectHub()
+        await hub.sync(config, library)
+        await hub.poll()
+        snapshot = hub.contribute(Snapshot(entries=[], devices=[], entities=[], states={}, energy_prefs=None))
+        await hub.stop()
+    (integration,) = discover(snapshot, library)
+    assert integration.domain == "sunflow_direct"
+    assert integration.supported
+    (found,) = integration.devices
+    assert (found.device_id, found.profile, found.name) == (device.ha_device_id, PROFILE["profile"], "Dummy WR")

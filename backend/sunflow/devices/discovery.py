@@ -211,6 +211,10 @@ def match_profile(
     return None
 
 
+# Pseudo integration of the devices Sunflow talks to itself (sunflow.direct); their model is the profile id
+DIRECT_DOMAIN = "sunflow_direct"
+
+
 def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[DiscoveredIntegration]:
     """Build the integration and device overview for the setup wizard."""
     energy_ids = energy_entity_ids(snapshot.energy_prefs)
@@ -232,7 +236,7 @@ def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[DiscoveredInte
         domain = entry["domain"]
         entry_entities = entities_by_entry.get(entry_id, [])
         in_energy = any(e["entity_id"] in energy_ids for e in entry_entities)
-        supported = domain in supported_domains
+        supported = domain in supported_domains or domain == DIRECT_DOMAIN
         if not supported and not in_energy:
             continue
 
@@ -264,13 +268,16 @@ def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[DiscoveredInte
             device_entities = entities_by_device[device["id"]]
             # Sub-devices such as battery modules are matched as part of their parent
             is_component = device.get("via_device_id") in entry_device_ids
-            profile_id = (
-                None
-                if is_component
-                else match_profile(
-                    library, domain, device, device_entities, entry_has_battery
+            if domain == DIRECT_DOMAIN:
+                profile_id = device.get("model") if device.get("model") in library.profiles else None
+            else:
+                profile_id = (
+                    None
+                    if is_component
+                    else match_profile(
+                        library, domain, device, device_entities, entry_has_battery
+                    )
                 )
-            )
             by_id[device["id"]] = DiscoveredDevice(
                 device_id=device["id"],
                 name=device.get("name_by_user") or device.get("name") or device["id"],
