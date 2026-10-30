@@ -18,6 +18,11 @@ const LOAD_QUALITY = {
   mixed: "teils nach Wochentag",
   default: "Standardwert",
 };
+// Chart window limits: statistics go back about a month, Solcast looks a week ahead
+const MAX_BACK_DAYS = 31;
+const MAX_AHEAD_DAYS = 7;
+// The plan never reaches further than this; beyond it only the PV forecast is shown
+const MAX_PLAN_HOURS = 48;
 // The plan is kept by the background runner; reloading only fetches it and the statistics
 const REFRESH_MS = 2 * 60 * 1000;
 // Remembered per browser; storage may be unavailable (private mode, previews)
@@ -101,6 +106,8 @@ class SunflowPlan extends LitElement {
     _error: { state: true },
     _history: { state: true },
     _historyHours: { state: true },
+    _shift: { state: true },
+    _pvAhead: { state: true },
     _focus: { state: true },
     _showTotal: { state: true },
     _historyError: { state: true },
@@ -113,7 +120,10 @@ class SunflowPlan extends LitElement {
     this._loading = false;
     this._error = null;
     this._history = null;
-    this._historyHours = 24;
+    // Width of the chart window; it starts a third of it in the past (shifted by _shift hours)
+    this._historyHours = 48;
+    this._shift = 0;
+    this._pvAhead = [];
     // Chosen axis maximum per chart; peaks otherwise squeeze everything else to the bottom
     this._scales = {};
     this._timer = null;
@@ -138,7 +148,8 @@ class SunflowPlan extends LitElement {
   async _load(fresh = false) {
     this._loading = true;
     // The measured history comes from Home Assistant's database; without it the plan still shows
-    const history = this._loadHistory(this._historyHours);
+    const history = this._loadHistory();
+    this._loadPvAhead();
     try {
       this._plan = await (fresh ? api.plan() : api.latestPlan());
       this._error = null;
@@ -236,13 +247,23 @@ class SunflowPlan extends LitElement {
       <section>
         <div class="section-head">
           <h2>Verlauf und Prognose</h2>
-          <div class="range" role="group" aria-label="Zeitraum zurück">
-            ${[24, 48, 168].map(
-              (h) => html`<button class=${this._historyHours === h ? "active" : ""} aria-pressed=${this._historyHours === h}
-                @click=${() => this._setHistoryHours(h)}>${h === 168 ? "7 Tage" : `${h} h`}</button>`,
-            )}
+          <div class="window-nav">
+            <div class="range" role="group" aria-label="Zeitraum">
+              ${[24, 48, 168].map(
+                (h) => html`<button class=${this._historyHours === h ? "active" : ""} aria-pressed=${this._historyHours === h}
+                  @click=${() => this._setHistoryHours(h)}>${h === 168 ? "7 Tage" : `${h} h`}</button>`,
+              )}
+            </div>
+            <div class="range" role="group" aria-label="Zeitraum verschieben">
+              <button ?disabled=${!this._canShift(-1)} aria-label="früher" @click=${() => this._shiftWindow(-1)}>‹</button>
+              <button class=${this._shift === 0 ? "active" : ""} @click=${() => this._shiftWindow(0)}>Jetzt</button>
+              <button ?disabled=${!this._canShift(1)} aria-label="später" @click=${() => this._shiftWindow(1)}>›</button>
+            </div>
           </div>
         </div>
+        <p class="small muted window-label">${dayTime.format(this._range.start)} – ${dayTime.format(this._range.end)}${this._range.end > new Date(slots.at(-1).end)
+          ? " · nach dem Planende nur die PV-Prognose"
+          : ""}</p>
         ${this._historyError
           ? html`<div class="alert warn">⚠ Gemessener Verlauf nicht abrufbar (${this._historyError})${this._history
               ? " – angezeigt wird der zuletzt geladene."
@@ -267,6 +288,7 @@ class SunflowPlan extends LitElement {
             formatY: (v) => formatValue(v, "Wh"),
             yMax: capacity * 1.05,
             now: nowDate,
+            range: this._range,
             limits: socLimits(plan.battery),
           },
         )}
@@ -320,7 +342,13 @@ class SunflowPlan extends LitElement {
               : hasLoadpoints
                 ? [{ key: "consumers", name: "Verbraucher gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
                 : []),
-            { key: "pv", name: "PV Prognose", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "pv_w") },
+            {
+              key: "pv",
+              name: "PV Prognose",
+              color: SERIES_COLORS[1],
+              dashed: true,
+              points: [...this._future(slots, "pv_w"), ...this._pvAhead.filter((p) => new Date(p.start) >= new Date(slots.at(-1).end))],
+            },
             ...(hasLoadpoints && this._showTotal
               ? [
                   { key: "total", name: "Gesamtverbrauch gemessen", color: UNASSIGNED_COLOR, points: this._past("load_w") },
@@ -342,6 +370,7 @@ class SunflowPlan extends LitElement {
             label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose",
             formatY: (v) => formatValue(v, "W"),
             now: nowDate,
+            range: this._range,
             ...this._scaling("power"),
           },
         )}
@@ -366,6 +395,7 @@ class SunflowPlan extends LitElement {
             label: "Netzbezug und Einspeisung, gemessen und erwartet",
             formatY: (v) => formatValue(v, "W"),
             now: nowDate,
+            range: this._range,
             ...this._scaling("grid"),
           },
         )}
@@ -559,21 +589,76 @@ class SunflowPlan extends LitElement {
     return slots.map((s) => ({ start: s.start, end: s.end, value: s[key] }));
   }
 
-  async _setHistoryHours(hours) {
-    this._historyHours = hours;
-    await this._loadHistory(hours);
+  /** The chart window: a third in the past, shifted by half windows. */
+  get _range() {
+    const hour = 3600_000;
+    const start = new Date(Date.now() - (this._historyHours / 3) * hour + this._shift * hour);
+    return { start, end: new Date(start.getTime() + this._historyHours * hour) };
   }
 
-  /** Keeps the last history on failure; the charts then show it with a hint. */
-  async _loadHistory(hours) {
+  _canShift(direction) {
+    const step = this._historyHours / 2;
+    const range = this._range;
+    const hour = 3600_000;
+    if (direction < 0) return range.start.getTime() - step * hour >= Date.now() - MAX_BACK_DAYS * 24 * hour;
+    return range.end.getTime() + step * hour <= Date.now() + MAX_AHEAD_DAYS * 24 * hour;
+  }
+
+  async _shiftWindow(direction) {
+    this._shift = direction === 0 ? 0 : this._shift + direction * (this._historyHours / 2);
+    await Promise.all([this._loadHistory(), this._loadPvAhead()]);
+  }
+
+  async _setHistoryHours(hours) {
+    this._historyHours = hours;
+    this._shift = 0;
+    await Promise.all([this._loadHistory(), this._loadPvAhead()]);
+  }
+
+  /** Measured values of the window's past part; keeps the last on failure (charts show it with a hint). */
+  async _loadHistory() {
+    const { start, end } = this._range;
+    const until = new Date(Math.min(end.getTime(), Date.now()));
+    const key = `${this._historyHours}/${this._shift}`;
+    if (until <= start) {
+      this._history = { points: [] };
+      return;
+    }
     try {
-      const history = await api.history(hours);
-      if (hours === this._historyHours) {
+      const hours = Math.ceil((until - start) / 3600_000);
+      const history = await api.history(hours, end.getTime() < Date.now() ? until : null);
+      if (key === `${this._historyHours}/${this._shift}`) {
         this._history = history;
         this._historyError = null;
       }
     } catch (err) {
-      if (hours === this._historyHours) this._historyError = err.message;
+      if (key === `${this._historyHours}/${this._shift}`) this._historyError = err.message;
+    }
+  }
+
+  /** PV forecast beyond the plan (prices end earlier than the forecast), with the learned correction. */
+  async _loadPvAhead() {
+    const end = this._range.end;
+    const hours = Math.ceil((end - Date.now()) / 3600_000);
+    if (hours <= MAX_PLAN_HOURS) {
+      this._pvAhead = [];
+      return;
+    }
+    try {
+      const data = await api.forecastSeries(Math.min(hours, MAX_AHEAD_DAYS * 24));
+      const factor = this._plan?.pv_correction?.overall ?? 1;
+      const sums = new Map();
+      for (const plane of data.planes) {
+        for (const p of plane.points) {
+          const entry = sums.get(p.start) ?? { start: p.start, end: p.end, value: 0 };
+          entry.value += p.power * factor;
+          sums.set(p.start, entry);
+        }
+      }
+      this._pvAhead = [...sums.values()].sort((a, b) => new Date(a.start) - new Date(b.start));
+    } catch {
+      // Optional: the charts end with the plan then
+      this._pvAhead = [];
     }
   }
 
@@ -615,6 +700,8 @@ class SunflowPlan extends LitElement {
     .chart .hit { fill: transparent; }
     .chart .hit:hover { fill: var(--sf-text); fill-opacity: 0.06; }
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
+    .window-nav { display: flex; flex-wrap: wrap; gap: 8px; }
+    .window-label { margin: 0 0 6px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
     .swatch.inline { display: inline-block; margin-right: 6px; vertical-align: -1px; }

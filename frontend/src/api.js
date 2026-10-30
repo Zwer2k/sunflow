@@ -92,7 +92,7 @@ export const api = {
   setForecast: (planes) => request("PUT", "/config/forecast", planes),
   tariffSeries: (entityId) =>
     request("GET", entityId ? `/tariff/series?entity_id=${encodeURIComponent(entityId)}` : "/tariff/series"),
-  forecastSeries: () => request("GET", "/forecast/series"),
+  forecastSeries: (hours = null) => request("GET", `/forecast/series${hours ? `?hours=${hours}` : ""}`),
   plan: () => request("GET", "/plan"),
   latestPlan: () => request("GET", "/plan/latest"),
   control: () => request("GET", "/control"),
@@ -129,7 +129,8 @@ export const api = {
   weatherEntities: () => request("GET", "/weather/entities"),
   energy: (period) => request("GET", `/energy?period=${encodeURIComponent(period)}`),
   efficiency: (configDeviceId) => request("GET", `/config/devices/${encodeURIComponent(configDeviceId)}/efficiency`),
-  history: (hours = 24) => request("GET", `/history?hours=${hours}`),
+  history: (hours = 24, end = null) =>
+    request("GET", `/history?hours=${hours}${end ? `&end=${encodeURIComponent(end.toISOString())}` : ""}`),
   shadow: (hours = 48) => request("GET", `/shadow?hours=${hours}`),
   setOptimizer: (settings) => request("PUT", "/config/optimizer", settings),
   costHistory: (days) => request("GET", `/costs/history?days=${days}`),
