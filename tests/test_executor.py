@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from sunflow.executor import (
+from sunflow.devices.executor import (
     EepromGuard,
     ExecutorError,
     PlannedCall,
@@ -14,7 +13,7 @@ from sunflow.executor import (
     plan_setup,
     render,
 )
-from sunflow.profiles import ProfileLibrary
+from sunflow.devices.profiles import ProfileLibrary
 
 KEYS = {
     "number": ["passive_mode_grid_power", "passive_mode_battery_power_min", "passive_mode_battery_power_max"],

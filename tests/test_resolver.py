@@ -3,10 +3,9 @@
 from typing import Any
 
 import pytest
-
-from sunflow.discovery import Snapshot
-from sunflow.profiles import ProfileLibrary
-from sunflow.resolver import RoleValue, check_balance, normalize, preview
+from sunflow.devices.discovery import Snapshot
+from sunflow.devices.profiles import ProfileLibrary
+from sunflow.devices.resolver import RoleValue, check_balance, normalize, preview
 
 SOFAR_STATES = {
     "battery_capacity_total": ("29", "%"),
@@ -128,7 +127,7 @@ def test_fine_keys_replace_coarse_total() -> None:
     """Per input values with finer resolution replace the coarse total, with their precision."""
     from types import SimpleNamespace
 
-    from sunflow.resolver import preview
+    from sunflow.devices.resolver import preview
 
     profile = {
         "roles": {

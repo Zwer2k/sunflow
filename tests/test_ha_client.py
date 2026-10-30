@@ -6,7 +6,6 @@ from typing import Any
 from aiohttp import WSMsgType, web
 from aiohttp.test_utils import TestServer
 import pytest
-
 from sunflow.ha import HAClient, HACommandError, HAError, RecorderUnavailable
 
 TOKEN = "secret"

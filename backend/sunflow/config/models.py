@@ -1,0 +1,335 @@
+"""The configuration: devices, tariff, forecast planes, planning and control settings."""
+
+from datetime import datetime
+from typing import Literal
+import uuid
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# Raised with every change that needs a migration step (see store.MIGRATIONS)
+CONFIG_VERSION = 2
+
+
+class RoleOverride(BaseModel):
+    """User deviation from a profile role (advanced mode)."""
+
+    entity_id: str | None = None
+    unit: str | None = None
+    sign: str | None = None
+
+
+class FeedIn(BaseModel):
+    """Feed-in remuneration of a PV plant."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    model: Literal["eeg_fixed", "solar_peak", "direct"] = "eeg_fixed"
+    rate_ct_per_kwh: float | None = None
+
+
+class MeasuredBy(BaseModel):
+    """Another device that also measures this device's output (e.g. as PV ext)."""
+
+    device_id: str
+    role: str
+
+
+class FlexSettings(BaseModel):
+    """How a flexible consumer (EV, heater, switchable load) should be planned."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    strategy: Literal["cost", "pv_only", "fast"] = "cost"
+    # Overrides the target from evcc (% for vehicles, °C for heaters)
+    target: float | None = None
+    # Daily time ("HH:MM") by which the need has to be met
+    ready_by: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    uses_battery: bool = True
+    # Price of the alternative heat source (district heating, gas) in ct per kWh of heat
+    alternative_cost_ct: float | None = None
+
+
+class Vehicle(BaseModel):
+    """A car that charges at one or more wallboxes; recognized by card, sensor or choice."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    name: str = Field(min_length=1)
+    capacity_wh: float = Field(gt=0)
+    charge_efficiency_pct: float = Field(default=90, ge=50, le=100)
+    # State of charge in % from the car's integration (e.g. MQTT)
+    soc_entity: str | None = None
+    # "on"/"home"/"connected" while the car is plugged in or at home (optional)
+    plugged_entity: str | None = None
+    # RFID card number of the charger (1..10 at the go-e)
+    card: int | None = Field(default=None, ge=1, le=10)
+    # Device ids of the wallboxes it may charge at
+    wallboxes: list[str] = Field(default_factory=list)
+    flex: FlexSettings = Field(default_factory=FlexSettings)
+
+
+class VehicleDetection(BaseModel):
+    """How a wallbox recognizes the connected vehicle; tried in this order."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    card: bool = True
+    manual: bool = True
+    sensor: bool = True
+    single: bool = True
+    # A card is required at the charger and the car was recognized surely without one
+    # (sensor of the car, choice in the app): Sunflow may start the transaction
+    authorize: bool = True
+
+
+class DeviceConfig(BaseModel):
+    """A device managed by Sunflow."""
+
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    ha_device_id: str
+    profile: str
+    profile_version: int
+    name: str
+    parameters: dict[str, float] = Field(default_factory=dict)
+    role_overrides: dict[str, RoleOverride] = Field(default_factory=dict)
+    feed_in: FeedIn | None = None
+    measured_by: MeasuredBy | None = None
+    test_passed_at: datetime | None = None
+    flex: FlexSettings = Field(default_factory=FlexSettings)
+    # Wallboxes with assigned vehicles
+    vehicle_detection: VehicleDetection = Field(default_factory=VehicleDetection)
+    # Loadpoints: a car or a heater; None: from the unit of its "SoC" (°C means heater)
+    kind: Literal["vehicle", "heater"] | None = None
+    # Battery modules (HA device ids) of an inverter's battery; None: its sub-devices in HA
+    battery_modules: list[str] | None = None
+
+
+class TariffConfig(BaseModel):
+    """Where the import price comes from: an entity, else a fixed price."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    import_entity_id: str | None = None
+    fixed_price_ct: float | None = None
+
+
+class ForecastPlane(BaseModel):
+    """A PV forecast plane assigned to a plant (Sunflow device id)."""
+
+    source: str
+    ref: str
+    name: str
+    device_id: str | None = None
+    # Set by the user; the detected name may be generic ("Solar production forecast")
+    custom_name: str | None = None
+    # Measured PV strings of this plane ("<device id>:<string>"), for learning per plane
+    strings: list[str] = Field(default_factory=list)
+    # Learning ignores older data, e.g. from before the modules were cleaned
+    learn_since: datetime | None = None
+
+    @property
+    def key(self) -> str:
+        """Stable id of the plane in stored data."""
+        return f"{self.source}:{self.ref}"
+
+    @property
+    def display_name(self) -> str:
+        """Return the user's name, else the detected one."""
+        return self.custom_name or self.name
+
+
+class WearCalculation(BaseModel):
+    """Battery wear from purchase price and the manufacturer's cycle rating."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    price_eur: float = Field(gt=0)
+    cycles: float = Field(gt=0)
+    capacity_kwh: float = Field(gt=0)
+    # Depth of discharge the cycle rating refers to
+    depth_of_discharge_pct: float = Field(default=90, gt=0, le=100)
+    # Remaining capacity at the end of the rated cycles; the capacity fades towards it
+    end_of_life_pct: float = Field(default=70, gt=0, le=100)
+
+    def ct_per_kwh(self) -> float:
+        """Price per kWh discharged over the battery's rated life."""
+        average_capacity = self.capacity_kwh * (1 + self.end_of_life_pct / 100) / 2
+        lifetime_kwh = self.cycles * average_capacity * self.depth_of_discharge_pct / 100
+        return self.price_eur * 100 / lifetime_kwh
+
+
+class OptimizerConfig(BaseModel):
+    """User settings for planning."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    wear_ct_per_kwh: float = 3.0
+    # When set, wear_ct_per_kwh is derived from it
+    wear_calculation: WearCalculation | None = None
+    allow_grid_charge: bool = True
+    strategy: Literal["balanced", "pv_absorption", "autarky"] = "balanced"
+    # Kept in the battery in every strategy; only an outage (EPS) may use it
+    backup_reserve: bool = False
+    backup_reserve_pct: float = Field(default=30.0, ge=0, le=100)
+    # Load forecast: average daily household consumption and the threshold above
+    # which hours count as large sporadic loads (e.g. EV charging) and are left out
+    daily_consumption_kwh: float | None = None
+    large_load_threshold_w: float | None = 3500.0
+    # Battery care: everyday charge limit and how often a full charge (balancing) is wanted
+    max_soc_pct: float = Field(default=100, ge=50, le=100)
+    full_charge_every_days: int | None = Field(default=None, ge=1, le=90)
+    # When PV did not fill the battery for this long, charge it full from the grid at the cheapest time
+    full_charge_grid_after_days: int | None = Field(default=None, ge=1, le=120)
+    # Adapt the PV forecast to this site from shadow data; weather entity for the cloud
+    # coverage (None: the first weather entity found)
+    pv_learning: bool = True
+    # How much to trust the PV forecast: expected value, or partly the pessimistic one
+    pv_risk: Literal["expected", "balanced", "cautious"] = "balanced"
+    # Grid friendly: keep export and import below these powers where it costs little
+    grid_friendly: bool = False
+    export_limit_w: float | None = Field(default=None, gt=0)
+    import_limit_w: float | None = Field(default=None, gt=0)
+    weather_entity: str | None = None
+
+    @model_validator(mode="after")
+    def _derive_wear(self) -> "OptimizerConfig":
+        if self.wear_calculation is not None:
+            self.wear_ct_per_kwh = round(self.wear_calculation.ct_per_kwh(), 2)
+        return self
+
+
+Strategy = Literal["balanced", "pv_absorption", "autarky"]
+# Position of the home battery in the priority list
+BATTERY_PRIORITY_ID = "battery"
+
+
+class DeviceOverride(BaseModel):
+    """Temporary change of a consumer's planning from the control tab."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    strategy: Literal["cost", "pv_only", "fast"] | None = None
+    target: float | None = None
+    paused: bool = False
+    # None: until reset
+    until: datetime | None = None
+
+    def active(self, now: datetime) -> bool:
+        """Return True while the override applies."""
+        return self.until is None or self.until > now
+
+
+class PriorityCondition(BaseModel):
+    """A consumer only gets PV or battery energy once another storage reached this level."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    # BATTERY_PRIORITY_ID or the id of a vehicle or hot water loadpoint
+    device_id: str
+    # % for battery and vehicles, °C for hot water tanks (name kept for stored configs)
+    min_pct: float = Field(ge=0, le=100)
+
+
+class StrategyOverride(BaseModel):
+    """Temporary battery strategy from the control tab."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    strategy: Strategy
+    until: datetime | None = None
+
+    def active(self, now: datetime) -> bool:
+        """Return True while the override applies."""
+        return self.until is None or self.until > now
+
+
+class ControlSettings(BaseModel):
+    """Whether Sunflow carries out its plan on the devices (off: planning only)."""
+
+    enabled: bool = False
+    # Per device id; a device is controlled only when both switches are on
+    devices: dict[str, bool] = Field(default_factory=dict)
+
+
+class SunflowConfig(BaseModel):
+    """The complete configuration."""
+
+    # Fields of a newer version survive a downgrade instead of being dropped on save
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+
+    version: int = CONFIG_VERSION
+    devices: list[DeviceConfig] = Field(default_factory=list)
+    tariff: TariffConfig = Field(default_factory=TariffConfig)
+    forecast_planes: list[ForecastPlane] = Field(default_factory=list)
+    optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
+    setup_completed: bool = False
+    overrides: dict[str, DeviceOverride] = Field(default_factory=dict)
+    strategy_override: StrategyOverride | None = None
+    # Device ids and BATTERY_PRIORITY_ID, highest priority first
+    priorities: list[str] = Field(default_factory=list)
+    # Recommendations hidden by the user, as "<id>#<fingerprint>"
+    dismissed_recommendations: list[str] = Field(default_factory=list)
+    # Measured quantity ("grid", "load") -> device id; missing means automatic
+    measurement_sources: dict[str, str] = Field(default_factory=dict)
+    # Per consumer id: all conditions must hold before it gets PV or battery energy
+    priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
+    control: ControlSettings = Field(default_factory=ControlSettings)
+    vehicles: list[Vehicle] = Field(default_factory=list)
+    # Switched off in the setup (e.g. a wallbox both as evcc loadpoint and directly): kept
+    # with all settings, but planning, measuring and control only see self.devices
+    disabled_devices: list[DeviceConfig] = Field(default_factory=list)
+    # Wallbox id -> vehicle chosen in the control tab (until the car is unplugged)
+    selected_vehicles: dict[str, str] = Field(default_factory=dict)
+
+    def vehicles_at(self, wallbox_id: str) -> list[Vehicle]:
+        """Vehicles that may charge at a wallbox."""
+        return [v for v in self.vehicles if wallbox_id in v.wallboxes]
+
+    def vehicle(self, vehicle_id: str) -> Vehicle | None:
+        """Return a vehicle by its id."""
+        return next((v for v in self.vehicles if v.id == vehicle_id), None)
+
+    def device(self, device_id: str) -> DeviceConfig | None:
+        """Return a configured device by its Sunflow id."""
+        return next((d for d in self.devices if d.id == device_id), None)
+
+    def effective_flex(self, device: DeviceConfig, now: datetime) -> tuple[FlexSettings, bool]:
+        """Return the planning settings with an active override applied, and whether it is paused."""
+        override = self.overrides.get(device.id)
+        if override is None or not override.active(now):
+            return device.flex, False
+        changes = {k: v for k, v in (("strategy", override.strategy), ("target", override.target)) if v is not None}
+        return device.flex.model_copy(update=changes), override.paused
+
+    def effective_strategy(self, now: datetime) -> Strategy:
+        """Return the battery strategy with an active override applied."""
+        if self.strategy_override is not None and self.strategy_override.active(now):
+            return self.strategy_override.strategy
+        return self.optimizer.strategy
+
+    def priority_order(self) -> list[str]:
+        """Return all flexible device ids and the battery in priority order (unlisted ones last)."""
+        known = [d.id for d in self.devices] + [BATTERY_PRIORITY_ID]
+        order = [i for i in self.priorities if i in known]
+        return order + [i for i in known if i not in order]
+
+    def ranked_above(self, device_id: str) -> set[str]:
+        """Ids of the entries with a higher priority than the given one."""
+        order = self.priority_order()
+        return set(order[: order.index(device_id)]) if device_id in order else set()
+
+    def valid_conditions(self, device_id: str) -> list[PriorityCondition]:
+        """Conditions that apply: those referring to entries ranked above the consumer.
+
+        The others stay stored (hidden) and apply again once their entry moves up.
+        """
+        above = self.ranked_above(device_id)
+        return [c for c in self.priority_conditions.get(device_id, []) if c.device_id in above]
+
+    def hidden_conditions(self, device_id: str) -> list[PriorityCondition]:
+        """Stored conditions that currently do not apply because their entry ranks lower."""
+        above = self.ranked_above(device_id)
+        return [c for c in self.priority_conditions.get(device_id, []) if c.device_id not in above]

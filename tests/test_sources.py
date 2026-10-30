@@ -5,8 +5,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-
-from sunflow.sources import (
+from sunflow.planning.sources import (
     detect_price_adapter,
     forecast_solar_planes,
     price_series,
@@ -182,7 +181,7 @@ def test_solcast() -> None:
 
 def test_forecast_solar_energy_belongs_to_interval_before_timestamp() -> None:
     """watt_hours_period ends at its timestamp: 160 Wh at 09:00 were produced 08:00-09:00."""
-    from sunflow.sources import period_end_points
+    from sunflow.planning.sources import period_end_points
 
     points = period_end_points(
         {

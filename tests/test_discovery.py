@@ -3,9 +3,8 @@
 from typing import Any
 
 import pytest
-
-from sunflow.discovery import Snapshot, discover, energy_entity_ids
-from sunflow.profiles import ProfileLibrary
+from sunflow.devices.discovery import Snapshot, discover, energy_entity_ids
+from sunflow.devices.profiles import ProfileLibrary
 
 SOFAR_KEYS = ["charger_use_mode", "passive_mode_battery_charge_discharge", "battery_capacity_total"]
 
@@ -105,8 +104,8 @@ def test_energy_entity_ids() -> None:
 )
 def test_display_name(name: str, strip: list[str], expected: str) -> None:
     """New devices get a readable name."""
-    from sunflow.api import display_name
-    from sunflow.discovery import DiscoveredDevice
+    from sunflow.api.common import display_name
+    from sunflow.devices.discovery import DiscoveredDevice
 
     device = DiscoveredDevice(
         device_id="d", name=name, manufacturer="Huawei", model="SUN2000-3KTL-L1", entity_count=1, profile="x/y"
@@ -118,7 +117,7 @@ def test_display_name(name: str, strip: list[str], expected: str) -> None:
 @pytest.mark.parametrize("model", ["Loadpoint Wallbox Carport [evcc]", "Ladepunkt Wallbox Carport [evcc]"])
 def test_evcc_loadpoint_in_any_language(library: ProfileLibrary, model: str) -> None:
     """evcc names devices in the HA language; English and German loadpoints match."""
-    from sunflow.discovery import match_profile
+    from sunflow.devices.discovery import match_profile
 
     device = {"id": "lp", "model": model}
     entities = [
@@ -135,7 +134,7 @@ async def test_snapshot_cache_shares_fetches() -> None:
     import asyncio
     from datetime import timedelta
 
-    from sunflow.discovery import SnapshotCache
+    from sunflow.devices.discovery import SnapshotCache
 
     calls: dict[str, int] = {}
 
@@ -178,8 +177,8 @@ async def test_snapshot_cache_bridges_short_gaps() -> None:
     """A briefly unknown value keeps its last valid state; a long outage shows up."""
     from datetime import UTC, datetime, timedelta
 
-    import sunflow.discovery as discovery
-    from sunflow.discovery import SnapshotCache
+    import sunflow.devices.discovery as discovery
+    from sunflow.devices.discovery import SnapshotCache
 
     answers = [
         [{"entity_id": "sensor.soc", "state": "55"}],

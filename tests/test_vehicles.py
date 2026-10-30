@@ -3,8 +3,8 @@
 from types import SimpleNamespace
 
 import pytest
-from sunflow.config_store import DeviceConfig, SunflowConfig, Vehicle, VehicleDetection
-from sunflow.vehicles import recognize, scanned_card
+from sunflow.config.models import DeviceConfig, SunflowConfig, Vehicle, VehicleDetection
+from sunflow.planning.vehicles import recognize, scanned_card
 
 FIAT = Vehicle(id="fiat", name="Fiat 500e", capacity_wh=37500, card=1, plugged_entity="binary_sensor.fiat_plugged", wallboxes=["wb"])
 TESLA = Vehicle(id="tesla", name="Model 3", capacity_wh=60000, card=2, plugged_entity="binary_sensor.tesla_plugged", wallboxes=["wb"])

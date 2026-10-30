@@ -5,11 +5,10 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
-from sunflow import runner as runner_module
 from sunflow.ha import HACommandError
-from sunflow.runner import ShadowRunner
-from sunflow.shadow import Sample, ShadowStore
+from sunflow.shadow import runner as runner_module
+from sunflow.shadow.runner import ShadowRunner
+from sunflow.shadow.store import Sample, ShadowStore
 
 
 async def test_sampling_goes_on_while_planning_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -71,8 +70,8 @@ def test_nowcast_carries_the_live_deviation_ahead() -> None:
     """Twice the forecast PV now: the next slots get more, fading out over the hours."""
     from datetime import UTC, datetime, timedelta
 
-    from sunflow.optimizer import SlotInput
-    from sunflow.plan import nowcast
+    from sunflow.planning.optimizer import SlotInput
+    from sunflow.planning.plan import nowcast
 
     start = datetime(2026, 10, 30, 11, tzinfo=UTC)
     inputs = [SlotInput(start=start + timedelta(minutes=15 * t), pv_w=2000, load_w=500, price=0.3, feed_in=0.08) for t in range(16)]
@@ -118,7 +117,7 @@ def test_early_replan_on_lasting_deviation(tmp_path: Path, pv: list[float], expe
 
 def test_risk_fades_where_measured_and_under_clear_sky() -> None:
     """The pessimistic share applies to cloudy hours ahead, not to now or a clear sky."""
-    from sunflow.plan import risk_shares
+    from sunflow.planning.plan import risk_shares
 
     shares = risk_shares(0.5, [80, 80, 5, None], [1.0, 0.0, 0.0, 0.5])
 

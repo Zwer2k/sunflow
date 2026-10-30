@@ -1,16 +1,16 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
-import { api } from "./api.js";
-import { confirmDialog } from "./dialog.js";
-import { poll } from "./poll.js";
-import "./picker.js";
-import "./live-view.js";
-import "./plan-view.js";
-import "./control-view.js";
-import "./analysis-view.js";
-import "./standards-view.js";
-import "./vehicles-view.js";
-import "./batteries-view.js";
-import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
+import { api } from "./lib/api.js";
+import { confirmDialog } from "./components/dialog.js";
+import { poll } from "./lib/poll.js";
+import "./components/picker.js";
+import "./views/live-view.js";
+import "./views/plan-view.js";
+import "./views/control-view.js";
+import "./views/analysis-view.js";
+import "./settings/standards-view.js";
+import "./settings/vehicles-view.js";
+import "./settings/batteries-view.js";
+import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./components/charts.js";
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -27,7 +27,7 @@ import {
   paramHint,
   paramLabel,
   toDisplay,
-} from "./format.js";
+} from "./lib/format.js";
 
 // Main menu: view, label, icon (24 px line icon)
 const VIEWS = [

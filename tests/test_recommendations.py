@@ -1,8 +1,8 @@
 """Tests for the recommendations derived from settings, plan and measured data."""
 
-from sunflow.config_store import DeviceConfig, FlexSettings, OptimizerConfig, SunflowConfig
-from sunflow.efficiency import EfficiencyEstimate
-from sunflow.recommendations import build
+from sunflow.analysis.efficiency import EfficiencyEstimate
+from sunflow.analysis.recommendations import build
+from sunflow.config.models import DeviceConfig, FlexSettings, SunflowConfig
 
 
 def _estimate(round_trip: float, conversion: float | None = None, standby: float | None = None) -> EfficiencyEstimate:
@@ -68,7 +68,7 @@ def test_consumer_usage_recommendations() -> None:
     """Measured use far from the settings is offered to take over."""
     from types import SimpleNamespace
 
-    from sunflow.habits import ConsumerUsage
+    from sunflow.planning.habits import ConsumerUsage
 
     config = SunflowConfig(devices=[
         DeviceConfig(id="bike", ha_device_id="manual:1", profile="generic/switch", profile_version=1, name="E-Bike",
