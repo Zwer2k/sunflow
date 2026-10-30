@@ -431,3 +431,42 @@ async def test_disabled_device_is_handed_back(tmp_path: Path) -> None:
 
     assert device.mode == "Self Use"
     assert TakeoverMarker(tmp_path).get() == {}
+
+
+@pytest.mark.parametrize(
+    ("buffer", "export", "planned", "expected"),
+    [
+        pytest.param(-200, 1500, True, -200, id="surplus-exported-anyway"),
+        pytest.param(-200, 0, True, 0, id="little-pv-regulates-to-zero"),
+        pytest.param(-200, 150, True, 0, id="export-smaller-than-buffer"),
+        pytest.param(-200, 1500, False, 0, id="no-current-plan"),
+        pytest.param(100, 0, True, 100, id="import-on-purpose-always"),
+    ],
+)
+def test_grid_buffer(buffer: float, export: float, planned: bool, expected: float) -> None:
+    """The feed-in buffer only costs nothing while the plan exports PV surplus anyway."""
+    from sunflow.control import grid_buffer
+
+    assert grid_buffer(buffer, SimpleNamespace(export_w=export), planned) == expected
+
+
+async def test_battery_window_gets_the_smart_grid_target(tmp_path: Path) -> None:
+    """The runtime grid target overrides the stored buffer in the written window."""
+    seen: list[dict] = []
+    device = FakeDevice()
+    base = device.access()
+
+    async def plan(action: str, runtime: dict) -> tuple:
+        seen.append(runtime)
+        return await base.plan(action, runtime)
+
+    access = DeviceAccess(plan=plan, run=base.run, ensure_mode=base.ensure_mode, set_mode=base.set_mode)
+    profile = SOFAR | {"parameters": {"grid_offset": {"unit": "W", "default": -200}}}
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: access, lambda: {"sofar": profile})
+    slot_plan = _plan("auto", None)
+    slot_plan.plan.slots[0].export_w = 0.0
+
+    await controller.tick(_config(), slot_plan, NOW, SNAPSHOT, NOW)
+
+    assert seen[-1]["grid_offset"] == 0
+    assert controller.statuses["bat"].grid_target_w == 0

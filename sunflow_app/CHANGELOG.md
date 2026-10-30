@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.42.0
+
+- Netz-Zielwert („Einspeise-Puffer“) wird jetzt nach Plan gesetzt: Ein negativer Puffer (z. B. −200 W) gilt nur in Viertelstunden, in denen der Plan ohnehin mehr einspeist (PV-Überschuss). Bei wenig PV, beim Halten, bei Autarkie und ohne aktuellen Plan regelt der Wechselrichter auf 0 W – so geht kein gespeicherter Strom ins Netz, der später teurer zurückgekauft wird. Ein positiver Wert (bewusst leichter Bezug) gilt immer.
+- „Sunflow steuert“ zeigt beim Speicher das aktuelle Netz-Ziel.
+
 ## 0.41.8
 
 - Kenndaten → Sofar: Der Netz-Zielwert („Passive Desired Grid Power“, bisher „Einspeise-Puffer“ und nur im Expertenmodus) ist jetzt immer sichtbar, mit Erklärung. Vorgabe −200 W.
