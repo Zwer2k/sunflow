@@ -21,6 +21,7 @@ class SunflowVehicles extends LitElement {
     _editId: { state: true },
     _error: { state: true },
     _busy: { state: true },
+    _openDetection: { state: true },
   };
 
   constructor() {
@@ -31,6 +32,7 @@ class SunflowVehicles extends LitElement {
     this._editId = null;
     this._error = null;
     this._busy = false;
+    this._openDetection = new Set();
   }
 
   connectedCallback() {
@@ -59,26 +61,36 @@ class SunflowVehicles extends LitElement {
           </div>
         </div>
         ${this._error ? html`<div class="alert error">${this._error}</div>` : nothing}
-        ${data.vehicles.map((v) => html`
-          <div class="item">
-            <div>
-              <strong>${v.name}</strong>
-              <div class="small muted">${toDisplay(v.capacity_wh / 1000, "kWh")} kWh${v.card ? ` · Karte ${v.card}` : ""}
-                · ${v.wallboxes.map((id) => data.wallboxes.find((w) => w.id === id)?.name ?? "?").join(", ") || "keiner Wallbox zugeordnet"}
-                ${v.soc_entity ? html`· Ladestand ${v.soc_entity}` : html`· <span class="warn-text">kein Ladestand-Sensor</span>`}</div>
-            </div>
-            <div class="item-actions">
-              <button class="link" @click=${() => this._edit(v)}>Bearbeiten</button>
-              <button class="link danger" @click=${() => this._remove(v)}>Entfernen</button>
-            </div>
-          </div>`)}
-        ${this._form ? this._renderForm(data) : html`<div><button class="secondary" @click=${() => this._edit(null)}>Fahrzeug hinzufügen …</button></div>`}
+        ${data.vehicles.map((v) => {
+          const open = this._form !== null && this._editId === v.id;
+          return html`
+            <div class="sub ${open ? "" : "compact"}">
+              <button class="device-toggle" aria-expanded=${open} @click=${() => (open ? this._cancel() : this._edit(v))}>
+                <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
+                <span>
+                  <strong>${v.name}</strong>
+                  <span class="small muted block">${toDisplay(v.capacity_wh / 1000, "kWh")} kWh${v.card ? ` · Karte ${v.card}` : ""}
+                    · ${v.wallboxes.map((id) => data.wallboxes.find((w) => w.id === id)?.name ?? "?").join(", ") || "keiner Wallbox zugeordnet"}</span>
+                </span>
+              </button>
+              ${v.soc_entity ? nothing : html`<span class="small warn-text">kein Ladestand-Sensor</span>`}
+              ${open ? this._renderForm(data, v) : nothing}
+            </div>`;
+        })}
+        ${this._form !== null && this._editId === null
+          ? html`<div class="sub">${this._renderForm(data, null)}</div>`
+          : html`<div><button class="secondary" @click=${() => this._edit(null)}>Fahrzeug hinzufügen …</button></div>`}
         ${data.vehicles.length ? data.wallboxes.map((w) => this._renderDetection(w)) : nothing}
       </section>
     `;
   }
 
-  _renderForm(data) {
+  _cancel() {
+    this._form = null;
+    this._editId = null;
+  }
+
+  _renderForm(data, vehicle) {
     const form = this._form;
     const set = (field, value) => (this._form = { ...this._form, [field]: value });
     const options = (list, detail) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: detail(c) }));
@@ -137,7 +149,8 @@ class SunflowVehicles extends LitElement {
         </div>
         <div class="actions">
           <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>Speichern</button>
-          <button class="secondary" @click=${() => (this._form = null)}>Abbrechen</button>
+          <button class="secondary" @click=${() => this._cancel()}>Abbrechen</button>
+          ${vehicle ? html`<span class="spacer"></span><button class="link danger" @click=${() => this._remove(vehicle)}>Entfernen</button>` : nothing}
         </div>
       </div>
     `;
@@ -146,9 +159,31 @@ class SunflowVehicles extends LitElement {
   _renderDetection(wallbox) {
     const d = wallbox.detection;
     const set = (field, value) => this._saveDetection(wallbox, { ...d, [field]: value });
+    const open = this._openDetection.has(wallbox.id);
+    const toggle = () => {
+      const next = new Set(this._openDetection);
+      if (open) next.delete(wallbox.id);
+      else next.add(wallbox.id);
+      this._openDetection = next;
+    };
+    const methods = DETECTION.filter(([key]) => d[key] && (key !== "card" || wallbox.cards)).map(([, label]) => label);
+    if (!open) {
+      return html`
+        <div class="detection">
+          <button class="device-toggle" aria-expanded="false" @click=${toggle}>
+            <span class="caret" aria-hidden="true">▸</span>
+            <span><strong>Erkennung an ${wallbox.name}</strong>
+              <span class="small muted block">${methods.join(" · ") || "aus"}${wallbox.cards && d.authorize ? " · gibt ohne Karte frei" : ""}</span></span>
+          </button>
+        </div>`;
+    }
     return html`
       <div class="detection">
-        <div class="field-label">${wallbox.name}: Fahrzeug erkennen über</div>
+        <button class="device-toggle" aria-expanded="true" @click=${toggle}>
+          <span class="caret" aria-hidden="true">▾</span>
+          <span><strong>Erkennung an ${wallbox.name}</strong></span>
+        </button>
+        <div class="field-label">Fahrzeug erkennen über</div>
         <div class="checks">
           ${DETECTION.filter(([key]) => key !== "card" || wallbox.cards).map(([key, label, hint]) => html`
             <label class="inline" title=${hint}>
@@ -210,7 +245,7 @@ class SunflowVehicles extends LitElement {
       ? this._data.vehicles.map((v) => (v.id === previous.id ? vehicle : v))
       : [...this._data.vehicles, vehicle];
     await this._store(vehicles);
-    if (!this._error) this._form = null;
+    if (!this._error) this._cancel();
   }
 
   async _remove(vehicle) {
@@ -247,8 +282,11 @@ class SunflowVehicles extends LitElement {
     .small { font-size: 13px; }
     .device { border: 1px solid var(--sf-border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
     .device-title { font-weight: 600; font-size: 16px; }
-    .item { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
-    .item-actions { display: flex; gap: 12px; }
+    .sub { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--sf-border); border-radius: 8px; padding: 12px 14px; }
+    .device-toggle { display: flex; gap: 8px; align-items: flex-start; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; font-size: 14px; }
+    .caret { width: 14px; color: var(--sf-muted); line-height: 20px; }
+    .block { display: block; }
+    .spacer { flex: 1; }
     .editor { display: flex; flex-direction: column; gap: 14px; padding: 14px; background: var(--sf-subtle); border-radius: 8px; }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
