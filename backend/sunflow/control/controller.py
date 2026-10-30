@@ -48,6 +48,10 @@ MIN_CHARGE_W = 100.0
 # Share of the maximum power below which a loadpoint follows the surplus (evcc itself, a
 # charger with current setpoint every minute)
 FOLLOW_BELOW = 0.9
+# A power step this much above the planned power still counts as fitting
+STEP_TOLERANCE_W = 50.0
+# An on/off consumer runs when at least this share of its power is planned
+SWITCH_ON_SHARE = 0.5
 # Grid import tolerated while following the surplus (regulation lag)
 GRID_MARGIN_W = 300.0
 # Already charging, it keeps the minimum current down to this share of it
@@ -137,7 +141,9 @@ def charge_current(power: float, params: dict[str, float]) -> int:
     return int(min(max(amps, params.get("min_current_a") or 6), params.get("max_current_a") or 16))
 
 
-def follow_surplus(planned: float, planned_pv: float, live: Any, charging: bool, params: dict[str, float]) -> float | None:
+def follow_surplus(
+    planned: float, planned_pv: float, live: Any, charging: bool, params: dict[str, float], minimum: float | None = None
+) -> float | None:
     """Power for a slot charged (partly) from PV: the plan corrected by the PV actually there.
 
     More PV than forecast goes to the car, less is taken from it; grid import above a
@@ -149,10 +155,22 @@ def follow_surplus(planned: float, planned_pv: float, live: Any, charging: bool,
     power = planned + live.pv_w - planned_pv
     if (live.grid_w or 0) > GRID_MARGIN_W:
         power -= live.grid_w - GRID_MARGIN_W
-    minimum = (params.get("min_current_a") or 6) * VOLTS * (params.get("phases") or 3)
+    if minimum is None:
+        minimum = (params.get("min_current_a") or 6) * VOLTS * (params.get("phases") or 3)
     if power >= minimum:
         return power
     return minimum if charging and power >= minimum * KEEP_CHARGING_SHARE else None
+
+
+def choose_step(steps: dict[str, float], power: float) -> str | None:
+    """The largest power step that fits into the power, None if not even the smallest does."""
+    fitting = [(watts, option) for option, watts in steps.items() if 0 < watts <= power + STEP_TOLERANCE_W]
+    return max(fitting)[1] if fitting else None
+
+
+def off_step(steps: dict[str, float]) -> str | None:
+    """The option that switches a stepped consumer off."""
+    return next((option for option, watts in steps.items() if watts <= 0), None)
 
 
 def evcc_controls_battery(snapshot: Snapshot) -> bool:
@@ -292,7 +310,10 @@ def device_access(client: HAClient, profile: dict[str, Any], device: DeviceConfi
         snapshot = await fetch_snapshot(client)
         entities = device_entities(snapshot, device.ha_device_id)
         if charging:
-            return plan_charge(profile, action, device.parameters, device_variables(profile, device, snapshot) | runtime, entities), snapshot.states
+            # Own consumers have no HA device: their steps address the entities chosen per role
+            bound = {k: o.entity_id for k, o in device.role_overrides.items() if o.entity_id}
+            variables = device_variables(profile, device, snapshot) | runtime
+            return plan_charge(profile, action, device.parameters, variables, entities, bound), snapshot.states
         _, calls = plan_action(profile, action, device.parameters, runtime, entities)
         return calls, snapshot.states
 
@@ -455,18 +476,34 @@ class PlanController:
             profile = self._profiles()[device.profile]
             defaults = {n: spec["default"] for n, spec in profile.get("parameters", {}).items() if "default" in spec}
             params = defaults | device.parameters
-            partial = action == "charge" and power < FOLLOW_BELOW * (params.get("max_power") or 0)
-            if partial and "follow" in profile["charge_control"]:
+            steps = device.power_steps or {}
+            # A switch without power steps or a current setpoint: the consumer is either on or off
+            roles = profile.get("roles", {})
+            binary = not steps and "switch" in roles and "current" not in roles
+            max_power = params.get("max_power") or 0
+            partial = action == "charge" and power < FOLLOW_BELOW * max_power
+            if binary:
+                if action == "charge" and power < SWITCH_ON_SHARE * max_power:
+                    action, reason = "stop", "nach Plan: zu wenig für die volle Leistung"
+            elif partial and "follow" in profile["charge_control"]:
                 # Without a current setpoint (evcc) the device follows the surplus itself
                 action = "follow"
             elif partial:
                 slot = current_slot(plan, now)
-                followed = follow_surplus(power, getattr(slot, "pv_w", 0.0), live, status.action == "charge", params)
+                smallest = min((w for w in steps.values() if w > 0), default=None) if steps else None
+                followed = follow_surplus(power, getattr(slot, "pv_w", 0.0), live, status.action == "charge", params, smallest)
                 if followed is None:
-                    action, reason = "stop", "zu wenig PV-Überschuss für den Mindeststrom"
+                    action, reason = "stop", "zu wenig PV-Überschuss für die kleinste Leistung"
                 else:
                     power, reason = followed, "folgt dem PV-Überschuss"
-            runtime = {"current_a": charge_current(power, params)} if action == "charge" else {}
+            runtime: dict[str, Any] = {"current_a": charge_current(power, params)} if action == "charge" else {}
+            if steps:
+                runtime["off_option"] = off_step(steps) or ""
+                if action == "charge":
+                    if (option := choose_step(steps, power)) is None:
+                        action, reason = "stop", "geplante Leistung unter der kleinsten Stufe"
+                    else:
+                        runtime["step_option"] = option
             unchanged = (
                 action == "charge"
                 and runtime["current_a"] == status.current_a

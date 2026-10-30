@@ -2,6 +2,7 @@
 
 from contextlib import suppress
 from dataclasses import asdict
+import re
 from typing import Any, Literal
 import uuid
 
@@ -188,19 +189,81 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
 
 
 class ManualDevice(BaseModel):
-    """A switchable consumer added by hand (Shelly, ESPHome, smart plug ...)."""
+    """A consumer added by hand: switched (Shelly …), in power steps (select) or by current (number)."""
 
     name: str
-    switch_entity: str
+    type: Literal["switch", "stepped", "current"] = "switch"
+    switch_entity: str | None = None
+    level_entity: str | None = None
+    current_entity: str | None = None
     power_entity: str | None = None
-    max_power: FiniteFloat = Field(default=500, gt=0, le=100_000)
+    energy_entity: str | None = None
+    # A heating rod in a tank: temperature, volume, and it counts as "heat"
+    kind: Literal["load", "heater"] = "load"
+    temperature_entity: str | None = None
+    tank_l: FiniteFloat | None = Field(default=None, gt=0, le=100_000)
+    max_power: FiniteFloat | None = Field(default=None, gt=0, le=100_000)
     daily_energy_wh: FiniteFloat | None = Field(default=None, ge=0)
+    # Stepped: option -> watts; None reads them from the option names ("0,7kW")
+    power_steps: dict[str, FiniteFloat] | None = None
 
 
-MANUAL_PROFILE = "generic/switch"
-
-
+MANUAL_PROFILES = {"switch": "generic/switch", "stepped": "generic/stepped", "current": "generic/current"}
+MANUAL_PROFILE = MANUAL_PROFILES["switch"]
 SWITCH_DOMAINS = ("switch.", "input_boolean.")
+SELECT_DOMAINS = ("select.", "input_select.")
+NUMBER_DOMAINS = ("number.", "input_number.")
+STEP_POWER = re.compile(r"(\d+(?:[.,]\d+)?)\s*(kw|w)\b", re.IGNORECASE)
+OFF_OPTIONS = {"off", "aus", "0", "none", "stop"}
+
+
+def power_steps_from_options(options: list[str]) -> dict[str, float]:
+    """Watts per option from its name ("0,7kW" -> 700, "off" -> 0); options without a power are left out."""
+    steps = {}
+    for option in options:
+        if option.strip().lower() in OFF_OPTIONS:
+            steps[option] = 0.0
+        elif match := STEP_POWER.search(option):
+            value = float(match[1].replace(",", "."))
+            steps[option] = value * 1000 if match[2].lower() == "kw" else value
+    return steps
+
+
+def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, RoleOverride], dict[str, float], dict[str, float] | None]:
+    """Role bindings, parameters and power steps of a consumer added by hand; 422 on missing or wrong entities."""
+    controls = {
+        "switch": ("switch", body.switch_entity, SWITCH_DOMAINS, "Schalter (switch oder input_boolean)"),
+        "stepped": ("level", body.level_entity, SELECT_DOMAINS, "Auswahl der Leistungsstufe (select)"),
+        "current": ("current", body.current_entity, NUMBER_DOMAINS, "Stromstärke (number)"),
+    }
+    role, entity, domains, label = controls[body.type]
+    if not entity or not entity.startswith(domains):
+        raise HTTPException(status_code=422, detail=f"Bitte {label} wählen")
+    overrides = {role: RoleOverride(entity_id=entity)}
+    if body.type == "current" and body.switch_entity:
+        if not body.switch_entity.startswith(SWITCH_DOMAINS):
+            raise HTTPException(status_code=422, detail="Der Schalter muss ein switch oder input_boolean sein")
+        overrides["switch"] = RoleOverride(entity_id=body.switch_entity)
+    for role_name, value in (("power", body.power_entity), ("energy", body.energy_entity), ("temperature", body.temperature_entity)):
+        if value:
+            overrides[role_name] = RoleOverride(entity_id=value)
+    if body.kind == "heater" and (not body.temperature_entity or not body.tank_l):
+        raise HTTPException(status_code=422, detail="Für Wärme bitte Temperatursensor und Speichervolumen angeben")
+    steps = None
+    if body.type == "stepped":
+        options = snapshot.states.get(entity, {}).get("attributes", {}).get("options") or []
+        steps = body.power_steps or power_steps_from_options(options)
+        if not any(w > 0 for w in steps.values()) or not any(w <= 0 for w in steps.values()):
+            raise HTTPException(status_code=422, detail="Leistungsstufen und eine Stufe „aus“ angeben")
+    parameters: dict[str, float] = {}
+    max_power = body.max_power or (max(steps.values()) if steps else None)
+    if max_power:
+        parameters["max_power"] = max_power
+    if body.daily_energy_wh is not None:
+        parameters["daily_energy_wh"] = body.daily_energy_wh
+    if body.kind == "heater" and body.tank_l:
+        parameters["tank_l"] = body.tank_l
+    return overrides, parameters, steps
 
 
 @router.get("/entities/candidates")
@@ -208,6 +271,7 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
     """Entities that can switch a consumer, power sensors to measure it and % sensors (vehicle SoC)."""
     snapshot = await _snapshot(request)
     switches, power, percent, presence = [], [], [], []
+    selects, numbers, temperature, energy = [], [], [], []
     for entity_id, state in sorted(snapshot.states.items()):
         attributes = state.get("attributes", {})
         item = {
@@ -225,32 +289,47 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
         if entity_id.startswith(("binary_sensor.", "device_tracker.")):
             # "Plugged in" or "at home" of a car
             presence.append(item)
-    return {"switches": switches, "power": power, "percent": percent, "presence": presence}
+        if entity_id.startswith(SELECT_DOMAINS):
+            selects.append(item | {"options": attributes.get("options") or []})
+        elif entity_id.startswith(NUMBER_DOMAINS):
+            numbers.append(item)
+        elif entity_id.startswith("sensor.") and (
+            attributes.get("device_class") == "temperature" or attributes.get("unit_of_measurement") in ("°C", "°F")
+        ):
+            temperature.append(item)
+        elif entity_id.startswith("sensor.") and attributes.get("device_class") == "energy":
+            energy.append(item)
+    return {
+        "switches": switches,
+        "power": power,
+        "percent": percent,
+        "presence": presence,
+        "selects": selects,
+        "numbers": numbers,
+        "temperature": temperature,
+        "energy": energy,
+    }
 
 
 @router.post("/config/devices/manual")
 async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, Any]:
-    """Add a switchable consumer that is not found by discovery."""
+    """Add a consumer that is not found by discovery."""
     library = _library(request)
-    if MANUAL_PROFILE not in library.profiles:
+    profile_id = MANUAL_PROFILES[body.type]
+    if profile_id not in library.profiles:
         raise HTTPException(status_code=500, detail="Generic profile missing")
-    if not body.switch_entity.startswith(SWITCH_DOMAINS):
-        raise HTTPException(status_code=422, detail="Switch entity must be a switch or input_boolean")
+    overrides, parameters, steps = _manual_setup(body, await _snapshot(request))
     store: ConfigStore = request.app.state.store
     config = store.load()
-    overrides = {"switch": RoleOverride(entity_id=body.switch_entity)}
-    if body.power_entity:
-        overrides["power"] = RoleOverride(entity_id=body.power_entity)
-    parameters = {"max_power": body.max_power}
-    if body.daily_energy_wh is not None:
-        parameters["daily_energy_wh"] = body.daily_energy_wh
     device = DeviceConfig(
         ha_device_id=f"manual:{uuid.uuid4().hex}",
-        profile=MANUAL_PROFILE,
-        profile_version=library.profiles[MANUAL_PROFILE]["version"],
-        name=body.name.strip() or body.switch_entity,
+        profile=profile_id,
+        profile_version=library.profiles[profile_id]["version"],
+        name=body.name.strip() or next(o.entity_id for o in overrides.values()),
         parameters=parameters,
         role_overrides=overrides,
+        kind="heater" if body.kind == "heater" else None,
+        power_steps=steps,
     )
     config.devices.append(device)
     store.save(config)
@@ -260,22 +339,23 @@ async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, A
 
 @router.put("/config/devices/manual/{device_id}")
 async def update_manual_device(request: Request, device_id: str, body: ManualDevice) -> dict[str, Any]:
-    """Change name, entities, power and daily energy of a consumer added by hand."""
-    if not body.switch_entity.startswith(SWITCH_DOMAINS):
-        raise HTTPException(status_code=422, detail="Switch entity must be a switch or input_boolean")
+    """Change how a consumer added by hand is switched, measured and what it heats."""
+    library = _library(request)
+    overrides, parameters, steps = _manual_setup(body, await _snapshot(request))
     store: ConfigStore = request.app.state.store
     config = store.load()
-    if (device := config.device(device_id)) is None or device.profile != MANUAL_PROFILE:
+    if (device := config.device(device_id)) is None or device.profile not in MANUAL_PROFILES.values():
         raise HTTPException(status_code=404, detail="Manual device not configured")
-    device.name = body.name.strip() or body.switch_entity
-    device.role_overrides = {"switch": RoleOverride(entity_id=body.switch_entity)}
-    if body.power_entity:
-        device.role_overrides["power"] = RoleOverride(entity_id=body.power_entity)
-    device.parameters["max_power"] = body.max_power
-    if body.daily_energy_wh is None:
-        device.parameters.pop("daily_energy_wh", None)
-    else:
-        device.parameters["daily_energy_wh"] = body.daily_energy_wh
+    device.profile = MANUAL_PROFILES[body.type]
+    device.profile_version = library.profiles[device.profile]["version"]
+    device.name = body.name.strip() or device.name
+    device.role_overrides = overrides
+    # Learned or entered values of the device stay, the setup values are replaced
+    for name in ("max_power", "daily_energy_wh", "tank_l"):
+        device.parameters.pop(name, None)
+    device.parameters.update(parameters)
+    device.kind = "heater" if body.kind == "heater" else None
+    device.power_steps = steps
     store.save(config)
     _replan(request)
     return device_with_relations(config, device)

@@ -60,3 +60,19 @@ def test_consumer_usage_from_power_means() -> None:
     # 2 h x 250 W plus 22 h x 1 W standby
     assert round(usage.daily_wh) == 500 + 22
     assert usage_from(means[:288 * 2]) is None  # two days are too few
+
+
+def test_usage_from_energy_counter() -> None:
+    """A consumer with only an energy counter still gets its daily energy."""
+    from datetime import UTC, datetime, timedelta
+
+    from sunflow.planning.habits import usage_from_energy
+
+    start = datetime(2026, 10, 20, tzinfo=UTC)
+    changes = [(start + timedelta(hours=h), 50.0) for h in range(24 * 4)]
+
+    usage = usage_from_energy(changes)
+
+    assert usage.daily_wh == 1200
+    assert usage.running_w is None
+    assert usage_from_energy(changes[:24]) is None

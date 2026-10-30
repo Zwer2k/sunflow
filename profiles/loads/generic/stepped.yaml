@@ -1,0 +1,26 @@
+# A consumer with fixed power steps chosen by a select (e.g. an ESPHome heating rod
+# "off / 0,7kW / 1,4kW / 2,1kW / 2,8kW"), added by hand. The watts of each option are
+# kept with the device (read from the option names, editable).
+profile: generic/stepped
+version: 1
+match:
+  integration: manual
+
+capabilities: [load]
+
+roles:
+  level: {key: manual_level}
+  power: {key: manual_power, unit: W, optional: true}
+  energy: {key: manual_energy, unit: Wh, optional: true}
+  temperature: {key: manual_temperature, unit: "°C", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 2800, min: 0}
+  daily_energy_wh: {unit: Wh, min: 0}
+  tank_l: {unit: L, min: 0, kind: heater}
+
+charge_control:
+  charge:
+    - select: {role: level, option: "{{ step_option }}", write: if_differs}
+  stop:
+    - select: {role: level, option: "{{ off_option }}", write: if_differs}

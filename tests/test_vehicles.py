@@ -98,3 +98,32 @@ def test_flex_loads_plan_the_recognized_vehicle(library) -> None:
     assert (info.vehicle, info.vehicle_method, info.current, info.target) == ("Fiat", "single", 40.0, 80.0)
     # 40 % of 37.5 kWh at 90 % charging efficiency
     assert loads[0].energy_wh == pytest.approx(0.4 * 37500 / 0.9)
+
+
+def test_flex_loads_plan_an_own_heating_rod(library) -> None:
+    """A heating rod added by hand: its need comes from the tank temperature and volume."""
+    from datetime import UTC, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from sunflow.config.models import RoleOverride
+    from sunflow.devices.discovery import Snapshot
+    from sunflow.planning.plan import WATER_WH_PER_LITRE_KELVIN, flex_loads
+
+    states = {
+        "select.heizstab": {"state": "off", "attributes": {"options": ["off", "2,8kW"]}},
+        "sensor.speicher_oben": {"state": "45", "attributes": {"unit_of_measurement": "°C"}},
+    }
+    snapshot = Snapshot(entries=[], devices=[], entities=[], states=states, energy_prefs=None)
+    rod = DeviceConfig(
+        id="ww", ha_device_id="manual:ww", profile="generic/stepped", profile_version=1, name="Warmwasser",
+        kind="heater", power_steps={"off": 0, "2,8kW": 2800}, parameters={"max_power": 2800, "tank_l": 300},
+        role_overrides={"level": RoleOverride(entity_id="select.heizstab"), "temperature": RoleOverride(entity_id="sensor.speicher_oben")},
+    )
+    start = datetime(2026, 10, 30, 12, tzinfo=UTC)
+
+    loads, infos, _, _ = flex_loads(SunflowConfig(devices=[rod]), library.profiles, snapshot,
+                                     [start + timedelta(minutes=15 * i) for i in range(96)], ZoneInfo("Europe/Berlin"))
+
+    (info,) = infos
+    assert (info.kind, info.current, info.target) == ("heater", 45.0, 60.0)
+    assert loads[0].energy_wh == pytest.approx(15 * 300 * WATER_WH_PER_LITRE_KELVIN)

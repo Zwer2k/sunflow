@@ -62,6 +62,12 @@ def test_manual_device_and_flex_settings(tmp_path: Path) -> None:
     app = create_app()
     app.state.store = ConfigStore(tmp_path)
     app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    from types import SimpleNamespace
+
+    async def snapshot(fresh: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(states={}, entities=[], devices=[])
+
+    app.state.snapshots = SimpleNamespace(get=snapshot)
     client = TestClient(app)
 
     response = client.post(
@@ -586,3 +592,49 @@ def test_loadpoint_kind_sets_the_category(tmp_path: Path) -> None:
     assert client.put("/api/v1/config/devices/ww/kind", json={"kind": "heater"}).status_code == 200
     assert client.get("/api/v1/config/categories").json()["ww"] == "heat"
     assert client.put("/api/v1/config/devices/bat/kind", json={"kind": "heater"}).status_code == 404
+
+
+def test_manual_heating_rod_in_power_steps(tmp_path: Path) -> None:
+    """An ESPHome heating rod with a select of power steps becomes a stepped heat consumer."""
+    from types import SimpleNamespace
+
+    from sunflow.api.devices import power_steps_from_options
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
+
+    options = ["off", "0,7kW", "1,4kW", "2,1kW", "2,8kW"]
+    assert power_steps_from_options(options) == {"off": 0, "0,7kW": 700, "1,4kW": 1400, "2,1kW": 2100, "2,8kW": 2800}
+
+    repo = Path(__file__).resolve().parents[1]
+    store = ConfigStore(tmp_path)
+    app = create_app()
+    app.state.store = store
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: None})()
+
+    async def snapshot(fresh: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(states={"select.heizstab": {"state": "off", "attributes": {"options": options}}}, entities=[], devices=[])
+
+    app.state.snapshots = SimpleNamespace(get=snapshot)
+    client = TestClient(app)
+    body = {
+        "name": "Warmwasser",
+        "type": "stepped",
+        "level_entity": "select.heizstab",
+        "power_entity": "sensor.heizstab_leistung",
+        "energy_entity": "sensor.heizstab_verbrauch",
+        "kind": "heater",
+        "temperature_entity": "sensor.speicher_oben",
+        "tank_l": 300,
+    }
+
+    # Heat needs a temperature and the tank volume
+    assert client.post("/api/v1/config/devices/manual", json=body | {"tank_l": None}).status_code == 422
+    device = client.post("/api/v1/config/devices/manual", json=body).json()
+
+    assert device["profile"] == "generic/stepped"
+    assert device["kind"] == "heater"
+    assert device["power_steps"]["2,8kW"] == 2800
+    assert device["parameters"] == {"max_power": 2800, "tank_l": 300}
+    assert set(device["role_overrides"]) == {"level", "power", "energy", "temperature"}
+    assert client.get("/api/v1/config/categories").json() == {device["id"]: "heat"}

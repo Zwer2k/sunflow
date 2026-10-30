@@ -215,6 +215,8 @@
       "type": "object",
       "properties": {
         "key": {"type": "string"},
+        "role": {"description": "Entity of this role instead of a key (devices whose entities the user chose).", "type": "string"},
+        "optional": {"description": "With role: leave the step out when the role is not bound.", "type": "boolean"},
         "storage": {"$ref": "#/$defs/storage"},
         "write": {"enum": ["always", "if_differs"]},
         "readback": {"type": "string"}
@@ -229,7 +231,7 @@
           "allOf": [
             {"$ref": "#/$defs/step_options"},
             {
-              "required": ["key", "value"],
+              "required": ["value"],
               "properties": {
                 "value": {"type": ["number", "string"]},
                 "min": {"type": "number"},
@@ -242,13 +244,13 @@
         "select": {
           "allOf": [
             {"$ref": "#/$defs/step_options"},
-            {"required": ["key", "option"], "properties": {"option": {"type": "string"}}}
+            {"required": ["option"], "properties": {"option": {"type": "string"}}}
           ]
         },
         "switch": {
           "allOf": [
             {"$ref": "#/$defs/step_options"},
-            {"required": ["key", "state"], "properties": {"state": {"enum": ["on", "off"]}}}
+            {"required": ["state"], "properties": {"state": {"enum": ["on", "off"]}}}
           ]
         },
         "press": {
