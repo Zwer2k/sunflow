@@ -11,6 +11,8 @@ import "./vehicles-view.js";
 import "./batteries-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import {
+  CATEGORIES,
+  CATEGORY_LABELS,
   devicePurpose,
   formatSigned,
   formatValue,
@@ -40,17 +42,7 @@ const EMBEDDED = window.self !== window.top || window.location.pathname.includes
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const ADVANCED_KEY = "sunflow.advanced";
 
-// Groups on the devices page, in this order
-const CATEGORIES = [
-  ["inverter", "Wechselrichter"],
-  ["battery", "Speicher"],
-  ["meter", "Zähler"],
-  ["wallbox", "Wallboxen und Fahrzeuge"],
-  ["heat", "Wärme"],
-  ["load", "Verbraucher"],
-];
-
-/** Category of a discovered device; a loadpoint measuring a temperature is a heater. */
+/** Category of a discovered device not taken over yet; a loadpoint measuring a temperature is a heater. */
 function deviceCategory(device, preview) {
   const caps = device.capabilities ?? [];
   if (caps.includes("loadpoint") || caps.includes("ev_charger")) {
@@ -160,6 +152,7 @@ class SunflowApp extends LitElement {
     _configDevices: { state: true },
     _editing: { state: true },
     _expanded: { state: true },
+    _categories: { state: true },
     _overrides: { state: true },
     _entities: { state: true },
     _dirty: { state: true },
@@ -205,6 +198,7 @@ class SunflowApp extends LitElement {
     this._editing = new Set();
     // Device cards opened by the user; configured and complete ones start compact
     this._expanded = new Set();
+    this._categories = {};
     // ha_device_id -> {role: {entity_id?, sign?}}
     this._overrides = {};
     this._entities = {};
@@ -269,6 +263,7 @@ class SunflowApp extends LitElement {
       const [health, config] = await Promise.all([api.health(), api.config()]);
       this._haConnected = health.ha_connected;
       this._configDevices = configuredDevices(config);
+      this._loadCategories();
       this._overrides = Object.fromEntries(Object.values(this._configDevices).map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
       // Completed setups open on Live, new ones in the wizard
       this._view ??= config.setup_completed ? "live" : "setup";
@@ -396,8 +391,27 @@ class SunflowApp extends LitElement {
     if (step === 3) this._startTestPolling();
   }
 
+  /** Configured and not switched off: only these are planned, tested and given settings. */
+  /** The stored category of a configured device, else one from its live values. */
+  _categoryOf(device) {
+    const stored = this._configDevices[device.device_id ?? device.ha_device_id];
+    return (stored && this._categories[stored.id]) ?? deviceCategory(device, this._previews[device.device_id ?? device.ha_device_id]);
+  }
+
+  async _loadCategories() {
+    try {
+      this._categories = await api.categories();
+    } catch {
+      // Grouping falls back to the live values
+    }
+  }
+
+  get _activeDevices() {
+    return Object.values(this._configDevices).filter((d) => !d.disabled);
+  }
+
   get _testableDevices() {
-    return Object.values(this._configDevices).filter((d) =>
+    return this._activeDevices.filter((d) =>
       (this._capabilitiesByHaDevice[d.ha_device_id] ?? []).includes("battery_window"),
     );
   }
@@ -657,7 +671,8 @@ class SunflowApp extends LitElement {
   }
 
   async _loadParameters() {
-    const devices = Object.values(this._configDevices);
+    this._loadCategories();
+    const devices = this._activeDevices;
     try {
       const results = await Promise.all(devices.map(async (d) => [d.id, await api.parameters(d.id)]));
       this._params = Object.fromEntries(results);
@@ -732,6 +747,7 @@ class SunflowApp extends LitElement {
     try {
       const saved = await api.updateDevice(device.id, changes);
       this._configDevices = { ...this._configDevices, [saved.ha_device_id]: saved };
+      this._loadCategories();
       const fresh = await api.parameters(device.id);
       this._params = { ...this._params, [device.id]: fresh };
       this._paramEdits = { ...this._paramEdits, [device.id]: {} };
@@ -753,6 +769,7 @@ class SunflowApp extends LitElement {
     try {
       const saved = await api.updateDevice(device.id, changes);
       this._configDevices = { ...this._configDevices, [saved.ha_device_id]: saved };
+      this._loadCategories();
       await this._refreshSite();
     } catch (err) {
       this._error = `Zuordnung konnte nicht gespeichert werden: ${err.message}`;
@@ -1044,7 +1061,7 @@ class SunflowApp extends LitElement {
       </div>
       ${devices.length === 0 ? html`<p class="muted">Keine Geräte mit passendem Profil ausgewählt.</p>` : nothing}
       ${CATEGORIES.map(([key, title]) => {
-        const members = devices.filter((d) => deviceCategory(d, this._previews[d.device_id]) === key);
+        const members = devices.filter((d) => this._categoryOf(d) === key);
         const hasBattery = devices.some((d) => (d.capabilities ?? []).includes("battery"));
         const extra =
           key === "wallbox" ? html`<sf-vehicles></sf-vehicles>`
@@ -1280,6 +1297,16 @@ class SunflowApp extends LitElement {
     `;
   }
 
+  async _setKind(device, kind) {
+    try {
+      await api.setDeviceKind(device.id, kind);
+      this._configDevices = { ...this._configDevices, [device.ha_device_id]: { ...device, kind } };
+      await Promise.all([this._loadCategories(), this._loadParameters()]);
+    } catch (err) {
+      this._error = `Art nicht gespeichert: ${err.message}`;
+    }
+  }
+
   _toggleExpanded(id, open) {
     const expanded = new Set(this._expanded);
     if (open) expanded.delete(id);
@@ -1297,6 +1324,7 @@ class SunflowApp extends LitElement {
     try {
       await api.setDeviceEnabled(stored.id, enabled);
       this._configDevices = configuredDevices(await api.config());
+      this._loadCategories();
       this._error = null;
     } catch (err) {
       this._error = `Gerät nicht umgeschaltet: ${err.message}`;
@@ -1445,7 +1473,7 @@ class SunflowApp extends LitElement {
   }
 
   _renderParameters() {
-    const devices = Object.values(this._configDevices);
+    const devices = this._activeDevices;
     return html`
       <div class="heading">
         <h1>Kenndaten</h1>
@@ -1453,7 +1481,10 @@ class SunflowApp extends LitElement {
       </div>
       ${devices.length === 0
         ? html`<p class="muted">Noch kein Gerät übernommen – bitte in Schritt 2 „Werte passen“ wählen.</p>`
-        : devices.map((d) => this._renderDeviceParameters(d))}
+        : CATEGORIES.map(([key, title]) => {
+            const members = devices.filter((d) => (this._categories[d.id] ?? "load") === key);
+            return members.length ? html`<h2 class="category">${title}</h2>${members.map((d) => this._renderDeviceParameters(d))}` : nothing;
+          })}
     `;
   }
 
@@ -1476,6 +1507,16 @@ class SunflowApp extends LitElement {
             <div class="muted small">${devicePurpose(capabilities)} · Profil ${device.profile}</div>
           </div>
         </div>
+        ${capabilities.includes("loadpoint") && device.profile.startsWith("evcc_intg/")
+          ? html`<label class="field wide">
+              <span class="field-label">Art des Ladepunkts</span>
+              <select @change=${(e) => this._setKind(device, e.target.value || null)}>
+                <option value="" ?selected=${!device.kind}>automatisch (aus der Einheit des Ladestands)</option>
+                <option value="vehicle" ?selected=${device.kind === "vehicle"}>Wallbox (Fahrzeug)</option>
+                <option value="heater" ?selected=${device.kind === "heater"}>Wärme (z. B. Heizstab im Warmwasserspeicher)</option>
+              </select>
+            </label>`
+          : nothing}
         <label class="field wide">
           <span class="field-label">Bezeichnung</span>
           <span class="input-unit">
@@ -1663,7 +1704,7 @@ class SunflowApp extends LitElement {
 
   _renderSite() {
     const site = this._site;
-    const devices = Object.values(this._configDevices);
+    const devices = this._activeDevices;
     const byId = Object.fromEntries(devices.map((d) => [d.id, d]));
     const capabilities = this._capabilitiesByHaDevice;
     const measuring = devices.filter((d) => (capabilities[d.ha_device_id] ?? []).includes("pv_ext"));
@@ -1830,7 +1871,7 @@ class SunflowApp extends LitElement {
   }
 
   _renderForecastSource(sources) {
-    const devices = Object.values(this._configDevices);
+    const devices = this._activeDevices;
     const plants = devices.filter((d) => (this._capabilitiesByHaDevice[d.ha_device_id] ?? []).includes("pv"));
     // Color follows the plane (its position among all planes), never its rank in the chart
     const colorOf = (plane) => {

@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
 import { poll } from "./poll.js";
-import { formatPower, formatValue } from "./format.js";
+import { CATEGORY_LABELS, formatPower, formatValue } from "./format.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -30,7 +30,7 @@ const MODES = {
   fast: "Sofort",
   pause: "Pause",
 };
-const KIND_LABELS = { vehicle: "Fahrzeug", heater: "Warmwasser", load: "Verbraucher" };
+const KIND_LABELS = { vehicle: "Wallbox", heater: "Wärme", load: "Verbraucher" };
 const TARGETS = { vehicle: [50, 80, 100], heater: [45, 55, 60] };
 const DURATIONS = {
   midnight: "bis Mitternacht",
@@ -203,6 +203,7 @@ class SunflowControl extends LitElement {
                 <input type="checkbox" .checked=${d.enabled} ?disabled=${this._busy || Boolean(d.blocked)}
                   @change=${(e) => this._switchTakeover({ device_id: d.device_id, device_enabled: e.target.checked }, e.target)}>
                 <strong>${d.name}</strong>
+                <span class="small muted">${d.kind === "battery" ? "Speicher" : CATEGORY_LABELS[d.category] ?? ""}</span>
               </label>
               ${d.kind === "loadpoint" && d.enabled
                 ? html`<span class="small muted">Wird der Ladepunkt auch von evcc oder einer Automation gesteuert, dort ausschalten –
@@ -311,7 +312,7 @@ class SunflowControl extends LitElement {
         <div class="card-head">
           <div>
             <h3>${device.name}</h3>
-            <span class="small muted">${KIND_LABELS[device.kind] ?? "Verbraucher"} · ${status.join(" · ")}</span>
+            <span class="small muted">${CATEGORY_LABELS[device.category] ?? KIND_LABELS[device.kind] ?? "Verbraucher"} · ${status.join(" · ")}</span>
           </div>
           ${device.override ? html`<span class="chip">angepasst · ${untilText(device.override.until)}</span>` : nothing}
         </div>

@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 import sqlite3
 import tempfile
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 import uuid
 import zipfile
 from zoneinfo import ZoneInfo
@@ -90,6 +90,7 @@ from .site import (
     MEASUREMENTS,
     PV_OUTPUT_ROLES,
     battery_module_ids,
+    device_category,
     device_kind,
     device_parameters,
     measurement_candidates,
@@ -327,6 +328,12 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
         name=display_name(discovered, library.profiles[profile_id]),
         role_overrides=body.role_overrides,
     )
+    profile = library.profiles[profile_id]
+    if "loadpoint" in profile["capabilities"]:
+        # Fixed on adding while the "SoC" is readable, so the category does not depend on it later
+        roles = {r.role: r for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in body.role_overrides.items()})}
+        if (soc := roles.get("vehicle_soc")) is not None and soc.raw_unit:
+            device.kind = "heater" if soc.raw_unit in ("°C", "°F", "K") else "vehicle"
     config.devices.append(device)
     store.save(config)
     _replan(request)
@@ -1104,6 +1111,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "id": device.id,
                 "name": device.name,
                 "kind": device_kind(profile, device, snapshot) or "load",
+                "category": device_category(profile, device, snapshot),
                 "default": device.flex.model_dump(),
                 "override": override.model_dump(mode="json") if override and override.active(now) else None,
                 "effective": effective.model_dump(),
@@ -1200,8 +1208,9 @@ class ControlSwitch(BaseModel):
     device_enabled: bool | None = None
 
 
-def _control_status(request: Request, config: SunflowConfig) -> dict[str, Any]:
+async def _control_status(request: Request, config: SunflowConfig) -> dict[str, Any]:
     controller: PlanController = request.app.state.controller
+    snapshot = await _snapshot(request)
     devices = []
     for device in config.devices:
         if not controller.controllable(device):
@@ -1215,6 +1224,7 @@ def _control_status(request: Request, config: SunflowConfig) -> dict[str, Any]:
                 "blocked": controller.eligible(config, device),
                 "status": asdict(status) if status else None,
                 "kind": "loadpoint" if "charge_control" in _library(request).profiles[device.profile] else "battery",
+                "category": device_category(_library(request).profiles[device.profile], device, snapshot),
             }
         )
     return {"enabled": config.control.enabled, "paused": controller.paused, "devices": devices}
@@ -1223,7 +1233,7 @@ def _control_status(request: Request, config: SunflowConfig) -> dict[str, Any]:
 @router.get("/control/takeover")
 async def get_takeover(request: Request) -> dict[str, Any]:
     """Whether Sunflow controls which device, and what it did last."""
-    return _control_status(request, request.app.state.store.load())
+    return await _control_status(request, request.app.state.store.load())
 
 
 @router.put("/control/takeover")
@@ -1245,7 +1255,7 @@ async def set_takeover(request: Request, body: ControlSwitch, confirm: bool = Fa
         raise HTTPException(status_code=400, detail="Control writes to the devices; pass confirm=true")
     store.save(config)
     # Applied (or handed back) within the next minute by the background loop
-    return _control_status(request, config)
+    return await _control_status(request, config)
 
 
 @router.put("/control/strategy")
@@ -1887,6 +1897,35 @@ async def set_battery_modules(request: Request, device_id: str, body: BatteryMod
     store.save(config)
     _replan(request)
     return await get_batteries(request)
+
+
+@router.get("/config/categories")
+async def get_categories(request: Request) -> dict[str, str]:
+    """Category of every configured device (also switched off ones), for grouping in the UI."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    snapshot = await _snapshot(request)
+    return {d.id: device_category(profiles[d.profile], d, snapshot) for d in [*config.devices, *config.disabled_devices]}
+
+
+class DeviceKind(BaseModel):
+    """What a loadpoint supplies."""
+
+    kind: Literal["vehicle", "heater"] | None = None
+
+
+@router.put("/config/devices/{device_id}/kind")
+async def set_device_kind(request: Request, device_id: str, body: DeviceKind) -> dict[str, Any]:
+    """Wallbox (vehicle) or heat (heater) for an evcc loadpoint; None: from the unit of its SoC."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    device = config.device(device_id)
+    if device is None or "loadpoint" not in _library(request).profiles[device.profile]["capabilities"]:
+        raise HTTPException(status_code=404, detail="No loadpoint")
+    device.kind = body.kind
+    store.save(config)
+    _replan(request)
+    return {"device_id": device_id, "kind": body.kind}
 
 
 class DeviceEnabled(BaseModel):

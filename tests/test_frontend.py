@@ -440,6 +440,12 @@ def test_takeover_needs_confirmation_and_a_passed_test(tmp_path: Path) -> None:
     app.state.store = store
     app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
     app.state.controller = PlanController(TakeoverMarker(tmp_path), lambda d: None, lambda: app.state.profiles.profiles)
+    from types import SimpleNamespace
+
+    async def snapshot(fresh: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(states={}, entities=[], devices=[])
+
+    app.state.snapshots = SimpleNamespace(get=snapshot)
     client = TestClient(app)
 
     assert client.put("/api/v1/control/takeover", json={"device_id": "bat", "device_enabled": True}).status_code == 422
@@ -519,3 +525,34 @@ def test_disable_device_keeps_settings(tmp_path: Path) -> None:
     assert client.put("/api/v1/config/devices/wb/enabled", json={"enabled": True}).status_code == 200
     assert store.load().devices[0].parameters == {"max_power": 7400}
     assert client.put("/api/v1/config/devices/nope/enabled", json={"enabled": True}).status_code == 404
+
+
+def test_loadpoint_kind_sets_the_category(tmp_path: Path) -> None:
+    """An evcc loadpoint is a wallbox or heat; the choice is stored and wins over the SoC unit."""
+    from types import SimpleNamespace
+
+    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+    from sunflow.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[
+        DeviceConfig(id="ww", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser"),
+        DeviceConfig(id="bat", ha_device_id="y", profile="solax_modbus/sofar", profile_version=1, name="Sofar"),
+    ]))
+    app = create_app()
+    app.state.store = store
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: None})()
+
+    async def snapshot(fresh: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(states={}, entities=[], devices=[])
+
+    app.state.snapshots = SimpleNamespace(get=snapshot)
+    client = TestClient(app)
+
+    # Unreadable SoC: counted as wallbox until chosen
+    assert client.get("/api/v1/config/categories").json() == {"ww": "wallbox", "bat": "inverter"}
+    assert client.put("/api/v1/config/devices/ww/kind", json={"kind": "heater"}).status_code == 200
+    assert client.get("/api/v1/config/categories").json()["ww"] == "heat"
+    assert client.put("/api/v1/config/devices/bat/kind", json={"kind": "heater"}).status_code == 404
