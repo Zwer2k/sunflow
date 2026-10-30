@@ -638,3 +638,33 @@ def test_manual_heating_rod_in_power_steps(tmp_path: Path) -> None:
     assert device["parameters"] == {"max_power": 2800, "tank_l": 300}
     assert set(device["role_overrides"]) == {"level", "power", "energy", "temperature"}
     assert client.get("/api/v1/config/categories").json() == {device["id"]: "heat"}
+
+
+def test_add_direct_device(tmp_path: Path) -> None:
+    """A Modbus device is added by profile and address; an unreachable one is reported, not refused."""
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
+    from sunflow.direct.hub import DirectHub
+
+    repo = Path(__file__).resolve().parents[1]
+    app = create_app()
+    app.state.store = ConfigStore(tmp_path)
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    app.state.direct = DirectHub()
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: None})()
+    client = TestClient(app)
+
+    profiles = client.get("/api/v1/direct/profiles").json()
+    assert {p["profile"]: p["unit_id"] for p in profiles} == {"modbus/victron_gx": 100}
+    assert client.post("/api/v1/config/devices/direct", json={"profile": "generic/switch", "host": "x"}).status_code == 422
+
+    response = client.post(
+        "/api/v1/config/devices/direct", json={"profile": "modbus/victron_gx", "host": "127.0.0.1", "port": 1}
+    )
+    assert response.status_code == 200, response.text
+    device = response.json()
+    assert device["ha_device_id"] == f"direct_{device['id']}"
+    assert device["name"] == "GX (ESS)"
+    assert device["connection"] == {"host": "127.0.0.1", "port": 1, "unit_id": None}
+    status = client.get("/api/v1/direct/status").json()
+    assert "battery_soc" in status[device["id"]]["error"]

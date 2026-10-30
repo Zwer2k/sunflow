@@ -129,6 +129,8 @@ const FIXED_PRICE = "__fixed__";
 // Own consumers: profile per way of control
 const MANUAL_PREFIX = "generic/";
 const MANUAL_TYPES = { switch: "Schalter (ein/aus)", stepped: "Leistungsstufen (Auswahl)", current: "Stromstärke (Zahl)" };
+const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
+
 const EMPTY_MANUAL = {
   name: "", type: "switch", kind: "load", switch_entity: "", level_entity: "", current_entity: "", power_entity: "",
   energy_entity: "", temperature_entity: "", steps: {}, max_power: "", daily_energy: "", tank_l: "",
@@ -207,6 +209,8 @@ class SunflowApp extends LitElement {
     _flexEdits: { state: true },
     _candidates: { state: true },
     _manual: { state: true },
+    _direct: { state: true },
+    _directProfiles: { state: true },
     _manualEditId: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
@@ -249,6 +253,8 @@ class SunflowApp extends LitElement {
     this._flexEdits = {};
     this._candidates = null;
     this._manual = { ...EMPTY_MANUAL };
+    this._direct = null;
+    this._directProfiles = null;
     // Sunflow device id -> device test state
     this._tests = {};
     this._testConfirm = new Set();
@@ -1083,7 +1089,97 @@ class SunflowApp extends LitElement {
               ${this._integrations.map((i) => this._renderIntegration(i))}
             </div>
           `}
+      ${this._renderDirectForm()}
     `;
+  }
+
+  /** Adding a device Sunflow talks to itself (Modbus TCP, HTTP), without an integration. */
+  _renderDirectForm() {
+    const form = this._direct;
+    if (form === null) {
+      return html`<section class="device compact">
+        <div class="device-title">Ohne Home-Assistant-Integration</div>
+        <p class="small muted">Manche Wechselrichter liest und steuert Sunflow selbst über das Netzwerk (Modbus TCP), z. B. Victron
+          über das GX-Gerät.</p>
+        <div><button class="secondary" @click=${() => this._openDirect()}>Gerät direkt anbinden …</button></div>
+      </section>`;
+    }
+    const set = (field, value) => (this._direct = { ...this._direct, [field]: value });
+    const profiles = this._directProfiles ?? [];
+    const chosen = profiles.find((p) => p.profile === form.profile);
+    return html`
+      <section class="device">
+        <div class="device-title">Gerät direkt anbinden</div>
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">Gerät</span>
+            <select @change=${(e) => set("profile", e.target.value)}>
+              <option value="" ?selected=${!form.profile}>bitte wählen …</option>
+              ${profiles.map((p) => html`<option value=${p.profile} ?selected=${form.profile === p.profile}>
+                ${[p.manufacturer, p.model].filter(Boolean).join(" ") || p.profile}</option>`)}
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Name</span>
+            <span class="input-unit"><input placeholder=${chosen?.model ?? "z. B. Victron"} .value=${form.name}
+              @input=${(e) => set("name", e.target.value)}></span>
+          </label>
+          <label class="field">
+            <span class="field-label">Adresse (IP oder Hostname)</span>
+            <span class="input-unit"><input placeholder="192.168.1.50" .value=${form.host} @input=${(e) => set("host", e.target.value)}></span>
+          </label>
+          <label class="field">
+            <span class="field-label">Port</span>
+            <span class="input-unit"><input inputmode="numeric" placeholder=${chosen?.port ?? 502} .value=${form.port}
+              @input=${(e) => set("port", e.target.value)}></span>
+          </label>
+          ${chosen?.type === "modbus_tcp"
+            ? html`<label class="field">
+                <span class="field-label">Modbus-Unit-ID</span>
+                <span class="input-unit"><input inputmode="numeric" placeholder=${chosen?.unit_id ?? 1} .value=${form.unit_id}
+                  @input=${(e) => set("unit_id", e.target.value)}></span>
+              </label>`
+            : nothing}
+        </div>
+        <p class="small muted">Sunflow liest das Gerät sofort einmal; danach erscheint es unter „Geräte“ mit seinen Live-Werten.
+          Gesteuert wird es erst, wenn du es unter „Steuerung“ freigibst.</p>
+        <div class="actions">
+          <button class="primary" ?disabled=${!form.profile || !form.host.trim() || this._busy.has("direct")}
+            @click=${() => this._addDirect()}>Anbinden</button>
+          <button class="secondary" @click=${() => (this._direct = null)}>Abbrechen</button>
+        </div>
+      </section>
+    `;
+  }
+
+  async _openDirect() {
+    this._direct = { ...EMPTY_DIRECT };
+    if (this._directProfiles === null) {
+      try {
+        this._directProfiles = await api.directProfiles();
+      } catch (err) {
+        this._error = `Profile konnten nicht geladen werden: ${err.message}`;
+      }
+    }
+  }
+
+  async _addDirect() {
+    const form = this._direct;
+    const number = (text) => (String(text).trim() === "" ? null : Number(text));
+    this._busy = new Set([...this._busy, "direct"]);
+    try {
+      const saved = await api.addDirect({
+        profile: form.profile, name: form.name, host: form.host.trim(), port: number(form.port), unit_id: number(form.unit_id),
+      });
+      this._configDevices = { ...this._configDevices, [saved.ha_device_id]: saved };
+      await this._loadDiscovery();
+      this._direct = null;
+      this._error = null;
+    } catch (err) {
+      this._error = `Gerät konnte nicht angebunden werden: ${err.message}`;
+    } finally {
+      this._busy = this._without(this._busy, "direct");
+    }
   }
 
   _renderIntegration(integration) {

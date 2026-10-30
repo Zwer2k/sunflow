@@ -118,6 +118,9 @@ export const api = {
   setVehicleDetection: (id, body) => request("PUT", `/config/devices/${encodeURIComponent(id)}/vehicle-detection`, body),
   chooseVehicle: (wallboxId, vehicleId) => request("PUT", `/control/vehicles/${encodeURIComponent(wallboxId)}`, { vehicle_id: vehicleId }),
   addManual: (body) => request("POST", "/config/devices/manual", body),
+  directProfiles: () => request("GET", "/direct/profiles"),
+  directStatus: () => request("GET", "/direct/status"),
+  addDirect: (body) => request("POST", "/config/devices/direct", body),
   updateManual: (configDeviceId, body) =>
     request("PUT", `/config/devices/manual/${encodeURIComponent(configDeviceId)}`, body),
   measurements: () => request("GET", "/config/measurements"),

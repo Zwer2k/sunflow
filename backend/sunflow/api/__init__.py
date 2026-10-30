@@ -5,6 +5,7 @@ from . import (
     control,
     device_test,
     devices,
+    direct,
     live,
     plan,
     setup,
@@ -15,7 +16,7 @@ from . import (
 from .app import create_app
 from .common import router
 
-for _area in (system, devices, device_test, setup, sources, plan, vehicles, control, analysis, live):
+for _area in (system, direct, devices, device_test, setup, sources, plan, vehicles, control, analysis, live):
     router.include_router(_area.router)
 
 __all__ = ["create_app", "router"]
