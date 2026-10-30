@@ -1,12 +1,18 @@
 {
   "domain": "sunflow",
   "name": "Sunflow",
-  "codeowners": ["@Zwer2k"],
+  "codeowners": [
+    "@Zwer2k"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/Zwer2k/sunflow",
   "integration_type": "service",
-  "iot_class": "local_push",
+  "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Zwer2k/sunflow/issues",
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.2.0",
+  "dependencies": [],
+  "after_dependencies": [
+    "hassio"
+  ]
 }
