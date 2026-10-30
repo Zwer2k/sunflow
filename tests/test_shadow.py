@@ -4,8 +4,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-
-from sunflow.shadow import Sample, ShadowStore, SlotRecorder, actual_action, evaluate, slot_start
+from sunflow.shadow.store import (
+    Sample,
+    ShadowStore,
+    SlotRecorder,
+    actual_action,
+    evaluate,
+    slot_start,
+)
 
 START = datetime(2026, 10, 25, 10, 0, tzinfo=UTC)
 
@@ -108,7 +114,7 @@ def test_old_database_gets_columns_and_schema_steps(tmp_path: Path, monkeypatch:
     """A database from before the schema version is brought up to date step by step."""
     import sqlite3
 
-    from sunflow import shadow
+    from sunflow.shadow import store as shadow
 
     db = sqlite3.connect(tmp_path / "shadow.db")
     db.execute("CREATE TABLE slots (start TEXT PRIMARY KEY, planned_action TEXT, actual_pv_w REAL)")
@@ -131,7 +137,7 @@ def test_new_database_has_current_schema_version(tmp_path: Path) -> None:
     """A fresh database starts at the current version, so no step runs on it twice."""
     import sqlite3
 
-    from sunflow import shadow
+    from sunflow.shadow import store as shadow
 
     shadow.ShadowStore(tmp_path).close()
     shadow.ShadowStore(tmp_path).close()

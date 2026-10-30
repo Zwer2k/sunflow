@@ -4,13 +4,21 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-
-from sunflow.api import plan_response
-from sunflow.config_store import SunflowConfig
-from sunflow.load_forecast import build_load_forecast
-from sunflow.optimizer import BatterySpec, Plan, PlanSlot, Settings, SlotInput, choose_action, optimize, smooth_actions
-from sunflow.plan import PlanResult, build_inputs, daily_needs
-from sunflow.sources import ForecastPoint, PricePoint
+from sunflow.api.plan import plan_response
+from sunflow.config.models import SunflowConfig
+from sunflow.planning.load_forecast import build_load_forecast
+from sunflow.planning.optimizer import (
+    BatterySpec,
+    Plan,
+    PlanSlot,
+    Settings,
+    SlotInput,
+    choose_action,
+    optimize,
+    smooth_actions,
+)
+from sunflow.planning.plan import PlanResult, build_inputs, daily_needs
+from sunflow.planning.sources import ForecastPoint, PricePoint
 
 BERLIN = ZoneInfo("Europe/Berlin")
 START = datetime(2026, 10, 26, 22, 0, tzinfo=BERLIN)
@@ -237,7 +245,7 @@ def test_load_forecast_typical_day_without_history() -> None:
 
 def test_subtract_loadpoints() -> None:
     """Measured loadpoint power is removed from the household load where available."""
-    from sunflow.load_forecast import subtract_loads
+    from sunflow.planning.load_forecast import subtract_loads
 
     t0 = datetime(2026, 10, 25, 0, 0, tzinfo=UTC)
     hour = timedelta(hours=1)
@@ -253,7 +261,7 @@ def test_subtract_loadpoints() -> None:
 
 def test_ev_charges_in_cheap_window() -> None:
     """A plugged-in EV gets its energy in the cheap slots; the battery is not used for it."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     inputs = _slots(10, price=lambda i: 0.226 if 8 <= i < 28 else 0.326)
     ev = FlexLoad(name="Auto", energy_wh=10000, max_power_w=11000, available=[True] * 40)
@@ -271,7 +279,7 @@ def test_ev_charges_in_cheap_window() -> None:
 
 def test_flex_unmet_when_not_available() -> None:
     """A load that cannot run leaves its need unmet but the plan stays solvable."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     inputs = _slots(4, price=lambda i: 0.3)
     ev = FlexLoad(name="Auto", energy_wh=5000, max_power_w=11000, available=[False] * 16)
@@ -284,7 +292,7 @@ def test_flex_unmet_when_not_available() -> None:
 
 def test_heater_uses_pv_surplus() -> None:
     """A heater with a whole day to go runs in the PV surplus, not from the grid."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
     inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 4000.0 if 40 <= i < 64 else 0.0)
@@ -298,7 +306,7 @@ def test_heater_uses_pv_surplus() -> None:
 
 def test_surplus_export_is_smooth() -> None:
     """With a full battery and a heater, the PV surplus is not split into a zigzag."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     full = BatterySpec(capacity_wh=10000, soc_wh=9900, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
     pv = [0.0] * 36 + [2500.0] * 24 + [0.0] * 36
@@ -315,7 +323,7 @@ def test_surplus_export_is_smooth() -> None:
 
 
 def _heater(**options: object) -> object:
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     return FlexLoad(name="Last", energy_wh=4000, max_power_w=2000, available=[True] * 96, **options)
 
@@ -376,7 +384,7 @@ def test_battery_not_used_for_load() -> None:
 )
 def test_next_time(after: datetime, hhmm: str, expected: datetime) -> None:
     """Daily ready-by times resolve to the next local wall-clock time."""
-    from sunflow.plan import next_time
+    from sunflow.planning.plan import next_time
 
     result = next_time(hhmm, after, BERLIN)
     assert result == expected
@@ -387,8 +395,8 @@ def test_round_trip_efficiency_parameter(library: object) -> None:
     """Battery round trip is split per direction; the inverter adds to grid charging and discharging."""
     from types import SimpleNamespace
 
-    from sunflow.config_store import DeviceConfig
-    from sunflow.plan import battery_spec
+    from sunflow.config.models import DeviceConfig
+    from sunflow.planning.plan import battery_spec
 
     device = DeviceConfig(
         ha_device_id="d_inv", profile="solax_modbus/sofar", profile_version=1, name="Sofar",
@@ -426,7 +434,7 @@ def test_priority_between_loads() -> None:
     full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=10000, max_charge_w=5000, max_discharge_w=5000)
     pv = [0.0] * 40 + [1500.0] * 8 + [0.0] * 48  # 2 kWh surplus
     inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: pv[i])
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     def load(name: str, bonus: float) -> FlexLoad:
         return FlexLoad(name=name, energy_wh=2000, max_power_w=2000, available=[True] * 96, pv_only=True, priority_bonus=bonus)
@@ -441,7 +449,7 @@ def test_priority_between_loads() -> None:
 @pytest.mark.parametrize(("below_battery", "load_gets"), [(False, 2000), (True, 0)])
 def test_battery_position_in_priorities(below_battery: bool, load_gets: float) -> None:
     """A PV-only load ranked below the battery only gets surplus the battery cannot take."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     room = BatterySpec(capacity_wh=10000, soc_wh=5000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
     pv = [0.0] * 40 + [1500.0] * 8 + [0.0] * 48  # 2 kWh surplus, battery has room for it
@@ -477,7 +485,7 @@ def test_plan_response_battery_limits(reserve_wh: float, expected: float) -> Non
 
 def test_heater_reheats_every_day() -> None:
     """A heater heated on day one still uses the PV surplus of day two for that day's need."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
     sunny = lambda i: 4000.0 if 40 <= i % 96 < 64 else 0.0  # noqa: E731
@@ -510,7 +518,7 @@ def test_daily_needs(hours: int, expected: list[tuple[int, int, float]]) -> None
 
 def test_gate_waits_for_battery_level() -> None:
     """A load released at 80 % battery only takes PV once the battery got there."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     battery = BatterySpec(capacity_wh=10000, soc_wh=2000, min_soc_wh=1000, max_charge_w=3000, max_discharge_w=3000)
     inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 5000.0 if 32 <= i < 72 else 0.0)
@@ -529,7 +537,7 @@ def test_gate_waits_for_battery_level() -> None:
 
 def test_gate_waits_for_vehicle() -> None:
     """A load released after the vehicle got its energy runs after the car in the PV surplus."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
     inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 3500.0 if 40 <= i < 72 else 0.0)
@@ -559,19 +567,17 @@ def test_with_conditions(
     conditions: list[tuple[str, float]], strategy: str, battery_wh: float | None, after: list[tuple[str, float]]
 ) -> None:
     """Priority conditions become gates on the planned loads."""
-    from sunflow.config_store import DeviceConfig, FlexSettings, PriorityCondition
-    from sunflow.optimizer import FlexLoad
-    from sunflow.plan import with_conditions
+    from sunflow.config.models import DeviceConfig, FlexSettings, PriorityCondition
+    from sunflow.planning.optimizer import FlexLoad
+    from sunflow.planning.plan import with_conditions
 
     devices = [
         DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
-        DeviceConfig(
-            id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser",
-            flex=FlexSettings(strategy=strategy),
-        ),
+        DeviceConfig(id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser"),
     ]
     config = SunflowConfig(
         devices=devices,
+        planning={"ww": FlexSettings(strategy=strategy)},
         priorities=["battery", "ev", "ww"],
         priority_conditions={"ww": [PriorityCondition(device_id=d, min_pct=p) for d, p in conditions]},
     )
@@ -589,7 +595,7 @@ def test_with_conditions(
 
 def test_battery_gate_waits_for_vehicle() -> None:
     """A battery ranked below the car only charges from PV once the car got its energy."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     battery = BatterySpec(capacity_wh=10000, soc_wh=1000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
     inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 4000.0 if 40 <= i < 72 else 0.0)
@@ -604,9 +610,9 @@ def test_battery_gate_waits_for_vehicle() -> None:
 
 def test_with_conditions_hot_water_tank() -> None:
     """The car can wait for the hot water tank (°C); the battery for both."""
-    from sunflow.config_store import DeviceConfig, PriorityCondition
-    from sunflow.optimizer import FlexLoad
-    from sunflow.plan import storage_gates, with_conditions
+    from sunflow.config.models import DeviceConfig, PriorityCondition
+    from sunflow.planning.optimizer import FlexLoad
+    from sunflow.planning.plan import storage_gates, with_conditions
 
     config = SunflowConfig(
         devices=[
@@ -632,7 +638,7 @@ def test_with_conditions_hot_water_tank() -> None:
 
 def test_baseline_runs_optional_loads_on_pv_only() -> None:
     """Without Sunflow a heater with district heating only uses surplus; heating covers the rest."""
-    from sunflow.optimizer import FlexLoad
+    from sunflow.planning.optimizer import FlexLoad
 
     full = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
     inputs = _slots(24, price=lambda i: 0.30, pv=lambda i: 1500.0 if 40 <= i < 48 else 0.0)
@@ -690,7 +696,7 @@ def test_grid_charging_needs_more_spread_than_pv_charging() -> None:
 
 async def test_last_valid_value_skips_unknown() -> None:
     """The newest numeric state wins; "unknown" entries are skipped."""
-    from sunflow.plan import last_valid_value
+    from sunflow.planning.plan import last_valid_value
 
     class Client:
         async def command(self, msg_type: str, **data: object) -> dict:
@@ -730,8 +736,8 @@ async def test_battery_care_targets_end_of_pv_on_due_day() -> None:
     from types import SimpleNamespace
     from zoneinfo import ZoneInfo
 
-    from sunflow.config_store import OptimizerConfig
-    import sunflow.plan as plan_module
+    from sunflow.config.models import OptimizerConfig
+    import sunflow.planning.plan as plan_module
 
     tz = ZoneInfo("Europe/Berlin")
     config = SunflowConfig(optimizer=OptimizerConfig(max_soc_pct=90, full_charge_every_days=14))
@@ -764,7 +770,7 @@ async def test_battery_care_targets_end_of_pv_on_due_day() -> None:
 
 def test_cheapest_window_end() -> None:
     """The overdue full charge aims at the end of the first cheapest block (e.g. the night tariff)."""
-    from sunflow.plan import cheapest_window_end
+    from sunflow.planning.plan import cheapest_window_end
 
     inputs = _slots(24, price=lambda i: 0.226 if 4 <= i < 24 else 0.326)
 
@@ -790,8 +796,8 @@ async def test_battery_care_overdue_uses_grid(monkeypatch: pytest.MonkeyPatch) -
     from types import SimpleNamespace
     from zoneinfo import ZoneInfo
 
-    from sunflow.config_store import OptimizerConfig
-    import sunflow.plan as plan_module
+    from sunflow.config.models import OptimizerConfig
+    import sunflow.planning.plan as plan_module
 
     async def never_full(client: object, entity: object, days: int) -> None:
         return None
@@ -867,3 +873,27 @@ def test_grid_friendly_shaves_the_midday_export_peak() -> None:
 
     assert peak_export(Settings(export_soft_limit_w=2500)) <= 2500 + 1
     assert peak_export(Settings()) > 2500
+
+
+FULL = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+
+
+@pytest.mark.parametrize(
+    ("feed_in", "curtailable", "limit", "expected"),
+    [
+        pytest.param(-0.05, 3000, None, 3000, id="negative-feed-in-limits"),
+        pytest.param(-0.05, 1500, None, 1500, id="only-the-curtailable-part"),
+        pytest.param(0.08, 3000, None, 0, id="paid-feed-in-exports"),
+        pytest.param(0.0, 3000, None, 0, id="free-export-is-no-reason"),
+        pytest.param(0.08, 3000, 2000, 1500, id="above-grid-friendly-limit"),
+    ],
+)
+def test_curtailment(feed_in: float, curtailable: float, limit: float | None, expected: float) -> None:
+    """PV is limited only when exporting it costs, and only on plants that can be limited."""
+    inputs = [
+        SlotInput(start=START + i * SLOT, pv_w=4000, load_w=500, price=0.3, feed_in=feed_in, curtailable_w=curtailable)
+        for i in range(8)
+    ]
+    plan = optimize(inputs, FULL, Settings(export_soft_limit_w=limit))
+    assert plan.slots[0].curtail_w == pytest.approx(expected, abs=1)
+    assert plan.slots[0].export_w == pytest.approx(3500 - expected, abs=1)

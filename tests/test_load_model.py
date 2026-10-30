@@ -5,8 +5,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-
-from sunflow.load_model import fit
+from sunflow.planning.load_model import fit
 
 BERLIN = ZoneInfo("Europe/Berlin")
 

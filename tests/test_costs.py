@@ -5,9 +5,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-
-from sunflow.costs import cost_history
-from sunflow.energy import EnergySources
+from sunflow.analysis.costs import cost_history
+from sunflow.analysis.energy import EnergySources
 
 BERLIN = ZoneInfo("Europe/Berlin")
 

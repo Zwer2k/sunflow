@@ -4,7 +4,11 @@
   "title": "Sunflow device profile",
   "description": "Maps a device of a Home Assistant integration to Sunflow roles and actions.",
   "type": "object",
-  "required": ["profile", "version", "match", "capabilities", "roles"],
+  "required": ["profile", "version", "capabilities", "roles"],
+  "oneOf": [
+    {"description": "Device of a Home Assistant integration", "required": ["match"]},
+    {"description": "Device Sunflow talks to itself", "required": ["connection"]}
+  ],
   "additionalProperties": false,
   "properties": {
     "profile": {
@@ -14,6 +18,27 @@
     },
     "version": {"type": "integer", "minimum": 1},
     "match": {"$ref": "#/$defs/match"},
+    "connection": {
+      "description": "Sunflow talks to the device itself (no integration). Each point becomes an entity whose unique_id ends with its key, so roles name points by key as for integrations. The address (host, port, unit id) is entered when adding the device.",
+      "type": "object",
+      "required": ["type", "points"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"enum": ["modbus_tcp", "http"]},
+        "port": {"description": "Default port (502 for Modbus TCP, 80 for HTTP).", "type": "integer", "minimum": 1, "maximum": 65535},
+        "unit_id": {"description": "Default Modbus unit id.", "type": "integer", "minimum": 0, "maximum": 255},
+        "word_order": {"description": "Order of the 16-bit words of 32-bit values.", "enum": ["big", "little"], "default": "big"},
+        "poll": {"$ref": "#/$defs/duration"},
+        "manufacturer": {"type": "string"},
+        "model": {"type": "string"},
+        "points": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"$ref": "#/$defs/identifier"},
+          "additionalProperties": {"$ref": "#/$defs/point"}
+        }
+      }
+    },
     "name_strip": {
       "description": "Parts removed from the device name to build the display name.",
       "type": "array",
@@ -23,7 +48,7 @@
       "type": "array",
       "uniqueItems": true,
       "items": {
-        "enum": ["pv", "pv_ext", "battery", "grid_meter", "battery_window", "curtail", "switch_off", "ev_charger", "load", "loadpoint"]
+        "enum": ["pv", "pv_ext", "battery", "grid_meter", "battery_window", "battery_control", "curtail", "switch_off", "ev_charger", "load", "loadpoint"]
       }
     },
     "watchdog": {
@@ -80,6 +105,34 @@
       "description": "Steps executed once when the device is activated.",
       "type": "array",
       "items": {"$ref": "#/$defs/step"}
+    },
+    "battery_control": {
+      "description": "Battery control by action, for devices without a power window: steps per action (auto, hold, force_charge, force_discharge, limit_charge, limit_discharge; runtime P in W). Actions left out are not supported; the plan avoids them or falls back to a related one. release: steps when Sunflow hands the battery back (default: auto). refresh: send the action again after this time although nothing changed (devices that fall back without new commands).",
+      "type": "object",
+      "required": ["auto"],
+      "additionalProperties": false,
+      "properties": {
+        "auto": {"$ref": "#/$defs/steps"},
+        "hold": {"$ref": "#/$defs/steps"},
+        "force_charge": {"$ref": "#/$defs/steps"},
+        "force_discharge": {"$ref": "#/$defs/steps"},
+        "limit_charge": {"$ref": "#/$defs/steps"},
+        "limit_discharge": {"$ref": "#/$defs/steps"},
+        "release": {"$ref": "#/$defs/steps"},
+        "refresh": {"$ref": "#/$defs/duration"},
+        "full_power_only": {"description": "Forced charge or discharge always runs at the device's full power.", "type": "boolean"}
+      }
+    },
+    "pv_limit": {
+      "description": "Limiting the PV output: set (runtime limit_w in W) and release (no limit). refresh as for battery_control.",
+      "type": "object",
+      "required": ["set", "release"],
+      "additionalProperties": false,
+      "properties": {
+        "set": {"$ref": "#/$defs/steps"},
+        "release": {"$ref": "#/$defs/steps"},
+        "refresh": {"$ref": "#/$defs/duration"}
+      }
     },
     "charge_control": {
       "description": "Charging control of a loadpoint: steps for charge (runtime current_a), stop and release (back to the device's own logic). remember: a select whose option is stored on takeover and restored on hand back.",
@@ -210,11 +263,31 @@
         }
       }
     },
+    "point": {
+      "description": "A value read from the device: a Modbus register (address, encoding) or a JSON value of an HTTP GET (path, json).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "address": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "type": {"enum": ["holding", "input"], "default": "holding"},
+        "encoding": {"$ref": "#/$defs/encoding"},
+        "path": {"type": "string", "pattern": "^/"},
+        "json": {"description": "Dotted path into the response; list items by index.", "type": "string"},
+        "scale": {"type": "number"},
+        "unit": {"type": "string"},
+        "device_class": {"type": "string"}
+      },
+      "oneOf": [{"required": ["address", "encoding"]}, {"required": ["path"]}]
+    },
+    "encoding": {"enum": ["int16", "uint16", "int32", "uint32"]},
     "duration": {"type": "string", "pattern": "^[0-9]+(s|min|h)$"},
+    "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
     "step_options": {
       "type": "object",
       "properties": {
         "key": {"type": "string"},
+        "role": {"description": "Entity of this role instead of a key (devices whose entities the user chose).", "type": "string"},
+        "optional": {"description": "With role: leave the step out when the role is not bound.", "type": "boolean"},
         "storage": {"$ref": "#/$defs/storage"},
         "write": {"enum": ["always", "if_differs"]},
         "readback": {"type": "string"}
@@ -229,7 +302,7 @@
           "allOf": [
             {"$ref": "#/$defs/step_options"},
             {
-              "required": ["key", "value"],
+              "required": ["value"],
               "properties": {
                 "value": {"type": ["number", "string"]},
                 "min": {"type": "number"},
@@ -242,13 +315,13 @@
         "select": {
           "allOf": [
             {"$ref": "#/$defs/step_options"},
-            {"required": ["key", "option"], "properties": {"option": {"type": "string"}}}
+            {"required": ["option"], "properties": {"option": {"type": "string"}}}
           ]
         },
         "switch": {
           "allOf": [
             {"$ref": "#/$defs/step_options"},
-            {"required": ["key", "state"], "properties": {"state": {"enum": ["on", "off"]}}}
+            {"required": ["state"], "properties": {"state": {"enum": ["on", "off"]}}}
           ]
         },
         "press": {
@@ -256,6 +329,36 @@
             {"$ref": "#/$defs/step_options"},
             {"required": ["key"]}
           ]
+        },
+        "modbus": {
+          "description": "Write a holding register of a directly connected device; value / scale is written.",
+          "type": "object",
+          "required": ["address", "value"],
+          "additionalProperties": false,
+          "properties": {
+            "address": {"type": "integer", "minimum": 0, "maximum": 65535},
+            "encoding": {"$ref": "#/$defs/encoding"},
+            "scale": {"type": "number"},
+            "value": {"type": ["number", "string"]},
+            "min": {"type": "number"},
+            "max": {"type": "number"},
+            "tolerance": {"type": "number", "minimum": 0},
+            "storage": {"$ref": "#/$defs/storage"},
+            "write": {"enum": ["always", "if_differs"]}
+          }
+        },
+        "http": {
+          "description": "Send a request to a directly connected device; strings in body are templated.",
+          "type": "object",
+          "required": ["path"],
+          "additionalProperties": false,
+          "properties": {
+            "method": {"enum": ["POST", "PUT", "PATCH", "GET"], "default": "POST"},
+            "path": {"type": "string", "pattern": "^/"},
+            "body": {},
+            "storage": {"$ref": "#/$defs/storage"},
+            "write": {"enum": ["always", "if_differs"]}
+          }
         },
         "service": {
           "type": "object",

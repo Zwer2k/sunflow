@@ -3,8 +3,8 @@
 from pathlib import Path
 
 import pytest
-
-from sunflow.config_store import ConfigStore, DeviceConfig, RoleOverride, SunflowConfig
+from sunflow.config.models import DeviceConfig, RoleOverride, SunflowConfig
+from sunflow.config.store import ConfigStore
 
 
 def test_roundtrip(tmp_path: Path) -> None:
@@ -35,7 +35,7 @@ def test_cost_override_beats_pv_only_default() -> None:
     """A device set to "only PV" by default can be switched to cost optimal temporarily."""
     from datetime import UTC, datetime
 
-    from sunflow.config_store import DeviceOverride, FlexSettings, SunflowConfig
+    from sunflow.config.models import DeviceOverride, FlexSettings, SunflowConfig
 
     device = DeviceConfig(
         id="ww", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser",
@@ -68,8 +68,7 @@ def test_save_keeps_backup_and_unknown_fields(tmp_path: Path) -> None:
 def test_invalid_config_raises_config_error(tmp_path: Path) -> None:
     """A broken file gives a clear error instead of a validation traceback."""
     import pytest
-
-    from sunflow.config_store import ConfigError
+    from sunflow.config.store import ConfigError
 
     (tmp_path / "config.json").write_text('{"devices": "broken"}')
     with pytest.raises(ConfigError, match="ungültig"):
@@ -78,7 +77,7 @@ def test_invalid_config_raises_config_error(tmp_path: Path) -> None:
 
 def test_wear_from_purchase_price() -> None:
     """Price / (cycles x mean capacity x depth of discharge) gives the wear per kWh."""
-    from sunflow.config_store import OptimizerConfig, WearCalculation
+    from sunflow.config.models import OptimizerConfig, WearCalculation
 
     calc = WearCalculation(price_eur=8000, cycles=6000, capacity_kwh=20, depth_of_discharge_pct=90, end_of_life_pct=70)
     # 6000 x 17 kWh x 0.9 = 91 800 kWh -> 8,71 ct/kWh
@@ -91,7 +90,7 @@ def test_migrates_older_version_and_keeps_original(tmp_path: Path, monkeypatch: 
     """Steps run in order on the raw JSON; the original stays next to the migrated file."""
     import json
 
-    from sunflow import config_store
+    from sunflow.config import store as config_store
 
     def rename_strategy(raw: dict) -> dict:
         raw.setdefault("optimizer", {})["strategy"] = raw.pop("old_strategy")
@@ -141,7 +140,7 @@ def test_newer_version_falls_back_to_defaults(tmp_path: Path) -> None:
 
 def test_broken_json_raises_config_error(tmp_path: Path) -> None:
     """A truncated file is reported, not replaced by an empty configuration."""
-    from sunflow.config_store import ConfigError
+    from sunflow.config.store import ConfigError
 
     (tmp_path / "config.json").write_text('{"version": 1, "devi')
 
@@ -186,11 +185,45 @@ def test_backup_strategy_becomes_reserve(tmp_path: Path, stored: dict, strategy:
 )
 def test_reserve_applies_in_every_strategy(strategy: str, reserve: bool, expected: float) -> None:
     """The reserve is a floor for the optimizer whatever the strategy."""
-    from sunflow.config_store import OptimizerConfig
-    from sunflow.optimizer import BatterySpec
-    from sunflow.plan import optimizer_settings
+    from sunflow.config.models import OptimizerConfig
+    from sunflow.planning.optimizer import BatterySpec
+    from sunflow.planning.plan import optimizer_settings
 
     battery = BatterySpec(capacity_wh=20_000, soc_wh=10_000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
     config = SunflowConfig(optimizer=OptimizerConfig(strategy=strategy, backup_reserve=reserve, backup_reserve_pct=25))
 
     assert optimizer_settings(config, battery).reserve_wh == expected
+
+
+def test_relations_move_out_of_devices_and_vehicles(tmp_path: Path) -> None:
+    """Version 2 kept plans, links and cards on devices and vehicles; version 3 keeps them apart."""
+    import json
+
+    (tmp_path / "config.json").write_text(json.dumps({
+        "version": 2,
+        "devices": [
+            {"id": "wb", "ha_device_id": "w", "profile": "goecharger_mqtt/charger", "profile_version": 1, "name": "Wallbox",
+             "flex": {"strategy": "cost"}, "vehicle_detection": {"authorize": False}},
+            {"id": "ww", "ha_device_id": "h", "profile": "evcc_intg/loadpoint", "profile_version": 1, "name": "Warmwasser",
+             "flex": {"strategy": "pv_only", "alternative_cost_ct": 22.8}},
+            {"id": "pv", "ha_device_id": "p", "profile": "huawei_solar/pv_only", "profile_version": 1, "name": "Huawei",
+             "feed_in": {"rate_ct_per_kwh": 8.2}, "measured_by": {"device_id": "wb", "role": "pv_ext_power"}},
+            {"id": "inv", "ha_device_id": "i", "profile": "solax_modbus/sofar", "profile_version": 1, "name": "Sofar",
+             "battery_modules": ["m1"]},
+        ],
+        "vehicles": [{"id": "fiat", "name": "Fiat", "capacity_wh": 37500, "card": 1, "wallboxes": ["wb"], "flex": {"target": 80}}],
+    }))
+
+    config = ConfigStore(tmp_path).load()
+
+    assert all(not d.model_extra for d in config.devices)
+    assert config.flex_of("ww").alternative_cost_ct == 22.8
+    # Defaults are not copied
+    assert set(config.planning) == {"ww"}
+    assert config.detection_of("wb").authorize is False
+    assert config.feed_in["pv"].rate_ct_per_kwh == 8.2
+    assert config.measured_by["pv"].device_id == "wb"
+    assert config.battery_modules == {"inv": ["m1"]}
+    assert config.vehicles[0].model_dump().keys() == {"id", "name", "capacity_wh", "charge_efficiency_pct", "soc_entity", "plugged_entity"}
+    (profile,) = config.charging
+    assert (profile.vehicle_id, profile.wallbox_id, profile.card, profile.flex.target) == ("fiat", "wb", 1, 80)

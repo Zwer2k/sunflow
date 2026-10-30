@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from sunflow.profiles import ProfileLibrary, load_profiles, load_schema
+from sunflow.devices.profiles import ProfileLibrary, load_profiles, load_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

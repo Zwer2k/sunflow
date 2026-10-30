@@ -1,0 +1,31 @@
+# A consumer that takes a target current like a wallbox (e.g. ESPHome with a number
+# entity in A), optionally with a switch, added by hand.
+profile: generic/current
+version: 1
+match:
+  integration: manual
+
+capabilities: [load]
+
+roles:
+  current: {key: manual_current, unit: A}
+  switch: {key: manual_switch, optional: true}
+  power: {key: manual_power, unit: W, optional: true}
+  energy: {key: manual_energy, unit: Wh, optional: true}
+  temperature: {key: manual_temperature, unit: "°C", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 3600, min: 0}
+  phases: {unit: "", default: 1, min: 1, max: 3}
+  min_current_a: {unit: A, default: 1, min: 0, max: 32}
+  max_current_a: {unit: A, default: 16, min: 1, max: 32}
+  daily_energy_wh: {unit: Wh, min: 0}
+  tank_l: {unit: L, min: 0, kind: heater}
+
+charge_control:
+  charge:
+    - number: {role: current, value: "{{ current_a }}", write: if_differs}
+    - switch: {role: switch, state: "on", optional: true, write: if_differs}
+  stop:
+    - switch: {role: switch, state: "off", optional: true, write: if_differs}
+    - number: {role: current, value: 0, write: if_differs}

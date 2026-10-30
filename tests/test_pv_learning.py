@@ -5,8 +5,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-
-from sunflow.pv_learning import cloud_class, learn
+from sunflow.planning.pv_learning import cloud_class, learn
 
 BERLIN = ZoneInfo("Europe/Berlin")
 
@@ -64,7 +63,7 @@ def test_without_weather_uses_hour_factor() -> None:
 
 def test_learns_each_plane_from_its_strings() -> None:
     """The north-east roof is shaded in the morning, the south-east one delivers as forecast."""
-    from sunflow.pv_learning import learn_planes
+    from sunflow.planning.pv_learning import learn_planes
 
     rows = []
     start = datetime(2026, 10, 1, tzinfo=BERLIN)
@@ -88,7 +87,7 @@ def test_shaded_plane_learns_below_a_third() -> None:
     """A plane delivering a fifth of its forecast for weeks gets a factor close to that."""
     from datetime import UTC, datetime, timedelta
 
-    from sunflow.pv_learning import learn
+    from sunflow.planning.pv_learning import learn
 
     start = datetime(2026, 10, 1, 11, tzinfo=UTC)
     rows = [
@@ -102,7 +101,7 @@ def test_shaded_plane_learns_below_a_third() -> None:
 
 def test_plane_restart_ignores_older_rows() -> None:
     """After cleaning the modules only the new days count for that plane."""
-    from sunflow.pv_learning import learn_planes
+    from sunflow.planning.pv_learning import learn_planes
 
     start = datetime(2026, 10, 1, tzinfo=BERLIN)
     cleaned = start + timedelta(days=20)

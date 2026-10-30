@@ -1,16 +1,17 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
-import { api } from "./api.js";
-import { confirmDialog } from "./dialog.js";
-import { poll } from "./poll.js";
-import "./picker.js";
-import "./live-view.js";
-import "./plan-view.js";
-import "./control-view.js";
-import "./analysis-view.js";
-import "./standards-view.js";
-import "./vehicles-view.js";
-import "./batteries-view.js";
-import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
+import { api } from "./lib/api.js";
+import { confirmDialog } from "./components/dialog.js";
+import { poll } from "./lib/poll.js";
+import "./components/picker.js";
+import "./views/live-view.js";
+import "./views/plan-view.js";
+import "./views/control-view.js";
+import "./views/analysis-view.js";
+import "./settings/standards-view.js";
+import "./settings/vehicles-view.js";
+import "./settings/charging-view.js";
+import "./settings/batteries-view.js";
+import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./components/charts.js";
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -27,7 +28,7 @@ import {
   paramHint,
   paramLabel,
   toDisplay,
-} from "./format.js";
+} from "./lib/format.js";
 
 // Main menu: view, label, icon (24 px line icon)
 const VIEWS = [
@@ -59,11 +60,17 @@ function deviceCategory(device, preview) {
   return "load";
 }
 
-/** Configured devices by HA device id, the switched off ones marked. */
+/** Configured devices by HA device id with what belongs to them, the switched off ones marked. */
 function configuredDevices(config) {
+  const withRelations = (d) => ({
+    ...d,
+    flex: config.planning?.[d.id] ?? { strategy: "cost", target: null, ready_by: null, uses_battery: true, alternative_cost_ct: null },
+    feed_in: config.feed_in?.[d.id] ?? null,
+    measured_by: config.measured_by?.[d.id] ?? null,
+  });
   return Object.fromEntries([
-    ...config.devices.map((d) => [d.ha_device_id, d]),
-    ...(config.disabled_devices ?? []).map((d) => [d.ha_device_id, { ...d, disabled: true }]),
+    ...config.devices.map((d) => [d.ha_device_id, withRelations(d)]),
+    ...(config.disabled_devices ?? []).map((d) => [d.ha_device_id, { ...withRelations(d), disabled: true }]),
   ]);
 }
 
@@ -92,7 +99,20 @@ function writeSetting(key, value) {
   }
 }
 
-const STEPS = ["Integrationen", "Geräte", "Kenndaten", "Gerätetest", "Bilanzprüfung", "Tarif & Prognose", "Standards", "Fertig"];
+// Settings areas; the first setup walks through them in this order
+const STEPS = [
+  ["integrations", "Integrationen"],
+  ["devices", "Geräte"],
+  ["test", "Gerätetest"],
+  ["site", "Bilanzprüfung"],
+  ["vehicles", "Fahrzeuge"],
+  ["charging", "Laden"],
+  ["consumers", "Verbraucher"],
+  ["sources", "Tarif & Prognose"],
+  ["standards", "Planung"],
+  ["summary", "Übersicht"],
+];
+const stepIndex = (step) => (typeof step === "number" ? step : Math.max(STEPS.findIndex(([key]) => key === step), 0));
 const PREVIEW_INTERVAL_MS = 5000;
 // Sensors are polled at different times, so single readings can disagree.
 const BALANCE_SAMPLES = 6;
@@ -106,7 +126,15 @@ const ISSUE_STYLES = {
 };
 
 const FIXED_PRICE = "__fixed__";
-const MANUAL_PROFILE = "generic/switch";
+// Own consumers: profile per way of control
+const MANUAL_PREFIX = "generic/";
+const MANUAL_TYPES = { switch: "Schalter (ein/aus)", stepped: "Leistungsstufen (Auswahl)", current: "Stromstärke (Zahl)" };
+const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
+
+const EMPTY_MANUAL = {
+  name: "", type: "switch", kind: "load", switch_entity: "", level_entity: "", current_entity: "", power_entity: "",
+  energy_entity: "", temperature_entity: "", steps: {}, max_power: "", daily_energy: "", tank_l: "",
+};
 const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" };
 
 const PRICE_ADAPTERS = {
@@ -149,6 +177,7 @@ const BALANCE_FORMULAS = {
 class SunflowApp extends LitElement {
   static properties = {
     _step: { state: true },
+    _setupCompleted: { state: true },
     _advanced: { state: true },
     _integrations: { state: true },
     _selected: { state: true },
@@ -180,6 +209,8 @@ class SunflowApp extends LitElement {
     _flexEdits: { state: true },
     _candidates: { state: true },
     _manual: { state: true },
+    _direct: { state: true },
+    _directProfiles: { state: true },
     _manualEditId: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
@@ -221,7 +252,9 @@ class SunflowApp extends LitElement {
     this._efficiency = {};
     this._flexEdits = {};
     this._candidates = null;
-    this._manual = { name: "", switch_entity: "", power_entity: "", max_power: "", daily_energy: "" };
+    this._manual = { ...EMPTY_MANUAL };
+    this._direct = null;
+    this._directProfiles = null;
     // Sunflow device id -> device test state
     this._tests = {};
     this._testConfirm = new Set();
@@ -270,6 +303,7 @@ class SunflowApp extends LitElement {
       this._loadCategories();
       this._overrides = Object.fromEntries(Object.values(this._configDevices).map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
       // Completed setups open on Live, new ones in the wizard
+      this._setupCompleted = config.setup_completed;
       this._view ??= config.setup_completed ? "live" : "setup";
       this._error = null;
     } catch (err) {
@@ -355,7 +389,8 @@ class SunflowApp extends LitElement {
 
   /** Save what the current step has edited but not saved yet; false keeps the user there. */
   async _savePending() {
-    if (this._step === 1) {
+    const area = STEPS[this._step][0];
+    if (area === "devices") {
       const find = (devices) =>
         devices.flatMap((d) => [d, ...find(d.components ?? [])]);
       const discovered = find((this._integrations ?? []).flatMap((i) => i.devices ?? []));
@@ -365,21 +400,25 @@ class SunflowApp extends LitElement {
         if (this._error) return false;
       }
     }
-    if (this._step === 2) {
+    if (area === "devices" || area === "consumers" || area === "sources") {
       const changed = (d) =>
         Object.keys(this._paramEdits[d.id] ?? {}).length > 0 ||
         this._feedEdits[d.id] !== undefined ||
         this._nameEdits[d.id] !== undefined ||
         this._flexEdits[d.id] !== undefined;
-      for (const device of Object.values(this._configDevices).filter(changed)) {
+      for (const device of this._activeDevices.filter(changed)) {
         if (!(await this._saveDevice(device))) return false;
       }
     }
-    if (this._step === 5 && this._fixedPriceMode && this._fixedPriceEdit !== undefined) {
+    if (area === "sources" && this._fixedPriceMode && this._fixedPriceEdit !== undefined) {
       await this._saveFixedPrice();
       if (this._fixedPriceEdit !== undefined) return false;
     }
-    if (this._step === 6) {
+    if (area === "charging") {
+      const charging = this.renderRoot.querySelector("sf-charging");
+      if (charging && !(await charging.saveIfChanged())) return false;
+    }
+    if (area === "standards") {
       const standards = this.renderRoot.querySelector("sf-standards");
       if (standards && !(await standards.saveIfChanged())) return false;
     }
@@ -387,16 +426,21 @@ class SunflowApp extends LitElement {
   }
 
   async _goTo(step) {
-    // Moving on keeps the edits of this step instead of dropping them silently
+    step = stepIndex(step);
+    // Moving on keeps the edits of this area instead of dropping them silently
     if (step !== this._step && !(await this._savePending())) return;
     this._step = step;
     this._stopPreview();
-    if (step === 1) this._startPreview();
-    if (step === 2) this._loadParameters();
-    if (step === 4) this._startSite();
-    if (step === 5) this._loadSources();
-    if (step === 7) this._loadSummary();
-    if (step === 3) this._startTestPolling();
+    const area = STEPS[step][0];
+    if (area === "devices") {
+      this._startPreview();
+      this._loadParameters();
+    }
+    if (area === "consumers") this._loadParameters();
+    if (area === "site") this._startSite();
+    if (area === "sources") this._loadSources();
+    if (area === "summary") this._loadSummary();
+    if (area === "test") this._startTestPolling();
   }
 
   /** Configured and not switched off: only these are planned, tested and given settings. */
@@ -427,9 +471,10 @@ class SunflowApp extends LitElement {
   }
 
   get _testableDevices() {
-    return this._activeDevices.filter((d) =>
-      (this._capabilitiesByHaDevice[d.ha_device_id] ?? []).includes("battery_window"),
-    );
+    return this._activeDevices.filter((d) => {
+      const caps = this._capabilitiesByHaDevice[d.ha_device_id] ?? [];
+      return caps.includes("battery_window") || caps.includes("battery_control");
+    });
   }
 
   _startTestPolling() {
@@ -676,7 +721,7 @@ class SunflowApp extends LitElement {
   /** Capabilities of a configured device; manual devices are not part of discovery. */
   _capabilitiesOf(device) {
     return (
-      this._capabilitiesByHaDevice[device.ha_device_id] ?? (device.profile === MANUAL_PROFILE ? ["load"] : [])
+      this._capabilitiesByHaDevice[device.ha_device_id] ?? (device.profile.startsWith(MANUAL_PREFIX) ? ["load"] : [])
     );
   }
 
@@ -966,10 +1011,12 @@ class SunflowApp extends LitElement {
         <aside class="sidebar">
         <nav aria-label="Schritte">
           ${STEPS.map(
-            (label, i) => html`
+            ([, label], i) => html`
               <button class="step ${i === this._step ? "active" : ""}" aria-current=${i === this._step ? "step" : "false"}
                 @click=${() => this._goTo(i)}>
-                <span class="dot ${i < this._step ? "done" : ""}">${i < this._step ? "✓" : i + 1}</span>
+                ${this._setupCompleted
+                  ? nothing
+                  : html`<span class="dot ${i < this._step ? "done" : ""}">${i < this._step ? "✓" : i + 1}</span>`}
                 <span>${label}</span>
               </button>
             `,
@@ -983,41 +1030,42 @@ class SunflowApp extends LitElement {
         <main>
           ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
           ${this._renderStep()}
-          <div class="footer">
-            ${this._step > 0 ? html`<button class="secondary" @click=${() => this._goTo(this._step - 1)}>Zurück</button>` : nothing}
-            <span class="spacer"></span>
-            ${this._step < STEPS.length - 1
-              ? html`<button class="primary" @click=${() => this._goTo(this._step + 1)}>Weiter</button>`
-              : nothing}
-          </div>
+          ${this._setupCompleted
+            ? nothing
+            : html`<div class="footer">
+                ${this._step > 0 ? html`<button class="secondary" @click=${() => this._goTo(this._step - 1)}>Zurück</button>` : nothing}
+                <span class="spacer"></span>
+                ${this._step < STEPS.length - 1
+                  ? html`<button class="primary" @click=${() => this._goTo(this._step + 1)}>Weiter</button>`
+                  : nothing}
+              </div>`}
         </main>
       </div>
     `;
   }
 
   _renderStep() {
-    switch (this._step) {
-      case 0:
+    switch (STEPS[this._step][0]) {
+      case "integrations":
         return this._renderIntegrations();
-      case 1:
+      case "devices":
         return this._renderDevices();
-      case 2:
-        return this._renderParameters();
-      case 4:
-        return this._renderSite();
-      case 5:
-        return this._renderSources();
-      case 6:
-        return html`<sf-standards></sf-standards>`;
-      case 7:
-        return this._renderSummary();
-      case 3:
+      case "test":
         return this._renderDeviceTest();
+      case "site":
+        return this._renderSite();
+      case "vehicles":
+        return html`<sf-vehicles></sf-vehicles>`;
+      case "charging":
+        return html`<sf-charging></sf-charging>`;
+      case "consumers":
+        return this._renderConsumers();
+      case "sources":
+        return this._renderSources();
+      case "standards":
+        return html`<sf-standards></sf-standards>`;
       default:
-        return html`
-          <h1>${STEPS[this._step]}</h1>
-          <p class="muted">Dieser Schritt ist noch nicht umgesetzt.</p>
-        `;
+        return this._renderSummary();
     }
   }
 
@@ -1041,7 +1089,97 @@ class SunflowApp extends LitElement {
               ${this._integrations.map((i) => this._renderIntegration(i))}
             </div>
           `}
+      ${this._renderDirectForm()}
     `;
+  }
+
+  /** Adding a device Sunflow talks to itself (Modbus TCP, HTTP), without an integration. */
+  _renderDirectForm() {
+    const form = this._direct;
+    if (form === null) {
+      return html`<section class="device compact">
+        <div class="device-title">Ohne Home-Assistant-Integration</div>
+        <p class="small muted">Manche Wechselrichter liest und steuert Sunflow selbst über das Netzwerk (Modbus TCP), z. B. Victron
+          über das GX-Gerät.</p>
+        <div><button class="secondary" @click=${() => this._openDirect()}>Gerät direkt anbinden …</button></div>
+      </section>`;
+    }
+    const set = (field, value) => (this._direct = { ...this._direct, [field]: value });
+    const profiles = this._directProfiles ?? [];
+    const chosen = profiles.find((p) => p.profile === form.profile);
+    return html`
+      <section class="device">
+        <div class="device-title">Gerät direkt anbinden</div>
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">Gerät</span>
+            <select @change=${(e) => set("profile", e.target.value)}>
+              <option value="" ?selected=${!form.profile}>bitte wählen …</option>
+              ${profiles.map((p) => html`<option value=${p.profile} ?selected=${form.profile === p.profile}>
+                ${[p.manufacturer, p.model].filter(Boolean).join(" ") || p.profile}</option>`)}
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Name</span>
+            <span class="input-unit"><input placeholder=${chosen?.model ?? "z. B. Victron"} .value=${form.name}
+              @input=${(e) => set("name", e.target.value)}></span>
+          </label>
+          <label class="field">
+            <span class="field-label">Adresse (IP oder Hostname)</span>
+            <span class="input-unit"><input placeholder="192.168.1.50" .value=${form.host} @input=${(e) => set("host", e.target.value)}></span>
+          </label>
+          <label class="field">
+            <span class="field-label">Port</span>
+            <span class="input-unit"><input inputmode="numeric" placeholder=${chosen?.port ?? 502} .value=${form.port}
+              @input=${(e) => set("port", e.target.value)}></span>
+          </label>
+          ${chosen?.type === "modbus_tcp"
+            ? html`<label class="field">
+                <span class="field-label">Modbus-Unit-ID</span>
+                <span class="input-unit"><input inputmode="numeric" placeholder=${chosen?.unit_id ?? 1} .value=${form.unit_id}
+                  @input=${(e) => set("unit_id", e.target.value)}></span>
+              </label>`
+            : nothing}
+        </div>
+        <p class="small muted">Sunflow liest das Gerät sofort einmal; danach erscheint es unter „Geräte“ mit seinen Live-Werten.
+          Gesteuert wird es erst, wenn du es unter „Steuerung“ freigibst.</p>
+        <div class="actions">
+          <button class="primary" ?disabled=${!form.profile || !form.host.trim() || this._busy.has("direct")}
+            @click=${() => this._addDirect()}>Anbinden</button>
+          <button class="secondary" @click=${() => (this._direct = null)}>Abbrechen</button>
+        </div>
+      </section>
+    `;
+  }
+
+  async _openDirect() {
+    this._direct = { ...EMPTY_DIRECT };
+    if (this._directProfiles === null) {
+      try {
+        this._directProfiles = await api.directProfiles();
+      } catch (err) {
+        this._error = `Profile konnten nicht geladen werden: ${err.message}`;
+      }
+    }
+  }
+
+  async _addDirect() {
+    const form = this._direct;
+    const number = (text) => (String(text).trim() === "" ? null : Number(text));
+    this._busy = new Set([...this._busy, "direct"]);
+    try {
+      const saved = await api.addDirect({
+        profile: form.profile, name: form.name, host: form.host.trim(), port: number(form.port), unit_id: number(form.unit_id),
+      });
+      this._configDevices = { ...this._configDevices, [saved.ha_device_id]: saved };
+      await this._loadDiscovery();
+      this._direct = null;
+      this._error = null;
+    } catch (err) {
+      this._error = `Gerät konnte nicht angebunden werden: ${err.message}`;
+    } finally {
+      this._busy = this._without(this._busy, "direct");
+    }
   }
 
   _renderIntegration(integration) {
@@ -1086,8 +1224,7 @@ class SunflowApp extends LitElement {
         const members = devices.filter((d) => this._categoryOf(d) === key);
         const hasBattery = devices.some((d) => (d.capabilities ?? []).includes("battery"));
         const extra =
-          key === "wallbox" ? html`<sf-vehicles></sf-vehicles>`
-          : key === "battery" && hasBattery ? html`<sf-batteries></sf-batteries>`
+          key === "battery" && hasBattery ? html`<sf-batteries></sf-batteries>`
           : key === "load" ? this._renderManualDevices()
           : nothing;
         if (!members.length && key !== "load" && !(key === "battery" && hasBattery)) return nothing;
@@ -1097,21 +1234,25 @@ class SunflowApp extends LitElement {
   }
 
   _renderManualDevices() {
-    const manual = Object.values(this._configDevices).filter((d) => d.profile === MANUAL_PROFILE);
+    const manual = Object.values(this._configDevices).filter((d) => d.profile.startsWith(MANUAL_PREFIX));
     const form = this._manual;
     const set = (field, value) => (this._manual = { ...this._manual, [field]: value });
     const candidates = this._candidates;
+    const entity = (list, detail) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: detail(c) }));
+    const unitDetail = (c) => `${c.state ?? "–"} ${c.unit ?? ""}`;
+    const control = { switch: form.switch_entity, stepped: form.level_entity, current: form.current_entity }[form.type];
+    const selected = (candidates?.selects ?? []).find((c) => c.entity_id === form.level_entity);
     return html`
       <section class="device">
         <div class="device-title">Eigene Verbraucher</div>
-        <p class="small muted">Schaltbare Geräte, die Sunflow nicht automatisch erkennt – z. B. ein E-Bike-Ladegerät an einem
-          Shelly oder einer ESPHome-Steckdose. Sunflow plant sie wie Wallbox und Warmwasser ein.</p>
+        <p class="small muted">Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in
+          Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs-
+          und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant.</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
               (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
-                <div class="small muted">${d.role_overrides.switch?.entity_id ?? "–"}${d.role_overrides.power?.entity_id
-                  ? ` · Leistung: ${d.role_overrides.power.entity_id}`
-                  : ""} · Strategie in „Kenndaten“</div>
+                <div class="small muted">${MANUAL_TYPES[d.profile.slice(MANUAL_PREFIX.length)] ?? ""}${d.kind === "heater" ? " · Wärme" : ""}
+                  · ${Object.values(d.role_overrides).map((o) => o.entity_id).filter(Boolean).join(", ")}</div>
                 ${this._usages?.[d.id]
                   ? html`<div class="small">gemessen: ${formatValue(this._usages[d.id].daily_wh, "Wh")} pro Tag${this._usages[d.id].running_w
                       ? html` · läuft mit ${formatValue(this._usages[d.id].running_w, "W")}`
@@ -1134,33 +1275,96 @@ class SunflowApp extends LitElement {
                   <span class="field-label">Name</span>
                   <span class="input-unit"><input placeholder="z. B. E-Bike" .value=${form.name} @input=${(e) => set("name", e.target.value)}></span>
                 </label>
-                <div class="field">
-                  <span class="field-label">Schalter</span>
-                  <sf-picker label="Schalter" placeholder="Name oder Entität suchen …"
-                    .value=${form.switch_entity}
-                    .options=${candidates.switches.map((c) => ({ value: c.entity_id, label: c.name, detail: c.state }))}
-                    @change=${(e) => set("switch_entity", e.detail.value)}></sf-picker>
-                </div>
+                <label class="field">
+                  <span class="field-label">Gesteuert über</span>
+                  <select @change=${(e) => set("type", e.target.value)}>
+                    ${Object.entries(MANUAL_TYPES).map(([value, label]) => html`<option value=${value} ?selected=${form.type === value}>${label}</option>`)}
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Art</span>
+                  <select @change=${(e) => set("kind", e.target.value)}>
+                    <option value="load" ?selected=${form.kind === "load"}>Verbraucher (Energie pro Tag)</option>
+                    <option value="heater" ?selected=${form.kind === "heater"}>Wärme (Speicher mit Temperatur)</option>
+                  </select>
+                </label>
+                ${form.type === "switch" || form.type === "current"
+                  ? html`<div class="field">
+                      <span class="field-label">Schalter${form.type === "current" ? " (optional)" : ""}</span>
+                      <sf-picker label="Schalter" empty-label=${form.type === "current" ? "keiner" : nothing} placeholder="Name oder Entität suchen …"
+                        .value=${form.switch_entity} .options=${entity(candidates.switches, (c) => c.state)}
+                        @change=${(e) => set("switch_entity", e.detail.value)}></sf-picker>
+                    </div>`
+                  : nothing}
+                ${form.type === "stepped"
+                  ? html`<div class="field">
+                      <span class="field-label">Leistungsstufe (Auswahl)</span>
+                      <sf-picker label="Leistungsstufe" placeholder="z. B. Heizstab Heizleistung …"
+                        .value=${form.level_entity} .options=${entity(candidates.selects, (c) => c.state)}
+                        @change=${(e) => this._setStepEntity(e.detail.value)}></sf-picker>
+                    </div>`
+                  : nothing}
+                ${form.type === "current"
+                  ? html`<div class="field">
+                      <span class="field-label">Ziel-Stromstärke (Zahl)</span>
+                      <sf-picker label="Stromstärke" placeholder="number-Entität in A …"
+                        .value=${form.current_entity} .options=${entity(candidates.numbers, unitDetail)}
+                        @change=${(e) => set("current_entity", e.detail.value)}></sf-picker>
+                    </div>`
+                  : nothing}
                 <div class="field">
                   <span class="field-label">Leistungsmessung (optional)</span>
                   <sf-picker label="Leistungsmessung" empty-label="keine" placeholder="Name oder Entität suchen …"
-                    .value=${form.power_entity}
-                    .options=${candidates.power.map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} ${c.unit ?? ""}` }))}
+                    .value=${form.power_entity} .options=${entity(candidates.power, unitDetail)}
                     @change=${(e) => set("power_entity", e.detail.value)}></sf-picker>
                 </div>
-                <label class="field">
-                  <span class="field-label">Leistung</span>
-                  <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
-                    @input=${(e) => set("max_power", e.target.value)}><span class="muted">W</span></span>
-                </label>
-                <label class="field">
-                  <span class="field-label">Energiebedarf pro Tag</span>
-                  <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 0,5" .value=${form.daily_energy}
-                    @input=${(e) => set("daily_energy", e.target.value)}><span class="muted">kWh</span></span>
-                </label>
+                <div class="field">
+                  <span class="field-label">Verbrauchsmessung (optional)</span>
+                  <sf-picker label="Verbrauchsmessung" empty-label="keine" placeholder="Energiezähler (kWh) …"
+                    .value=${form.energy_entity} .options=${entity(candidates.energy, unitDetail)}
+                    @change=${(e) => set("energy_entity", e.detail.value)}></sf-picker>
+                </div>
+                ${form.type !== "stepped"
+                  ? html`<label class="field">
+                      <span class="field-label">Leistung</span>
+                      <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
+                        @input=${(e) => set("max_power", e.target.value)}><span class="muted">W</span></span>
+                    </label>`
+                  : nothing}
+                ${form.kind === "heater"
+                  ? html`
+                      <div class="field">
+                        <span class="field-label">Temperatur im Speicher</span>
+                        <sf-picker label="Temperatur" placeholder="z. B. Speicher Temperatur oben …"
+                          .value=${form.temperature_entity} .options=${entity(candidates.temperature, unitDetail)}
+                          @change=${(e) => set("temperature_entity", e.detail.value)}></sf-picker>
+                      </div>
+                      <label class="field">
+                        <span class="field-label">Speichervolumen</span>
+                        <span class="input-unit"><input inputmode="decimal" placeholder="300" .value=${form.tank_l}
+                          @input=${(e) => set("tank_l", e.target.value)}><span class="muted">l</span></span>
+                      </label>`
+                  : html`<label class="field">
+                      <span class="field-label">Energiebedarf pro Tag</span>
+                      <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 0,5" .value=${form.daily_energy}
+                        @input=${(e) => set("daily_energy", e.target.value)}><span class="muted">kWh</span></span>
+                    </label>`}
               </div>
+              ${form.type === "stepped" && Object.keys(form.steps).length
+                ? html`<div class="field">
+                    <span class="field-label">Leistung je Stufe${selected ? ` (${selected.name})` : ""}</span>
+                    <div class="steps">
+                      ${Object.entries(form.steps).map(([option, watts]) => html`<label class="step-power">
+                        <span>${option}</span>
+                        <span class="input-unit"><input inputmode="decimal" .value=${toDisplay(watts, "W")}
+                          @input=${(e) => set("steps", { ...form.steps, [option]: fromDisplay(e.target.value, "W") })}><span class="muted">W</span></span>
+                      </label>`)}
+                    </div>
+                    <span class="small muted">Aus den Namen der Optionen gelesen; 0 W ist „aus“. Sunflow wählt die größte Stufe, die in die geplante Leistung passt.</span>
+                  </div>`
+                : nothing}
               <div class="actions">
-                <button class="ok" ?disabled=${!form.switch_entity || !form.name.trim()} @click=${() => this._addManual()}>
+                <button class="ok" ?disabled=${!control || !form.name.trim()} @click=${() => this._addManual()}>
                   ${this._manualEditId ? "Speichern" : "Hinzufügen"}
                 </button>
                 <button class="secondary" @click=${() => this._closeManualForm()}>Abbrechen</button>
@@ -1168,6 +1372,18 @@ class SunflowApp extends LitElement {
             `}
       </section>
     `;
+  }
+
+  /** A select chosen for the power steps: its options with the watts read from their names. */
+  _setStepEntity(entityId) {
+    const options = (this._candidates?.selects ?? []).find((c) => c.entity_id === entityId)?.options ?? [];
+    const steps = {};
+    for (const option of options) {
+      const match = option.match(/(\d+(?:[.,]\d+)?)\s*(kw|w)\b/i);
+      if (["off", "aus", "0", "none", "stop"].includes(option.trim().toLowerCase())) steps[option] = 0;
+      else if (match) steps[option] = Number(match[1].replace(",", ".")) * (match[2].toLowerCase() === "kw" ? 1000 : 1);
+    }
+    this._manual = { ...this._manual, level_entity: entityId, steps };
   }
 
   async _loadCandidates() {
@@ -1180,40 +1396,60 @@ class SunflowApp extends LitElement {
 
   async _editManual(device) {
     if (this._candidates === null) await this._loadCandidates();
+    const role = (name) => device.role_overrides[name]?.entity_id ?? "";
     this._manualEditId = device.id;
     this._manual = {
+      ...EMPTY_MANUAL,
       name: device.name,
-      switch_entity: device.role_overrides.switch?.entity_id ?? "",
-      power_entity: device.role_overrides.power?.entity_id ?? "",
+      type: device.profile.slice(MANUAL_PREFIX.length),
+      kind: device.kind === "heater" ? "heater" : "load",
+      switch_entity: role("switch"),
+      level_entity: role("level"),
+      current_entity: role("current"),
+      power_entity: role("power"),
+      energy_entity: role("energy"),
+      temperature_entity: role("temperature"),
+      steps: { ...(device.power_steps ?? {}) },
       max_power: toDisplay(device.parameters.max_power, "W"),
       daily_energy: toDisplay(device.parameters.daily_energy_wh, "Wh"),
+      tank_l: device.parameters.tank_l ? String(device.parameters.tank_l) : "",
     };
   }
 
   _closeManualForm() {
     this._candidates = null;
     this._manualEditId = null;
-    this._manual = { name: "", switch_entity: "", power_entity: "", max_power: "", daily_energy: "" };
+    this._manual = { ...EMPTY_MANUAL };
   }
 
   async _addManual() {
     const form = this._manual;
-    const power = fromDisplay(form.max_power || "500", "W");
+    const power = form.max_power === "" ? null : fromDisplay(form.max_power, "W");
     const daily = fromDisplay(form.daily_energy, "kWh");
-    if (power === undefined || power === null || daily === undefined) {
-      this._error = "Bitte gültige Zahlen für Leistung und Energiebedarf eingeben.";
+    const tank = form.tank_l === "" ? null : fromDisplay(form.tank_l, "");
+    if (power === undefined || daily === undefined || tank === undefined || Object.values(form.steps).some((w) => w === undefined)) {
+      this._error = "Bitte gültige Zahlen eingeben.";
       return;
     }
     const body = {
       name: form.name.trim(),
-      switch_entity: form.switch_entity,
+      type: form.type,
+      kind: form.kind,
+      switch_entity: form.switch_entity || null,
+      level_entity: form.type === "stepped" ? form.level_entity || null : null,
+      current_entity: form.type === "current" ? form.current_entity || null : null,
       power_entity: form.power_entity || null,
-      max_power: power,
-      daily_energy_wh: daily === null ? null : daily * 1000,
+      energy_entity: form.energy_entity || null,
+      temperature_entity: form.kind === "heater" ? form.temperature_entity || null : null,
+      tank_l: form.kind === "heater" ? tank : null,
+      max_power: form.type === "stepped" ? null : power ?? 500,
+      daily_energy_wh: daily === null || form.kind === "heater" ? null : daily * 1000,
+      power_steps: form.type === "stepped" && Object.keys(form.steps).length ? form.steps : null,
     };
     try {
       const device = this._manualEditId ? await api.updateManual(this._manualEditId, body) : await api.addManual(body);
       this._configDevices = { ...this._configDevices, [device.ha_device_id]: device };
+      this._loadCategories();
       this._closeManualForm();
       this._error = null;
     } catch (err) {
@@ -1229,8 +1465,14 @@ class SunflowApp extends LitElement {
     const disabled = Boolean(stored?.disabled);
     const editing = this._editing.has(id);
     const dirty = this._dirty.has(id);
+    // Planning cannot do without these Kenndaten (others, e.g. a learned daily need, may stay empty)
+    const missing = Boolean(stored) && (this._params[stored.id] ?? []).some(
+      (p) => REQUIRED_PARAMS.has(p.name) && (p.effective === null || p.effective === undefined),
+    );
+    const factsChanged = Boolean(stored) && (Object.keys(this._paramEdits[stored.id] ?? {}).length > 0 || this._nameEdits[stored.id] !== undefined);
     // Needs attention: not taken over yet, values missing or being edited
-    const open = this._expanded.has(id) || (!disabled && (!configured || dirty || editing || (preview && !preview.complete)));
+    const open = this._expanded.has(id) ||
+      (!disabled && (!configured || dirty || editing || missing || factsChanged || (preview && !preview.complete)));
     const head = html`
       <div class="device-head">
         <button class="device-toggle" aria-expanded=${open} @click=${() => this._toggleExpanded(id, open)}>
@@ -1245,9 +1487,11 @@ class SunflowApp extends LitElement {
         <span class="device-chips">
           ${disabled
             ? html`<span class="chip neutral">deaktiviert</span>`
-            : configured && !dirty
-              ? html`<span class="chip ok">✓ übernommen</span>`
-              : html`<span class="chip warn">noch nicht übernommen</span>`}
+            : !configured || dirty
+              ? html`<span class="chip warn">noch nicht übernommen</span>`
+              : missing
+                ? html`<span class="chip warn">Angabe fehlt</span>`
+                : html`<span class="chip ok">✓ übernommen</span>`}
           ${configured
             ? html`<label class="inline enable" title=${disabled ? "Gerät wieder verwenden" : "Gerät mit allen Einstellungen behalten, aber nicht verwenden"}>
                 <input type="checkbox" .checked=${!disabled} ?disabled=${this._busy.has(id)}
@@ -1292,6 +1536,7 @@ class SunflowApp extends LitElement {
               </button>`
             : nothing}
         </div>
+        ${stored && !disabled ? this._renderDeviceFacts(stored) : nothing}
       </section>
     `;
   }
@@ -1498,121 +1743,117 @@ class SunflowApp extends LitElement {
     `;
   }
 
-  _renderParameters() {
-    const devices = this._activeDevices;
-    return html`
-      <div class="heading">
-        <h1>Kenndaten</h1>
-        <p class="muted">Was sich aus Home Assistant ermitteln ließ, ist vorgeschlagen. Ergänze oder überschreibe nur, was nicht stimmt.</p>
-      </div>
-      ${devices.length === 0
-        ? html`<p class="muted">Noch kein Gerät übernommen – bitte in Schritt 2 „Werte passen“ wählen.</p>`
-        : CATEGORIES.map(([key, title]) => {
-            const members = devices.filter((d) => this._configuredCategory(d) === key);
-            return members.length ? html`<h2 class="category">${title}</h2>${members.map((d) => this._renderDeviceParameters(d))}` : nothing;
-          })}
-    `;
-  }
-
-  _renderDeviceParameters(device) {
+  /** Kenndaten of a configured device: what it is. Planning and earnings have their own areas. */
+  _renderDeviceFacts(device) {
     const params = (this._params[device.id] ?? []).filter((p) => this._advanced || !p.advanced);
     const capabilities = this._capabilitiesOf(device);
     const edits = this._paramEdits[device.id] ?? {};
-    const feedEdit = this._feedEdits[device.id] ?? {};
     const nameEdit = this._nameEdits[device.id];
-    const changed =
-      Object.keys(edits).length > 0 ||
-      this._feedEdits[device.id] !== undefined ||
-      nameEdit !== undefined ||
-      this._flexEdits[device.id] !== undefined;
-    // Values planning cannot do without; others (e.g. the learned daily need) may stay empty
-    const missing = params.some((p) => REQUIRED_PARAMS.has(p.name) && (p.effective === null || p.effective === undefined));
-    const key = `params:${device.id}`;
-    const open = this._expanded.has(key) || changed || missing;
-    const head = html`
-      <div class="device-head">
-        <button class="device-toggle" aria-expanded=${open} @click=${() => this._toggleExpanded(key, open)}>
-          <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
-          <span>
-            <span class="device-title">${device.name}</span>
-            <span class="muted small device-sub">${devicePurpose(capabilities)}${open ? ` · Profil ${device.profile}` : ""}</span>
-          </span>
-        </button>
-        ${missing ? html`<span class="chip warn">Angabe fehlt</span>` : changed ? html`<span class="chip warn">nicht gespeichert</span>` : nothing}
-      </div>`;
-    if (!open) {
-      return html`
-        <section class="device compact">
-          ${head}
-          <div class="summary small">${params
-            .filter((p) => p.effective !== null && p.effective !== undefined)
-            .slice(0, 4)
-            .map((p) => `${paramLabel(p.name)} ${formatValue(p.effective, p.unit)}`)
-            .join(" · ")}</div>
-        </section>
-      `;
-    }
+    const changed = Object.keys(edits).length > 0 || nameEdit !== undefined;
     return html`
-      <section class="device">
-        ${head}
-        ${capabilities.includes("loadpoint") && device.profile.startsWith("evcc_intg/")
-          ? html`<label class="field wide">
-              <span class="field-label">Art des Ladepunkts</span>
-              <select @change=${(e) => this._setKind(device, e.target.value || null)}>
-                <option value="" ?selected=${!device.kind}>automatisch (aus der Einheit des Ladestands)</option>
-                <option value="vehicle" ?selected=${device.kind === "vehicle"}>Wallbox (Fahrzeug)</option>
-                <option value="heater" ?selected=${device.kind === "heater"}>Wärme (z. B. Heizstab im Warmwasserspeicher)</option>
-              </select>
-            </label>`
-          : nothing}
-        <label class="field wide">
-          <span class="field-label">Bezeichnung</span>
-          <span class="input-unit">
-            <input .value=${nameEdit ?? device.name}
-              @input=${(e) => (this._nameEdits = { ...this._nameEdits, [device.id]: e.target.value })}>
-          </span>
-        </label>
-        ${this._params[device.id] === undefined ? html`<p class="muted">Lade Kenndaten …</p>` : nothing}
-        ${params.length
-          ? html`<div class="fields">${params.map((p) => this._renderParameterField(device, p, edits))}</div>`
-          : nothing}
-        ${capabilities.includes("pv")
-          ? html`
-              <div class="fields">
-                <div class="field">
-                  <span class="field-label">Vergütung</span>
-                  <select aria-label="Vergütung" @change=${(e) => this._editFeedIn(device.id, "model", e.target.value)}>
-                    ${Object.entries(FEED_IN_MODELS).map(
-                      ([value, label]) => html`<option value=${value}
-                        ?selected=${(feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed") === value}>${label}</option>`,
-                    )}
-                  </select>
-                </div>
-                <label class="field">
-                  <span class="field-label">Einspeisevergütung</span>
-                  <span class="input-unit">
-                    <input inputmode="decimal" placeholder="z. B. 8,2"
-                      .value=${feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct")}
-                      @input=${(e) => this._editFeedIn(device.id, "rate", e.target.value)}>
-                    <span class="muted">ct/kWh</span>
-                  </span>
-                </label>
-              </div>
-            `
-          : nothing}
-        ${capabilities.includes("loadpoint") || capabilities.includes("load")
-          ? this._renderFlexSettings(device, this._params[device.id] ?? [])
-          : nothing}
+      <div class="facts">
+        <div class="field-label">Kenndaten</div>
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">Bezeichnung</span>
+            <span class="input-unit">
+              <input .value=${nameEdit ?? device.name}
+                @input=${(e) => (this._nameEdits = { ...this._nameEdits, [device.id]: e.target.value })}>
+            </span>
+          </label>
+          ${capabilities.includes("loadpoint") && device.profile.startsWith("evcc_intg/")
+            ? html`<label class="field">
+                <span class="field-label">Art des Ladepunkts</span>
+                <select @change=${(e) => this._setKind(device, e.target.value || null)}>
+                  <option value="" ?selected=${!device.kind}>automatisch (aus der Einheit des Ladestands)</option>
+                  <option value="vehicle" ?selected=${device.kind === "vehicle"}>Wallbox (Fahrzeug)</option>
+                  <option value="heater" ?selected=${device.kind === "heater"}>Wärme (z. B. Heizstab im Warmwasserspeicher)</option>
+                </select>
+              </label>`
+            : nothing}
+          ${params.map((p) => this._renderParameterField(device, p, edits))}
+        </div>
+        ${this._params[device.id] === undefined ? html`<p class="muted small">Lade Kenndaten …</p>` : nothing}
         <div class="actions">
           <button class="ok" ?disabled=${!changed || this._busy.has(device.id)} @click=${() => this._saveDevice(device)}>
-            Speichern
+            Kenndaten speichern
           </button>
-          ${!changed ? html`<span class="muted small">Keine ungespeicherten Änderungen</span>` : nothing}
           <span class="spacer"></span>
           <button class="secondary danger" ?disabled=${this._busy.has(device.id)} @click=${() => this._removeDevice(device)}>
             Entfernen
           </button>
         </div>
+      </div>
+    `;
+  }
+
+  /** How each consumer is planned (strategy, target, ready by, alternative heat). */
+  _renderConsumers() {
+    const consumers = this._activeDevices.filter((d) => {
+      const caps = this._capabilitiesOf(d);
+      return caps.includes("loadpoint") || caps.includes("load");
+    });
+    return html`
+      <div class="heading">
+        <h1>Verbraucher</h1>
+        <p class="muted">Wie Sunflow Warmwasser, eigene Verbraucher und Wallboxen einplant. Fahrzeuge an Wallboxen haben ihre
+          eigenen Vorgaben unter „Laden“; die hier gelten für eine Wallbox ohne zugeordnete Fahrzeuge.</p>
+      </div>
+      ${consumers.length === 0 ? html`<p class="muted">Keine steuerbaren Verbraucher eingerichtet.</p>` : nothing}
+      ${CATEGORIES.map(([key, title]) => {
+        const members = consumers.filter((d) => this._configuredCategory(d) === key);
+        return members.length
+          ? html`<h2 class="category">${title}</h2>${members.map((d) => html`
+              <section class="device">
+                <div class="device-head"><div class="device-title">${d.name}</div>
+                  ${this._flexEdits[d.id] !== undefined ? html`<span class="chip warn">nicht gespeichert</span>` : nothing}</div>
+                ${this._renderFlexSettings(d, this._params[d.id] ?? [])}
+                <div class="actions">
+                  <button class="ok" ?disabled=${this._flexEdits[d.id] === undefined || this._busy.has(d.id)}
+                    @click=${() => this._saveDevice(d)}>Speichern</button>
+                </div>
+              </section>`)}`
+          : nothing;
+      })}
+    `;
+  }
+
+  /** What the feed-in of each PV plant earns (part of the tariff, not of the device). */
+  _renderFeedIns() {
+    const plants = this._activeDevices.filter((d) => this._capabilitiesOf(d).includes("pv"));
+    if (!plants.length) return nothing;
+    return html`
+      <section class="device">
+        <div class="device-title">Einspeisevergütung</div>
+        ${plants.map((device) => {
+          const feedEdit = this._feedEdits[device.id] ?? {};
+          return html`
+            <div class="fields">
+              <div class="field">
+                <span class="field-label">${device.name}</span>
+                <select aria-label="Vergütung ${device.name}" @change=${(e) => this._editFeedIn(device.id, "model", e.target.value)}>
+                  ${Object.entries(FEED_IN_MODELS).map(
+                    ([value, label]) => html`<option value=${value}
+                      ?selected=${(feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed") === value}>${label}</option>`,
+                  )}
+                </select>
+              </div>
+              <label class="field">
+                <span class="field-label">Vergütung</span>
+                <span class="input-unit">
+                  <input inputmode="decimal" placeholder="z. B. 8,2"
+                    .value=${feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct")}
+                    @input=${(e) => this._editFeedIn(device.id, "rate", e.target.value)}>
+                  <span class="muted">ct/kWh</span>
+                </span>
+              </label>
+              <div class="field">
+                <span class="field-label">&nbsp;</span>
+                <button class="ok" ?disabled=${this._feedEdits[device.id] === undefined || this._busy.has(device.id)}
+                  @click=${() => this._saveDevice(device)}>Speichern</button>
+              </div>
+            </div>`;
+        })}
       </section>
     `;
   }
@@ -1830,6 +2071,10 @@ class SunflowApp extends LitElement {
   }
 
   _renderSources() {
+    return html`${this._renderSourcesBody()}${this._renderFeedIns()}`;
+  }
+
+  _renderSourcesBody() {
     const sources = this._sources;
     if (sources === null) return html`<h1>Tarif und Prognose</h1><p class="muted">Suche Quellen …</p>`;
     return html`
@@ -2128,7 +2373,7 @@ class SunflowApp extends LitElement {
                 (i) => html`
                   <li class="alert ${ISSUE_STYLES[i.level].css}">
                     <span>${ISSUE_STYLES[i.level].icon} ${i.message}</span>
-                    <button class="link" @click=${() => this._goTo(i.step)}>zu „${STEPS[i.step]}“</button>
+                    <button class="link" @click=${() => this._goTo(i.step)}>zu „${STEPS[stepIndex(i.step)][1]}“</button>
                   </li>
                 `,
               )}
@@ -2327,6 +2572,7 @@ class SunflowApp extends LitElement {
     }
     .device-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; }
     .device-title { font-weight: 600; font-size: 16px; display: block; }
+    .facts { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--sf-border); padding-top: 14px; }
     .device-sub { display: block; }
     .device-toggle { display: flex; gap: 8px; align-items: flex-start; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; }
     .caret { width: 14px; color: var(--sf-muted); line-height: 22px; }
@@ -2429,6 +2675,8 @@ class SunflowApp extends LitElement {
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     .danger { color: var(--sf-error-text); }
+    .steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .step-power { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
     .plane-strings { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
     .manual-item { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
     .item-actions { display: flex; gap: 8px; }

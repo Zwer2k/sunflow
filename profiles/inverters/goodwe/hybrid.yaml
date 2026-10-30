@@ -1,0 +1,48 @@
+# GoodWe ET/EH/BT hybrid via the core goodwe integration. Unique ids put the key in the
+# middle ("goodwe-<key>-<serial>"), hence the patterns.
+# Battery control only by the operation mode: eco charge and eco discharge run at full
+# power; general is self-consumption. The mode and its eco schedule are kept in flash, so
+# they are only written when the action changes.
+# Signs (goodwe library): pbattery1 + = discharge, active_power + = export.
+# Not verified on hardware yet.
+profile: goodwe/hybrid
+version: 1
+match:
+  integration: goodwe
+  requires: ["goodwe-operation_mode-*", "goodwe-pbattery1-*", "goodwe-battery_soc-*"]
+
+capabilities: [pv, battery, grid_meter, battery_control]
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: "goodwe-battery_soc-*", unit: "%"}
+  battery_power: {key: "goodwe-pbattery1-*", unit: W, sign: discharge_positive}
+  pv_power: {key: "goodwe-ppv-*", unit: W}
+  grid_power: {key: "goodwe-active_power-*", unit: W, sign: export_positive}
+  load_power: {key: "goodwe-house_consumption-*", unit: W, optional: true}
+  pv_energy: {key: "goodwe-e_total-*", unit: kWh, optional: true}
+  grid_import_energy: {key: "goodwe-meter_e_total_imp-*", unit: kWh, optional: true}
+  grid_export_energy: {key: "goodwe-meter_e_total_exp-*", unit: kWh, optional: true}
+  battery_charge_energy: {key: "goodwe-e_bat_charge_total-*", unit: kWh, optional: true}
+  battery_discharge_energy: {key: "goodwe-e_bat_discharge_total-*", unit: kWh, optional: true}
+
+parameters:
+  capacity_wh: {unit: Wh, min: 1000}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, default: 5000, min: 0}
+  max_discharge: {unit: W, default: 5000, min: 0}
+  efficiency_pct: {unit: "%", default: 93, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 97, min: 80, max: 100}
+
+battery_control:
+  auto:
+    - select: {key: "goodwe-operation_mode-*", option: general, storage: eeprom, write: if_differs}
+  force_charge:
+    - select: {key: "goodwe-operation_mode-*", option: eco_charge, storage: eeprom, write: if_differs}
+  force_discharge:
+    - select: {key: "goodwe-operation_mode-*", option: eco_discharge, storage: eeprom, write: if_differs}
+  full_power_only: true
+
+eeprom_guard:
+  max_writes_per_day: 20
