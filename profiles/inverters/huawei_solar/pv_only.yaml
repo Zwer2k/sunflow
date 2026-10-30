@@ -1,12 +1,13 @@
 # Huawei SUN2000 without battery via the huawei_solar custom integration.
-# Read-only: export limitation needs a DTSU666-H meter; no control without installer login.
+# Limiting the output (derating, kept in flash) needs the installer login in the
+# integration ("elevated permissions"); without it the plant is only measured.
 profile: huawei_solar/pv_only
-version: 1
+version: 2
 match:
   integration: huawei_solar
   has_battery: false
 
-capabilities: [pv]
+capabilities: [pv, curtail]
 
 roles:
   ac_power: {key: active_power, unit: W}
@@ -21,3 +22,15 @@ roles:
   pv_energy: {key: accumulated_yield_energy, unit: kWh, optional: true}
   pv_dc_energy: {key: total_dc_input_power, unit: kWh, optional: true}
   status: {key: device_status}
+
+parameters:
+  max_ac_power: {unit: W, derive: {sum_key: P_max}}
+
+pv_limit:
+  set:
+    - number: {key: active_power_fixed_value_derating, value: "{{ limit_w }}", min: 0, storage: eeprom, write: if_differs, tolerance: 300}
+  release:
+    - number: {key: active_power_fixed_value_derating, value: "{{ max_ac_power }}", storage: eeprom, write: if_differs, tolerance: 50}
+
+eeprom_guard:
+  max_writes_per_day: 30

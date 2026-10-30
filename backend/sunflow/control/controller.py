@@ -22,6 +22,7 @@ import json
 import logging
 import math
 from pathlib import Path
+import re
 from typing import Any
 
 from sunflow.config.models import DeviceConfig, SunflowConfig
@@ -100,6 +101,8 @@ class DeviceControl:
     # PV plants: output limit in force (None: not limited)
     limit_w: float | None = None
     last_current_write: datetime | None = None
+    # Action last written to the device
+    last_action: str | None = None
     calls: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -281,11 +284,14 @@ async def apply(
     runtime: dict[str, float] | None = None,
     skip_services: bool = False,
     refresh: timedelta | None = None,
+    services_on_change: bool = False,
 ) -> None:
     """Write the action if the device shows other values; status is updated in place.
 
     With refresh everything is written again once that long has passed since the last
     write, for devices that fall back to their own logic without new commands.
+    services_on_change: action calls (not readable back) only when the action changes
+    or a refresh is due, not every minute.
     """
     if runtime is None:
         runtime = {"P": abs(power)} if power is not None else {}
@@ -295,6 +301,8 @@ async def apply(
         calls = [c for c in calls if c.entity_id is not None]
     status.last_check = now
     due = refresh is not None and status.last_write is not None and now - status.last_write >= refresh
+    if services_on_change and not due and status.last_action == action:
+        calls = [c for c in calls if c.entity_id is not None]
     # Numbers and selects that already hold the value need no write; a press commits them
     if not due and all(access.matches(c, states) for c in calls if c.service != "press"):
         return
@@ -310,6 +318,7 @@ async def apply(
         else None
     )
     status.last_write = now
+    status.last_action = action
     _LOGGER.info("%s: %s %s", status.name, action, f"{power:.0f} W" if power is not None else "")
 
 
@@ -347,6 +356,11 @@ def device_variables(profile: dict[str, Any], device: DeviceConfig, snapshot: Sn
     values: dict[str, Any] = {f"role_{r.role}": round(r.value) for r in roles if isinstance(r.value, int | float)}
     if serial is not None:
         values["device_serial"] = serial
+    # Integrations whose actions take a (sub-)device, e.g. Huawei's battery: device_id_batteries
+    values["device_id"] = device.ha_device_id
+    for sub in snapshot.devices:
+        if sub.get("via_device_id") == device.ha_device_id and sub.get("model"):
+            values.setdefault(f"device_id_{re.sub(r'[^a-z0-9]+', '_', sub['model'].lower()).strip('_')}", sub["id"])
     return values
 
 
@@ -364,15 +378,17 @@ def device_access(
         snapshot = await fetch_snapshot(client, hub)
         entities = device_entities(snapshot, device.ha_device_id)
         if action.startswith(PV_LIMIT_PREFIX):
+            variables = device_variables(profile, device, snapshot) | runtime
             return plan_pv_limit(
-                profile, action.removeprefix(PV_LIMIT_PREFIX), device.parameters, runtime, entities
+                profile, action.removeprefix(PV_LIMIT_PREFIX), device.parameters, variables, entities
             ), snapshot.states
         if charging:
             # Own consumers have no HA device: their steps address the entities chosen per role
             bound = {k: o.entity_id for k, o in device.role_overrides.items() if o.entity_id}
             variables = device_variables(profile, device, snapshot) | runtime
             return plan_charge(profile, action, device.parameters, variables, entities, bound), snapshot.states
-        return plan_battery(profile, action, device.parameters, runtime, entities), snapshot.states
+        variables = device_variables(profile, device, snapshot) | runtime
+        return plan_battery(profile, action, device.parameters, variables, entities), snapshot.states
 
     def direct() -> DirectDevice | None:
         return hub.by_ha_device(device.ha_device_id) if hub else None
@@ -538,7 +554,7 @@ class PlanController:
         refresh = profile["pv_limit"].get("refresh")
         await apply(
             access, bookkeeping, PV_SET, None, now, {"limit_w": limit},
-            refresh=parse_duration(refresh, timedelta()) if refresh else None,
+            refresh=parse_duration(refresh, timedelta()) if refresh else None, services_on_change=True,
         )
         status.active, status.limit_w = True, limit
         status.reason = f"PV auf {limit / 1000:.1f} kW begrenzt ({reason})".replace(".", ",")
@@ -557,7 +573,7 @@ class PlanController:
         runtime: dict[str, float] = {"P": abs(power)} if power is not None else {}
         if (buffer := (defaults | device.parameters).get("grid_offset")) is not None:
             runtime["grid_offset"] = grid_buffer(buffer, current_slot(plan, now) if plan else None, reason == "nach Plan")
-        await apply(access, status, action, power, now, runtime, refresh=refresh)
+        await apply(access, status, action, power, now, runtime, refresh=refresh, services_on_change=True)
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
         status.grid_target_w = runtime.get("grid_offset")
 

@@ -70,7 +70,7 @@ def test_discover(snapshot: Snapshot, library: ProfileLibrary) -> None:
     assert inverter.components[0].profile is None
 
     assert result["huawei_solar"].devices[0].profile == "huawei_solar/pv_only"
-    assert result["huawei_solar"].devices[0].capabilities == ["pv"]
+    assert result["huawei_solar"].devices[0].capabilities == ["pv", "curtail"]
     assert inverter.components[0].capabilities == []
 
     shelly = result["shelly"]
