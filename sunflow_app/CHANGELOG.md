@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.41.0
+
+- Die Kategorie eines Geräts (Wechselrichter, Speicher, Zähler, Wallbox, Wärme, Verbraucher) wird beim Übernehmen festgehalten und überall verwendet: Geräte und Kenndaten sind danach gegliedert, Steuerung und „Sunflow steuert“ zeigen sie bei jedem Gerät.
+- evcc-Ladepunkte: Unter Kenndaten lässt sich die Art festlegen (Wallbox oder Wärme). Ohne Angabe gilt wie bisher die Einheit des Ladestands (°C = Wärme); sie wird jetzt beim Übernehmen gespeichert, so dass ein gerade nicht lesbarer Sensor die Einordnung nicht mehr ändert.
+- Deaktivierte Geräte erscheinen in Kenndaten, Gerätetest, Bilanzprüfung und Prognose nicht mehr.
+
 ## 0.40.0
 
 - Einstellungen → Geräte → Speicher: Jeder Wechselrichter mit Speicher hat eine eigene Speicher-Karte mit Ladestand, Leistung, Kapazität und seinen Modulen (z. B. 4× BTS mit der jeweiligen Kapazität). Die Module werden automatisch zugeordnet (Untergeräte des Wechselrichters in Home Assistant) oder lassen sich von Hand zuordnen, auch Module, die in Home Assistant an einem anderen Wechselrichter hängen. Die vorgeschlagene Kapazität ergibt sich aus den zugeordneten Modulen.

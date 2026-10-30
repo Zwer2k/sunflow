@@ -48,9 +48,29 @@ def device_kind(profile: dict[str, Any], device: DeviceConfig, snapshot: Snapsho
     """Return "heater" or "vehicle" for loadpoints (a temperature as SoC means heater)."""
     if "loadpoint" not in profile["capabilities"]:
         return None
+    if device.kind is not None:
+        return device.kind
     roles = {r.role: r for r in preview(profile, snapshot, device.ha_device_id)}
     soc = roles.get("vehicle_soc")
     return "heater" if soc is not None and soc.raw_unit in ("°C", "°F", "K") else "vehicle"
+
+
+# Groups of devices in the UI, in this order
+CATEGORIES = ("inverter", "battery", "meter", "wallbox", "heat", "load")
+
+
+def device_category(profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot) -> str:
+    """Inverter, battery, meter, wallbox, heat or load."""
+    capabilities = profile["capabilities"]
+    if "loadpoint" in capabilities or "ev_charger" in capabilities:
+        return "heat" if device_kind(profile, device, snapshot) == "heater" else "wallbox"
+    if "pv" in capabilities:
+        return "inverter"
+    if "battery" in capabilities:
+        return "battery"
+    if "grid_meter" in capabilities:
+        return "meter"
+    return "load"
 
 
 def device_parameters(

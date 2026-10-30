@@ -137,6 +137,25 @@ export const FEED_IN_MODELS = {
 const CONTROL_CAPABILITIES = new Set(["battery_window", "curtail", "switch_off", "ev_charger"]);
 
 // Purpose of a device derived from its profile capabilities, e.g. "Wechselrichter + Speicher"
+/** Device groups in the UI, in this order (the backend decides which device is which). */
+export const CATEGORIES = [
+  ["inverter", "Wechselrichter"],
+  ["battery", "Speicher"],
+  ["meter", "Zähler"],
+  ["wallbox", "Wallboxen und Fahrzeuge"],
+  ["heat", "Wärme"],
+  ["load", "Verbraucher"],
+];
+// For a single device
+export const CATEGORY_LABELS = {
+  inverter: "Wechselrichter",
+  battery: "Speicher",
+  meter: "Zähler",
+  wallbox: "Wallbox",
+  heat: "Wärme",
+  load: "Verbraucher",
+};
+
 export function devicePurpose(capabilities) {
   const has = (c) => capabilities.includes(c);
   if (has("ev_charger")) return "Wallbox";

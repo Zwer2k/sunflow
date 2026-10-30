@@ -131,6 +131,8 @@ class DeviceConfig(BaseModel):
     flex: FlexSettings = Field(default_factory=FlexSettings)
     # Wallboxes with assigned vehicles
     vehicle_detection: VehicleDetection = Field(default_factory=VehicleDetection)
+    # Loadpoints: a car or a heater; None: from the unit of its "SoC" (°C means heater)
+    kind: Literal["vehicle", "heater"] | None = None
     # Battery modules (HA device ids) of an inverter's battery; None: its sub-devices in HA
     battery_modules: list[str] | None = None
 
