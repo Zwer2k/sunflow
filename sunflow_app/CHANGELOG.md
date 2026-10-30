@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.46.3
+
+- Einstellungen → Fahrzeuge zeigte nach dem Öffnen bis zu 30 Sekunden „Lade …“: Die Fahrzeuge werden jetzt sofort geladen, danach alle 30 Sekunden aktualisiert.
+
 ## 0.46.2
 
 - Wallboxen mit zugeordneten Fahrzeugen zeigen in den Übersichten das erkannte Fahrzeug und dessen Ladestand aus dem Fahrzeug-Sensor: im Live-Energiefluss am Wallbox-Knoten (z. B. „Fiat 500e 62 %“) und in der Steuerung. Das gilt auch für Wallboxen, die selbst keinen Ladestand kennen (go-e). In der Steuerung ist der Wert jetzt aktuell statt aus dem letzten Plan; ein erkanntes Fahrzeug erscheint dort auch, bevor der Plan es kennt.

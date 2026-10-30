@@ -33,6 +33,8 @@ class SunflowVehicles extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    // poll() waits a full interval before its first call
+    this._load();
     this._stopPolling = poll(() => this._load(), REFRESH_MS);
   }
 
