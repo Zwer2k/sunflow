@@ -403,6 +403,14 @@ class SunflowApp extends LitElement {
     return (stored && this._categories[stored.id]) ?? deviceCategory(device, this._previews[device.device_id ?? device.ha_device_id]);
   }
 
+  /** Category of a configured device: from the backend, else from its capabilities. */
+  _configuredCategory(device) {
+    return (
+      this._categories[device.id] ??
+      deviceCategory({ capabilities: this._capabilitiesOf(device) }, this._previews[device.ha_device_id])
+    );
+  }
+
   async _loadCategories() {
     try {
       this._categories = await api.categories();
@@ -1497,7 +1505,7 @@ class SunflowApp extends LitElement {
       ${devices.length === 0
         ? html`<p class="muted">Noch kein Gerät übernommen – bitte in Schritt 2 „Werte passen“ wählen.</p>`
         : CATEGORIES.map(([key, title]) => {
-            const members = devices.filter((d) => (this._categories[d.id] ?? "load") === key);
+            const members = devices.filter((d) => this._configuredCategory(d) === key);
             return members.length ? html`<h2 class="category">${title}</h2>${members.map((d) => this._renderDeviceParameters(d))}` : nothing;
           })}
     `;
@@ -2300,7 +2308,10 @@ class SunflowApp extends LitElement {
     .device.compact { padding: 12px 18px; gap: 6px; }
     .device.off { opacity: .65; }
     .summary { color: var(--sf-muted); padding-left: 22px; }
-    .category { font-size: 15px; margin: 18px 0 0; color: var(--sf-muted); font-weight: 600; }
+    .category {
+      font-size: 16px; margin: 22px 0 2px; padding-bottom: 6px; font-weight: 600; color: var(--sf-text);
+      border-bottom: 2px solid var(--sf-border);
+    }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }
     .tile.missing { outline: 1px dashed var(--sf-warn-text); }
