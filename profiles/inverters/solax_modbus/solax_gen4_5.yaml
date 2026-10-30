@@ -1,0 +1,62 @@
+# SolaX X1/X3 hybrid Gen4/Gen5 via the solax_modbus custom integration (SolaX plugin).
+# Battery control through "remote control mode 1" of the integration: the selects and
+# numbers are kept by the integration (not written to the inverter); the trigger sends
+# them and the integration repeats them every poll for the autorepeat duration. When
+# Sunflow stops sending, the inverter returns to its own mode after that time.
+# Signs (integration): battery_power_charge + = charge, measured_power + = export,
+# remote control active power + = charge.
+# Not verified on hardware yet.
+profile: solax_modbus/solax_gen4_5
+version: 1
+match:
+  integration: solax_modbus
+  requires: [remotecontrol_power_control, remotecontrol_trigger, battery_power_charge]
+
+capabilities: [pv, battery, grid_meter, battery_control]
+watchdog: command
+fallback: auto
+
+roles:
+  battery_soc: {key: battery_capacity, unit: "%"}
+  battery_power: {key: battery_power_charge, unit: W, sign: charge_positive}
+  pv_power: {key: pv_power_total, unit: W}
+  pv1_power: {key: pv_power_1, unit: W, optional: true}
+  pv2_power: {key: pv_power_2, unit: W, optional: true}
+  grid_power: {key: measured_power, unit: W, sign: export_positive}
+  load_power: {key: house_load, unit: W}
+  grid_import_energy: {key: grid_import_total, unit: kWh, optional: true}
+  grid_export_energy: {key: grid_export_total, unit: kWh, optional: true}
+  battery_charge_energy: {key: battery_input_energy_total, unit: kWh, optional: true}
+  battery_discharge_energy: {key: battery_output_energy_total, unit: kWh, optional: true}
+
+parameters:
+  # Usable capacity of all battery modules (the integration reports no capacity)
+  capacity_wh: {unit: Wh, min: 1000}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, default: 5000, min: 0}
+  max_discharge: {unit: W, default: 5000, min: 0}
+  efficiency_pct: {unit: "%", default: 93, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 96.5, min: 80, max: 100}
+  # How long the integration repeats a command without a new one from Sunflow
+  autorepeat_s: {unit: s, default: 1800, min: 300, max: 7200, advanced: true}
+
+battery_control:
+  auto:
+    - select: {key: remotecontrol_power_control, option: "Disabled", write: if_differs}
+    - press: {key: remotecontrol_trigger, write: if_differs}
+  hold:
+    - select: {key: remotecontrol_power_control, option: "Enabled No Discharge", write: if_differs}
+    - number: {key: remotecontrol_autorepeat_duration, value: "{{ autorepeat_s }}", write: if_differs}
+    - press: {key: remotecontrol_trigger, write: if_differs}
+  force_charge:
+    - select: {key: remotecontrol_power_control, option: "Enabled Battery Control", write: if_differs}
+    - number: {key: remotecontrol_active_power, value: "{{ P }}", min: 0, max: 30000, tolerance: 100, write: if_differs}
+    - number: {key: remotecontrol_autorepeat_duration, value: "{{ autorepeat_s }}", write: if_differs}
+    - press: {key: remotecontrol_trigger, write: if_differs}
+  force_discharge:
+    - select: {key: remotecontrol_power_control, option: "Enabled Battery Control", write: if_differs}
+    - number: {key: remotecontrol_active_power, value: "{{ -P }}", min: -30000, max: 0, tolerance: 100, write: if_differs}
+    - number: {key: remotecontrol_autorepeat_duration, value: "{{ autorepeat_s }}", write: if_differs}
+    - press: {key: remotecontrol_trigger, write: if_differs}
+  # Well within the autorepeat duration, so the command never runs out while wanted
+  refresh: 10min
