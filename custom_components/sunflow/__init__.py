@@ -28,7 +28,13 @@ from .const import (
 )
 from .coordinator import SunflowData, create_coordinators
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 type SunflowConfigEntry = ConfigEntry[SunflowData]
 
@@ -38,8 +44,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SunflowConfigEntry) -> b
     if entry.data.get(CONF_KIND) == KIND_FORECAST:
         app = hass.config_entries.async_get_entry(entry.data[CONF_APP_ENTRY])
         # Created while the App entry finishes its setup; its data is there already
-        if app is None or app.state not in (ConfigEntryState.LOADED, ConfigEntryState.SETUP_IN_PROGRESS) or not hasattr(
-            app, "runtime_data"
+        if (
+            app is None
+            or app.state
+            not in (ConfigEntryState.LOADED, ConfigEntryState.SETUP_IN_PROGRESS)
+            or not hasattr(app, "runtime_data")
         ):
             raise ConfigEntryNotReady("Sunflow App entry not loaded yet")
         entry.runtime_data = app.runtime_data
@@ -52,6 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SunflowConfigEntry) -> b
         data = create_coordinators(hass, entry, client)
         await data.forecasts.async_config_entry_first_refresh()
         await data.strings.async_config_entry_first_refresh()
+        await data.state.async_config_entry_first_refresh()
         entry.runtime_data = data
         _offer_new_forecasts(hass, entry)
         entry.async_on_unload(

@@ -54,3 +54,40 @@ class SunflowClient:
     async def string_energy(self) -> dict[str, Any]:
         """Energy and power per PV string."""
         return await self.request("GET", "/strings/energy")
+
+    async def state(self) -> dict[str, Any]:
+        """Plan, control, live values and consumers."""
+        return await self.request("GET", "/integration/state")
+
+    async def set_control(
+        self,
+        enabled: bool | None = None,
+        device_id: str | None = None,
+        device_enabled: bool | None = None,
+    ) -> None:
+        """Main switch or one device's switch; switching on is confirmed by the user's action."""
+        body = {
+            k: v
+            for k, v in {
+                "enabled": enabled,
+                "device_id": device_id,
+                "device_enabled": device_enabled,
+            }.items()
+            if v is not None
+        }
+        await self.request("PUT", "/control/takeover?confirm=true", body)
+
+    async def set_strategy(
+        self, strategy: str | None, until: str | None = None
+    ) -> None:
+        """Strategy of the home battery until a time (None: until changed), None back to the default."""
+        if strategy is None:
+            await self.request("DELETE", "/control/strategy")
+        else:
+            await self.request(
+                "PUT", "/control/strategy", {"strategy": strategy, "until": until}
+            )
+
+    async def replan(self) -> None:
+        """Plan again now."""
+        await self.request("POST", "/integration/replan")
