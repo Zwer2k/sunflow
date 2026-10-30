@@ -1,6 +1,8 @@
 """Background loop: periodic planning and shadow recording."""
 
 import asyncio
+from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
@@ -39,6 +41,14 @@ CORRECTION_REFRESH = timedelta(hours=1)
 # problem. The pause doubles with each failure up to the maximum
 REPLAN_RETRY = timedelta(minutes=5)
 REPLAN_RETRY_MAX = timedelta(minutes=30)
+# Live values deviating this much from the running slot replan before the next slot
+EARLY_REPLAN_PV_W = 800.0
+EARLY_REPLAN_PV_SHARE = 0.3
+EARLY_REPLAN_LOAD_W = 1500.0
+EARLY_REPLAN_SOC_SHARE = 0.05
+# Not more often than this; the deviation has to last a few minutes (clouds pass)
+EARLY_REPLAN_PAUSE = timedelta(minutes=5)
+RECENT_SAMPLES = 5
 
 
 async def current_plan(
@@ -49,6 +59,7 @@ async def current_plan(
     pv_correction: PvCorrection | None = None,
     load_model: LoadModel | None = None,
     plane_corrections: dict[str, PvCorrection] | None = None,
+    live_pv_w: float | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -63,6 +74,7 @@ async def current_plan(
         pv_correction,
         load_model,
         plane_corrections,
+        live_pv_w,
     )
 
 
@@ -180,6 +192,8 @@ class ShadowRunner:
         # A change arrived while a replan was running: plan once more afterwards
         self._replan_again = False
         self._replan_retry_at = datetime.min.replace(tzinfo=UTC)
+        # The last minutes, for the nowcast and to notice deviations from the plan
+        self._recent: deque[Sample] = deque(maxlen=RECENT_SAMPLES)
         self._replan_failures = 0
 
     async def run(self) -> None:
@@ -220,10 +234,17 @@ class ShadowRunner:
         try:
             if (sample := await take_sample(self._client, self._store, self._library, self.snapshots)) is not None:
                 self._recorder.samples.append(sample)
+                self._recent.append(sample)
                 self.last_sample = sample
                 self.last_sample_at = datetime.now(UTC)
         except (HAError, KeyError, ValueError) as err:
             _LOGGER.warning("Sample failed: %s", err)
+        if (why := self._deviation()) is not None and now >= self._replan_retry_at:
+            _LOGGER.info("Replanning early: %s", why)
+            try:
+                await self._replan(start)
+            except (HAError, KeyError, ValueError) as err:
+                _LOGGER.warning("Early replan failed: %s", err)
         if self.snapshots is not None:
             try:
                 snapshot = await self.snapshots.get()
@@ -258,6 +279,42 @@ class ShadowRunner:
             for wallbox_id in ended:
                 config.selected_vehicles.pop(wallbox_id)
             self._store.save(config)
+
+    def live_pv(self) -> float | None:
+        """Mean PV of the last minutes."""
+        values = [s.pv_w for s in self._recent if s.pv_w is not None]
+        return sum(values) / len(values) if len(values) >= 2 else None
+
+    def _deviation(self) -> str | None:
+        """Why the plan no longer fits the live values (lasting the last minutes), None if it does."""
+        if self.latest is None or self.status.last_plan is None or len(self._recent) < RECENT_SAMPLES:
+            return None
+        if datetime.now(UTC) - self.status.last_plan < EARLY_REPLAN_PAUSE:
+            return None
+        slot = next(
+            (s for s in self.latest.plan.slots if s.start <= datetime.now(UTC) < s.end),
+            None,
+        )
+        if slot is None:
+            return None
+
+        def lasting(value: Callable[[Sample], float | None], limit: float) -> float | None:
+            deviations = [d for s in self._recent if (d := value(s)) is not None]
+            if len(deviations) < RECENT_SAMPLES or not all(abs(d) > limit for d in deviations):
+                return None
+            # The same direction throughout, not a flicker around the plan
+            return sum(deviations) / len(deviations) if all(d > 0 for d in deviations) or all(d < 0 for d in deviations) else None
+
+        pv_limit = max(EARLY_REPLAN_PV_W, EARLY_REPLAN_PV_SHARE * slot.pv_w)
+        if (d := lasting(lambda s: None if s.pv_w is None else s.pv_w - slot.pv_w, pv_limit)) is not None:
+            return f"PV {d:+.0f} W gegenüber Plan"
+        planned_load = slot.load_w + sum((slot.flex_w or {}).values())
+        if (d := lasting(lambda s: None if s.load_w is None else s.load_w - planned_load, EARLY_REPLAN_LOAD_W)) is not None:
+            return f"Verbrauch {d:+.0f} W gegenüber Plan"
+        capacity = self.latest.battery.capacity_wh if self.latest.battery else None
+        if capacity and (d := lasting(lambda s: None if s.soc_wh is None else s.soc_wh - slot.soc_wh, EARLY_REPLAN_SOC_SHARE * capacity)) is not None:
+            return f"Ladestand {d:+.0f} Wh gegenüber Plan"
+        return None
 
     async def _finish_slot(self) -> None:
         if self._recorder is None or not self._recorder.samples:
@@ -318,7 +375,14 @@ class ShadowRunner:
     async def _replan(self, start: datetime) -> None:
         correction = await self.pv_correction()
         result = await current_plan(
-            self._client, self._store, self._library, self.snapshots, correction, self.load_model, self.plane_corrections
+            self._client,
+            self._store,
+            self._library,
+            self.snapshots,
+            correction,
+            self.load_model,
+            self.plane_corrections,
+            self.live_pv(),
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
