@@ -61,10 +61,17 @@ Hinweise:
 
 ## Wallboxen und Ladepunkte
 
-| Gerät | Anbindung | Profil | Steuerung | Fahrzeug-Freigabe | Messen geprüft | Steuern geprüft |
-|---|---|---|---|---|---|---|
-| evcc-Ladepunkt (Wallbox oder Heizstab) | evcc_intg | `evcc_intg/loadpoint` | Modus „Sofort“, „PV“, „Aus“; evcc folgt dem PV-Überschuss selbst | – | ✅ | – (noch nicht bestätigt) |
-| go-e Charger (Gemini, HOME) | goecharger_mqtt | `goecharger_mqtt/charger` | Laden/Stopp, Ladestrom minütlich nach PV-Überschuss (amx, ohne Flash-Schreiben) | Ladekarte des erkannten Fahrzeugs | ✅ | – (noch nicht bestätigt) |
+| Gerät | Anbindung | Profil | Steuerung | Phasenumschaltung | Fahrzeug-Freigabe | Messen geprüft | Steuern geprüft |
+|---|---|---|---|---|---|---|---|
+| evcc-Ladepunkt (Wallbox oder Heizstab) | evcc_intg | `evcc_intg/loadpoint` | Modus „Sofort“, „PV“, „Aus“; evcc folgt dem PV-Überschuss selbst | durch evcc selbst (im PV-Modus) | – | ✅ | – (noch nicht bestätigt) |
+| go-e Charger (Gemini, HOME) | goecharger_mqtt | `goecharger_mqtt/charger` | Laden/Stopp, Ladestrom minütlich nach PV-Überschuss (amx, ohne Flash-Schreiben) | 1 ↔ 3 Phasen durch Sunflow (Schwellen, Verzögerungen, Mindestabstand, Tageslimit in den Kenndaten) | Ladekarte des erkannten Fahrzeugs | ✅ | 🧪 (Phasen), sonst – (noch nicht bestätigt) |
+
+Phasenumschaltung (go-e, Kenndaten der Wallbox): Bei geplanter fester Leistung (z. B. aus dem
+Netz) wählt Sunflow die Phasen sofort. Beim PV-Überschuss entscheidet das Mittel der letzten
+Minuten: hoch auf 3 Phasen erst nach der Hochschalt-Verzögerung und nur, wenn der Plan auch für
+die nächste Viertelstunde genug erwartet; herunter schneller, damit kein Netzstrom fließt.
+Mindestabstand und Tageslimit verhindern Pendeln bei wechselhaftem Wetter. Beim Zurückgeben
+bekommt die Wallbox ihren vorherigen Phasenmodus wieder.
 
 ## Eigene Verbraucher
 

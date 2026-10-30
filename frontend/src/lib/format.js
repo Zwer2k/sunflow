@@ -102,10 +102,27 @@ const PARAM_LABELS = {
   charge_efficiency_pct: "Ladewirkungsgrad",
   tank_l: "Speichervolumen",
   daily_energy_wh: "Energiebedarf pro Tag",
+  phases: "Phasen (ohne Umschaltung)",
+  min_current_a: "Mindest-Ladestrom",
+  max_current_a: "Maximaler Ladestrom",
+  phase_mode: "Phasenumschaltung",
+  phase_up_w: "Auf 3 Phasen ab",
+  phase_down_w: "Auf 1 Phase unter",
+  phase_up_delay_min: "Hochschalten nach",
+  phase_down_delay_min: "Herunterschalten nach",
+  phase_min_interval_min: "Mindestabstand zwischen Umschaltungen",
+  phase_max_switches_day: "Höchstens Umschaltungen pro Tag",
 };
 
 // Short explanation below a parameter
 const PARAM_HINTS = {
+  phase_up_w:
+    "Leistung, die das Auto im Mittel bekommen kann, bevor auf 3 Phasen geschaltet wird; über 3 × Mindeststrom " +
+    "(bei 6 A ≈ 4,1 kW) plus Reserve. Beim PV-Überschuss nur, wenn der Plan auch für die nächste Viertelstunde genug erwartet.",
+  phase_down_w: "Darunter wird auf 1 Phase geschaltet; liegt unter „Auf 3 Phasen ab“, damit es nicht pendelt.",
+  phase_up_delay_min: "So lange muss der Überschuss im Mittel reichen – kurze Sonnenlücken schalten nicht.",
+  phase_down_delay_min: "Kürzer als beim Hochschalten: sonst bezieht das Auto Netzstrom.",
+  phase_min_interval_min: "Jede Umschaltung unterbricht das Laden kurz.",
   grid_offset:
     "Puffer gegen Lastsprünge, während Sunflow steuert. Negativ (z. B. −200 W) gilt nur, wenn der Plan ohnehin einspeist " +
     "(PV-Überschuss) – sonst regelt der Wechselrichter auf 0, damit kein gespeicherter Strom ins Netz geht. Positiv = " +

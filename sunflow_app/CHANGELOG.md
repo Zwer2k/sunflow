@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.47.0
+
+Phasenumschaltung der Wallbox (go-e):
+
+- Kenndaten der Wallbox → „Phasenumschaltung“: automatisch, immer 3 Phasen oder immer 1 Phase. Automatisch lädt das Auto schon bei wenig PV-Überschuss auf 1 Phase (ab ≈ 1,4 kW) und schaltet bei genug Sonne auf 3 Phasen.
+- Einstellbar: „Auf 3 Phasen ab“ (Standard 4,5 kW) und „Auf 1 Phase unter“ (4,0 kW) als Hysterese, Verzögerung fürs Hoch- (5 min) und Herunterschalten (2 min), Mindestabstand zwischen Umschaltungen (15 min) und höchstens 12 Umschaltungen am Tag.
+- Strategie: Bei geplanter fester Leistung (z. B. günstiges Netzladen) wählt Sunflow die Phasen sofort. Beim PV-Überschuss entscheidet das Mittel der letzten Minuten, und hochgeschaltet wird nur, wenn der Plan auch für die nächste Viertelstunde genug Überschuss erwartet – kurze Sonnenlücken schalten nicht.
+- Die Steuerung zeigt die aktuelle Phasenzahl. Beim Zurückgeben bekommt die Wallbox ihren vorherigen Phasenmodus wieder.
+- evcc-Ladepunkte schalten im PV-Modus weiterhin selbst um.
+
 ## 0.46.3
 
 - Einstellungen → Fahrzeuge zeigte nach dem Öffnen bis zu 30 Sekunden „Lade …“: Die Fahrzeuge werden jetzt sofort geladen, danach alle 30 Sekunden aktualisiert.
