@@ -696,3 +696,17 @@ def test_parameters_outside_their_range_are_rejected(tmp_path: Path) -> None:
     assert store.load().devices[0].parameters == {}
     assert client.patch("/api/v1/config/devices/wb", json={"parameters": {"phase_min_interval_min": 5}}).status_code == 200
     assert store.load().devices[0].parameters == {"phase_min_interval_min": 5}
+
+
+def test_integration_forecast_kinds(tmp_path: Path) -> None:
+    """All forecast kinds by default; the choice is stored."""
+    from sunflow.config.store import ConfigStore
+
+    app = create_app()
+    app.state.store = ConfigStore(tmp_path)
+    client = TestClient(app)
+
+    assert client.get("/api/v1/config/integration").json() == {"forecast_kinds": ["total", "plant", "plane"]}
+    assert client.put("/api/v1/config/integration", json={"forecast_kinds": ["plane"]}).status_code == 200
+    assert app.state.store.load().integration.forecast_kinds == ["plane"]
+    assert client.put("/api/v1/config/integration", json={"forecast_kinds": ["strings"]}).status_code == 422

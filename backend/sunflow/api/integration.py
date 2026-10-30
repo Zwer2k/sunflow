@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from sunflow.config.models import SunflowConfig
+from sunflow.config.models import IntegrationSettings, SunflowConfig
 from sunflow.control.controller import PlanController
 from sunflow.planning.one_time import OneTimeLoad, OneTimeLoads
 
@@ -196,6 +196,22 @@ async def remove_load(request: Request, load_id: str) -> None:
         raise HTTPException(status_code=404, detail="Unknown load")
     loads.loads = [load for load in loads.loads if load.id != load_id]
     loads.save()
+
+
+@router.get("/config/integration")
+async def get_integration_settings(request: Request) -> dict[str, Any]:
+    """What the integration gets."""
+    return request.app.state.store.load().integration.model_dump()
+
+
+@router.put("/config/integration")
+async def set_integration_settings(request: Request, body: IntegrationSettings) -> dict[str, Any]:
+    """Choose what the integration gets; it follows within its next forecast update."""
+    store = request.app.state.store
+    config = store.load()
+    config.integration = body
+    store.save(config)
+    return body.model_dump()
 
 
 @router.post("/integration/replan")
