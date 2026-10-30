@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.39.0
+
+- Einstellungen → Geräte: Geräte lassen sich mit „aktiv“ ausschalten. Ein deaktiviertes Gerät behält alle Einstellungen, wird aber weder geplant, gemessen noch gesteuert – z. B. um zwischen der Wallbox über evcc und direkt am go-e zu wechseln. Stand es unter Sunflow-Steuerung, wird es vorher zurückgegeben.
+- Die Geräteseite ist nach Kategorien gegliedert (Wechselrichter, Speicher, Zähler, Wallboxen und Fahrzeuge, Wärme, Verbraucher). Übernommene Geräte erscheinen kompakt mit den wichtigsten Live-Werten und lassen sich bei Bedarf aufklappen; Geräte, die noch etwas brauchen, sind offen.
+
 ## 0.38.0
 
 - go-e: Der Ladestrom wird als vorübergehender Strom („amx“) per MQTT gesetzt, wie evcc es macht – er landet nicht im Flash der Wallbox. Das Thema ist „go-eCharger/<Seriennummer>“ (Standard der Integration). Beim Zurückgeben gilt wieder der gespeicherte Strom.

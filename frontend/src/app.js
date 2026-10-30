@@ -39,6 +39,46 @@ const EMBEDDED = window.self !== window.top || window.location.pathname.includes
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const ADVANCED_KEY = "sunflow.advanced";
 
+// Groups on the devices page, in this order
+const CATEGORIES = [
+  ["inverter", "Wechselrichter"],
+  ["battery", "Speicher"],
+  ["meter", "Zähler"],
+  ["wallbox", "Wallboxen und Fahrzeuge"],
+  ["heat", "Wärme"],
+  ["load", "Verbraucher"],
+];
+
+/** Category of a discovered device; a loadpoint measuring a temperature is a heater. */
+function deviceCategory(device, preview) {
+  const caps = device.capabilities ?? [];
+  if (caps.includes("loadpoint") || caps.includes("ev_charger")) {
+    const soc = preview?.roles?.find((r) => r.role === "vehicle_soc");
+    return ["°C", "°F", "K"].includes(soc?.raw_unit) ? "heat" : "wallbox";
+  }
+  if (caps.includes("pv")) return "inverter";
+  if (caps.includes("battery")) return "battery";
+  if (caps.includes("grid_meter")) return "meter";
+  return "load";
+}
+
+/** Configured devices by HA device id, the switched off ones marked. */
+function configuredDevices(config) {
+  return Object.fromEntries([
+    ...config.devices.map((d) => [d.ha_device_id, d]),
+    ...(config.disabled_devices ?? []).map((d) => [d.ha_device_id, { ...d, disabled: true }]),
+  ]);
+}
+
+/** A few live values for the compact card. */
+function summaryValues(preview) {
+  return preview.roles
+    .filter((r) => !r.missing && r.value !== null && r.value !== undefined && r.unit)
+    .slice(0, 4)
+    .map((r) => `${roleLabel(r.role)} ${SIGNED_ROLES.has(r.role) ? formatSigned(r.value, r.unit) : formatValue(r.value, r.unit)}`)
+    .join(" · ");
+}
+
 function readSetting(key) {
   try {
     return localStorage.getItem(key);
@@ -118,6 +158,7 @@ class SunflowApp extends LitElement {
     _previews: { state: true },
     _configDevices: { state: true },
     _editing: { state: true },
+    _expanded: { state: true },
     _overrides: { state: true },
     _entities: { state: true },
     _dirty: { state: true },
@@ -161,6 +202,8 @@ class SunflowApp extends LitElement {
     // ha_device_id -> stored device config
     this._configDevices = {};
     this._editing = new Set();
+    // Device cards opened by the user; configured and complete ones start compact
+    this._expanded = new Set();
     // ha_device_id -> {role: {entity_id?, sign?}}
     this._overrides = {};
     this._entities = {};
@@ -224,8 +267,8 @@ class SunflowApp extends LitElement {
     try {
       const [health, config] = await Promise.all([api.health(), api.config()]);
       this._haConnected = health.ha_connected;
-      this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
-      this._overrides = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
+      this._configDevices = configuredDevices(config);
+      this._overrides = Object.fromEntries(Object.values(this._configDevices).map((d) => [d.ha_device_id, d.role_overrides ?? {}]));
       // Completed setups open on Live, new ones in the wizard
       this._view ??= config.setup_completed ? "live" : "setup";
       this._error = null;
@@ -380,7 +423,7 @@ class SunflowApp extends LitElement {
     if (finished) {
       this._loadPendingRestore();
       const config = await api.config();
-      this._configDevices = Object.fromEntries(config.devices.map((d) => [d.ha_device_id, d]));
+      this._configDevices = configuredDevices(config);
     }
   }
 
@@ -999,9 +1042,12 @@ class SunflowApp extends LitElement {
         <p class="muted">Profile wurden automatisch erkannt. Prüfe die Live-Werte – passen sie zu dem, was deine Anlage gerade tut?</p>
       </div>
       ${devices.length === 0 ? html`<p class="muted">Keine Geräte mit passendem Profil ausgewählt.</p>` : nothing}
-      ${devices.map((d) => this._renderDevice(d))}
-      ${this._renderManualDevices()}
-      <sf-vehicles></sf-vehicles>
+      ${CATEGORIES.map(([key, title]) => {
+        const members = devices.filter((d) => deviceCategory(d, this._previews[d.device_id]) === key);
+        const extra = key === "wallbox" ? html`<sf-vehicles></sf-vehicles>` : key === "load" ? this._renderManualDevices() : nothing;
+        if (!members.length && key !== "load") return nothing;
+        return html`<h2 class="category">${title}</h2>${members.map((d) => this._renderDevice(d))}${extra}`;
+      })}
     `;
   }
 
@@ -1133,20 +1179,51 @@ class SunflowApp extends LitElement {
   _renderDevice(device) {
     const id = device.device_id;
     const preview = this._previews[id];
-    const configured = Boolean(this._configDevices[id]);
+    const stored = this._configDevices[id];
+    const configured = Boolean(stored);
+    const disabled = Boolean(stored?.disabled);
     const editing = this._editing.has(id);
     const dirty = this._dirty.has(id);
-    return html`
-      <section class="device">
-        <div class="device-head">
-          <div>
-            <div class="device-title">${device.name}</div>
-            <div class="muted small">${[device.manufacturer, device.model].filter(Boolean).join(" ")} · über ${device.integration} · Profil ${device.profile}</div>
-          </div>
-          ${device.components.length
-            ? html`<span class="chip neutral">${device.components.length} Komponenten</span>`
+    // Needs attention: not taken over yet, values missing or being edited
+    const open = this._expanded.has(id) || (!disabled && (!configured || dirty || editing || (preview && !preview.complete)));
+    const head = html`
+      <div class="device-head">
+        <button class="device-toggle" aria-expanded=${open} @click=${() => this._toggleExpanded(id, open)}>
+          <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
+          <span>
+            <span class="device-title">${device.name}</span>
+            <span class="muted small device-sub">${[device.manufacturer, device.model].filter(Boolean).join(" ")} · über ${device.integration}${open
+              ? ` · Profil ${device.profile}`
+              : ""}</span>
+          </span>
+        </button>
+        <span class="device-chips">
+          ${disabled
+            ? html`<span class="chip neutral">deaktiviert</span>`
+            : configured && !dirty
+              ? html`<span class="chip ok">✓ übernommen</span>`
+              : html`<span class="chip warn">noch nicht übernommen</span>`}
+          ${configured
+            ? html`<label class="inline enable" title=${disabled ? "Gerät wieder verwenden" : "Gerät mit allen Einstellungen behalten, aber nicht verwenden"}>
+                <input type="checkbox" .checked=${!disabled} ?disabled=${this._busy.has(id)}
+                  @change=${(e) => this._setEnabled(device, e.target.checked, e.target)}>aktiv</label>`
             : nothing}
-        </div>
+        </span>
+      </div>`;
+    if (!open) {
+      return html`
+        <section class="device compact ${disabled ? "off" : ""}">
+          ${head}
+          ${preview?.roles && !disabled ? html`<div class="summary small">${summaryValues(preview)}</div>` : nothing}
+        </section>
+      `;
+    }
+    return html`
+      <section class="device ${disabled ? "off" : ""}">
+        ${head}
+        ${device.components.length
+          ? html`<span class="chip neutral">${device.components.length} Komponenten</span>`
+          : nothing}
         ${preview === undefined ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
         ${preview?.error ? html`<div class="alert error">${preview.error}</div>` : nothing}
         ${preview?.roles ? this._renderTiles(preview) : nothing}
@@ -1156,7 +1233,9 @@ class SunflowApp extends LitElement {
         ${!editing && this._advanced && preview?.roles ? this._renderRoleTable(preview) : nothing}
         ${this._advanced && device.components.length ? this._renderComponents(device) : nothing}
         <div class="actions">
-          ${configured && !dirty
+          ${disabled
+            ? html`<span class="small muted">Deaktiviert – zum Bearbeiten wieder auf „aktiv“ stellen.</span>`
+            : configured && !dirty
             ? html`<span class="chip ok">✓ Übernommen</span>`
             : html`<button class="ok" ?disabled=${this._busy.has(id) || !preview?.complete}
                 @click=${() => this._accept(device)}>
@@ -1193,6 +1272,34 @@ class SunflowApp extends LitElement {
           „Anpassungen speichern“.</span>
       </div>
     `;
+  }
+
+  _toggleExpanded(id, open) {
+    const expanded = new Set(this._expanded);
+    if (open) expanded.delete(id);
+    else expanded.add(id);
+    this._expanded = expanded;
+  }
+
+  async _setEnabled(device, enabled, input) {
+    const stored = this._configDevices[device.device_id];
+    if (!enabled && !window.confirm(`„${device.name}“ deaktivieren? Die Einstellungen bleiben erhalten; Sunflow plant und steuert das Gerät nicht mehr.`)) {
+      input.checked = true;
+      return;
+    }
+    this._busy = new Set([...this._busy, device.device_id]);
+    try {
+      await api.setDeviceEnabled(stored.id, enabled);
+      this._configDevices = configuredDevices(await api.config());
+      this._error = null;
+    } catch (err) {
+      this._error = `Gerät nicht umgeschaltet: ${err.message}`;
+      input.checked = !enabled;
+    } finally {
+      const busy = new Set(this._busy);
+      busy.delete(device.device_id);
+      this._busy = busy;
+    }
   }
 
   _renderTiles(preview) {
@@ -2123,7 +2230,15 @@ class SunflowApp extends LitElement {
       display: flex; flex-direction: column; gap: 14px;
     }
     .device-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; }
-    .device-title { font-weight: 600; font-size: 16px; }
+    .device-title { font-weight: 600; font-size: 16px; display: block; }
+    .device-sub { display: block; }
+    .device-toggle { display: flex; gap: 8px; align-items: flex-start; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; }
+    .caret { width: 14px; color: var(--sf-muted); line-height: 22px; }
+    .device-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .device.compact { padding: 12px 18px; gap: 6px; }
+    .device.off { opacity: .65; }
+    .summary { color: var(--sf-muted); padding-left: 22px; }
+    .category { font-size: 15px; margin: 18px 0 0; color: var(--sf-muted); font-weight: 600; }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }
     .tile.missing { outline: 1px dashed var(--sf-warn-text); }

@@ -368,13 +368,16 @@ class PlanController:
 
     def wanted(self, config: SunflowConfig, device: DeviceConfig) -> bool:
         """Control is on for this device and it passed the checks."""
+        if device not in config.devices:
+            return False
         return config.control.enabled and config.control.devices.get(device.id, False) and self.eligible(config, device) is None
 
     async def tick(
         self, config: SunflowConfig, plan: Any, plan_at: datetime | None, snapshot: Snapshot, now: datetime, live: Any = None
     ) -> None:
         """One control step; a failure on one device does not stop the others."""
-        devices = {d.id: d for d in config.devices}
+        # Disabled devices are not controlled, but one taken over earlier is handed back properly
+        devices = {d.id: d for d in [*config.disabled_devices, *config.devices]}
         self._vehicles = {v.id: v for v in config.vehicles}
         # Devices taken over earlier but no longer wanted (switched off, removed, test reset)
         for device_id in list(self._marker.get()):
@@ -450,6 +453,11 @@ class PlanController:
             if action == "charge" and not unchanged:
                 status.current_a, status.last_current_write = runtime["current_a"], now
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
+
+    async def hand_back_device(self, device: DeviceConfig) -> None:
+        """Hand one device back now (it is switched off in the setup)."""
+        if device.id in self._marker.get():
+            await self._safely(device.id, device, lambda d, s: hand_back(self._access_for(d), self._marker, d.id, s))
 
     async def release_all(self, config: SunflowConfig) -> None:
         """App shutdown: batteries to self-consumption (mode kept), loadpoints back to their own logic."""

@@ -310,7 +310,7 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
     snapshot = await _snapshot(request)
     # Load after the await: a parallel add in the meantime must not be overwritten
     config = store.load()
-    if any(d.ha_device_id == body.ha_device_id for d in config.devices):
+    if any(d.ha_device_id == body.ha_device_id for d in [*config.devices, *config.disabled_devices]):
         raise HTTPException(status_code=409, detail="Device already configured")
     found = {d.device_id: d for i in discover(snapshot, library) for d in i.devices}
     if (discovered := found.get(body.ha_device_id)) is None:
@@ -1811,14 +1811,45 @@ async def get_site(request: Request) -> dict[str, Any]:
     return result
 
 
+class DeviceEnabled(BaseModel):
+    """Switch a configured device on or off."""
+
+    enabled: bool
+
+
+@router.put("/config/devices/{device_id}/enabled")
+async def set_device_enabled(request: Request, device_id: str, body: DeviceEnabled) -> dict[str, Any]:
+    """Keep a device with its settings but leave it out of planning, measuring and control."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    active = config.device(device_id)
+    disabled = next((d for d in config.disabled_devices if d.id == device_id), None)
+    if active is None and disabled is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    if body.enabled and disabled is not None:
+        config.disabled_devices.remove(disabled)
+        config.devices.append(disabled)
+    elif not body.enabled and active is not None:
+        controller: PlanController | None = getattr(request.app.state, "controller", None)
+        if controller is not None:
+            # A device under control is handed back first (e.g. the wallbox released)
+            await controller.hand_back_device(active)
+        config.devices.remove(active)
+        config.disabled_devices.append(active)
+    store.save(config)
+    _replan(request)
+    return {"device_id": device_id, "enabled": body.enabled}
+
+
 @router.delete("/config/devices/{device_id}")
 async def remove_device(request: Request, device_id: str) -> None:
     """Remove a device from the configuration."""
     store: ConfigStore = request.app.state.store
     config = store.load()
-    if config.device(device_id) is None:
+    if config.device(device_id) is None and all(d.id != device_id for d in config.disabled_devices):
         raise HTTPException(status_code=404, detail="Device not configured")
     config.devices = [d for d in config.devices if d.id != device_id]
+    config.disabled_devices = [d for d in config.disabled_devices if d.id != device_id]
     # Nothing may keep referring to the removed device
     config.overrides.pop(device_id, None)
     config.priorities = [i for i in config.priorities if i != device_id]

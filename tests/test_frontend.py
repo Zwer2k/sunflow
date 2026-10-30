@@ -497,3 +497,25 @@ def test_vehicles_cards_and_manual_choice(tmp_path: Path) -> None:
     detection = {"card": True, "manual": True, "sensor": False, "single": True, "authorize": False}
     assert client.put("/api/v1/config/devices/wb/vehicle-detection", json=detection).status_code == 200
     assert store.load().devices[0].vehicle_detection.authorize is False
+
+
+def test_disable_device_keeps_settings(tmp_path: Path) -> None:
+    """A switched off device is kept aside with its settings and comes back unchanged."""
+    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[
+        DeviceConfig(id="wb", ha_device_id="x", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox", parameters={"max_power": 7400}),
+    ]))
+    app = create_app()
+    app.state.store = store
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: None})()
+    client = TestClient(app)
+
+    assert client.put("/api/v1/config/devices/wb/enabled", json={"enabled": False}).status_code == 200
+    config = store.load()
+    assert config.devices == [] and config.disabled_devices[0].parameters == {"max_power": 7400}
+
+    assert client.put("/api/v1/config/devices/wb/enabled", json={"enabled": True}).status_code == 200
+    assert store.load().devices[0].parameters == {"max_power": 7400}
+    assert client.put("/api/v1/config/devices/nope/enabled", json={"enabled": True}).status_code == 404
