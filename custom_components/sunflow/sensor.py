@@ -180,6 +180,21 @@ STATE_SENSORS = (
         value_fn=lambda d: d["live"]["surplus_w"],
     ),
     SunflowStateSensorDescription(
+        key="next_load",
+        translation_key="next_load",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda d: _timestamp(
+            min(
+                (
+                    load["start"]
+                    for load in d.get("loads", [])
+                    if load["start"] and not load["started"]
+                ),
+                default=None,
+            )
+        ),
+    ),
+    SunflowStateSensorDescription(
         key="plan_updated",
         translation_key="plan_updated",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -328,6 +343,13 @@ class SunflowStateSensor(SunflowEntity, SensorEntity):
     def native_value(self) -> Any:
         """The value from the App."""
         return self.entity_description.value_fn(self.state_data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """The one-time loads with their starts, for the next-load sensor."""
+        if self.entity_description.key != "next_load":
+            return None
+        return {"loads": self.state_data.get("loads", [])}
 
 
 class SunflowDeviceActionSensor(SunflowEntity, SensorEntity):

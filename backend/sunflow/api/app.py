@@ -28,6 +28,7 @@ from sunflow.devices.profiles import load_profiles, load_schema
 from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient, HAError
 from sunflow.integration_link import announce, integration_token
+from sunflow.planning.one_time import OneTimeLoads
 from sunflow.settings import Settings
 from sunflow.shadow.counters import EnergyCounters
 from sunflow.shadow.runner import ShadowRunner
@@ -95,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.runner = ShadowRunner(app.state.ha, app.state.store, app.state.profiles, shadow, app.state.snapshots)
         app.state.controller = app.state.runner.controller = _plan_controller(app, settings)
         app.state.runner.counters = EnergyCounters(settings.data_dir)
+        app.state.loads = OneTimeLoads(settings.data_dir)
         runner_task = asyncio.create_task(app.state.runner.run())
         try:
             yield

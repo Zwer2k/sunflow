@@ -469,7 +469,8 @@ async def test_battery_window_gets_the_smart_grid_target(tmp_path: Path) -> None
 
     await controller.tick(_config(), slot_plan, NOW, SNAPSHOT, NOW)
 
-    assert seen[-1]["grid_offset"] == 0
+    # The first plan is the control's; the watchdog's hand-back calls follow
+    assert seen[0]["grid_offset"] == 0
     assert controller.statuses["bat"].grid_target_w == 0
 
 
@@ -490,3 +491,13 @@ def test_choose_power_step(power: float, expected: str | None) -> None:
 
     assert choose_step(steps, power) == expected
     assert off_step(steps) == "off"
+
+
+async def test_fallback_calls_hand_the_battery_back(tmp_path: Path) -> None:
+    """While controlling, the watchdog gets the calls that put the battery back to self-consumption."""
+    device = FakeDevice()
+    controller = _controller(tmp_path, device)
+    await controller.tick(_config(), _plan(), NOW, SNAPSHOT, NOW)
+    assert controller.fallback == [
+        {"domain": "number", "service": "set_value", "data": {"value": -10000}, "target": {"entity_id": "number.min"}}
+    ]

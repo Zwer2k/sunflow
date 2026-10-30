@@ -96,6 +96,9 @@
       },
       "consumer_planned_energy": {
         "name": "{name} geplante Energie"
+      },
+      "next_load": {
+        "name": "Nächste einmalige Last"
       }
     },
     "binary_sensor": {
@@ -140,6 +143,120 @@
       "replan": {
         "name": "Neu planen"
       }
+    },
+    "calendar": {
+      "plan": {
+        "name": "Plan"
+      }
+    }
+  },
+  "services": {
+    "set_strategy": {
+      "name": "Strategie setzen",
+      "description": "Strategie des Hausspeichers, bis zu einer Uhrzeit oder bis zur nächsten Änderung.",
+      "fields": {
+        "strategy": {
+          "name": "Strategie",
+          "description": "Standard kehrt zur in Sunflow eingestellten Strategie zurück."
+        },
+        "until": {
+          "name": "Bis",
+          "description": "Leer: bis zur nächsten Änderung."
+        }
+      }
+    },
+    "set_consumer": {
+      "name": "Verbraucher-Planung ändern",
+      "description": "Strategie, Ziel oder Pause eines Verbrauchers für eine Weile.",
+      "fields": {
+        "consumer": {
+          "name": "Verbraucher",
+          "description": "Name des Verbrauchers wie in Sunflow."
+        },
+        "strategy": {
+          "name": "Strategie",
+          "description": "Am günstigsten, nur PV oder so schnell wie möglich."
+        },
+        "target": {
+          "name": "Ziel",
+          "description": "Ziel-Ladestand (%) oder -Temperatur (°C)."
+        },
+        "paused": {
+          "name": "Pause",
+          "description": "Wird pausiert nicht eingeplant."
+        },
+        "until": {
+          "name": "Bis",
+          "description": "Leer: bis zum Zurücksetzen."
+        },
+        "reset": {
+          "name": "Zurücksetzen",
+          "description": "Zurück zu den Einstellungen des Verbrauchers."
+        }
+      }
+    },
+    "plan_load": {
+      "name": "Einmalige Last einplanen",
+      "description": "Sucht die günstigste Startzeit für einen Lauf (z. B. die Waschmaschine). Löst zum Start sunflow_load_start aus.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Steht im Plan und im Ereignis."
+        },
+        "energy_kwh": {
+          "name": "Energie",
+          "description": "Energie des Laufs."
+        },
+        "power_kw": {
+          "name": "Leistung",
+          "description": "Mittlere Leistung während des Laufs."
+        },
+        "earliest": {
+          "name": "Frühestens",
+          "description": "Nicht vor dieser Zeit."
+        },
+        "finish_by": {
+          "name": "Fertig bis",
+          "description": "Bis zu dieser Zeit fertig."
+        }
+      }
+    },
+    "cancel_load": {
+      "name": "Einmalige Last abbrechen",
+      "description": "Vergisst einen eingeplanten Lauf.",
+      "fields": {
+        "load_id": {
+          "name": "Last",
+          "description": "ID, die plan_load zurückgegeben hat."
+        }
+      }
+    },
+    "replan": {
+      "name": "Neu planen",
+      "description": "Sunflow plant jetzt neu."
+    }
+  },
+  "selector": {
+    "strategy": {
+      "options": {
+        "balanced": "Ausgewogen",
+        "pv_absorption": "PV aufnehmen",
+        "autarky": "Autarkie",
+        "default": "Standard"
+      }
+    },
+    "consumer_strategy": {
+      "options": {
+        "cost": "Am günstigsten",
+        "pv_only": "Nur PV",
+        "fast": "So schnell wie möglich"
+      }
+    }
+  },
+  "issues": {
+    "app_unreachable": {
+      "title": "Sunflow-App nicht erreichbar",
+      "description": "Die Sunflow-App antwortet seit {minutes} Minuten nicht. Die Geräte, die Sunflow gesteuert hat, wurden an ihre eigene Logik zurückgegeben. Prüfe die App unter Einstellungen → Apps."
     }
   }
 }

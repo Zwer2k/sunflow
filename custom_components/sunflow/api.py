@@ -91,3 +91,20 @@ class SunflowClient:
     async def replan(self) -> None:
         """Plan again now."""
         await self.request("POST", "/integration/replan")
+
+    async def set_consumer(
+        self, device_id: str, override: dict[str, Any] | None
+    ) -> None:
+        """Change a consumer's planning for a while (None: back to its settings)."""
+        if override is None:
+            await self.request("DELETE", f"/control/devices/{device_id}")
+        else:
+            await self.request("PUT", f"/control/devices/{device_id}", override)
+
+    async def add_load(self, load: dict[str, Any]) -> dict[str, Any]:
+        """Place a one-time run; returns it with its start."""
+        return await self.request("POST", "/integration/loads", load)
+
+    async def remove_load(self, load_id: str) -> None:
+        """Forget a one-time run."""
+        await self.request("DELETE", f"/integration/loads/{load_id}")
