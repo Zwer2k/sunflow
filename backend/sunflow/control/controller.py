@@ -37,6 +37,7 @@ from sunflow.devices.executor import (
     plan_battery,
     plan_charge,
     plan_pv_limit,
+    plan_steps,
 )
 from sunflow.devices.profiles import controls_battery, supported_action
 from sunflow.devices.resolver import device_entities, preview
@@ -68,6 +69,10 @@ PV_SET, PV_RELEASE = f"{PV_LIMIT_PREFIX}set", f"{PV_LIMIT_PREFIX}release"
 MIN_CURTAIL_W = 100.0
 # Limits are written in these steps, so the minutely correction does not write every time
 LIMIT_STEP_W = 100.0
+# Phase switching of chargers: actions besides the charge actions
+PHASES_PREFIX = "phases_"
+PHASES_ONE, PHASES_THREE, PHASES_RESTORE = f"{PHASES_PREFIX}one", f"{PHASES_PREFIX}three", f"{PHASES_PREFIX}restore"
+PHASE_OPTIONS = {"one_phase": 1, "1": 1, "three_phases": 3, "3": 3}
 # A temporary current (amx) is sent again after this time even when unchanged
 CURRENT_REFRESH = timedelta(minutes=5)
 VOLTS = 230.0
@@ -101,6 +106,8 @@ class DeviceControl:
     grid_target_w: float | None = None
     # PV plants: output limit in force (None: not limited)
     limit_w: float | None = None
+    # Chargers switching phases: the phases Sunflow charges with
+    phases: int | None = None
     last_current_write: datetime | None = None
     # Action last written to the device
     last_action: str | None = None
@@ -173,6 +180,133 @@ def pv_limit_w(output: Any, slot: Any, live: Any) -> float:
     return max(round(limit / LIMIT_STEP_W) * LIMIT_STEP_W, 0.0)
 
 
+@dataclass(frozen=True, kw_only=True)
+class PhaseSettings:
+    """When a charger switches between 1 and 3 phases (its parameters)."""
+
+    mode: int = 0
+    up_w: float = 4500.0
+    down_w: float = 4000.0
+    up_delay: timedelta = timedelta(minutes=5)
+    down_delay: timedelta = timedelta(minutes=2)
+    min_interval: timedelta = timedelta(minutes=15)
+    max_per_day: int = 12
+
+    @classmethod
+    def of(cls, params: dict[str, Any]) -> PhaseSettings:
+        """Settings from the device parameters (defaults where missing)."""
+        defaults = cls()
+
+        def get(name: str, default: float) -> float:
+            value = params.get(name)
+            return default if value is None else float(value)
+
+        return cls(
+            mode=int(get("phase_mode", defaults.mode)),
+            up_w=get("phase_up_w", defaults.up_w),
+            down_w=min(get("phase_down_w", defaults.down_w), get("phase_up_w", defaults.up_w)),
+            up_delay=timedelta(minutes=get("phase_up_delay_min", 5)),
+            down_delay=timedelta(minutes=get("phase_down_delay_min", 2)),
+            min_interval=timedelta(minutes=get("phase_min_interval_min", 15)),
+            max_per_day=int(get("phase_max_switches_day", defaults.max_per_day)),
+        )
+
+
+@dataclass
+class PhaseState:
+    """Recent power a charger could take, and its switches."""
+
+    samples: list[tuple[datetime, float]] = field(default_factory=list)
+    last_switch: datetime | None = None
+    day: Any = None
+    switches: int = 0
+
+    def add(self, now: datetime, power: float) -> None:
+        """Remember the power for the averages; an hour is more than any delay."""
+        self.samples = [(t, p) for t, p in self.samples if now - t <= timedelta(hours=1)] + [(now, power)]
+
+    def mean(self, now: datetime, window: timedelta) -> float | None:
+        """Mean over the window, None until the samples cover it (first minutes, after a gap)."""
+        values = [p for t, p in self.samples if now - t <= window]
+        oldest = min((t for t, _ in self.samples if now - t <= window + timedelta(minutes=1)), default=now)
+        if not values or now - oldest < window:
+            return None
+        return sum(values) / len(values)
+
+    def switches_on(self, now: datetime) -> int:
+        """Switches made today."""
+        return self.switches if self.day == now.date() else 0
+
+    def switched(self, now: datetime) -> None:
+        """Count a switch."""
+        self.switches = self.switches_on(now) + 1
+        self.day, self.last_switch = now.date(), now
+
+
+def choose_phases(
+    current: int, now: datetime, wanted_w: float, state: PhaseState, settings: PhaseSettings, steady: bool,
+    ahead_w: float | None,
+) -> int:
+    """1 or 3 phases for the power the car may take.
+
+    A fixed mode wins. A steady planned power (e.g. from the grid) picks the phases at
+    once; following the PV surplus goes by the mean over the delay, and up only when the
+    plan expects enough in the next slot as well, so passing clouds do not switch. A
+    hysteresis (up above down), a minimum interval and a daily limit keep it calm.
+    """
+    if settings.mode in (1, 3):
+        return settings.mode
+    if steady:
+        desired = 3 if wanted_w >= settings.up_w else 1 if wanted_w < settings.down_w else current
+    elif current == 1:
+        mean = state.mean(now, settings.up_delay) if settings.up_delay else wanted_w
+        enough_ahead = ahead_w is None or ahead_w >= settings.down_w
+        desired = 3 if mean is not None and mean >= settings.up_w and enough_ahead else 1
+    else:
+        mean = state.mean(now, settings.down_delay) if settings.down_delay else wanted_w
+        desired = 1 if mean is not None and mean < settings.down_w else 3
+    if desired == current:
+        return current
+    if state.last_switch is not None and now - state.last_switch < settings.min_interval:
+        return current
+    if state.switches_on(now) >= settings.max_per_day:
+        return current
+    return desired
+
+
+def current_phases(profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot | None, params: dict[str, Any]) -> int:
+    """Phases the charger is set to (its phase mode), else the configured phases."""
+    if snapshot is not None:
+        option = phase_option(profile.get("phase_switch", {}).get("remember", {}).get("key"), device, snapshot)
+        if option in PHASE_OPTIONS:
+            return PHASE_OPTIONS[option]
+    return int(params.get("phases") or 3)
+
+
+def phase_option(key: str | None, device: DeviceConfig, snapshot: Snapshot | None) -> str | None:
+    """Current option of the charger's phase mode select."""
+    if key is None or snapshot is None:
+        return None
+    entity_id = find_entity(device_entities(snapshot, device.ha_device_id), "select", key)
+    return snapshot.states.get(entity_id or "", {}).get("state")
+
+
+def phase_steps(profile: dict[str, Any], action: str) -> list[dict[str, Any]]:
+    """Steps of a phase action; restoring selects the remembered option again."""
+    switch = profile["phase_switch"]
+    if action == PHASES_RESTORE:
+        return [{"select": {"key": switch["remember"]["key"], "option": "{{ phase_option }}", "storage": "eeprom", "write": "if_differs"}}]
+    return switch["one" if action == PHASES_ONE else "three"]
+
+
+def next_slot(plan: Any, now: datetime) -> Any:
+    """The plan slot after the one running now."""
+    if plan is None:
+        return None
+    slots = plan.plan.slots
+    return next((s for s in slots if datetime.fromisoformat(str(s.start)) > now), None)
+
+
 def charge_current(power: float, params: dict[str, float]) -> int:
     """Whole amperes for a power on the configured phases, within the allowed range."""
     phases = params.get("phases") or 3
@@ -227,9 +361,14 @@ def evcc_controls_battery(snapshot: Snapshot) -> bool:
 class TakeoverMarker:
     """Devices under Sunflow's control and the mode each had before, in the data directory."""
 
-    def __init__(self, data_dir: Path) -> None:
-        """Initialize."""
-        self._path = data_dir / "control_active.json"
+    def __init__(self, data_dir: Path, name: str = "control_active.json") -> None:
+        """Initialize; name: file in the data directory."""
+        self._path = data_dir / name
+
+    @property
+    def data_dir(self) -> Path:
+        """Directory the marker lives in."""
+        return self._path.parent
 
     def get(self) -> dict[str, str | None]:
         """Device id -> previous mode option (None: the mode was already right)."""
@@ -396,6 +535,8 @@ def device_access(
     async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, dict[str, Any]]]:
         snapshot = await fetch_snapshot(client, hub)
         entities = device_entities(snapshot, device.ha_device_id)
+        if action.startswith(PHASES_PREFIX):
+            return plan_steps(phase_steps(profile, action), runtime, entities, "eeprom"), snapshot.states
         if action.startswith(PV_LIMIT_PREFIX):
             variables = percent_variables(action, device_variables(profile, device, snapshot) | runtime)
             return plan_pv_limit(
@@ -488,6 +629,9 @@ class PlanController:
     ) -> None:
         """Initialize; access_for builds the Home Assistant calls of a device."""
         self._marker = marker
+        # Phase switch mode of chargers before Sunflow switched them, restored on hand back
+        self._phase_marker = TakeoverMarker(marker.data_dir, "phase_modes.json")
+        self._phases: dict[str, PhaseState] = {}
         self._access_for = access_for
         self._profiles = profiles
         self.statuses: dict[str, DeviceControl] = {}
@@ -529,14 +673,14 @@ class PlanController:
         for device_id in list(self._marker.get()):
             device = devices.get(device_id)
             if device is None or not self.wanted(config, device):
-                await self._safely(device_id, device, lambda d, s: hand_back(self._access_for(d), self._marker, d.id, s))
+                await self._safely(device_id, device, self._hand_back)
         self.paused = "evcc steuert gerade den Hausspeicher – Sunflow wartet" if evcc_controls_battery(snapshot) else None
         for device in config.devices:
             if not self.wanted(config, device):
                 continue
             profile = self._profiles()[device.profile]
             if "charge_control" in profile:
-                await self._safely(device.id, device, lambda d, s: self._charge(d, s, plan, plan_at, now, live))
+                await self._safely(device.id, device, lambda d, s: self._charge(d, s, plan, plan_at, now, live, snapshot))
             elif not controls_battery(profile):
                 pass
             elif self.paused:
@@ -597,7 +741,8 @@ class PlanController:
         status.grid_target_w = runtime.get("grid_offset")
 
     async def _charge(
-        self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime, live: Any
+        self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime, live: Any,
+        snapshot: Snapshot | None = None,
     ) -> None:
         action, power, reason = desired_charge(plan, plan_at, now, device.name)
         info = next((f for f in getattr(plan, "flex", None) or [] if f.device_id == device.id), None)
@@ -639,12 +784,20 @@ class PlanController:
                 action = "follow"
             elif partial:
                 slot = current_slot(plan, now)
+                if "phase_switch" in profile and action == "charge":
+                    # The surplus there is decides the phases; their minimum current whether it charges
+                    available = follow_surplus(power, getattr(slot, "pv_w", 0.0), live, True, params, 0.0) or 0.0
+                    phases = await self._switch_phases(device, status, profile, params, available, False, plan, now, snapshot)
+                    params = params | {"phases": phases}
                 smallest = min((w for w in steps.values() if w > 0), default=None) if steps else None
                 followed = follow_surplus(power, getattr(slot, "pv_w", 0.0), live, status.action == "charge", params, smallest)
                 if followed is None:
                     action, reason = "stop", "zu wenig PV-Überschuss für die kleinste Leistung"
                 else:
                     power, reason = followed, "folgt dem PV-Überschuss"
+            elif "phase_switch" in profile and action == "charge":
+                phases = await self._switch_phases(device, status, profile, params, power, True, plan, now, snapshot)
+                params = params | {"phases": phases}
             runtime: dict[str, Any] = {"current_a": charge_current(power, params)} if action == "charge" else {}
             if steps:
                 runtime["off_option"] = off_step(steps) or ""
@@ -664,10 +817,41 @@ class PlanController:
                 status.current_a, status.last_current_write = runtime["current_a"], now
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
 
+    async def _switch_phases(
+        self, device: DeviceConfig, status: DeviceControl, profile: dict[str, Any], params: dict[str, Any],
+        wanted_w: float, steady: bool, plan: Any, now: datetime, snapshot: Snapshot | None,
+    ) -> int:
+        """Phases to charge with now; switches the charger when the rules say so."""
+        current = current_phases(profile, device, snapshot, params)
+        state = self._phases.setdefault(device.id, PhaseState())
+        state.add(now, wanted_w)
+        slot = next_slot(plan, now)
+        ahead = (getattr(slot, "flex_w", None) or {}).get(device.name) if slot is not None else None
+        target = choose_phases(current, now, wanted_w, state, PhaseSettings.of(params), steady, ahead)
+        status.phases = target
+        if target == current:
+            return current
+        if device.id not in self._phase_marker.get() and (remember := profile["phase_switch"].get("remember")):
+            self._phase_marker.set(device.id, phase_option(remember["key"], device, snapshot))
+        bookkeeping = DeviceControl(device_id=device.id, name=device.name)
+        await apply(self._access_for(device), bookkeeping, PHASES_ONE if target == 1 else PHASES_THREE, None, now)
+        state.switched(now)
+        _LOGGER.info("%s: %d -> %d phases", device.name, current, target)
+        return target
+
+    async def _hand_back(self, device: DeviceConfig, status: DeviceControl) -> None:
+        """The charger's phase mode as before Sunflow, then the device itself."""
+        if previous := self._phase_marker.get().get(device.id):
+            await apply(self._access_for(device), DeviceControl(device_id=device.id, name=device.name),
+                        PHASES_RESTORE, None, datetime.now(UTC), {"phase_option": previous})
+        self._phase_marker.clear(device.id)
+        self._phases.pop(device.id, None)
+        await hand_back(self._access_for(device), self._marker, device.id, status)
+
     async def hand_back_device(self, device: DeviceConfig) -> None:
         """Hand one device back now (it is switched off in the setup)."""
         if device.id in self._marker.get():
-            await self._safely(device.id, device, lambda d, s: hand_back(self._access_for(d), self._marker, d.id, s))
+            await self._safely(device.id, device, self._hand_back)
 
     async def release_all(self, config: SunflowConfig) -> None:
         """App shutdown: batteries to self-consumption (mode kept), loadpoints back to their own logic."""
@@ -676,7 +860,7 @@ class PlanController:
                 continue
             if "charge_control" in self._profiles()[device.profile]:
                 # Without Sunflow nobody would start or stop charging
-                await self._safely(device.id, device, lambda d, s: hand_back(self._access_for(d), self._marker, d.id, s))
+                await self._safely(device.id, device, self._hand_back)
             else:
                 await self._safely(device.id, device, self._release_on_shutdown)
 

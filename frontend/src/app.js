@@ -1929,6 +1929,7 @@ class SunflowApp extends LitElement {
   }
 
   _renderParameterField(device, param, edits) {
+    if (param.name === "phase_mode") return this._renderPhaseMode(device, param, edits);
     const edited = edits[param.name];
     const value = edited ?? toDisplay(param.stored, param.unit);
     const placeholder = toDisplay(param.effective, param.unit);
@@ -1954,6 +1955,23 @@ class SunflowApp extends LitElement {
             ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, "")}>zurücksetzen</button>`
             : nothing}
         </span>
+      </label>
+    `;
+  }
+
+  /** Phase switching as a choice instead of a number (0 automatic, 1 or 3 phases always). */
+  _renderPhaseMode(device, param, edits) {
+    const value = Number(edits[param.name] ?? param.effective ?? 0);
+    return html`
+      <label class="field">
+        <span class="field-label">${paramLabel(param.name)}</span>
+        <select @change=${(e) => this._editParam(device.id, param.name, e.target.value)}>
+          <option value="0" ?selected=${value === 0}>automatisch (Sunflow schaltet 1 ↔ 3 Phasen)</option>
+          <option value="3" ?selected=${value === 3}>immer 3 Phasen</option>
+          <option value="1" ?selected=${value === 1}>immer 1 Phase</option>
+        </select>
+        <span class="small muted">Automatisch lädt das Auto schon bei wenig PV-Überschuss (1 Phase ab ≈ 1,4 kW) und schaltet
+          bei genug Sonne auf 3 Phasen.</span>
       </label>
     `;
   }

@@ -134,6 +134,17 @@
         "refresh": {"$ref": "#/$defs/duration"}
       }
     },
+    "phase_switch": {
+      "description": "Switching a charger between 1 and 3 phases: steps for one and three; remember: select whose option is restored when Sunflow hands the charger back.",
+      "type": "object",
+      "required": ["one", "three"],
+      "additionalProperties": false,
+      "properties": {
+        "one": {"$ref": "#/$defs/steps"},
+        "three": {"$ref": "#/$defs/steps"},
+        "remember": {"type": "object", "required": ["key"], "additionalProperties": false, "properties": {"key": {"type": "string"}}}
+      }
+    },
     "charge_control": {
       "description": "Charging control of a loadpoint: steps for charge (runtime current_a), stop and release (back to the device's own logic). remember: a select whose option is stored on takeover and restored on hand back.",
       "type": "object",

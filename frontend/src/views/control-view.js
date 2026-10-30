@@ -216,6 +216,8 @@ class SunflowControl extends LitElement {
                   : s?.active
                     ? `${ACTION_LABELS[s.action] ?? s.action}${s.power_w ? ` · ${Math.round(s.power_w)} W` : ""}${s.grid_target_w !== null && s.grid_target_w !== undefined
                       ? ` · Netz-Ziel ${Math.round(s.grid_target_w)} W`
+                      : ""}${s.phases ? ` · ${s.phases === 1 ? "1 Phase" : `${s.phases} Phasen`}` : ""}${s.limit_w !== null && s.limit_w !== undefined
+                      ? ` · PV begrenzt auf ${Math.round(s.limit_w)} W`
                       : ""} · ${s.reason}${s.last_write ? ` · zuletzt geschrieben ${time(s.last_write)}` : ""}`
                     : s?.reason ?? "startet mit der nächsten Minute"}</span>
               ${d.kind === "loadpoint" && d.enabled && t.enabled

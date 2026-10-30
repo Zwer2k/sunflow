@@ -6,7 +6,7 @@
 # The integration has no entity for it; the topic is "go-eCharger/<serial>" (the
 # integration's default). Charging is started and stopped with the force state.
 profile: goecharger_mqtt/charger
-version: 1
+version: 2
 match:
   integration: goecharger_mqtt
   model: ["go-eCharger*", "go-e Charger*"]
@@ -23,6 +23,8 @@ roles:
   # RFID: the scanned card ("card_0" = card 1) and whether one is required to charge
   transaction: {key: select-trx-trx, optional: true}
   card_required: {key: switch-acs-0, optional: true}
+  # Phase switch mode: one_phase / three_phases (auto: the charger's own switching)
+  phase_mode: {key: select-psm-psm, optional: true}
   # The charger does not know the vehicle's SoC: bind a sensor of the car's integration
   vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
 
@@ -30,7 +32,16 @@ parameters:
   max_power: {unit: W, default: 11000, min: 0}
   vehicle_capacity_wh: {unit: Wh, min: 0}
   charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
-  phases: {unit: "", default: 3, min: 1, max: 3}
+  # Phases of the connection when the charger does not switch them
+  phases: {unit: "", default: 3, min: 1, max: 3, advanced: true}
+  # Phase switching: 0 automatic (Sunflow switches), 1 or 3 always
+  phase_mode: {unit: "", default: 0, min: 0, max: 3}
+  phase_up_w: {unit: W, default: 4500, min: 1500, max: 22000}
+  phase_down_w: {unit: W, default: 4000, min: 1000, max: 22000}
+  phase_up_delay_min: {unit: min, default: 5, min: 0, max: 60, advanced: true}
+  phase_down_delay_min: {unit: min, default: 2, min: 0, max: 60, advanced: true}
+  phase_min_interval_min: {unit: min, default: 15, min: 0, max: 240, advanced: true}
+  phase_max_switches_day: {unit: "", default: 12, min: 0, max: 100, advanced: true}
   min_current_a: {unit: A, default: 6, min: 6, max: 32}
   max_current_a: {unit: A, default: 16, min: 6, max: 32}
 
@@ -48,5 +59,13 @@ charge_control:
     - service: {action: mqtt.publish, data: {topic: "go-eCharger/{{ device_serial }}/amx/set", payload: "{{ role_stored_current }}"}, storage: volatile}
     - select: {key: select-frc-frc, option: "neutral", write: if_differs}
 
+# The phase switch mode is a setting of the charger (kept in flash): only on change
+phase_switch:
+  remember: {key: select-psm-psm}
+  one:
+    - select: {key: select-psm-psm, option: "one_phase", storage: eeprom, write: if_differs}
+  three:
+    - select: {key: select-psm-psm, option: "three_phases", storage: eeprom, write: if_differs}
+
 eeprom_guard:
-  max_writes_per_day: 10
+  max_writes_per_day: 20
