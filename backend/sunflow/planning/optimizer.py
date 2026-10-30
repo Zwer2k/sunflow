@@ -513,11 +513,10 @@ def optimize(
         for t, b in slots:
             gate_rows.append(({flow[t]: 1, gi[t]: -1, b: -flow_max}, 0.0))
             if soc_wh is not None:
-                if t == 0:
-                    upper[b] = min(upper[b], 1.0 if battery.soc_wh >= soc_wh else 0.0)
-                else:
-                    # SoC at the slot start; the gate closes again when the battery drops below
-                    gate_rows.append(({b: soc_wh, s[t - 1]: -1}, 0.0))
+                # SoC at the slot end: the load may take what is left in the slot in which
+                # the battery reaches the level (often its charge limit); the gate closes
+                # again when the battery drops below
+                gate_rows.append(({b: soc_wh, s[t]: -1}, 0.0))
             for k, required, last in after:
                 if t > last:
                     continue  # the named load cannot receive more: no longer waiting for it
