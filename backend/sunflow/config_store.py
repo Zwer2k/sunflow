@@ -304,6 +304,9 @@ class SunflowConfig(BaseModel):
     priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
     control: ControlSettings = Field(default_factory=ControlSettings)
     vehicles: list[Vehicle] = Field(default_factory=list)
+    # Switched off in the setup (e.g. a wallbox both as evcc loadpoint and directly): kept
+    # with all settings, but planning, measuring and control only see self.devices
+    disabled_devices: list[DeviceConfig] = Field(default_factory=list)
     # Wallbox id -> vehicle chosen in the control tab (until the car is unplugged)
     selected_vehicles: dict[str, str] = Field(default_factory=dict)
 

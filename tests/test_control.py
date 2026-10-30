@@ -417,3 +417,17 @@ def test_amx_topic_from_device_serial() -> None:
     assert charge[0].data == {"topic": "go-eCharger/216505/amx/set", "payload": 7}
     # Handing back sets the temporary current to the stored one again
     assert release[0].data["payload"] == 16
+
+
+async def test_disabled_device_is_handed_back(tmp_path: Path) -> None:
+    """Switching a device off in the setup ends its control like the device switch does."""
+    device = FakeDevice()
+    controller = _controller(tmp_path, device)
+    config = _config()
+    await controller.tick(config, _plan(), NOW, SNAPSHOT, NOW)
+
+    config.disabled_devices, config.devices = config.devices, []
+    await controller.tick(config, _plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=1))
+
+    assert device.mode == "Self Use"
+    assert TakeoverMarker(tmp_path).get() == {}
