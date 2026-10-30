@@ -229,7 +229,9 @@ class ShadowRunner:
                 snapshot = await self.snapshots.get()
                 self._end_vehicle_choices(snapshot)
                 if self.controller is not None:
-                    await self.controller.tick(self._store.load(), self.latest, self.status.last_plan, snapshot, now)
+                    await self.controller.tick(
+                        self._store.load(), self.latest, self.status.last_plan, snapshot, now, self.last_sample
+                    )
             except HAError as err:
                 _LOGGER.warning("Control step failed: %s", err)
 
