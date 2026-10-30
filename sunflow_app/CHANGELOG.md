@@ -1,5 +1,22 @@
 # Changelog
 
+## Unveröffentlicht (Branch `inverters`)
+
+Wechselrichter:
+
+- Neue Profile, aus den Entitäten der Integrationen gebaut und gegen nachgebildete Geräte getestet, noch nicht an echter Hardware:
+  - SolaX Gen4/5 (solax_modbus, Remote Control Mode 1)
+  - Huawei SUN2000 mit LUNA2000 (huawei_solar, braucht den Installateur-Zugang), Huawei ohne Speicher jetzt mit Abregelung
+  - SolarEdge StorEdge (solaredge_modbus)
+  - Fronius GEN24 (fronius mit Modbus-Steuerung)
+  - GoodWe ET/EH (goodwe)
+  - Kostal Plenticore (kostal_plenticore)
+  - Victron ESS direkt per Modbus TCP am GX-Gerät
+- Speicher ohne Leistungsfenster werden über Aktionen gesteuert (Automatik, Halten, Laden/Entladen erzwingen, Laden/Entladen begrenzen). Geplant wird nur, was das Gerät kann: ohne erzwungenes Laden z. B. kein Laden aus dem Netz. Eine fehlende Aktion ersetzt Sunflow durch die nächstliegende und zeigt das in der Steuerung an. Befehle, die das Gerät nach einiger Zeit vergisst, werden regelmäßig erneuert; im Flash gespeicherte Werte nur bei Änderung.
+- PV-Abregelung: Ist eine Anlage zur Steuerung freigegeben und kann sie abregeln, darf der Plan ihre PV drosseln, wenn Einspeisen kostet (negative Vergütung, über der netzdienlichen Grenze). Die Steuerung führt das Limit minütlich anhand der gemessenen Einspeisung nach und hebt es ohne Abregelung, beim Zurückgeben und beim Beenden der App wieder auf. Die Planung zeigt die abgeregelte PV.
+- Solarspitzengesetz: Zu negativen Preisen gilt die Einspeisung als unvergütet.
+- Geräte ohne Home-Assistant-Integration lassen sich unter „Integrationen“ direkt anbinden (Modbus TCP, vorbereitet auch HTTP/JSON). Sie erscheinen danach wie jedes andere Gerät mit Live-Werten, Kenndaten, Gerätetest und Steuerung.
+
 ## 0.44.1
 
 - Planung → PV-Erzeugung: Per Häkchen lässt sich die unkorrigierte Prognose der gewählten Quelle (Solcast, Forecast.Solar oder beide) als dünne Linie einblenden – in der Vergangenheit, wie der Schattenbetrieb sie aufgezeichnet hat, im Planzeitraum und danach. So ist sichtbar, wie weit die gelernte Korrektur und die Kurzfristprognose von der Rohprognose abweichen. Die Auswahl wird im Browser gemerkt; der Legendeneintrag hebt die Linie hervor.

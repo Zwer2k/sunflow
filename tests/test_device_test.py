@@ -4,17 +4,16 @@ import asyncio
 from pathlib import Path
 
 import pytest
-
-from sunflow.device_test import (
-    ModeControl,
+from sunflow.devices.device_test import (
     DeviceTestState,
+    ModeControl,
     RestoreMarker,
     Timings,
     choose_test,
     evaluate,
     run_device_test,
 )
-from sunflow.executor import PlannedCall
+from sunflow.devices.executor import PlannedCall
 
 FAST = Timings(baseline=0.03, hold=0.06, settle=0.02, verify_restore=0.02, sample=0.01)
 

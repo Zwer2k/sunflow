@@ -3,9 +3,8 @@
 from typing import Any
 
 import pytest
-
-from sunflow import plan
 from sunflow.ha import HACommandError, RecorderUnavailable
+from sunflow.planning import plan
 
 
 async def test_cached_reuses_and_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -4,8 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-
-from sunflow.energy import EnergySources, _dashboard_statistics, energy_balance
+from sunflow.analysis.energy import EnergySources, _dashboard_statistics, energy_balance
 
 START = datetime(2026, 10, 20, tzinfo=UTC)
 
@@ -107,7 +106,7 @@ async def test_energy_balance_without_load_counter() -> None:
 
 async def test_battery_efficiency_from_counters() -> None:
     """Charge and discharge counters plus the SoC change give the round trip."""
-    from sunflow.efficiency import estimate_from_counters
+    from sunflow.analysis.efficiency import estimate_from_counters
 
     hour = 3_600_000
 
@@ -128,7 +127,7 @@ async def test_battery_efficiency_from_counters() -> None:
 
 def test_split_losses_separates_standby() -> None:
     """Days with different throughput separate 85 % conversion per direction and 60 W standby."""
-    from sunflow.efficiency import split_losses
+    from sunflow.analysis.efficiency import split_losses
 
     eta, standby = 0.85, 60.0
     days = []
@@ -144,7 +143,7 @@ def test_split_losses_separates_standby() -> None:
 
 def test_split_losses_ignores_outlier_days() -> None:
     """A day with a SoC jump (calibration) does not move the result."""
-    from sunflow.efficiency import split_losses
+    from sunflow.analysis.efficiency import split_losses
 
     eta, standby = 0.968, 89.0
     days = [(c, 0.9 * c, eta * c - 0.9 * c / eta - standby * 24) for c in range(4000, 16000, 800)]
@@ -155,7 +154,7 @@ def test_split_losses_ignores_outlier_days() -> None:
 
 def test_daily_balances_fixed_day_start() -> None:
     """Days start at UTC midnight, whatever hour the queried window starts with."""
-    from sunflow.efficiency import DAY_MS, daily_balances
+    from sunflow.analysis.efficiency import DAY_MS, daily_balances
 
     hour = 3_600_000
     midnight = 1_761_523_200_000  # 2025-10-27 00:00 UTC
@@ -169,7 +168,7 @@ def test_daily_balances_fixed_day_start() -> None:
 
 def test_split_losses_needs_enough_varied_days() -> None:
     """Too few days or always the same cycle give no split."""
-    from sunflow.efficiency import split_losses
+    from sunflow.analysis.efficiency import split_losses
 
     assert split_losses([(10000, 6000, -500)] * 3) is None
     assert split_losses([(10000, 6000, -500)] * 10) is None
@@ -185,7 +184,7 @@ async def test_efficiency_history_per_day() -> None:
     """Daily battery round trip (SoC corrected) and inverter AC/DC; small or incomplete days stay empty."""
     from zoneinfo import ZoneInfo
 
-    from sunflow.energy import BatteryCounters, efficiency_history
+    from sunflow.analysis.energy import BatteryCounters, efficiency_history
 
     tz = ZoneInfo("Europe/Berlin")
     end = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -234,7 +233,7 @@ async def test_efficiency_history_merges_days_with_little_energy() -> None:
     """Winter days below the minimum are combined until there is enough energy for a value."""
     from zoneinfo import ZoneInfo
 
-    from sunflow.energy import BatteryCounters, efficiency_history
+    from sunflow.analysis.energy import BatteryCounters, efficiency_history
 
     tz = ZoneInfo("Europe/Berlin")
     end = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)

@@ -14,9 +14,37 @@ pump around PV forecasts and dynamic prices.
 | `profiles/` | Manufacturer profiles mapping roles/actions to HA entities |
 | `schema/` | JSON schemas for profiles and configuration |
 | `tests/` | Tests |
+| `docs/` | User documentation (German), e.g. the list of supported devices |
 
 The same repository is added both to the App store (`repository.yaml`) and to
 HACS (`hacs.json`).
+
+### Backend (`backend/sunflow/`)
+
+| Package | Content |
+|---|---|
+| `api/` | HTTP API, one router per area (devices, setup, sources, plan, control, …); `app.py` builds the app |
+| `config/` | Configuration model (`models.py`) and its storage with migrations (`store.py`) |
+| `devices/` | Profiles, discovery, entity roles, writing to devices, device test, site view |
+| `planning/` | Forecast sources, load and PV learning, vehicles, the optimizer and the plan |
+| `control/` | Carrying out the plan on batteries and loadpoints |
+| `shadow/` | Background loop and the recorded plan vs. measurement |
+| `analysis/` | Energy balance, costs, efficiency, history, recommendations |
+| `ha/` | Home Assistant websocket client |
+
+### Frontend (`frontend/src/`)
+
+| Folder | Content |
+|---|---|
+| `app.js` | Shell: navigation, setup and settings |
+| `views/` | Live, plan, control, analysis |
+| `settings/` | Settings areas |
+| `components/` | Charts, energy flows, dialog, entity picker |
+| `lib/` | API client, formatting, polling |
+
+Profiles are grouped by kind of device (`profiles/inverters/`, `meters/`,
+`loadpoints/`, `loads/`); a profile is identified by its `profile` field, not
+its path.
 
 ## Installation as Home Assistant App
 
