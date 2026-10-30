@@ -6,12 +6,10 @@ from typing import Any
 from dummy_inverter import DummyInverter
 import pytest
 from sunflow.config.models import Connection, DeviceConfig, SunflowConfig
-from sunflow.control.controller import device_variables
-from sunflow.devices.discovery import Snapshot
-from sunflow.devices.discovery import match_profile
-from sunflow.devices.executor import plan_battery, plan_pv_limit
+from sunflow.control.controller import device_variables, percent_variables
+from sunflow.devices.discovery import Snapshot, match_profile
+from sunflow.devices.executor import EepromGuard, execute, plan_battery, plan_pv_limit
 from sunflow.devices.profiles import ProfileLibrary, battery_actions, controls_battery
-from sunflow.devices.executor import EepromGuard, execute
 from sunflow.devices.resolver import bind_roles, preview
 from sunflow.devices.site import derive_parameter
 from sunflow.direct.hub import DirectHub, direct_device_id
@@ -71,12 +69,65 @@ DUMMIES: dict[str, dict[str, Any]] = {
             "number": ["charge_limit", "discharge_limit", "backup_reserve"],
         },
     },
+    "goodwe/hybrid": {
+        "integration": "goodwe",
+        "unique_ids": {
+            "sensor": [
+                f"goodwe-{key}-9010KETU000W0000"
+                for key in (
+                    "battery_soc", "pbattery1", "ppv", "active_power", "house_consumption", "e_total",
+                    "meter_e_total_imp", "meter_e_total_exp", "e_bat_charge_total", "e_bat_discharge_total",
+                )
+            ],
+            "select": ["goodwe-operation_mode-9010KETU000W0000"],
+        },
+    },
+    "kostal_plenticore/plenticore": {
+        "integration": "kostal_plenticore",
+        "unique_ids": {
+            "sensor": [
+                f"entry1_{key}"
+                for key in (
+                    "devices:local:battery_SoC", "devices:local:battery_P", "devices:local_Dc_P", "devices:local:pv1_P",
+                    "devices:local:pv2_P", "devices:local:ac_P", "devices:local_Grid_P", "devices:local_Home_P",
+                )
+            ],
+            "number": ["entry1_devices:local_Battery:MinSoc", "entry1_devices:local_Inverter:ActivePowerLimitation"],
+        },
+    },
+    "fronius/gen24": {
+        "integration": "fronius",
+        "unique_ids": {
+            "sensor": [
+                "net1-power_flow-power_battery", "net1-power_flow-power_photovoltaics", "net1-power_flow-power_grid",
+                "net1-power_flow-power_load", "BAT123-state_of_charge", "INV1-energy_total",
+                "MTR1-energy_real_ac_plus", "MTR1-energy_real_ac_minus",
+            ],
+            "number": [
+                f"INV1-modbus-{key}"
+                for key in ("battery_charge_power_limit", "battery_discharge_power_limit", "ac_power_limit")
+            ],
+            "switch": [
+                f"INV1-modbus-{key}"
+                for key in (
+                    "battery_charge_power_limit_enabled", "battery_discharge_power_limit_enabled",
+                    "ac_power_limit_enabled",
+                )
+            ],
+        },
+    },
 }
 
 
 def dummy_entities(profile_id: str) -> list[dict[str, Any]]:
     """Registry entries of the dummy device."""
     dummy = DUMMIES[profile_id]
+    if "unique_ids" in dummy:
+        return [
+            {"entity_id": f"{domain}.e{i}", "unique_id": unique_id, "device_id": "dev"}
+            for domain, unique_ids in dummy["unique_ids"].items()
+            for i, unique_id in enumerate(unique_ids)
+        ]
     return [
         {"entity_id": f"{domain}.{dummy['prefix']}_{key}", "unique_id": f"{dummy['prefix']}_{key}", "device_id": "dev"}
         for domain, keys in dummy["keys"].items()
@@ -105,7 +156,7 @@ def test_every_action_resolves(library: ProfileLibrary, profile_id: str) -> None
     existing = {e["entity_id"] for e in entities}
     variables = {
         "P": 2000, "limit_w": 1500, "max_charge": 5000, "max_discharge": 5000, "max_ac_power": 10000,
-        "device_id_batteries": "b",
+        "device_id_batteries": "b", "P_pct": 40, "limit_pct": 15, "role_battery_soc": 55, "min_soc": 10,
     }
     actions = [*battery_actions(profile), "release"] if controls_battery(profile) else []
     for action in actions:
@@ -215,3 +266,12 @@ def test_solaredge_reads_attached_battery_and_meter(library: ProfileLibrary) -> 
     assert derive_parameter(profile["parameters"]["capacity_wh"], snapshot, "dev") == 9700
     hold = plan_battery(profile, "hold", {}, {"max_charge": 5000}, entities)
     assert [c.data for c in hold] == [{"option": "maximize_self_consumption"}, {"value": 5000}, {"value": 0}]
+
+
+def test_percent_variables() -> None:
+    """Integrations taking percent get P of the action's direction and the limit of the AC power."""
+    variables = {"P": 1500, "max_charge": 6000, "max_discharge": 3000, "limit_w": 2500, "max_ac_power": 10000}
+    assert percent_variables("limit_charge", variables)["P_pct"] == 25
+    assert percent_variables("limit_discharge", variables)["P_pct"] == 50
+    assert percent_variables("pv_set", variables)["limit_pct"] == 25
+    assert "P_pct" not in percent_variables("auto", {"max_charge": 6000})

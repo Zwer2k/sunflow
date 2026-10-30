@@ -368,6 +368,21 @@ def device_variables(profile: dict[str, Any], device: DeviceConfig, snapshot: Sn
     return values
 
 
+def percent_variables(action: str, variables: dict[str, Any]) -> dict[str, Any]:
+    """Powers also in percent of the device's maximum, for integrations that take percent.
+
+    P_pct: P of max_discharge (discharge actions) or max_charge; limit_pct: limit_w of max_ac_power.
+    """
+    result = dict(variables)
+    base = variables.get("max_discharge" if "discharge" in action else "max_charge")
+    if isinstance(variables.get("P"), int | float) and isinstance(base, int | float) and base > 0:
+        result["P_pct"] = round(min(max(variables["P"] / base * 100, 0), 100))
+    rated = variables.get("max_ac_power")
+    if isinstance(variables.get("limit_w"), int | float) and isinstance(rated, int | float) and rated > 0:
+        result["limit_pct"] = round(min(max(variables["limit_w"] / rated * 100, 0), 100))
+    return result
+
+
 def device_access(
     client: HAClient, profile: dict[str, Any], device: DeviceConfig, guard: EepromGuard, hub: DirectHub | None = None
 ) -> DeviceAccess:
@@ -382,7 +397,7 @@ def device_access(
         snapshot = await fetch_snapshot(client, hub)
         entities = device_entities(snapshot, device.ha_device_id)
         if action.startswith(PV_LIMIT_PREFIX):
-            variables = device_variables(profile, device, snapshot) | runtime
+            variables = percent_variables(action, device_variables(profile, device, snapshot) | runtime)
             return plan_pv_limit(
                 profile, action.removeprefix(PV_LIMIT_PREFIX), device.parameters, variables, entities
             ), snapshot.states
@@ -391,7 +406,7 @@ def device_access(
             bound = {k: o.entity_id for k, o in device.role_overrides.items() if o.entity_id}
             variables = device_variables(profile, device, snapshot) | runtime
             return plan_charge(profile, action, device.parameters, variables, entities, bound), snapshot.states
-        variables = device_variables(profile, device, snapshot) | runtime
+        variables = percent_variables(action, device_variables(profile, device, snapshot) | runtime)
         return plan_battery(profile, action, device.parameters, variables, entities), snapshot.states
 
     def direct() -> DirectDevice | None:

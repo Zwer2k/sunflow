@@ -1,0 +1,51 @@
+# Kostal Plenticore plus / PLENTICORE G3 with battery via the core kostal_plenticore
+# integration. Battery control by the minimum SoC like evcc does for Victron: holding
+# raises it to the current SoC, auto restores the configured minimum (a setting of the
+# inverter, written only on change). The Plenticore does not charge from the grid on
+# command. The output can be limited by the active power limitation.
+# Signs (Plenticore): battery P + = discharge, Grid_P + = import.
+# Not verified on hardware yet.
+profile: kostal_plenticore/plenticore
+version: 1
+match:
+  integration: kostal_plenticore
+  requires: ["devices:local:battery_SoC", "Battery:MinSoc"]
+
+capabilities: [pv, battery, grid_meter, battery_control, curtail]
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: "devices:local:battery_SoC", unit: "%"}
+  battery_power: {key: "devices:local:battery_P", unit: W, sign: discharge_positive}
+  pv_power:
+    key: "devices:local_Dc_P"
+    unit: W
+    fine_keys: ["devices:local:pv1_P", "devices:local:pv2_P", "devices:local:pv3_P"]
+  ac_power: {key: "devices:local:ac_P", unit: W, optional: true}
+  grid_power: {key: "devices:local_Grid_P", unit: W, sign: import_positive}
+  load_power: {key: "devices:local_Home_P", unit: W, optional: true}
+
+parameters:
+  capacity_wh: {unit: Wh, min: 1000}
+  min_soc: {unit: "%", default: 10, min: 5, max: 100}
+  max_charge: {unit: W, default: 5000, min: 0}
+  max_discharge: {unit: W, default: 5000, min: 0}
+  max_ac_power: {unit: W, default: 10000, min: 0}
+  efficiency_pct: {unit: "%", default: 93, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 97, min: 80, max: 100}
+
+battery_control:
+  auto:
+    - number: {key: "Battery:MinSoc", value: "{{ min_soc }}", storage: eeprom, write: if_differs}
+  hold:
+    - number: {key: "Battery:MinSoc", value: "{{ role_battery_soc }}", min: 5, max: 100, storage: eeprom, write: if_differs, tolerance: 5}
+
+pv_limit:
+  set:
+    - number: {key: "Inverter:ActivePowerLimitation", value: "{{ limit_w }}", min: 0, storage: eeprom, write: if_differs, tolerance: 300}
+  release:
+    - number: {key: "Inverter:ActivePowerLimitation", value: "{{ max_ac_power }}", storage: eeprom, write: if_differs, tolerance: 50}
+
+eeprom_guard:
+  max_writes_per_day: 30
