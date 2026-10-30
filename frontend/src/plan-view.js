@@ -27,10 +27,16 @@ const MAX_PLAN_HOURS = 48;
 const REFRESH_MS = 2 * 60 * 1000;
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const TOTAL_KEY = "sunflow.plan.total";
+const RAW_PV_KEY = "sunflow.plan.rawPv";
 
 const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 const dayTime = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+
+/** Name of the forecast source(s) in use, e.g. "Solcast" or "Solcast + Forecast.Solar". */
+function rawLabel(plan) {
+  return plan.pv_sources?.length ? plan.pv_sources.join(" + ") : "PV-Prognose";
+}
 
 /** Energy in Wh of a power column over 15 minute slots. */
 function energy(slots, key) {
@@ -110,6 +116,8 @@ class SunflowPlan extends LitElement {
     _pvAhead: { state: true },
     _focus: { state: true },
     _showTotal: { state: true },
+    _showRawPv: { state: true },
+    _rawPast: { state: true },
     _historyError: { state: true },
     _scales: { state: true },
   };
@@ -124,13 +132,17 @@ class SunflowPlan extends LitElement {
     this._historyHours = 48;
     this._shift = 0;
     this._pvAhead = [];
+    this._pvAheadRaw = [];
+    this._rawPast = [];
     // Chosen axis maximum per chart; peaks otherwise squeeze everything else to the bottom
     this._scales = {};
     this._timer = null;
     try {
       this._showTotal = localStorage.getItem(TOTAL_KEY) === "1";
+      this._showRawPv = localStorage.getItem(RAW_PV_KEY) === "1";
     } catch {
       this._showTotal = false;
+      this._showRawPv = false;
     }
   }
 
@@ -150,6 +162,7 @@ class SunflowPlan extends LitElement {
     // The measured history comes from Home Assistant's database; without it the plan still shows
     const history = this._loadHistory();
     this._loadPvAhead();
+    this._loadRawPast();
     try {
       this._plan = await (fresh ? api.plan() : api.latestPlan());
       this._error = null;
@@ -313,6 +326,13 @@ class SunflowPlan extends LitElement {
               : html`${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
               ? `, skaliert auf ${toDisplay(plan.load_scaled_to_kwh, "kWh")} kWh/Tag`
               : ""}${plan.load_separated_hours ? `, ohne steuerbare Verbraucher (${plan.load_separated_hours} h getrennt)` : ""}`})</span></span>
+          <span class="legend-item total-toggle">
+            <input type="checkbox" id="show-raw-pv" aria-label="Unkorrigierte Prognose einblenden" .checked=${this._showRawPv}
+              @change=${(e) => this._setShowRawPv(e.target.checked)}>
+            ${this._showRawPv
+              ? this._legendButton("raw", SERIES_COLORS[1], `${rawLabel(plan)} (unkorrigiert)`)
+              : html`<label for="show-raw-pv">${rawLabel(plan)} (unkorrigiert)</label>`}
+          </span>
           ${hasLoadpoints
             ? html`<span class="legend-item total-toggle">
                 <input type="checkbox" id="show-total" aria-label="Gesamtverbrauch einblenden" .checked=${this._showTotal}
@@ -328,6 +348,9 @@ class SunflowPlan extends LitElement {
             { key: "load", name: "Verbrauch gemessen", color: SERIES_COLORS[0], points: this._pastBaseLoad() },
             { key: "load", name: "Verbrauch Prognose", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
             { key: "pv", name: "PV gemessen", color: SERIES_COLORS[1], points: this._past("pv_w") },
+            ...(this._showRawPv
+              ? [{ key: "raw", name: `${rawLabel(plan)} unkorrigiert`, color: SERIES_COLORS[1], thin: true, points: this._rawPv(plan, slots) }]
+              : []),
             ...(consumers.length
               ? consumers.flatMap((c) => [
                   { key: c.key, name: `${c.name} gemessen`, color: c.color, points: this._pastConsumer(c.key) },
@@ -526,6 +549,43 @@ class SunflowPlan extends LitElement {
     };
   }
 
+  _setShowRawPv(show) {
+    this._showRawPv = show;
+    if (!show && this._focus === "raw") this._focus = null;
+    try {
+      localStorage.setItem(RAW_PV_KEY, show ? "1" : "0");
+    } catch {
+      // Not remembered, the switch still works for this visit
+    }
+    if (show) this._loadRawPast();
+  }
+
+  /** The forecast as its source delivers it: recorded in the past, from the plan ahead, the longer one after the plan. */
+  _rawPv(plan, slots) {
+    const ahead = slots.map((s, i) => ({ start: s.start, end: s.end, value: plan.raw_pv?.[i] ?? null }));
+    const planStart = new Date(slots[0].start);
+    const planEnd = new Date(slots.at(-1).end);
+    return [
+      ...this._rawPast.filter((p) => new Date(p.end) <= planStart),
+      ...ahead,
+      ...this._pvAheadRaw.filter((p) => new Date(p.start) >= planEnd),
+    ];
+  }
+
+  /** The forecast the shadow mode recorded for each past slot (before learning). */
+  async _loadRawPast() {
+    const hours = Math.ceil((Date.now() - this._range.start) / 3600_000);
+    if (!this._showRawPv || hours <= 0) return;
+    try {
+      const shadow = await api.shadow(Math.min(hours, 90 * 24));
+      this._rawPast = shadow.rows
+        .filter((r) => r.forecast_pv_w !== null && r.forecast_pv_w !== undefined)
+        .map((r) => ({ start: r.start, end: new Date(new Date(r.start).getTime() + 15 * 60_000).toISOString(), value: r.forecast_pv_w }));
+    } catch {
+      this._rawPast = [];
+    }
+  }
+
   _setShowTotal(show) {
     this._showTotal = show;
     if (!show && this._focus === "total") this._focus = null;
@@ -606,13 +666,13 @@ class SunflowPlan extends LitElement {
 
   async _shiftWindow(direction) {
     this._shift = direction === 0 ? 0 : this._shift + direction * (this._historyHours / 2);
-    await Promise.all([this._loadHistory(), this._loadPvAhead()]);
+    await Promise.all([this._loadHistory(), this._loadPvAhead(), this._loadRawPast()]);
   }
 
   async _setHistoryHours(hours) {
     this._historyHours = hours;
     this._shift = 0;
-    await Promise.all([this._loadHistory(), this._loadPvAhead()]);
+    await Promise.all([this._loadHistory(), this._loadPvAhead(), this._loadRawPast()]);
   }
 
   /** Measured values of the window's past part; keeps the last on failure (charts show it with a hint). */
@@ -642,6 +702,7 @@ class SunflowPlan extends LitElement {
     const hours = Math.ceil((end - Date.now()) / 3600_000);
     if (hours <= MAX_PLAN_HOURS) {
       this._pvAhead = [];
+      this._pvAheadRaw = [];
       return;
     }
     try {
@@ -651,11 +712,12 @@ class SunflowPlan extends LitElement {
       for (const plane of data.planes) {
         for (const p of plane.points) {
           const entry = sums.get(p.start) ?? { start: p.start, end: p.end, value: 0 };
-          entry.value += p.power * factor;
+          entry.value += p.power;
           sums.set(p.start, entry);
         }
       }
-      this._pvAhead = [...sums.values()].sort((a, b) => new Date(a.start) - new Date(b.start));
+      this._pvAheadRaw = [...sums.values()].sort((a, b) => new Date(a.start) - new Date(b.start));
+      this._pvAhead = this._pvAheadRaw.map((p) => ({ ...p, value: p.value * factor }));
     } catch {
       // Optional: the charts end with the plan then
       this._pvAhead = [];

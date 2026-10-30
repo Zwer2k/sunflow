@@ -896,6 +896,9 @@ async def set_measurements(request: Request, body: dict[str, str | None]) -> dic
     return _measurements(config, profiles)
 
 
+PV_SOURCE_NAMES = {"solcast": "Solcast", "forecast_solar": "Forecast.Solar"}
+
+
 def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
     """Serialize a plan result for the UI."""
     plan = result.plan
@@ -941,6 +944,9 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
             for info in result.flex
         ],
         "slots": [asdict(slot) for slot in plan.slots],
+        # The forecast as its source delivers it, before learning and nowcast
+        "raw_pv": result.raw_pv[: len(plan.slots)],
+        "pv_sources": sorted({PV_SOURCE_NAMES.get(p.source, p.source) for p in config.forecast_planes if p.device_id}),
     }
 
 
