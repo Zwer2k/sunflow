@@ -1,6 +1,17 @@
 # Changelog
 
-## Unveröffentlicht (Branch `inverters`)
+## 0.45.0
+
+Einstellungen neu geordnet:
+
+- Nach der Ersteinrichtung zeigen die Einstellungen benannte Bereiche statt nummerierter Schritte: Geräte (mit ihren Kenndaten in der Gerätekarte), Fahrzeuge, Laden, Verbraucher, Tarif und weitere. Die Ersteinrichtung führt weiter Schritt für Schritt durch. Hinweise und Empfehlungen verweisen auf die Bereiche.
+- Fahrzeuge enthalten nur noch, was das Auto ist (Akku, Sensoren). Unter „Laden“ steht pro Wallbox, welches Fahrzeug mit welcher Karte und welchem Ziel lädt, zusammen mit der Fahrzeugerkennung; beides wird gemeinsam gespeichert.
+- Die Konfiguration wird beim ersten Start automatisch auf das neue Format (Version 3) umgestellt; Einstellungen bleiben erhalten.
+
+Eigene Verbraucher:
+
+- Neben Ein/Aus-Schaltern (Shelly, Steckdose) gibt es Verbraucher in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl, die Leistung wird aus den Optionsnamen gelesen) und mit Ziel-Stromstärke, jeweils mit oder ohne Leistungs- und Verbrauchsmessung.
+- Ein Heizstab im Speicher wird als Wärme nach Temperatur und Volumen geplant wie der evcc-Heizstab. Der Tagesverbrauch wird auch allein aus einem Energiezähler gelernt.
 
 Wechselrichter:
 
