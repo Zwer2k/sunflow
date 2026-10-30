@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.8
+
+- Kenndaten → Sofar: Der Netz-Zielwert („Passive Desired Grid Power“, bisher „Einspeise-Puffer“ und nur im Expertenmodus) ist jetzt immer sichtbar, mit Erklärung. Vorgabe −200 W.
+
 ## 0.41.7
 
 - Fahrzeuge: Jedes Fahrzeug und die Erkennung je Wallbox erscheinen kompakt und klappen sich wie die übrigen Karten auf; aufgeklappt sind die Felder gleich bearbeitbar (Speichern, Abbrechen, Entfernen).

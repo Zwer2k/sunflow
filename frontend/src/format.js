@@ -94,7 +94,7 @@ const PARAM_LABELS = {
   min_soc: "Mindest-Ladestand",
   max_charge: "Max. Ladeleistung",
   max_discharge: "Max. Entladeleistung",
-  grid_offset: "Einspeise-Puffer (Netz-Zielwert)",
+  grid_offset: "Netz-Zielwert (Desired Grid Power)",
   efficiency_pct: "Wirkungsgrad Speicher (Akku und DC/DC, gesamter Zyklus)",
   inverter_efficiency_pct: "Wirkungsgrad Wechselrichter (je Richtung)",
   max_power: "Maximale Leistung",
@@ -103,6 +103,17 @@ const PARAM_LABELS = {
   tank_l: "Speichervolumen",
   daily_energy_wh: "Energiebedarf pro Tag",
 };
+
+// Short explanation below a parameter
+const PARAM_HINTS = {
+  grid_offset:
+    "Auf diese Leistung am Netzanschluss regelt der Wechselrichter, während Sunflow steuert. Negativ = leichte Einspeisung als " +
+    "Puffer gegen Lastsprünge (Bezug kostet mehr als die Vergütung bringt), 0 = genau null, positiv = leichter Bezug.",
+};
+
+export function paramHint(name) {
+  return PARAM_HINTS[name] ?? null;
+}
 
 export function paramLabel(name) {
   return PARAM_LABELS[name] ?? name;

@@ -24,6 +24,7 @@ import {
   FEED_IN_MODELS,
   displayUnit,
   fromDisplay,
+  paramHint,
   paramLabel,
   toDisplay,
 } from "./format.js";
@@ -1705,6 +1706,7 @@ class SunflowApp extends LitElement {
           <span class="muted">${displayUnit(param.unit)}</span>
         </span>
         ${param.name === "efficiency_pct" ? this._renderEfficiencyHint(device, param) : nothing}
+        ${paramHint(param.name) ? html`<span class="small muted">${paramHint(param.name)}</span>` : nothing}
         <span class="small">
           ${source}
           ${param.stored !== null
