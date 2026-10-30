@@ -44,7 +44,7 @@ class FakeDevice:
             states = {"number.min": {"state": str(self.values["number.min"])}} if "number.min" in self.values else {}
             return [call], states
 
-        async def run(calls: list[PlannedCall], states: dict[str, Any]) -> None:
+        async def run(calls: list[PlannedCall], states: dict[str, Any], force: bool = False) -> None:
             if self.fail:
                 raise RuntimeError("Modbus timeout")
             for call in calls:
@@ -206,7 +206,7 @@ class FakeCharger:
                 calls.insert(0, PlannedCall(domain="number", service="set_value", data={"value": runtime["current_a"]}, entity_id="number.amp", storage="eeprom", write="if_differs", tolerance=2))
             return calls, {"select.frc": {"state": self.option}, "number.amp": {"state": str(self.current)}}
 
-        async def run(calls: list[PlannedCall], states: dict[str, Any]) -> None:
+        async def run(calls: list[PlannedCall], states: dict[str, Any], force: bool = False) -> None:
             for call in calls:
                 from sunflow.devices.executor import current_matches
 
@@ -311,7 +311,7 @@ class AuthorizingCharger(FakeCharger):
             call = PlannedCall(domain="select", service="select_option", data={"option": runtime["transaction"]}, entity_id="select.trx", storage="volatile", write="always")
             return [call], {"select.trx": {"state": self.transaction}}
 
-        async def run(calls: list[PlannedCall], states: dict[str, Any]) -> None:
+        async def run(calls: list[PlannedCall], states: dict[str, Any], force: bool = False) -> None:
             if calls[0].entity_id == "select.trx":
                 self.transaction = calls[0].data["option"]
                 calls[0].status = "done"

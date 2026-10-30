@@ -48,7 +48,7 @@
       "type": "array",
       "uniqueItems": true,
       "items": {
-        "enum": ["pv", "pv_ext", "battery", "grid_meter", "battery_window", "curtail", "switch_off", "ev_charger", "load", "loadpoint"]
+        "enum": ["pv", "pv_ext", "battery", "grid_meter", "battery_window", "battery_control", "curtail", "switch_off", "ev_charger", "load", "loadpoint"]
       }
     },
     "watchdog": {

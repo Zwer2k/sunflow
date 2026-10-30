@@ -77,13 +77,29 @@ class DeviceTestState:
         return self.phase in ("baseline", "command", "restore", "verify_restore")
 
 
-def choose_test(baseline_power: float) -> tuple[str, float, str]:
-    """Pick action, power and expectation from the median baseline power (+ = charge)."""
-    if baseline_power > ACTIVE_THRESHOLD_W:
+ALL_ACTIONS = frozenset({"hold", "force_charge", "force_discharge", "limit_charge", "limit_discharge"})
+
+
+def choose_test(baseline_power: float, supported: frozenset[str] | set[str] = ALL_ACTIONS) -> tuple[str, float, str]:
+    """Pick action, power and expectation from the median baseline power (+ = charge).
+
+    The action must be one the device supports; a visible change of the battery power
+    proves control and sign.
+    """
+    if baseline_power > ACTIVE_THRESHOLD_W and "limit_charge" in supported:
         return "limit_charge", LIMIT_W, f"Ladeleistung sinkt auf höchstens ~{LIMIT_W} W"
     if baseline_power < -ACTIVE_THRESHOLD_W:
-        return "limit_discharge", LIMIT_W, f"Entladeleistung sinkt auf höchstens ~{LIMIT_W} W"
-    return "force_charge", FORCE_CHARGE_W, f"Batterie lädt mit mindestens ~{FORCE_CHARGE_W} W"
+        if "limit_discharge" in supported:
+            return "limit_discharge", LIMIT_W, f"Entladeleistung sinkt auf höchstens ~{LIMIT_W} W"
+        if "force_charge" not in supported and "hold" in supported:
+            return "hold", 0.0, "Batterie entlädt nicht mehr"
+    if baseline_power > ACTIVE_THRESHOLD_W and "force_discharge" in supported:
+        return "force_discharge", FORCE_CHARGE_W, f"Batterie entlädt mit mindestens ~{FORCE_CHARGE_W} W"
+    if "force_charge" in supported:
+        return "force_charge", FORCE_CHARGE_W, f"Batterie lädt mit mindestens ~{FORCE_CHARGE_W} W"
+    if "force_discharge" in supported:
+        return "force_discharge", FORCE_CHARGE_W, f"Batterie entlädt mit mindestens ~{FORCE_CHARGE_W} W"
+    raise ExecutorError("Das Gerät kann keine prüfbare Aktion – Test nicht möglich")
 
 
 def evaluate(action: str, power: float, settled: list[float]) -> tuple[bool, bool]:
@@ -97,6 +113,12 @@ def evaluate(action: str, power: float, settled: list[float]) -> tuple[bool, boo
             return level <= power + tolerance, level >= -tolerance
         case "limit_discharge":
             return level >= -(power + tolerance), level <= tolerance
+        case "hold":
+            # Chosen while discharging: stopping proves control and the sign alike
+            stopped = level >= -tolerance
+            return stopped, stopped
+        case "force_discharge":
+            return abs(level) >= power - tolerance, level < 0
         case _:
             # force_charge: charging means positive with the configured sign
             works = abs(level) >= power - tolerance
@@ -128,6 +150,7 @@ async def run_device_test(
     timings: Timings = Timings(),
     mode: ModeControl | None = None,
     mark: MarkFn | None = None,
+    supported: frozenset[str] | set[str] = ALL_ACTIONS,
 ) -> None:
     """Run the test, updating state in place. Cancelling aborts and restores."""
     state.started = datetime.now(UTC)
@@ -155,7 +178,8 @@ async def run_device_test(
         state.message = "Setze auf Eigenverbrauch zurück …"
         calls = await run_action("auto", {})
         state.calls += calls
-        state.restored = all(c.status == "done" for c in calls)
+        # A value the device already holds is skipped, which restores as well
+        state.restored = all(c.status in ("done", "skipped") for c in calls)
         if mode is not None and state.previous_mode is not None:
             state.message = f"Schalte zurück in „{state.previous_mode}“ …"
             await mode.set(state.previous_mode)
@@ -168,7 +192,7 @@ async def run_device_test(
         baseline = await sample_for("baseline", timings.baseline)
         if not baseline:
             raise ExecutorError("Keine Batterieleistung lesbar – Test nicht möglich")
-        action, power, expectation = choose_test(median(baseline))
+        action, power, expectation = choose_test(median(baseline), supported)
         state.test_action, state.test_power, state.expectation = action, power, expectation
 
         # From here on every exit path restores window and mode; the marker survives a

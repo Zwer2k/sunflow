@@ -14,7 +14,7 @@ from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.control.controller import PlanController
 from sunflow.devices.discovery import Snapshot, SnapshotCache, fetch_snapshot
-from sunflow.devices.profiles import ProfileLibrary
+from sunflow.devices.profiles import ProfileLibrary, controls_battery
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import (
     device_parameters,
@@ -93,7 +93,7 @@ async def take_sample(
     config = store.load()
     profiles = library.profiles
     device = next(
-        (d for d in config.devices if "battery_window" in profiles[d.profile]["capabilities"]), None
+        (d for d in config.devices if controls_battery(profiles[d.profile])), None
     )
     if device is None:
         return None

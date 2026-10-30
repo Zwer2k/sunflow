@@ -16,6 +16,14 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
     assert library.integrations == {"solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "goecharger_mqtt"}
 
 
+def test_control_sections_match_capabilities(library: ProfileLibrary) -> None:
+    """Battery control by actions and PV limiting are declared as capabilities (the UI goes by them)."""
+    for profile in library.profiles.values():
+        capabilities = set(profile["capabilities"])
+        assert ("battery_control" in profile) == ("battery_control" in capabilities), profile["profile"]
+        assert ("pv_limit" in profile) <= ("curtail" in capabilities), profile["profile"]
+
+
 def test_invalid_profile_is_reported(tmp_path: Path, schema: dict[str, Any]) -> None:
     """A profile violating the schema is collected as error, not loaded."""
     (tmp_path / "bad.yaml").write_text(

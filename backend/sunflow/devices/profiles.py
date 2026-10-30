@@ -12,6 +12,39 @@ import yaml
 _LOGGER = logging.getLogger(__name__)
 
 
+BATTERY_ACTIONS = ("auto", "hold", "force_charge", "force_discharge", "limit_charge", "limit_discharge")
+# An action the device cannot do is replaced by the first of these it can
+ACTION_FALLBACKS = {
+    "hold": ("limit_discharge", "auto"),
+    "limit_discharge": ("hold", "auto"),
+    "limit_charge": ("auto",),
+    "force_charge": ("hold", "auto"),
+    "force_discharge": ("auto",),
+}
+
+
+def controls_battery(profile: dict[str, Any]) -> bool:
+    """The profile can control a battery: a power window or actions."""
+    return bool({"battery_window", "battery_control"} & set(profile["capabilities"]))
+
+
+def battery_actions(profile: dict[str, Any]) -> set[str]:
+    """Actions the device supports; a power window supports all."""
+    if "battery_control" in profile:
+        return {a for a in BATTERY_ACTIONS if a in profile["battery_control"]}
+    return set(BATTERY_ACTIONS) if controls_battery(profile) else {"auto"}
+
+
+def supported_action(profile: dict[str, Any], action: str, power: float | None = None) -> tuple[str, float | None]:
+    """The action and its power, or the closest action the device supports."""
+    supported = battery_actions(profile)
+    if action in supported:
+        return action, power
+    replacement = next((a for a in ACTION_FALLBACKS.get(action, ()) if a in supported), "auto")
+    # Holding is limiting the discharge to nothing
+    return replacement, 0.0 if replacement == "limit_discharge" else None
+
+
 @dataclass(frozen=True, kw_only=True)
 class ProfileError:
     """A profile file that could not be loaded."""
