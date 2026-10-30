@@ -777,8 +777,12 @@ def curtailable_shares(
     plane_slots: dict[str, list[float]],
     n: int,
 ) -> list[float]:
-    """Share of the PV per slot from plants whose output Sunflow can limit (their planes)."""
-    limited = {d.id for d in config.devices if "pv_limit" in profiles[d.profile]}
+    """Share of the PV per slot from plants Sunflow may limit (their planes).
+
+    Only plants switched to Sunflow's control: limiting often needs extra rights (e.g. the
+    installer login), so a plant that merely could be limited is planned without.
+    """
+    limited = {d.id for d in config.devices if "pv_limit" in profiles[d.profile] and config.control.devices.get(d.id)}
     keys = {p.key for p in planes if p.device_id in limited}
     if not keys:
         return [0.0] * n

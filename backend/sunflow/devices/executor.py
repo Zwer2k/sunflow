@@ -356,7 +356,8 @@ async def execute(
     """
     wrote_since_press = False
     for call in calls:
-        if call.write == "if_differs" and not force:
+        # A refresh renews what the device forgets, never values kept in flash
+        if call.write == "if_differs" and not (force and call.storage == "volatile"):
             if call.service == "press":
                 if not wrote_since_press:
                     call.status, call.reason = "skipped", "nothing to commit"
