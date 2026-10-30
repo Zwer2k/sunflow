@@ -87,6 +87,7 @@ class SunflowControl extends LitElement {
     super.disconnectedCallback();
     this._stopPolling();
     clearTimeout(this._replanTimer);
+    clearTimeout(this._takeoverTimer);
   }
 
   async _load() {
@@ -211,8 +212,10 @@ class SunflowControl extends LitElement {
                 : nothing}
               <span class="small muted">${d.blocked
                 ? `nicht möglich: ${d.blocked}`
-                : !d.enabled || !t.enabled
-                  ? "nicht gesteuert"
+                : !d.enabled
+                  ? "aus – Sunflow plant nur"
+                  : !t.enabled
+                    ? "nicht gesteuert: Hauptschalter „Sunflow steuert“ (oben rechts) ist aus"
                   : s?.active
                     ? `${ACTION_LABELS[s.action] ?? s.action}${s.power_w ? ` · ${Math.round(s.power_w)} W` : ""} · ${s.reason}${s.last_write ? ` · zuletzt geschrieben ${time(s.last_write)}` : ""}`
                     : s?.reason ?? "startet mit der nächsten Minute"}</span>
@@ -226,10 +229,13 @@ class SunflowControl extends LitElement {
   }
 
   async _switchTakeover(body, input) {
-    const on = body.enabled === true || body.device_enabled === true;
     const t = this._takeover;
+    // A device switched on while the main switch is off would still not be controlled
+    if (body.device_enabled === true && !t.enabled) body = { ...body, enabled: true };
+    const on = body.enabled === true || body.device_enabled === true;
     const willControl = on && (body.enabled ?? t.enabled) && t.devices.some((d) => (d.device_id === body.device_id ? body.device_enabled : d.enabled));
     if (willControl && !window.confirm(
+      (body.enabled && !t.enabled && body.device_id ? "Der Hauptschalter „Sunflow steuert“ wird mit eingeschaltet. " : "") +
       "Sunflow schaltet dann laufend an den Geräten: am Wechselrichter Passiv-Modus mit Lade- und Entladefenster " +
       "(Betriebsmodus wird einmalig umgestellt), an Ladepunkten Laden starten und sperren. Ausschalten gibt alles zurück. " +
       "Jetzt einschalten?",
@@ -241,6 +247,9 @@ class SunflowControl extends LitElement {
     try {
       this._takeover = await api.setTakeover(body, willControl);
       this._error = null;
+      // The background loop applies it within a minute; show the result then
+      clearTimeout(this._takeoverTimer);
+      this._takeoverTimer = setTimeout(() => this._load(), 65_000);
     } catch (err) {
       this._error = `Steuerung nicht umgeschaltet: ${err.message}`;
       input.checked = !input.checked;

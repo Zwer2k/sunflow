@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.1
+
+- Steuerung → „Sunflow steuert“: Ist ein Gerät eingeschaltet, der Hauptschalter aber aus, steht das jetzt dabei (vorher nur „nicht gesteuert“). Wer ein Gerät einschaltet, während der Hauptschalter aus ist, schaltet ihn nach Rückfrage gleich mit ein. Eine Minute nach dem Einschalten aktualisiert sich die Anzeige von selbst mit dem, was Sunflow geschrieben hat.
+
 ## 0.41.0
 
 - Die Kategorie eines Geräts (Wechselrichter, Speicher, Zähler, Wallbox, Wärme, Verbraucher) wird beim Übernehmen festgehalten und überall verwendet: Geräte und Kenndaten sind danach gegliedert, Steuerung und „Sunflow steuert“ zeigen sie bei jedem Gerät.
