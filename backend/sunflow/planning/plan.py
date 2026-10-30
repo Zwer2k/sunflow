@@ -140,7 +140,7 @@ def flex_loads(
                 profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()}
             )
         }
-        params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot, modules)}
+        params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
         kind = device_kind(profile, device, snapshot) or ("load" if "load" in profile["capabilities"] else "vehicle")
         usage = (usages or {}).get(device.id)
         max_power = params.get("max_power") or (usage.running_w if usage and usage.running_w else 0.0)
