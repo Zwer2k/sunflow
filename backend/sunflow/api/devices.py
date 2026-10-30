@@ -19,6 +19,7 @@ from sunflow.config.models import (
     FlexSettings,
     MeasuredBy,
     RoleOverride,
+    SunflowConfig,
 )
 from sunflow.config.store import ConfigStore
 from sunflow.control.controller import PlanController
