@@ -336,12 +336,13 @@ GOE_CARDS = GOE | {"charge_control": {"charge": [], "stop": [], "release": [], "
 )
 async def test_authorizes_only_surely_recognized_vehicles(tmp_path: Path, method: str, transaction: str) -> None:
     """With a card required, Sunflow starts the transaction for a car recognized by sensor or choice."""
-    from sunflow.config.models import Vehicle
+    from sunflow.config.models import ChargingProfile, Vehicle
 
     charger = AuthorizingCharger()
     controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE_CARDS})
     config = _charger_config("goe")
-    config.vehicles = [Vehicle(id="tesla", name="Model 3", capacity_wh=60000, card=2, wallboxes=["wb"])]
+    config.vehicles = [Vehicle(id="tesla", name="Model 3", capacity_wh=60000)]
+    config.charging = [ChargingProfile(vehicle_id="tesla", wallbox_id="wb", card=2)]
     plan = _charge_plan(11000)
     plan.flex = [SimpleNamespace(device_id="wb", unknown_vehicle=False, vehicle_id="tesla", vehicle_method=method, reason=None)]
 

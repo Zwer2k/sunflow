@@ -73,8 +73,8 @@ def build_summary(
                 "profile": device.profile,
                 "capabilities": capabilities,
                 "parameters": device.parameters,
-                "feed_in": device.feed_in.model_dump() if device.feed_in else None,
-                "measured_by": names.get(device.measured_by.device_id) if device.measured_by else None,
+                "feed_in": feed_in.model_dump() if (feed_in := config.feed_in.get(device.id)) else None,
+                "measured_by": names.get(link.device_id) if (link := config.measured_by.get(device.id)) else None,
                 "overrides": sorted(device.role_overrides),
             }
         )
@@ -90,7 +90,7 @@ def build_summary(
             )
         if "pv" in capabilities:
             pv_plants.append(device)
-            if device.feed_in is None or device.feed_in.rate_ct_per_kwh is None:
+            if (feed_in := config.feed_in.get(device.id)) is None or feed_in.rate_ct_per_kwh is None:
                 summary.issues.append(
                     Issue(level="warning", step=STEP_PARAMETERS, message=f"{device.name}: Einspeisevergütung fehlt.")
                 )
@@ -108,7 +108,7 @@ def build_summary(
     ]
     for device in pv_plants:
         capabilities = profiles[device.profile]["capabilities"]
-        if measuring and "battery" not in capabilities and device.measured_by is None:
+        if measuring and "battery" not in capabilities and device.id not in config.measured_by:
             summary.issues.append(
                 Issue(
                     level="warning",

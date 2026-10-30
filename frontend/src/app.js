@@ -59,11 +59,17 @@ function deviceCategory(device, preview) {
   return "load";
 }
 
-/** Configured devices by HA device id, the switched off ones marked. */
+/** Configured devices by HA device id with what belongs to them, the switched off ones marked. */
 function configuredDevices(config) {
+  const withRelations = (d) => ({
+    ...d,
+    flex: config.planning?.[d.id] ?? { strategy: "cost", target: null, ready_by: null, uses_battery: true, alternative_cost_ct: null },
+    feed_in: config.feed_in?.[d.id] ?? null,
+    measured_by: config.measured_by?.[d.id] ?? null,
+  });
   return Object.fromEntries([
-    ...config.devices.map((d) => [d.ha_device_id, d]),
-    ...(config.disabled_devices ?? []).map((d) => [d.ha_device_id, { ...d, disabled: true }]),
+    ...config.devices.map((d) => [d.ha_device_id, withRelations(d)]),
+    ...(config.disabled_devices ?? []).map((d) => [d.ha_device_id, { ...withRelations(d), disabled: true }]),
   ]);
 }
 

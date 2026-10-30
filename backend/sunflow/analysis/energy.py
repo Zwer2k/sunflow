@@ -200,7 +200,8 @@ def battery_counters(
             )
         }
         ids = [roles[r].entity_id if r in roles else None for r in ("battery_charge_energy", "battery_discharge_energy", "battery_soc")]
-        capacity = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}.get("capacity_wh")
+        params = device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))
+        capacity = {p["name"]: p["effective"] for p in params}.get("capacity_wh")
         if all(ids) and capacity:
             result.append(BatteryCounters(name=device.name, charge=ids[0], discharge=ids[1], soc=ids[2], capacity_wh=capacity))
     return result

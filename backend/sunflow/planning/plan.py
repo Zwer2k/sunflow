@@ -140,7 +140,7 @@ def flex_loads(
                 profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()}
             )
         }
-        params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+        params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot, modules)}
         kind = device_kind(profile, device, snapshot) or ("load" if "load" in profile["capabilities"] else "vehicle")
         usage = (usages or {}).get(device.id)
         max_power = params.get("max_power") or (usage.running_w if usage and usage.running_w else 0.0)
@@ -201,8 +201,9 @@ def flex_loads(
                 info.vehicle_id, info.vehicle, info.vehicle_method = vehicle.id, vehicle.name, recognized.method
                 params = params | {"vehicle_capacity_wh": vehicle.capacity_wh, "charge_efficiency_pct": vehicle.charge_efficiency_pct}
                 current = info.current = soc_of(vehicle, snapshot.states)
-                # The vehicle's own settings; a change in the control tab still applies on top
-                settings, paused = config.effective_flex(device.model_copy(update={"flex": vehicle.flex}), slot_starts[0])
+                # How this vehicle charges at this wallbox; a change in the control tab still applies on top
+                profile_at = config.charging_profile(vehicle.id, device.id)
+                settings, paused = config.effective_flex(device, slot_starts[0], profile_at.flex if profile_at else None)
                 ready_by = next_time(settings.ready_by, slot_starts[0], tz) if settings.ready_by else None
                 target = info.target = settings.target if settings.target is not None else target
             capacity = params.get("vehicle_capacity_wh")
@@ -634,13 +635,17 @@ async def last_valid_value(client: HAClient, entity_id: str | None, age: timedel
 
 
 def battery_spec(
-    profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot, soc_fallback: float | None = None
+    profile: dict[str, Any],
+    device: DeviceConfig,
+    snapshot: Snapshot,
+    soc_fallback: float | None = None,
+    modules: list[str] | None = None,
 ) -> tuple[BatterySpec | None, str | None]:
     """Build the battery spec from parameters and the live SoC; returns (spec, problem).
 
     soc_fallback (%) stands in when the live SoC cannot be read.
     """
-    params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+    params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot, modules)}
     capacity = params.get("capacity_wh")
     if not capacity:
         return None, f"{device.name}: Kapazität unbekannt – bitte in den Kenndaten angeben."
@@ -706,8 +711,8 @@ def feed_in_price(config: SunflowConfig, battery_device: DeviceConfig | None) ->
     """Feed-in €/kWh: the battery inverter's plant first, else the first configured rate."""
     candidates = ([battery_device] if battery_device else []) + config.devices
     for device in candidates:
-        if device.feed_in and device.feed_in.rate_ct_per_kwh is not None:
-            return device.feed_in.rate_ct_per_kwh / 100
+        if (feed_in := config.feed_in.get(device.id)) and feed_in.rate_ct_per_kwh is not None:
+            return feed_in.rate_ct_per_kwh / 100
     return 0.0
 
 
@@ -814,7 +819,8 @@ async def compute_plan(
     if battery_device is None:
         return PlanResult(plan=Plan(status="no battery"), warnings=["Kein steuerbarer Speicher übernommen."])
     profile = profiles[battery_device.profile]
-    battery, problem = battery_spec(profile, battery_device, snapshot)
+    modules = config.battery_modules.get(battery_device.id)
+    battery, problem = battery_spec(profile, battery_device, snapshot, modules=modules)
     if battery is None and problem and "Ladestand" in problem:
         # Inverter integrations drop single reads ("unknown"); the last valid value from
         # the history is good enough, the SoC changes slowly
@@ -824,7 +830,7 @@ async def compute_plan(
             fallback = None
         if fallback is not None:
             value, since = fallback
-            battery, problem = battery_spec(profile, battery_device, snapshot, soc_fallback=value)
+            battery, problem = battery_spec(profile, battery_device, snapshot, soc_fallback=value, modules=modules)
             if since < datetime.now(UTC) - timedelta(minutes=30):
                 warnings.append(
                     f"{battery_device.name}: Ladestand seit {since.astimezone(tz).strftime('%H:%M')} nicht lesbar – "

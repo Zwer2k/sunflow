@@ -58,9 +58,12 @@ def _devices(measured: bool) -> list[DeviceConfig]:
         profile="huawei_solar/pv_only",
         profile_version=1,
         name="Huawei",
-        measured_by=MeasuredBy(device_id="sofar", role="pv_ext_power") if measured else None,
     )
     return [sofar, huawei]
+
+
+def _measured(measured: bool) -> dict[str, MeasuredBy]:
+    return {"huawei": MeasuredBy(device_id="sofar", role="pv_ext_power")} if measured else {}
 
 
 def test_derive_capacity(snapshot: Snapshot, library: ProfileLibrary) -> None:
@@ -87,7 +90,7 @@ def test_device_parameters_precedence(snapshot: Snapshot, library: ProfileLibrar
 
 def test_site_cross_check_and_total(snapshot: Snapshot, library: ProfileLibrary) -> None:
     """A measured PV plant is cross-checked and counted once in the total."""
-    site = site_status(_devices(measured=True), library.profiles, snapshot)
+    site = site_status(_devices(measured=True), library.profiles, snapshot, measured_by=_measured(True))
 
     (check,) = site.cross_checks
     assert check.own_value == 430
@@ -129,7 +132,5 @@ def test_battery_capacity_from_assigned_modules() -> None:
     assert battery_module_ids(snapshot, inverter) == ["m1", "m2"]
     assert derive_parameter(spec, snapshot, "inv", inverter) == 2 * 5120
 
-    inverter.battery_modules = ["m1", "m3"]
-    assert derive_parameter(spec, snapshot, "inv", inverter) == 2 * 5120
-    inverter.battery_modules = ["m1"]
-    assert derive_parameter(spec, snapshot, "inv", inverter) == 5120
+    assert derive_parameter(spec, snapshot, "inv", inverter, ["m1", "m3"]) == 2 * 5120
+    assert derive_parameter(spec, snapshot, "inv", inverter, ["m1"]) == 5120

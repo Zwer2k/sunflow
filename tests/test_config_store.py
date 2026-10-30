@@ -193,3 +193,37 @@ def test_reserve_applies_in_every_strategy(strategy: str, reserve: bool, expecte
     config = SunflowConfig(optimizer=OptimizerConfig(strategy=strategy, backup_reserve=reserve, backup_reserve_pct=25))
 
     assert optimizer_settings(config, battery).reserve_wh == expected
+
+
+def test_relations_move_out_of_devices_and_vehicles(tmp_path: Path) -> None:
+    """Version 2 kept plans, links and cards on devices and vehicles; version 3 keeps them apart."""
+    import json
+
+    (tmp_path / "config.json").write_text(json.dumps({
+        "version": 2,
+        "devices": [
+            {"id": "wb", "ha_device_id": "w", "profile": "goecharger_mqtt/charger", "profile_version": 1, "name": "Wallbox",
+             "flex": {"strategy": "cost"}, "vehicle_detection": {"authorize": False}},
+            {"id": "ww", "ha_device_id": "h", "profile": "evcc_intg/loadpoint", "profile_version": 1, "name": "Warmwasser",
+             "flex": {"strategy": "pv_only", "alternative_cost_ct": 22.8}},
+            {"id": "pv", "ha_device_id": "p", "profile": "huawei_solar/pv_only", "profile_version": 1, "name": "Huawei",
+             "feed_in": {"rate_ct_per_kwh": 8.2}, "measured_by": {"device_id": "wb", "role": "pv_ext_power"}},
+            {"id": "inv", "ha_device_id": "i", "profile": "solax_modbus/sofar", "profile_version": 1, "name": "Sofar",
+             "battery_modules": ["m1"]},
+        ],
+        "vehicles": [{"id": "fiat", "name": "Fiat", "capacity_wh": 37500, "card": 1, "wallboxes": ["wb"], "flex": {"target": 80}}],
+    }))
+
+    config = ConfigStore(tmp_path).load()
+
+    assert all(not d.model_extra for d in config.devices)
+    assert config.flex_of("ww").alternative_cost_ct == 22.8
+    # Defaults are not copied
+    assert set(config.planning) == {"ww"}
+    assert config.detection_of("wb").authorize is False
+    assert config.feed_in["pv"].rate_ct_per_kwh == 8.2
+    assert config.measured_by["pv"].device_id == "wb"
+    assert config.battery_modules == {"inv": ["m1"]}
+    assert config.vehicles[0].model_dump().keys() == {"id", "name", "capacity_wh", "charge_efficiency_pct", "soc_entity", "plugged_entity"}
+    (profile,) = config.charging
+    assert (profile.vehicle_id, profile.wallbox_id, profile.card, profile.flex.target) == ("fiat", "wb", 1, 80)

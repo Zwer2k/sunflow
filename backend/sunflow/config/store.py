@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .models import CONFIG_VERSION, SunflowConfig
+from .models import CONFIG_VERSION, FlexSettings, SunflowConfig, VehicleDetection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,9 +30,37 @@ def _backup_reserve_for_all_strategies(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+def _relations_out_of_devices(raw: dict[str, Any]) -> dict[str, Any]:
+    """Devices and vehicles keep what they are; plans, links and earnings move to own sections."""
+    relations = {"flex": "planning", "vehicle_detection": "vehicle_detection", "battery_modules": "battery_modules",
+                 "feed_in": "feed_in", "measured_by": "measured_by"}
+    # Defaults stay implicit: only what was actually set moves
+    defaults = {"flex": FlexSettings, "vehicle_detection": VehicleDetection}
+
+    def is_default(field: str, value: Any) -> bool:
+        model = defaults.get(field)
+        return model is not None and model.model_validate(value) == model()
+
+    for device in [*(raw.get("devices") or []), *(raw.get("disabled_devices") or [])]:
+        for field, section in relations.items():
+            value = device.pop(field, None)
+            if value is not None and not is_default(field, value):
+                raw.setdefault(section, {})[device["id"]] = value
+    for vehicle in raw.get("vehicles") or []:
+        card, flex = vehicle.pop("card", None), vehicle.pop("flex", None) or {}
+        for wallbox_id in vehicle.pop("wallboxes", None) or []:
+            raw.setdefault("charging", []).append(
+                {"vehicle_id": vehicle["id"], "wallbox_id": wallbox_id, "card": card, "flex": flex}
+            )
+    return raw
+
+
 # Version n -> n + 1 on the raw JSON, before validation. Steps only ever get added:
 # a step that renames or restructures a field goes here instead of a silent default
-MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {1: _backup_reserve_for_all_strategies}
+MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    1: _backup_reserve_for_all_strategies,
+    2: _relations_out_of_devices,
+}
 # A configuration of a newer Sunflow can hold values this one does not know
 MAX_REPAIRS = 20
 _warned: set[str] = set()

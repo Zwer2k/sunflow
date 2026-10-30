@@ -497,15 +497,27 @@ def test_vehicles_cards_and_manual_choice(tmp_path: Path) -> None:
     app.state.snapshots = SimpleNamespace(get=snapshot)
     client = TestClient(app)
 
-    fiat = {"id": "fiat", "name": "Fiat", "capacity_wh": 37500, "card": 1, "wallboxes": ["wb"]}
-    tesla = {"id": "tesla", "name": "Tesla", "capacity_wh": 60000, "card": 1, "wallboxes": ["wb"]}
-    assert client.put("/api/v1/config/vehicles", json=[fiat, tesla]).status_code == 422
-    assert client.put("/api/v1/config/vehicles", json=[fiat, tesla | {"card": 2}, {"name": "X", "capacity_wh": 1, "wallboxes": ["nope"]}]).status_code == 422
+    fiat = {"id": "fiat", "name": "Fiat", "capacity_wh": 37500}
+    tesla = {"id": "tesla", "name": "Tesla", "capacity_wh": 60000}
+    assert client.put("/api/v1/config/vehicles", json=[fiat, tesla]).status_code == 200
 
-    stored = client.put("/api/v1/config/vehicles", json=[fiat, tesla | {"card": 2}])
+    def charging(card_fiat: int, card_tesla: int, wallbox: str = "wb") -> list[dict]:
+        return [
+            {"vehicle_id": "fiat", "wallbox_id": wallbox, "card": card_fiat},
+            {"vehicle_id": "tesla", "wallbox_id": "wb", "card": card_tesla, "flex": {"target": 80}},
+        ]
+
+    assert client.put("/api/v1/config/charging", json=charging(1, 1)).status_code == 422
+    assert client.put("/api/v1/config/charging", json=charging(1, 2, wallbox="nope")).status_code == 422
+    stored = client.put("/api/v1/config/charging", json=charging(1, 2))
     assert stored.status_code == 200
     assert stored.json()["wallboxes"][0]["cards"] is True
-    assert [v.name for v in store.load().vehicles] == ["Fiat", "Tesla"]
+    config = store.load()
+    assert config.charging_profile("tesla", "wb").flex.target == 80
+    assert [v.name for v in config.vehicles_at("wb")] == ["Fiat", "Tesla"]
+
+    # Removing a vehicle removes its charging profiles
+    assert client.put("/api/v1/config/vehicles", json=[fiat, tesla]).status_code == 200
 
     assert client.put("/api/v1/control/vehicles/wb", json={"vehicle_id": "tesla"}).status_code == 200
     assert store.load().selected_vehicles == {"wb": "tesla"}
@@ -515,7 +527,10 @@ def test_vehicles_cards_and_manual_choice(tmp_path: Path) -> None:
 
     detection = {"card": True, "manual": True, "sensor": False, "single": True, "authorize": False}
     assert client.put("/api/v1/config/devices/wb/vehicle-detection", json=detection).status_code == 200
-    assert store.load().devices[0].vehicle_detection.authorize is False
+    assert store.load().detection_of("wb").authorize is False
+
+    assert client.put("/api/v1/config/vehicles", json=[fiat]).status_code == 200
+    assert [c.vehicle_id for c in store.load().charging] == ["fiat"]
 
 
 def test_disable_device_keeps_settings(tmp_path: Path) -> None:

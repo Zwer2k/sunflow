@@ -20,7 +20,6 @@ def _complete_config() -> SunflowConfig:
         profile_version=1,
         name="Sofar",
         parameters={"max_charge": 6000, "max_discharge": 6000},
-        feed_in=FeedIn(model="eeg_fixed", rate_ct_per_kwh=8.2),
     )
     huawei = DeviceConfig(
         id="huawei",
@@ -28,11 +27,14 @@ def _complete_config() -> SunflowConfig:
         profile="huawei_solar/pv_only",
         profile_version=1,
         name="Huawei",
-        feed_in=FeedIn(model="eeg_fixed", rate_ct_per_kwh=7.9),
-        measured_by=MeasuredBy(device_id="sofar", role="pv_ext_power"),
     )
     return SunflowConfig(
         devices=[sofar, huawei],
+        feed_in={
+            "sofar": FeedIn(model="eeg_fixed", rate_ct_per_kwh=8.2),
+            "huawei": FeedIn(model="eeg_fixed", rate_ct_per_kwh=7.9),
+        },
+        measured_by={"huawei": MeasuredBy(device_id="sofar", role="pv_ext_power")},
         tariff=TariffConfig(import_entity_id="sensor.price"),
         forecast_planes=[
             ForecastPlane(source="solcast", ref="a", name="Nord-Ost", device_id="sofar"),
@@ -76,8 +78,8 @@ def test_open_items_are_warnings(library: ProfileLibrary) -> None:
     """Defaults, missing feed-in, link and plane assignment are warnings."""
     config = _complete_config()
     config.devices[0].parameters = {}
-    config.devices[1].feed_in = None
-    config.devices[1].measured_by = None
+    config.feed_in.pop("huawei")
+    config.measured_by.pop("huawei")
     config.forecast_planes[1].device_id = None
 
     summary = build_summary(config, library.profiles)

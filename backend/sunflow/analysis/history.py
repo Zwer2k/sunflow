@@ -51,7 +51,10 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             series.append(Series(key=key, statistic_id=value.entity_id, factor=factor * sign, device_id=device_id))
 
         if "battery_window" in profile["capabilities"]:
-            params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+            params = {
+                p["name"]: p["effective"]
+                for p in device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))
+            }
             if capacity := params.get("capacity_wh"):
                 add("soc_wh", "battery_soc", capacity / 100)
         if load_device is not None and device.id == load_device.id:

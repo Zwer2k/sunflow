@@ -57,7 +57,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "name": device.name,
                 "kind": device_kind(profile, device, snapshot) or "load",
                 "category": device_category(profile, device, snapshot),
-                "default": device.flex.model_dump(),
+                "default": config.flex_of(device.id).model_dump(),
                 "override": override.model_dump(mode="json") if override and override.active(now) else None,
                 "effective": effective.model_dump(),
                 "paused": paused,
@@ -72,7 +72,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 if info and info.vehicle_id
                 else None,
                 "selected_vehicle": config.selected_vehicles.get(device.id),
-                "manual_choice": device.vehicle_detection.manual,
+                "manual_choice": config.detection_of(device.id).manual,
                 "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
                 "need_wh": info.need_wh if info else None,
                 "reason": info.reason if info else None,
