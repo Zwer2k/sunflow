@@ -22,8 +22,9 @@ from sunflow.devices.executor import (
     PlannedCall,
     execute,
     find_entity,
-    plan_action,
+    plan_battery,
 )
+from sunflow.devices.profiles import battery_actions, controls_battery
 from sunflow.devices.resolver import device_entities, preview
 from sunflow.ha import HAClient
 
@@ -51,9 +52,7 @@ def _device_control(
 
     async def apply_action(action: str, runtime: dict[str, float]) -> list[PlannedCall]:
         snapshot = await fetch_snapshot(client, request.app.state.direct)
-        _, planned = plan_action(
-            profile, action, device.parameters, runtime, device_entities(snapshot, device.ha_device_id)
-        )
+        planned = plan_battery(profile, action, device.parameters, runtime, device_entities(snapshot, device.ha_device_id))
         direct = request.app.state.direct.by_ha_device(device.ha_device_id)
         await execute(client, planned, snapshot.states, guard, dry_run=False, direct=direct)
         return planned
@@ -113,7 +112,7 @@ async def restore_after_test(request: Request, confirm: bool = False) -> dict[st
         return {"restored": True, "calls": []}
     config = request.app.state.store.load()
     device = config.device(marker.get("device_id") or "") or next(
-        (d for d in config.devices if "battery_window" in _library(request).profiles[d.profile]["capabilities"]), None
+        (d for d in config.devices if controls_battery(_library(request).profiles[d.profile])), None
     )
     if device is None:
         raise HTTPException(status_code=404, detail="Kein steuerbarer Speicher konfiguriert")
@@ -128,7 +127,7 @@ async def restore_after_test(request: Request, confirm: bool = False) -> dict[st
             await mode.set(marker["previous_mode"])
     except ExecutorError as err:
         raise HTTPException(status_code=502, detail=f"Zurücksetzen fehlgeschlagen: {err}") from err
-    restored = all(c.status == "done" for c in calls)
+    restored = all(c.status in ("done", "skipped") for c in calls)
     if restored:
         marker_store.set(None)
     return {"restored": restored, "calls": [asdict(c) for c in calls]}
@@ -143,7 +142,7 @@ async def start_device_test(
         raise HTTPException(status_code=400, detail="The device test writes to the device; pass confirm=true")
     device = _configured_device(request, device_id)
     profile = _library(request).profiles[device.profile]
-    if "battery_window" not in profile["capabilities"]:
+    if not controls_battery(profile):
         raise HTTPException(status_code=422, detail="Device has no battery control")
     if (running := _tests(request).get(device_id)) and running[0].running:
         raise HTTPException(status_code=409, detail="Test already running")
@@ -154,7 +153,7 @@ async def start_device_test(
     store: ConfigStore = request.app.state.store
 
     async def run() -> None:
-        await run_device_test(state, read, apply_action, mode=mode, mark=marker.set)
+        await run_device_test(state, read, apply_action, mode=mode, mark=marker.set, supported=battery_actions(profile))
         if state.phase == "done" and state.control_works and state.sign_correct and state.restored:
             config = store.load()
             if (stored := config.device(device_id)) is not None:

@@ -465,9 +465,10 @@ class SunflowApp extends LitElement {
   }
 
   get _testableDevices() {
-    return this._activeDevices.filter((d) =>
-      (this._capabilitiesByHaDevice[d.ha_device_id] ?? []).includes("battery_window"),
-    );
+    return this._activeDevices.filter((d) => {
+      const caps = this._capabilitiesByHaDevice[d.ha_device_id] ?? [];
+      return caps.includes("battery_window") || caps.includes("battery_control");
+    });
   }
 
   _startTestPolling() {

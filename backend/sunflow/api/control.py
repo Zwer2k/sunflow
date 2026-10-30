@@ -16,6 +16,7 @@ from sunflow.config.models import (
 )
 from sunflow.config.store import ConfigStore
 from sunflow.control.controller import PlanController
+from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_category, device_kind
 from sunflow.planning.vehicles import METHODS
@@ -79,7 +80,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "windows": _flex_windows(latest.plan.slots, device.name) if latest else [],
             }
         )
-    has_battery = any("battery_window" in profiles[d.profile]["capabilities"] for d in config.devices)
+    has_battery = any(controls_battery(profiles[d.profile]) for d in config.devices)
     order = [i for i in config.priority_order() if i in names and (i != BATTERY_PRIORITY_ID or has_battery)]
     strategy_override = config.strategy_override
     return {

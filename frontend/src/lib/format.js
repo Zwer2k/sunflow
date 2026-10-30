@@ -146,7 +146,7 @@ export const FEED_IN_MODELS = {
   direct: "Direktvermarktung / dynamisch",
 };
 
-const CONTROL_CAPABILITIES = new Set(["battery_window", "curtail", "switch_off", "ev_charger"]);
+const CONTROL_CAPABILITIES = new Set(["battery_window", "battery_control", "curtail", "switch_off", "ev_charger"]);
 
 // Purpose of a device derived from its profile capabilities, e.g. "Wechselrichter + Speicher"
 /** Device groups in the UI, in this order (the backend decides which device is which). */

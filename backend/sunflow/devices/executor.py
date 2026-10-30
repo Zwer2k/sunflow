@@ -215,6 +215,30 @@ def plan_action(
     return params, calls
 
 
+def plan_battery(
+    profile: dict[str, Any],
+    action: str,
+    parameters: dict[str, float],
+    runtime: dict[str, float],
+    entities: list[dict[str, Any]],
+) -> list[PlannedCall]:
+    """Calls of a battery action: the power window of the profile or its action steps.
+
+    "release" hands the battery back (battery_control.release, else auto); an action
+    the device cannot do must have been replaced before (profiles.supported_action).
+    """
+    control = profile.get("battery_control")
+    if control is None:
+        _, calls = plan_action(profile, "auto" if action == "release" else action, parameters, runtime, entities)
+        return calls
+    if action == "release":
+        action = "release" if "release" in control else "auto"
+    if action not in control:
+        raise ExecutorError(f"Unsupported battery action {action}")
+    defaults = {name: spec["default"] for name, spec in profile.get("parameters", {}).items() if "default" in spec}
+    return plan_steps(control[action], {**defaults, **parameters, **runtime}, entities, "volatile")
+
+
 def plan_charge(
     profile: dict[str, Any],
     action: str,
@@ -306,16 +330,18 @@ async def execute(
     guard: EepromGuard,
     dry_run: bool,
     direct: DirectWriter | None = None,
+    force: bool = False,
 ) -> None:
     """Run planned calls in order, honoring if_differs and the EEPROM guard.
 
     A press with write=if_differs commits preceding values and is skipped
     when none of them was written. Register writes go to the direct device;
-    if_differs compares them with the value last written there.
+    if_differs compares them with the value last written there. force writes
+    if_differs values regardless (refreshing devices that need repeated commands).
     """
     wrote_since_press = False
     for call in calls:
-        if call.write == "if_differs":
+        if call.write == "if_differs" and not force:
             if call.service == "press":
                 if not wrote_since_press:
                     call.status, call.reason = "skipped", "nothing to commit"

@@ -7,6 +7,7 @@ from typing import Any
 
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import CANONICAL_SIGNS, preview
 from sunflow.devices.site import PV_OUTPUT_ROLES, device_parameters, measurement_device
 from sunflow.ha import HAClient
@@ -50,7 +51,7 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             sign = -1.0 if value.sign is not None and value.sign not in CANONICAL_SIGNS else 1.0
             series.append(Series(key=key, statistic_id=value.entity_id, factor=factor * sign, device_id=device_id))
 
-        if "battery_window" in profile["capabilities"]:
+        if controls_battery(profile):
             params = {
                 p["name"]: p["effective"]
                 for p in device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))

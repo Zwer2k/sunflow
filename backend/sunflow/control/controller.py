@@ -33,11 +33,12 @@ from sunflow.devices.executor import (
     current_matches,
     execute,
     find_entity,
-    plan_action,
+    plan_battery,
     plan_charge,
 )
+from sunflow.devices.profiles import controls_battery, supported_action
 from sunflow.devices.resolver import device_entities, preview
-from sunflow.direct.hub import DirectHub
+from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,6 +61,13 @@ KEEP_CHARGING_SHARE = 0.5
 # A temporary current (amx) is sent again after this time even when unchanged
 CURRENT_REFRESH = timedelta(minutes=5)
 VOLTS = 230.0
+ACTION_NAMES = {
+    "hold": "Halten",
+    "force_charge": "Laden erzwingen",
+    "force_discharge": "Entladen erzwingen",
+    "limit_charge": "Laden begrenzen",
+    "limit_discharge": "Entladen begrenzen",
+}
 # evcc states that mean evcc itself controls the home battery
 EVCC_BATTERY_CONTROL = {"hold", "charge", "holdcharge"}
 
@@ -225,12 +233,15 @@ class DeviceAccess:
 
     # Plan the calls of an action without writing: (calls, current states)
     plan: Callable[[str, dict[str, float]], Awaitable[tuple[list[PlannedCall], dict[str, dict[str, Any]]]]]
-    run: Callable[[list[PlannedCall], dict[str, dict[str, Any]]], Awaitable[None]]
+    # Run the calls; force writes if_differs values too (refresh)
+    run: Callable[[list[PlannedCall], dict[str, dict[str, Any]], bool], Awaitable[None]]
     # Switch into the control mode; returns the previous option to restore later
     ensure_mode: Callable[[], Awaitable[str | None]] | None = None
     set_mode: Callable[[str], Awaitable[None]] | None = None
     # Written when handing back ("auto" for batteries); None: only the mode is restored
     release: str | None = "auto"
+    # Whether the device already holds what a call would write
+    matches: Callable[[PlannedCall, dict[str, dict[str, Any]]], bool] = current_matches
 
 
 async def apply(
@@ -241,8 +252,13 @@ async def apply(
     now: datetime,
     runtime: dict[str, float] | None = None,
     skip_services: bool = False,
+    refresh: timedelta | None = None,
 ) -> None:
-    """Write the action if the device shows other values; status is updated in place."""
+    """Write the action if the device shows other values; status is updated in place.
+
+    With refresh everything is written again once that long has passed since the last
+    write, for devices that fall back to their own logic without new commands.
+    """
     if runtime is None:
         runtime = {"P": abs(power)} if power is not None else {}
     calls, states = await access.plan(action, runtime)
@@ -250,10 +266,11 @@ async def apply(
         # Action calls (e.g. a temporary current over MQTT) cannot be read back: sent when they change
         calls = [c for c in calls if c.entity_id is not None]
     status.last_check = now
+    due = refresh is not None and status.last_write is not None and now - status.last_write >= refresh
     # Numbers and selects that already hold the value need no write; a press commits them
-    if all(current_matches(c, states) for c in calls if c.service != "press"):
+    if not due and all(access.matches(c, states) for c in calls if c.service != "press"):
         return
-    await access.run(calls, states)
+    await access.run(calls, states, due)
     status.calls = [{"entity_id": c.entity_id, "service": c.service, "data": c.data, "status": c.status} for c in calls]
     # The daily write limit of a flash value keeps the last value; the rest still applies
     failed = [c for c in calls if c.status not in ("done", "skipped", "blocked")]
@@ -320,17 +337,21 @@ def device_access(
             bound = {k: o.entity_id for k, o in device.role_overrides.items() if o.entity_id}
             variables = device_variables(profile, device, snapshot) | runtime
             return plan_charge(profile, action, device.parameters, variables, entities, bound), snapshot.states
-        _, calls = plan_action(profile, action, device.parameters, runtime, entities)
-        return calls, snapshot.states
+        return plan_battery(profile, action, device.parameters, runtime, entities), snapshot.states
 
-    async def run(calls: list[PlannedCall], states: dict[str, dict[str, Any]]) -> None:
-        direct = hub.by_ha_device(device.ha_device_id) if hub else None
-        await execute(client, calls, states, guard, dry_run=False, direct=direct)
+    def direct() -> DirectDevice | None:
+        return hub.by_ha_device(device.ha_device_id) if hub else None
+
+    async def run(calls: list[PlannedCall], states: dict[str, dict[str, Any]], force: bool = False) -> None:
+        await execute(client, calls, states, guard, dry_run=False, direct=direct(), force=force)
+
+    def matches(call: PlannedCall, states: dict[str, dict[str, Any]]) -> bool:
+        return current_matches(call, states, direct())
 
     if charging:
         release = "release" if "release" in charging else None
         if not (remember := charging.get("remember")):
-            return DeviceAccess(plan=plan, run=run, release=release)
+            return DeviceAccess(plan=plan, run=run, release=release, matches=matches)
 
         async def remembered_entity() -> tuple[str | None, dict[str, dict[str, Any]]]:
             snapshot = await fetch_snapshot(client, hub)
@@ -349,10 +370,12 @@ def device_access(
             )
             await execute(client, [call], states, guard, dry_run=False)
 
-        return DeviceAccess(plan=plan, run=run, ensure_mode=current_option, set_mode=restore, release=release)
+        return DeviceAccess(
+            plan=plan, run=run, ensure_mode=current_option, set_mode=restore, release=release, matches=matches
+        )
 
     if not (control_mode := profile.get("control_mode")):
-        return DeviceAccess(plan=plan, run=run)
+        return DeviceAccess(plan=plan, run=run, release="release", matches=matches)
 
     async def select(option: str) -> str | None:
         snapshot = await fetch_snapshot(client, hub)
@@ -376,7 +399,7 @@ def device_access(
     async def set_mode(option: str) -> None:
         await select(option)
 
-    return DeviceAccess(plan=plan, run=run, ensure_mode=ensure_mode, set_mode=set_mode)
+    return DeviceAccess(plan=plan, run=run, ensure_mode=ensure_mode, set_mode=set_mode, release="release", matches=matches)
 
 
 class PlanController:
@@ -399,14 +422,14 @@ class PlanController:
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive or a loadpoint with charge control."""
         profile = self._profiles()[device.profile]
-        return "battery_window" in profile["capabilities"] or "charge_control" in profile
+        return controls_battery(profile) or "charge_control" in profile
 
     def eligible(self, config: SunflowConfig, device: DeviceConfig) -> str | None:
         """Why a device cannot be controlled, None if it can."""
         profile = self._profiles()[device.profile]
         if "charge_control" in profile:
             return None
-        if "battery_window" not in profile["capabilities"]:
+        if not controls_battery(profile):
             return "nicht steuerbar"
         if device.test_passed_at is None:
             return "Gerätetest noch nicht bestanden"
@@ -446,11 +469,16 @@ class PlanController:
         access = self._access_for(device)
         await take_over(access, self._marker, device.id)
         profile = self._profiles()[device.profile]
+        if (supported := supported_action(profile, action, power))[0] != action:
+            reason = f"{reason} ({ACTION_NAMES.get(action, action)} kann das Gerät nicht)"
+            action, power = supported
+        control = profile.get("battery_control", {})
+        refresh = parse_duration(control["refresh"], timedelta()) if "refresh" in control else None
         defaults = {n: spec["default"] for n, spec in profile.get("parameters", {}).items() if "default" in spec}
         runtime: dict[str, float] = {"P": abs(power)} if power is not None else {}
         if (buffer := (defaults | device.parameters).get("grid_offset")) is not None:
             runtime["grid_offset"] = grid_buffer(buffer, current_slot(plan, now) if plan else None, reason == "nach Plan")
-        await apply(access, status, action, power, now, runtime)
+        await apply(access, status, action, power, now, runtime, refresh=refresh)
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
         status.grid_target_w = runtime.get("grid_offset")
 

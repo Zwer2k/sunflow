@@ -10,6 +10,7 @@ from typing import Any
 
 from sunflow.config.models import BATTERY_PRIORITY_ID, DeviceConfig, SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.profiles import battery_actions, controls_battery, supported_action
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_kind, device_parameters
 from sunflow.ha import HAClient, HACommandError, HAError
@@ -721,6 +722,23 @@ def optimizer_settings(config: SunflowConfig, battery: BatterySpec) -> Settings:
     )
 
 
+def restrict_to_device(settings: Settings, actions: set[str], warnings: list[str]) -> Settings:
+    """Only plan what the battery can be told: grid charging needs force_charge."""
+    if "force_charge" not in actions and settings.allow_grid_charge:
+        settings = replace(settings, allow_grid_charge=False)
+        warnings.append("Der Speicher kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant.")
+    if "force_discharge" not in actions:
+        settings = replace(settings, allow_battery_export=False)
+    return settings
+
+
+def device_actions(plan: Plan, profile: dict[str, Any]) -> None:
+    """Slot actions as the device carries them out (the closest supported one), in place."""
+    for slot in plan.slots:
+        if (action := supported_action(profile, slot.action, slot.action_power_w))[0] != slot.action:
+            slot.action, slot.action_power_w = action
+
+
 def feed_in_price(config: SunflowConfig, battery_device: DeviceConfig | None) -> float:
     """Feed-in €/kWh: the battery inverter's plant first, else the first configured rate."""
     candidates = ([battery_device] if battery_device else []) + config.devices
@@ -827,7 +845,7 @@ async def compute_plan(
     """Fetch forecasts and prices, then optimize the battery schedule."""
     warnings: list[str] = []
     battery_device = next(
-        (d for d in config.devices if "battery_window" in profiles[d.profile]["capabilities"]),
+        (d for d in config.devices if controls_battery(profiles[d.profile])),
         None,
     )
     if battery_device is None:
@@ -1028,8 +1046,10 @@ async def compute_plan(
         # Explicitly wanted by the user: grid charging for the overdue full charge
         settings = replace(settings, allow_grid_charge=True, full_charge_penalty=OVERDUE_FULL_CHARGE_PENALTY)
     warnings += care.notes
+    settings = restrict_to_device(settings, battery_actions(profile), warnings)
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
+    device_actions(plan, profile)
     return PlanResult(
         raw_pv=raw_pv,
         plane_forecasts_now={key: powers[0] for key, powers in plane_slots.items() if powers},
