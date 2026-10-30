@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.6
+
+- Kenndaten: Die Geräte erscheinen kompakt mit den wichtigsten Werten und lassen sich aufklappen wie unter Geräte. Offen bleiben Geräte mit ungespeicherten Änderungen oder einer fehlenden Pflichtangabe (Speicherkapazität, Volumen des Warmwasserspeichers).
+
 ## 0.41.5
 
 - Kenndaten und Geräte: Die Gruppen-Überschriften (Wechselrichter, Speicher, Wallboxen …) sind deutlicher. Kann die Kategorie nicht vom Server geladen werden, ordnet die Oberfläche die Geräte selbst nach ihren Fähigkeiten ein, statt alles unter „Verbraucher“ zu zeigen.

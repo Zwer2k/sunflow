@@ -43,6 +43,8 @@ const EMBEDDED = window.self !== window.top || window.location.pathname.includes
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const ADVANCED_KEY = "sunflow.advanced";
 
+const REQUIRED_PARAMS = new Set(["capacity_wh", "tank_l"]);
+
 /** Category of a discovered device not taken over yet; a loadpoint measuring a temperature is a heater. */
 function deviceCategory(device, preview) {
   const caps = device.capabilities ?? [];
@@ -1522,14 +1524,36 @@ class SunflowApp extends LitElement {
       this._feedEdits[device.id] !== undefined ||
       nameEdit !== undefined ||
       this._flexEdits[device.id] !== undefined;
+    // Values planning cannot do without; others (e.g. the learned daily need) may stay empty
+    const missing = params.some((p) => REQUIRED_PARAMS.has(p.name) && (p.effective === null || p.effective === undefined));
+    const key = `params:${device.id}`;
+    const open = this._expanded.has(key) || changed || missing;
+    const head = html`
+      <div class="device-head">
+        <button class="device-toggle" aria-expanded=${open} @click=${() => this._toggleExpanded(key, open)}>
+          <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
+          <span>
+            <span class="device-title">${device.name}</span>
+            <span class="muted small device-sub">${devicePurpose(capabilities)}${open ? ` · Profil ${device.profile}` : ""}</span>
+          </span>
+        </button>
+        ${missing ? html`<span class="chip warn">Angabe fehlt</span>` : changed ? html`<span class="chip warn">nicht gespeichert</span>` : nothing}
+      </div>`;
+    if (!open) {
+      return html`
+        <section class="device compact">
+          ${head}
+          <div class="summary small">${params
+            .filter((p) => p.effective !== null && p.effective !== undefined)
+            .slice(0, 4)
+            .map((p) => `${paramLabel(p.name)} ${formatValue(p.effective, p.unit)}`)
+            .join(" · ")}</div>
+        </section>
+      `;
+    }
     return html`
       <section class="device">
-        <div class="device-head">
-          <div>
-            <div class="device-title">${device.name}</div>
-            <div class="muted small">${devicePurpose(capabilities)} · Profil ${device.profile}</div>
-          </div>
-        </div>
+        ${head}
         ${capabilities.includes("loadpoint") && device.profile.startsWith("evcc_intg/")
           ? html`<label class="field wide">
               <span class="field-label">Art des Ladepunkts</span>
