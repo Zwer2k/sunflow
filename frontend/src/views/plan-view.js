@@ -460,7 +460,7 @@ class SunflowPlan extends LitElement {
               <div class="flex-card">
                 <div class="flex-head">
                   <strong><span class="swatch inline" style="background:${colors.get(f.device_id)}"></span>${f.name}</strong>
-                  <span class="small muted">${{ heater: "Warmwasser", vehicle: "Fahrzeug" }[f.kind] ?? "Verbraucher"}</span>
+                  <span class="small muted">${f.kind === "vehicle" && f.vehicle ? f.vehicle : { heater: "Warmwasser", vehicle: "Fahrzeug" }[f.kind] ?? "Verbraucher"}</span>
                 </div>
                 <div class="small">
                   ${f.kind === "load" ? nothing : html`${fmt(f.current, f.unit)} → ${fmt(f.target, f.unit)}`}

@@ -62,8 +62,16 @@ def test_scanned_card() -> None:
     assert scanned_card(None) is None
 
 
-def test_flex_loads_plan_the_recognized_vehicle(library) -> None:
-    """A go-e wallbox with an assigned car: its need comes from the car's SoC and charging profile."""
+@pytest.mark.parametrize(
+    ("plugged", "energies", "reason"),
+    [
+        # 40 % of 37.5 kWh at 90 % charging efficiency
+        pytest.param("on", [pytest.approx(0.4 * 37500 / 0.9)], None, id="plugged-in"),
+        pytest.param("off", [], "Fahrzeug nicht angesteckt", id="unplugged-shows-soc"),
+    ],
+)
+def test_flex_loads_plan_the_recognized_vehicle(library, plugged: str, energies: list, reason: str | None) -> None:
+    """A go-e wallbox with an assigned car: SoC and target from the car and its charging profile, planned when plugged in."""
     from datetime import UTC, datetime, timedelta
     from zoneinfo import ZoneInfo
 
@@ -78,7 +86,7 @@ def test_flex_loads_plan_the_recognized_vehicle(library) -> None:
         {"entity_id": "number.goe_amp", "unique_id": "216505-number-amp-0", "device_id": "goe"},
     ]
     states = {
-        "binary_sensor.goe_car": {"state": "on", "attributes": {}},
+        "binary_sensor.goe_car": {"state": plugged, "attributes": {}},
         "sensor.goe_power": {"state": "0", "attributes": {"unit_of_measurement": "W"}},
         "sensor.fiat_soc": {"state": "40", "attributes": {"unit_of_measurement": "%"}},
     }
@@ -96,8 +104,8 @@ def test_flex_loads_plan_the_recognized_vehicle(library) -> None:
 
     (info,) = infos
     assert (info.vehicle, info.vehicle_method, info.current, info.target) == ("Fiat", "single", 40.0, 80.0)
-    # 40 % of 37.5 kWh at 90 % charging efficiency
-    assert loads[0].energy_wh == pytest.approx(0.4 * 37500 / 0.9)
+    assert [load.energy_wh for load in loads] == energies
+    assert info.reason == reason
 
 
 def test_flex_loads_plan_an_own_heating_rod(library) -> None:
