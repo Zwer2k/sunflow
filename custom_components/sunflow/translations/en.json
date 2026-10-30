@@ -4,16 +4,44 @@
       "already_configured": "Service is already configured"
     },
     "error": {
-      "cannot_connect": "Failed to connect"
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication"
     },
     "step": {
       "user": {
         "data": {
-          "url": "URL"
+          "url": "URL",
+          "token": "Token"
         },
         "data_description": {
-          "url": "URL of the Sunflow backend."
+          "url": "Address of the Sunflow App (shown in Sunflow under Integrations).",
+          "token": "Token of the Sunflow App (shown next to the address)."
         }
+      },
+      "hassio_confirm": {
+        "description": "Connect Home Assistant with the Sunflow App? Its learned PV forecasts become available for the energy dashboard."
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "forecast_today": {
+        "name": "Forecast today"
+      },
+      "forecast_remaining_today": {
+        "name": "Forecast rest of today"
+      },
+      "forecast_tomorrow": {
+        "name": "Forecast tomorrow"
+      },
+      "forecast_power_now": {
+        "name": "Forecast power now"
+      },
+      "string_energy": {
+        "name": "{name} energy"
+      },
+      "string_power": {
+        "name": "{name} power"
       }
     }
   }
