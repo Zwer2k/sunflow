@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.4
+
+- Rückfragen (Steuerung einschalten, Gerät entfernen oder deaktivieren, Wechselrichter zurücksetzen, PV neu lernen, Fahrzeug entfernen) erscheinen als eigener Sunflow-Dialog statt als Browser-Meldung.
+
 ## 0.41.3
 
 - Steuerung → „Sunflow steuert“: Der Zustand jedes Geräts steht direkt unter seinem Namen und ist besser lesbar; der Hinweis zu anderen Steuerungen erscheint bei Ladepunkten nur noch, wenn Sunflow sie tatsächlich steuert.

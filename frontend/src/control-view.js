@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import { confirmDialog } from "./dialog.js";
 import { poll } from "./poll.js";
 import { CATEGORY_LABELS, formatPower, formatValue } from "./format.js";
 
@@ -234,12 +235,13 @@ class SunflowControl extends LitElement {
     if (body.device_enabled === true && !t.enabled) body = { ...body, enabled: true };
     const on = body.enabled === true || body.device_enabled === true;
     const willControl = on && (body.enabled ?? t.enabled) && t.devices.some((d) => (d.device_id === body.device_id ? body.device_enabled : d.enabled));
-    if (willControl && !window.confirm(
-      (body.enabled && !t.enabled && body.device_id ? "Der Hauptschalter „Sunflow steuert“ wird mit eingeschaltet. " : "") +
-      "Sunflow schaltet dann laufend an den Geräten: am Wechselrichter Passiv-Modus mit Lade- und Entladefenster " +
-      "(Betriebsmodus wird einmalig umgestellt), an Ladepunkten Laden starten und sperren. Ausschalten gibt alles zurück. " +
-      "Jetzt einschalten?",
-    )) {
+    if (willControl && !(await confirmDialog({
+      title: "Sunflow steuern lassen?",
+      text: (body.enabled && !t.enabled && body.device_id ? "Der Hauptschalter „Sunflow steuert“ wird mit eingeschaltet.\n\n" : "") +
+        "Sunflow schaltet dann laufend an den Geräten: am Wechselrichter Passiv-Modus mit Lade- und Entladefenster " +
+        "(der Betriebsmodus wird einmalig umgestellt), an Ladepunkten Laden starten und sperren.\n\nAusschalten gibt alles zurück.",
+      confirm: "Einschalten",
+    }))) {
       input.checked = !input.checked;
       return;
     }

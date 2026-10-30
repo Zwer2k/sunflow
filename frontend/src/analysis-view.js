@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api, renewIngressSession } from "./api.js";
+import { confirmDialog } from "./dialog.js";
 import { poll } from "./poll.js";
 import { lineChart, SERIES_COLORS } from "./charts.js";
 import { formatValue } from "./format.js";
@@ -366,8 +367,11 @@ class SunflowAnalysis extends LitElement {
   }
 
   async _restartPlane(plane) {
-    const text = `Für „${plane.name}“ ab heute neu lernen? Die bisherigen Messwerte dieser Fläche werden nicht mehr verwendet; bis genug neue Tage da sind, plant Sunflow sie mit der Korrektur der ganzen Anlage.`;
-    if (!window.confirm(text)) return;
+    if (!(await confirmDialog({
+      title: `„${plane.name}“ ab heute neu lernen?`,
+      text: "Die bisherigen Messwerte dieser Fläche werden nicht mehr verwendet. Bis genug neue Tage da sind, plant Sunflow sie mit der Korrektur der ganzen Anlage.",
+      confirm: "Neu lernen",
+    }))) return;
     try {
       await api.restartPlaneLearning(plane.key);
       this._pvLearning = await api.pvLearning();

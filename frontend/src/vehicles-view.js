@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import { confirmDialog } from "./dialog.js";
 import { fromDisplay, toDisplay } from "./format.js";
 import "./picker.js";
 
@@ -213,7 +214,7 @@ class SunflowVehicles extends LitElement {
   }
 
   async _remove(vehicle) {
-    if (!window.confirm(`„${vehicle.name}“ entfernen?`)) return;
+    if (!(await confirmDialog({ title: `„${vehicle.name}“ entfernen?`, text: "Das Fahrzeug wird aus allen Wallboxen entfernt.", confirm: "Entfernen", danger: true }))) return;
     await this._store(this._data.vehicles.filter((v) => v.id !== vehicle.id));
   }
 
