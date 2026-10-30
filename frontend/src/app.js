@@ -211,6 +211,7 @@ class SunflowApp extends LitElement {
     _manual: { state: true },
     _direct: { state: true },
     _directProfiles: { state: true },
+    _link: { state: true },
     _manualEditId: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
@@ -255,6 +256,7 @@ class SunflowApp extends LitElement {
     this._manual = { ...EMPTY_MANUAL };
     this._direct = null;
     this._directProfiles = null;
+    this._link = null;
     // Sunflow device id -> device test state
     this._tests = {};
     this._testConfirm = new Set();
@@ -1096,7 +1098,35 @@ class SunflowApp extends LitElement {
             </div>
           `}
       ${this._renderDirectForm()}
+      ${this._renderIntegrationLink()}
     `;
+  }
+
+  /** How the Sunflow integration in Home Assistant connects to the App. */
+  _renderIntegrationLink() {
+    const link = this._link;
+    return html`<section class="device compact">
+      <div class="device-title">Sunflow-Integration in Home Assistant</div>
+      <p class="small muted">Sie bringt die gelernte PV-Prognose ins Energie-Dashboard (je Fläche, Anlage und gesamt), Zähler je
+        PV-String und Sensoren für eigene Automationen. Home Assistant bietet sie unter „Einstellungen → Geräte &amp; Dienste“
+        als gefunden an; sonst von Hand mit Adresse und Schlüssel einrichten.</p>
+      ${link
+        ? html`<div class="fields">
+            <label class="field"><span class="field-label">Adresse</span>
+              <span class="input-unit"><input readonly .value=${link.url}></span></label>
+            <label class="field"><span class="field-label">Schlüssel</span>
+              <span class="input-unit"><input readonly .value=${link.token}></span></label>
+          </div>`
+        : html`<div><button class="secondary" @click=${() => this._showLink()}>Zugangsdaten anzeigen …</button></div>`}
+    </section>`;
+  }
+
+  async _showLink() {
+    try {
+      this._link = await api.integrationLink();
+    } catch (err) {
+      this._error = `Zugangsdaten nicht verfügbar: ${err.message}`;
+    }
   }
 
   /** Adding a device Sunflow talks to itself (Modbus TCP, HTTP), without an integration. */

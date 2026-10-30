@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, UploadFi
 from sunflow import API_VERSION, __version__
 from sunflow.devices.discovery import discover
 from sunflow.ha import HAClient
+from sunflow.integration_link import app_host
 from sunflow.shadow.runner import ShadowRunner
 from sunflow.shadow.store import evaluate as evaluate_shadow
 
@@ -34,6 +35,17 @@ async def health(request: Request) -> dict[str, Any]:
         "api": API_VERSION,
         "ha_connected": client is not None and client.connected,
         "ha_version": client.ha_version if client else None,
+    }
+
+
+@router.get("/integration/link")
+async def integration_link(request: Request) -> dict[str, Any]:
+    """URL and token for setting up the Sunflow integration by hand (only through Ingress)."""
+    settings = request.app.state.settings
+    return {
+        "url": f"http://{app_host()}:{settings.port}",
+        "token": request.app.state.integration_token,
+        "discovery": settings.supervisor_token is not None,
     }
 
 

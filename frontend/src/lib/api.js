@@ -119,6 +119,7 @@ export const api = {
   chooseVehicle: (wallboxId, vehicleId) => request("PUT", `/control/vehicles/${encodeURIComponent(wallboxId)}`, { vehicle_id: vehicleId }),
   addManual: (body) => request("POST", "/config/devices/manual", body),
   directProfiles: () => request("GET", "/direct/profiles"),
+  integrationLink: () => request("GET", "/integration/link"),
   directStatus: () => request("GET", "/direct/status"),
   addDirect: (body) => request("POST", "/config/devices/direct", body),
   updateManual: (configDeviceId, body) =>

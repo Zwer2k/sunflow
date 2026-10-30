@@ -20,8 +20,11 @@ class Settings:
     profiles_dir: Path
     schema_dir: Path
     frontend_dir: Path
-    # As a Home Assistant App only the Ingress proxy may use the API (health excepted)
+    # As a Home Assistant App only the Ingress proxy may use the API (health excepted),
+    # and the integration with its token
     ingress_only: bool = False
+    # Set when running as App: announces the App to the integration (discovery)
+    supervisor_token: str | None = None
 
     @property
     def ha_websocket_url(self) -> str:
@@ -61,4 +64,5 @@ def load_settings() -> Settings:
             os.environ.get("SUNFLOW_FRONTEND_DIR", repo_root / "frontend")
         ),
         ingress_only=supervisor_token is not None,
+        supervisor_token=supervisor_token,
     )

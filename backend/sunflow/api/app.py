@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 import hashlib
 from pathlib import Path
+import secrets
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -26,6 +27,7 @@ from sunflow.devices.executor import EepromGuard
 from sunflow.devices.profiles import load_profiles, load_schema
 from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient, HAError
+from sunflow.integration_link import announce, integration_token
 from sunflow.settings import Settings
 from sunflow.shadow.counters import EnergyCounters
 from sunflow.shadow.runner import ShadowRunner
@@ -75,6 +77,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
             return
         app.state.settings = settings
+        app.state.integration_token = integration_token(settings.data_dir)
+        if settings.supervisor_token:
+            await announce(settings.supervisor_token, settings.port, app.state.integration_token)
         app.state.store = ConfigStore(settings.data_dir)
         app.state.profiles = load_profiles(
             settings.profiles_dir, load_schema(settings.schema_dir)
@@ -136,7 +141,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Port 8099 is reachable by every container on the hassio network; without
             # this, any of them could change the configuration or start the device test
             client = request.client.host if request.client else None
-            if client not in INGRESS_CLIENTS and request.url.path != "/api/v1/health":
+            token = getattr(app.state, "integration_token", None)
+            authorized = token is not None and secrets.compare_digest(
+                request.headers.get("authorization", ""), f"Bearer {token}"
+            )
+            if client not in INGRESS_CLIENTS and not authorized and request.url.path != "/api/v1/health":
                 return JSONResponse({"detail": "Only available through Home Assistant"}, status_code=403)
             return await call_next(request)
 

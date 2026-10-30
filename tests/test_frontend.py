@@ -266,6 +266,12 @@ def test_ingress_only(tmp_path: Path) -> None:
     assert ingress.get("/api/v1/config").status_code == 200
 
 
+    # The integration with its token, from any address
+    app.state.integration_token = "secret"
+    assert other.get("/api/v1/config", headers={"Authorization": "Bearer secret"}).status_code == 200
+    assert other.get("/api/v1/config", headers={"Authorization": "Bearer wrong"}).status_code == 403
+
+
 def test_rejects_nan_parameters(tmp_path: Path) -> None:
     """NaN must not reach config.json, where it would break every later request."""
     from sunflow.config.models import DeviceConfig, SunflowConfig

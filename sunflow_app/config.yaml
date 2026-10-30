@@ -10,6 +10,9 @@ init: false
 homeassistant_api: true
 ingress: true
 ingress_port: 8099
+# The App announces itself to the Sunflow integration (host, port, token)
+discovery:
+  - sunflow
 panel_icon: mdi:solar-power-variant
 panel_title: Sunflow
 # Built locally by the Supervisor (see Dockerfile). Later: prebuilt images by CI
