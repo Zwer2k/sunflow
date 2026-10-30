@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.48.0
+
+Sunflow-Integration für Home Assistant (Integration 0.2.0, siehe docs/integration.md):
+
+- Einrichtung automatisch über den Supervisor oder von Hand mit Adresse und Schlüssel (in Sunflow unter „Integrationen“).
+- Gelernte PV-Prognose fürs Energie-Dashboard, je Fläche, je Anlage und gesamt als eigene Geräte, mit Prognose heute, Rest heute, morgen und Leistung jetzt.
+- Energiezähler je PV-String (aus der minütlich gemessenen Leistung), damit Strings auch ohne eigenen Zähler eine Solarquelle haben.
+- Gerät „Sunflow“: Aktion des Speichers, Preis, günstigstes Fenster, Speicher in einer Stunde, Ersparnis, PV-Überschuss, Planstatus, Aktion je gesteuertem Gerät, nächster Start und geplante Energie je Verbraucher; Hauptschalter, Schalter je Gerät, Strategie, „Neu planen“; Kalender mit den Fenstern des Plans.
+- Aktionen: Strategie setzen, Verbraucher-Planung ändern, einmalige Last einplanen (günstigste zusammenhängende Startzeit, z. B. Waschmaschine) und abbrechen, neu planen. Ereignisse für neuen Plan, Verbraucherstart und fällige einmalige Last.
+- Watchdog: Antwortet die App zehn Minuten nicht, während sie steuert, gibt die Integration die Geräte zurück und meldet das unter „Reparaturen“.
+
 ## 0.47.2
 
 - Phasenumschaltung: „Hochschalten nach“ und „Herunterschalten nach“ sind mindestens 1 Minute, der „Mindestabstand zwischen Umschaltungen“ mindestens 5 Minuten, „Höchstens Umschaltungen pro Tag“ mindestens 1. Kleinere Werte werden beim Speichern abgelehnt, früher gespeicherte wirken wie die Untergrenze.
