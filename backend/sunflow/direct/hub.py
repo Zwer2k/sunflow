@@ -42,7 +42,7 @@ class DirectDevice:
     name: str
     profile: dict[str, Any]
     transport: Transport
-    address: tuple[str, int | None, int]
+    address: tuple[str, int | None, int | None]
     values: dict[str, float | None] = field(default_factory=dict)
     # Last value per write target, for write=if_differs (targets are not read back)
     values_written: dict[str, Any] = field(default_factory=dict)

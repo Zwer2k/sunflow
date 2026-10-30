@@ -111,11 +111,12 @@ class HttpTransport:
             self._session = None
 
 
-def make_transport(connection: dict[str, Any], host: str, port: int | None, unit_id: int) -> Transport:
-    """Transport for a profile connection and the device's address."""
+def make_transport(connection: dict[str, Any], host: str, port: int | None, unit_id: int | None) -> Transport:
+    """Transport for a profile connection and the device's address (port and unit id default to the profile's)."""
     match connection["type"]:
         case "modbus_tcp":
-            return ModbusTransport(host, port or connection.get("port", 502), unit_id, connection.get("word_order", "big"))
+            unit = unit_id if unit_id is not None else connection.get("unit_id", 1)
+            return ModbusTransport(host, port or connection.get("port", 502), unit, connection.get("word_order", "big"))
         case "http":
             return HttpTransport(host, port or connection.get("port", 80))
     raise ValueError(f"Unknown connection type {connection['type']}")

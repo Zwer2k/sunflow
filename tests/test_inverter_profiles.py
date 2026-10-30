@@ -1,12 +1,19 @@
 """Shipped inverter profiles against dummy devices with the entity keys of their integrations."""
 
+from pathlib import Path
 from typing import Any
 
+from dummy_inverter import DummyInverter
 import pytest
+from sunflow.config.models import Connection, DeviceConfig, SunflowConfig
+from sunflow.control.controller import device_variables
+from sunflow.devices.discovery import Snapshot
 from sunflow.devices.discovery import match_profile
 from sunflow.devices.executor import plan_battery, plan_pv_limit
 from sunflow.devices.profiles import ProfileLibrary, battery_actions, controls_battery
-from sunflow.devices.resolver import bind_roles
+from sunflow.devices.executor import EepromGuard, execute
+from sunflow.devices.resolver import bind_roles, preview
+from sunflow.direct.hub import DirectHub, direct_device_id
 
 # Entity keys per domain as the integrations create them (unique_id = "<prefix>_<key>")
 DUMMIES: dict[str, dict[str, Any]] = {
@@ -137,3 +144,35 @@ def test_huawei_battery_actions_name_the_battery_device(library: ProfileLibrary)
     assert [c.data for c in hold] == [{"device_id": "bat-device"}, {"value": 0}]
     assert hold[1].storage == "eeprom"
     assert battery_actions(profile) == {"auto", "hold", "force_charge", "force_discharge"}
+
+
+def victron_registers() -> tuple[dict[int, int], dict[int, int]]:
+    """GX at 62 % SoC, discharging 1.2 kW, 3 x 400 W import, 2 kW DC PV and 500 W AC PV."""
+    inputs = {842: 0x10000 - 1200, 843: 62, 820: 400, 821: 400, 822: 400, 850: 2000, 808: 500}
+    inputs |= {a: 0 for a in (809, 810, 811, 812, 813)}
+    return {2901: 100}, inputs
+
+
+async def test_victron_over_modbus(library: ProfileLibrary, tmp_path: Path) -> None:
+    """Values read by unit 100 sum up per role; holding writes the current SoC as minimum."""
+    profile = library.profiles["modbus/victron_gx"]
+    holding, inputs = victron_registers()
+    async with DummyInverter(holding, inputs) as dummy:
+        device = DeviceConfig(
+            id="victron1", ha_device_id=direct_device_id("victron1"), profile="modbus/victron_gx", profile_version=1,
+            name="Victron", connection=Connection(host="127.0.0.1", port=dummy.port),
+        )
+        hub = DirectHub()
+        await hub.sync(SunflowConfig(devices=[device]), library)
+        await hub.poll()
+        snapshot = hub.contribute(Snapshot(entries=[], devices=[], entities=[], states={}, energy_prefs=None))
+        values = {r.role: r.value for r in preview(profile, snapshot, device.ha_device_id, {})}
+        assert values == {"battery_soc": 62, "battery_power": -1200, "pv_power": 2500, "grid_power": 1200}
+
+        variables = device_variables(profile, device, snapshot)
+        direct = hub.by_ha_device(device.ha_device_id)
+        for action in ("hold", "force_charge", "auto"):
+            calls = plan_battery(profile, action, {}, variables, [])
+            await execute(None, calls, {}, EepromGuard(tmp_path, 30), dry_run=False, direct=direct)
+        await hub.stop()
+    assert dummy.writes == [(2901, [620]), (2901, [1000]), (2901, [100])]
