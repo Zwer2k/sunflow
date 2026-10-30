@@ -783,10 +783,16 @@ class SunflowApp extends LitElement {
     const params = this._params[device.id] ?? [];
     const parameters = {};
     for (const [name, text] of Object.entries(this._paramEdits[device.id] ?? {})) {
-      const unit = params.find((p) => p.name === name)?.unit;
+      const param = params.find((p) => p.name === name);
+      const unit = param?.unit;
       const value = fromDisplay(text, unit);
       if (value === undefined) {
         this._error = `Ungültige Zahl bei „${paramLabel(name)}“.`;
+        return false;
+      }
+      const shown = (v) => `${toDisplay(v, unit)}${unit ? ` ${displayUnit(unit)}` : ""}`;
+      if (value !== null && ((param?.min != null && value < param.min) || (param?.max != null && value > param.max))) {
+        this._error = `„${paramLabel(name)}“: erlaubt sind ${param.min != null ? shown(param.min) : "…"} bis ${param.max != null ? shown(param.max) : "…"}.`;
         return false;
       }
       parameters[name] = value;

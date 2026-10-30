@@ -38,10 +38,11 @@ parameters:
   phase_mode: {unit: "", default: 0, min: 0, max: 3}
   phase_up_w: {unit: W, default: 4500, min: 1500, max: 22000}
   phase_down_w: {unit: W, default: 4000, min: 1000, max: 22000}
-  phase_up_delay_min: {unit: min, default: 5, min: 0, max: 60, advanced: true}
-  phase_down_delay_min: {unit: min, default: 2, min: 0, max: 60, advanced: true}
-  phase_min_interval_min: {unit: min, default: 15, min: 0, max: 240, advanced: true}
-  phase_max_switches_day: {unit: "", default: 12, min: 0, max: 100, advanced: true}
+  # Never immediate: every switch interrupts charging
+  phase_up_delay_min: {unit: min, default: 5, min: 1, max: 60, advanced: true}
+  phase_down_delay_min: {unit: min, default: 2, min: 1, max: 60, advanced: true}
+  phase_min_interval_min: {unit: min, default: 15, min: 5, max: 240, advanced: true}
+  phase_max_switches_day: {unit: "", default: 12, min: 1, max: 100, advanced: true}
   min_current_a: {unit: A, default: 6, min: 6, max: 32}
   max_current_a: {unit: A, default: 16, min: 6, max: 32}
 

@@ -149,3 +149,13 @@ async def test_charger_drops_to_one_phase_and_gets_its_mode_back(tmp_path: Path)
     off = config.model_copy(update={"control": ControlSettings(enabled=False)})
     await controller.tick(off, plan, NOW, charger.snapshot(), NOW + timedelta(minutes=4), live)
     assert charger.option == "three_phases"
+
+
+def test_delays_and_interval_never_below_their_minimum() -> None:
+    """Values stored before the lower bounds still never switch at once or more often than every 5 minutes."""
+    settings = PhaseSettings.of(
+        {"phase_up_delay_min": 0, "phase_down_delay_min": 0, "phase_min_interval_min": 0, "phase_max_switches_day": 0}
+    )
+    assert (settings.up_delay, settings.down_delay, settings.min_interval, settings.max_per_day) == (
+        timedelta(minutes=1), timedelta(minutes=1), timedelta(minutes=5), 1,
+    )

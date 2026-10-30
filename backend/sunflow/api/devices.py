@@ -409,11 +409,17 @@ async def update_device(
     if body.name is not None and body.name.strip():
         device.name = body.name.strip()
     if body.parameters is not None:
+        specs = _library(request).profiles[device.profile].get("parameters", {})
         for name, value in body.parameters.items():
             if value is None:
                 device.parameters.pop(name, None)
-            else:
-                device.parameters[name] = value
+                continue
+            spec = specs.get(name, {})
+            if ("min" in spec and value < spec["min"]) or ("max" in spec and value > spec["max"]):
+                raise HTTPException(
+                    status_code=422, detail=f"{name}: erlaubt sind {spec.get('min', '…')} bis {spec.get('max', '…')}"
+                )
+            device.parameters[name] = value
     # Not the device itself but what belongs to it: kept by device id
     if body.feed_in is not None:
         config.feed_in[device.id] = body.feed_in
