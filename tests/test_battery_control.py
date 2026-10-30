@@ -15,6 +15,7 @@ from sunflow.config.models import (
 )
 from sunflow.control.controller import PlanController, TakeoverMarker, device_access
 from sunflow.devices.device_test import choose_test
+from sunflow.devices.discovery import Snapshot
 from sunflow.devices.executor import EepromGuard, ExecutorError, plan_battery
 from sunflow.devices.profiles import ProfileLibrary, battery_actions, supported_action
 from sunflow.direct.hub import DirectHub, direct_device_id
@@ -188,4 +189,68 @@ async def test_controller_drives_a_direct_battery(tmp_path: Path) -> None:
             config.model_copy(update={"control": ControlSettings(enabled=False)}), None, None, snapshot, NOW + timedelta(minutes=9)
         )
         assert dummy.writes[-1] == (200, [0])
+        await hub.stop()
+
+
+PV_PROFILE: dict[str, Any] = {
+    "profile": "modbus/dummy_pv",
+    "version": 1,
+    "connection": {"type": "modbus_tcp", "points": {"ac_power": {"address": 100, "encoding": "uint16", "unit": "W"}}},
+    "capabilities": ["pv", "curtail"],
+    "roles": {"ac_power": {"key": "ac_power", "unit": "W"}},
+    "pv_limit": {
+        "set": [{"modbus": {"address": 300, "value": "{{ limit_w }}", "write": "if_differs"}}],
+        "release": [{"modbus": {"address": 300, "value": 10000, "write": "if_differs"}}],
+    },
+}
+
+
+def _curtail_plan(curtail: float) -> SimpleNamespace:
+    slot = SimpleNamespace(
+        start=NOW.replace(minute=0), end=NOW.replace(minute=15), action="auto", action_power_w=None,
+        export_w=1000.0, pv_w=5000.0, curtail_w=curtail,
+    )
+    return SimpleNamespace(plan=SimpleNamespace(slots=[slot]))
+
+
+async def test_controller_limits_pv_by_the_measured_export(tmp_path: Path) -> None:
+    """The limit takes the export above the plan off the output; no curtailment or off lifts it."""
+    async with DummyInverter({100: 5000, 300: 10000}) as dummy:
+        device = DeviceConfig(
+            id="pv1", ha_device_id=direct_device_id("pv1"), profile=PV_PROFILE["profile"], profile_version=1,
+            name="PV", connection=Connection(host="127.0.0.1", port=dummy.port),
+        )
+        config = SunflowConfig(devices=[device], control=ControlSettings(enabled=True, devices={"pv1": True}))
+        hub = DirectHub()
+        await hub.sync(config, ProfileLibrary(profiles={PV_PROFILE["profile"]: PV_PROFILE}))
+        controller = PlanController(
+            TakeoverMarker(tmp_path),
+            lambda d: device_access(FakeHA(), PV_PROFILE, d, EepromGuard(tmp_path, 10), hub),
+            lambda: {PV_PROFILE["profile"]: PV_PROFILE},
+        )
+
+        async def tick(plan: Any, export: float, minute: int, cfg: SunflowConfig = config) -> None:
+            await hub.poll()
+            snapshot = hub.contribute(Snapshot(entries=[], devices=[], entities=[], states={}, energy_prefs=None))
+            live = SimpleNamespace(pv_w=None, grid_w=-export)
+            await controller.tick(cfg, plan, NOW, snapshot, NOW + timedelta(minutes=minute), live)
+
+        await tick(_curtail_plan(2000), export=3000, minute=0)
+        assert dummy.writes == [(300, [3000])]
+        assert controller.statuses["pv1"].limit_w == 3000
+
+        # Limited, the export matches the plan: the limit stays
+        dummy.holding[100] = 3000
+        await tick(_curtail_plan(2000), export=1000, minute=1)
+        assert dummy.writes == [(300, [3000])]
+
+        await tick(_curtail_plan(0), export=1000, minute=2)
+        assert dummy.writes[-1] == (300, [10000])
+        assert controller.statuses["pv1"].limit_w is None
+
+        await tick(_curtail_plan(2000), export=3000, minute=3)
+        off = config.model_copy(update={"control": ControlSettings(enabled=False)})
+        await tick(_curtail_plan(2000), export=3000, minute=4, cfg=off)
+        assert dummy.writes[-1] == (300, [10000])
+        assert TakeoverMarker(tmp_path).get() == {}
         await hub.stop()

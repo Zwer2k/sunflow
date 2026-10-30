@@ -206,6 +206,7 @@ class SunflowPlan extends LitElement {
     const capacity =
       plan.battery?.capacity_wh || Math.max(...slots.map((s) => s.soc_wh), ...history.map((p) => p.soc_wh ?? 0)) || 1;
     const nowDate = new Date(slots[0].start);
+    const curtailed = slots.some((s) => (s.curtail_w ?? 0) > 0);
     const hasLoadpoints =
       history.some((p) => p.loadpoint_w !== null && p.loadpoint_w !== undefined) || Boolean(plan.flex?.length);
     const colors = consumerColors(plan.flex);
@@ -404,8 +405,13 @@ class SunflowPlan extends LitElement {
         <div class="legend">
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Netzbezug</span>
           <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>Einspeisung</span>
+          ${curtailed
+            ? html`<span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[2]}"></span>PV abgeregelt</span>`
+            : nothing}
           <span class="legend-item muted">erwartet: Bezug ${formatValue(energy(slots, "import_w"), "Wh")},
-            Einspeisung ${formatValue(energy(slots, "export_w"), "Wh")}</span>
+            Einspeisung ${formatValue(energy(slots, "export_w"), "Wh")}${curtailed
+              ? `, abgeregelt ${formatValue(energy(slots, "curtail_w"), "Wh")}`
+              : ""}</span>
         </div>
         ${lineChart(
           [
@@ -413,6 +419,9 @@ class SunflowPlan extends LitElement {
             { name: "Bezug erwartet", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "import_w") },
             { name: "Einspeisung gemessen", color: SERIES_COLORS[1], points: this._pastGrid((g) => Math.max(-g, 0)) },
             { name: "Einspeisung erwartet", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "export_w") },
+            ...(curtailed
+              ? [{ name: "PV abgeregelt", color: SERIES_COLORS[2], dashed: true, points: this._future(slots, "curtail_w") }]
+              : []),
           ],
           {
             label: "Netzbezug und Einspeisung, gemessen und erwartet",

@@ -873,3 +873,27 @@ def test_grid_friendly_shaves_the_midday_export_peak() -> None:
 
     assert peak_export(Settings(export_soft_limit_w=2500)) <= 2500 + 1
     assert peak_export(Settings()) > 2500
+
+
+FULL = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+
+
+@pytest.mark.parametrize(
+    ("feed_in", "curtailable", "limit", "expected"),
+    [
+        pytest.param(-0.05, 3000, None, 3000, id="negative-feed-in-limits"),
+        pytest.param(-0.05, 1500, None, 1500, id="only-the-curtailable-part"),
+        pytest.param(0.08, 3000, None, 0, id="paid-feed-in-exports"),
+        pytest.param(0.0, 3000, None, 0, id="free-export-is-no-reason"),
+        pytest.param(0.08, 3000, 2000, 1500, id="above-grid-friendly-limit"),
+    ],
+)
+def test_curtailment(feed_in: float, curtailable: float, limit: float | None, expected: float) -> None:
+    """PV is limited only when exporting it costs, and only on plants that can be limited."""
+    inputs = [
+        SlotInput(start=START + i * SLOT, pv_w=4000, load_w=500, price=0.3, feed_in=feed_in, curtailable_w=curtailable)
+        for i in range(8)
+    ]
+    plan = optimize(inputs, FULL, Settings(export_soft_limit_w=limit))
+    assert plan.slots[0].curtail_w == pytest.approx(expected, abs=1)
+    assert plan.slots[0].export_w == pytest.approx(3500 - expected, abs=1)

@@ -239,6 +239,21 @@ def plan_battery(
     return plan_steps(control[action], {**defaults, **parameters, **runtime}, entities, "volatile")
 
 
+def plan_pv_limit(
+    profile: dict[str, Any],
+    action: str,
+    parameters: dict[str, float],
+    runtime: dict[str, float],
+    entities: list[dict[str, Any]],
+) -> list[PlannedCall]:
+    """Calls limiting the PV output ("set", runtime limit_w) or lifting the limit ("release")."""
+    control = profile.get("pv_limit")
+    if control is None or action not in ("set", "release"):
+        raise ExecutorError(f"Unknown PV limit action {action}")
+    defaults = {name: spec["default"] for name, spec in profile.get("parameters", {}).items() if "default" in spec}
+    return plan_steps(control[action], {**defaults, **parameters, **runtime}, entities, "volatile")
+
+
 def plan_charge(
     profile: dict[str, Any],
     action: str,
