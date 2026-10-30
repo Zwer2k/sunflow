@@ -127,3 +127,28 @@ def test_flex_loads_plan_an_own_heating_rod(library) -> None:
     (info,) = infos
     assert (info.kind, info.current, info.target) == ("heater", 45.0, 60.0)
     assert loads[0].energy_wh == pytest.approx(15 * 300 * WATER_WH_PER_LITRE_KELVIN)
+
+
+@pytest.mark.parametrize(
+    ("states", "expected"),
+    [
+        pytest.param(
+            {"sensor.soc": {"state": "62", "last_updated": "2026-10-30T10:00:00+00:00"}, "binary_sensor.plug": {"state": "on"}},
+            {"soc_pct": 62.0, "energy_wh": 23250.0, "soc_unavailable": False, "plugged": True},
+            id="readable",
+        ),
+        pytest.param(
+            {"sensor.soc": {"state": "unavailable"}, "binary_sensor.plug": {"state": "not_home"}},
+            {"soc_pct": None, "energy_wh": None, "soc_unavailable": True, "plugged": False},
+            id="unavailable-away",
+        ),
+    ],
+)
+def test_vehicle_live_values(states: dict, expected: dict) -> None:
+    """SoC, energy in the battery and plugged state from the car's own sensors."""
+    from sunflow.api.vehicles import vehicle_live
+    from sunflow.config.models import Vehicle
+
+    vehicle = Vehicle(name="Fiat", capacity_wh=37500, soc_entity="sensor.soc", plugged_entity="binary_sensor.plug")
+    live = vehicle_live(vehicle, states)
+    assert {k: live[k] for k in expected} == expected

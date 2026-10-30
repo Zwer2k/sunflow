@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.46.1
+
+- Einstellungen → Fahrzeuge: Die Karte zeigt wie bei den Geräten die aktuellen Werte der Fahrzeug-Sensoren – zugeklappt in einer Zeile, aufgeklappt als Kacheln: Ladestand (mit Stand der Messung), Energie im Akku und ob das Auto angesteckt bzw. zuhause ist. Die Werte aktualisieren sich alle 30 Sekunden.
+
 ## 0.46.0
 
 - Planung → Vorgaben → „Ladegrenze gilt“: „immer“ (wie bisher) oder „außer vor Schlechtwetter-Tagen“. Sagt die PV-Prognose für morgen bzw. die nächsten Tage (einstellbar 1–5) weniger Ertrag als den erwarteten Tagesverbrauch voraus, setzt Sunflow die Ladegrenze aus und lässt den Speicher mit der PV vorher voll laden. Der Plan nennt den betreffenden Tag. Gezählt werden nur Tage, die die Prognose ganz abdeckt; der heutige Tag zählt nicht.
