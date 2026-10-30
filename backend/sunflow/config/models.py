@@ -275,6 +275,16 @@ class StrategyOverride(BaseModel):
         return self.until is None or self.until > now
 
 
+ForecastKind = Literal["total", "plant", "plane"]
+
+
+class IntegrationSettings(BaseModel):
+    """What the Sunflow integration in Home Assistant gets."""
+
+    # PV forecasts for the energy dashboard: in total, per plant (inverter), per plane (string)
+    forecast_kinds: list[ForecastKind] = Field(default_factory=lambda: ["total", "plant", "plane"])
+
+
 class ControlSettings(BaseModel):
     """Whether Sunflow carries out its plan on the devices (off: planning only)."""
 
@@ -306,6 +316,7 @@ class SunflowConfig(BaseModel):
     # Per consumer id: all conditions must hold before it gets PV or battery energy
     priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
     control: ControlSettings = Field(default_factory=ControlSettings)
+    integration: IntegrationSettings = Field(default_factory=IntegrationSettings)
     vehicles: list[Vehicle] = Field(default_factory=list)
     # Vehicle at wallbox: card, target, ready by
     charging: list[ChargingProfile] = Field(default_factory=list)

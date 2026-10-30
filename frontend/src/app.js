@@ -212,6 +212,7 @@ class SunflowApp extends LitElement {
     _direct: { state: true },
     _directProfiles: { state: true },
     _link: { state: true },
+    _integrationSettings: { state: true },
     _manualEditId: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
@@ -257,6 +258,7 @@ class SunflowApp extends LitElement {
     this._direct = null;
     this._directProfiles = null;
     this._link = null;
+    this._integrationSettings = null;
     // Sunflow device id -> device test state
     this._tests = {};
     this._testConfirm = new Set();
@@ -1110,6 +1112,7 @@ class SunflowApp extends LitElement {
       <p class="small muted">Sie bringt die gelernte PV-Prognose ins Energie-Dashboard (je Fläche, Anlage und gesamt), Zähler je
         PV-String und Sensoren für eigene Automationen. Home Assistant bietet sie unter „Einstellungen → Geräte &amp; Dienste“
         als gefunden an; sonst von Hand mit Adresse und Schlüssel einrichten.</p>
+      ${this._renderForecastKinds()}
       ${link
         ? html`<div class="fields">
             <label class="field"><span class="field-label">Adresse</span>
@@ -1119,6 +1122,41 @@ class SunflowApp extends LitElement {
           </div>`
         : html`<div><button class="secondary" @click=${() => this._showLink()}>Zugangsdaten anzeigen …</button></div>`}
     </section>`;
+  }
+
+  _renderForecastKinds() {
+    const settings = this._integrationSettings;
+    if (!settings) {
+      // Loaded once when the section is first shown; undefined while loading
+      if (settings === null) {
+        this._integrationSettings = undefined;
+        api.integrationSettings().then((loaded) => (this._integrationSettings = loaded)).catch(() => (this._integrationSettings = null));
+      }
+      return nothing;
+    }
+    const kinds = [
+      ["total", "Gesamt"],
+      ["plant", "je Wechselrichter"],
+      ["plane", "je Fläche / String"],
+    ];
+    return html`<div class="field">
+      <span class="field-label">PV-Prognosen fürs Energie-Dashboard</span>
+      <span class="inline">${kinds.map(([kind, label]) => html`<label class="inline">
+        <input type="checkbox" .checked=${settings.forecast_kinds.includes(kind)}
+          @change=${(e) => this._setForecastKind(kind, e.target.checked)}> ${label}</label>`)}</span>
+      <span class="small muted">Jede gewählte Prognose wird ein eigenes Gerät in Home Assistant. Abgewählte verschwinden
+        dort beim nächsten Abgleich (bis zu 15 Minuten).</span>
+    </div>`;
+  }
+
+  async _setForecastKind(kind, on) {
+    const current = this._integrationSettings.forecast_kinds.filter((k) => k !== kind);
+    const forecast_kinds = on ? [...current, kind] : current;
+    try {
+      this._integrationSettings = await api.setIntegrationSettings({ ...this._integrationSettings, forecast_kinds });
+    } catch (err) {
+      this._error = `Einstellung nicht gespeichert: ${err.message}`;
+    }
   }
 
   async _showLink() {

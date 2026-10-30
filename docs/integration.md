@@ -24,8 +24,11 @@ Sunflow aus Automationen bedienen. Gerechnet und gesteuert wird weiter in der Ap
 | Sunflow PV-Strings | Energie und Leistung je PV-String |
 
 Jede Prognose ist ein eigener Eintrag der Integration, weil das Energie-Dashboard
-Prognosen nach Eintrag auswählt. Neue Flächen und Anlagen legt die Integration selbst an;
-ein gelöschter Prognose-Eintrag kommt nicht wieder.
+Prognosen nach Eintrag auswählt. Welche Arten es gibt (gesamt, je Wechselrichter, je
+Fläche/String), stellst du in Sunflow unter „Integrationen → Sunflow-Integration in Home
+Assistant“ ein. Neue Flächen und Anlagen legt die Integration selbst an, abgewählte
+entfernt sie wieder; einen in Home Assistant gelöschten Prognose-Eintrag legt sie nicht
+erneut an, solange er angeboten bleibt.
 
 ## Prognose im Energie-Dashboard
 

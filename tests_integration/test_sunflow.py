@@ -164,3 +164,18 @@ async def test_watchdog_hands_back_when_the_app_is_gone(
 
     assert [c.data["entity_id"] for c in calls] == ["input_boolean.charge"]
     assert ir.async_get(hass).async_get_issue("sunflow_ems", "app_unreachable") is not None
+
+
+async def test_forecasts_follow_the_app(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    """A forecast the App no longer offers loses its entry; offered again, it comes back."""
+    await _setup(hass, aioclient_mock, STATE)
+    app = next(e for e in hass.config_entries.async_entries("sunflow_ems") if e.title == "Sunflow")
+    coordinator = app.runtime_data.forecasts
+
+    coordinator.async_set_updated_data({**FORECAST, "targets": FORECAST["targets"][:1]})
+    await hass.async_block_till_done()
+    assert sorted(e.title for e in hass.config_entries.async_entries("sunflow_ems")) == ["PV-Prognose · Gesamt", "Sunflow"]
+
+    coordinator.async_set_updated_data(FORECAST)
+    await hass.async_block_till_done()
+    assert len(hass.config_entries.async_entries("sunflow_ems")) == 3

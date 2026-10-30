@@ -239,6 +239,7 @@ async def get_forecast_export(request: Request) -> dict[str, Any]:
     try:
         site = await runner.pv_correction()
         targets = await export_forecasts(config, fetch, site, runner.plane_corrections, tz)
+        targets = [t for t in targets if t.kind in config.integration.forecast_kinds]
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     return as_response(targets, now, tz)

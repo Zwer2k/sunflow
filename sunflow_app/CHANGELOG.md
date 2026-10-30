@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.49.0
+
+- Integrationen → Sunflow-Integration: wählbar, welche PV-Prognosen Home Assistant bekommt – gesamt, je Wechselrichter, je Fläche/String (Standard: alle). Abgewählte verschwinden in Home Assistant samt Gerät beim nächsten Abgleich (bis zu 15 Minuten), wieder angewählte kommen zurück. Eine in Home Assistant gelöschte, aber weiter angebotene Prognose bleibt gelöscht (Integration 0.3.1).
+
 ## 0.48.2
 
 - Die Integration heißt jetzt `sunflow_ems` (Integration 0.3.0). Unter `sunflow` gibt es bereits eine fremde Integration, deren Icon Home Assistant anzeigte. Mit der neuen Domain erscheint überall das Sunflow-Icon der App. Aktionen und Ereignisse heißen entsprechend `sunflow_ems.plan_load`, `sunflow_ems_load_start` usw.

@@ -76,9 +76,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SunflowConfigEntry) -> b
         await data.strings.async_config_entry_first_refresh()
         await data.state.async_config_entry_first_refresh()
         entry.runtime_data = data
-        _offer_new_forecasts(hass, entry)
+        _sync_forecasts(hass, entry)
         entry.async_on_unload(
-            data.forecasts.async_add_listener(lambda: _offer_new_forecasts(hass, entry))
+            data.forecasts.async_add_listener(lambda: _sync_forecasts(hass, entry))
         )
         entry.async_on_unload(data.state.async_add_listener(StateEvents(hass, data)))
         entry.async_on_unload(Watchdog(hass, data).start())
@@ -87,29 +87,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: SunflowConfigEntry) -> b
 
 
 @callback
-def _offer_new_forecasts(hass: HomeAssistant, entry: SunflowConfigEntry) -> None:
-    """Create an entry for every forecast not seen before; one the user deleted stays deleted."""
-    known = set(entry.data.get(CONF_KNOWN_TARGETS, []))
-    targets = entry.runtime_data.forecasts.data.get("targets", [])
-    new = [t for t in targets if t["id"] not in known]
-    if not new:
+def _sync_forecasts(hass: HomeAssistant, entry: SunflowConfigEntry) -> None:
+    """Follow the forecasts the App offers.
+
+    A new one gets an entry; one the App no longer offers (deselected in Sunflow, plane
+    removed) loses its entry and may come again later. One the user deleted while still
+    offered stays deleted.
+    """
+    data = entry.runtime_data.forecasts.data or {}
+    if "targets" not in data:
         return
-    for target in new:
+    offered = {t["id"]: t for t in data["targets"]}
+    known = set(entry.data.get(CONF_KNOWN_TARGETS, []))
+    for other in hass.config_entries.async_entries(DOMAIN):
+        if other.data.get(CONF_APP_ENTRY) == entry.entry_id and other.data.get(CONF_TARGET) not in offered:
+            hass.async_create_task(hass.config_entries.async_remove(other.entry_id))
+    for target_id, target in offered.items():
+        if target_id in known:
+            continue
         discovery_flow.async_create_flow(
             hass,
             DOMAIN,
             context={"source": SOURCE_INTEGRATION_DISCOVERY},
             data={
                 CONF_APP_ENTRY: entry.entry_id,
-                CONF_TARGET: target["id"],
+                CONF_TARGET: target_id,
                 "name": target["name"],
                 "kind": target["kind"],
             },
         )
-    hass.config_entries.async_update_entry(
-        entry,
-        data={**entry.data, CONF_KNOWN_TARGETS: sorted(known | {t["id"] for t in new})},
-    )
+    if known != set(offered):
+        hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_KNOWN_TARGETS: sorted(offered)})
 
 
 class StateEvents:
