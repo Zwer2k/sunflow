@@ -206,11 +206,7 @@ class SunflowControl extends LitElement {
                 <strong>${d.name}</strong>
                 <span class="small muted">${d.kind === "battery" ? "Speicher" : CATEGORY_LABELS[d.category] ?? ""}</span>
               </label>
-              ${d.kind === "loadpoint" && d.enabled
-                ? html`<span class="small muted">Wird der Ladepunkt auch an anderer Stelle gesteuert (z. B. eine Automation oder ein
-                    Zeitplan), dort ausschalten – sonst schalten zwei Steuerungen gegeneinander.</span>`
-                : nothing}
-              <span class="small muted">${d.blocked
+              <span class="small status">${d.blocked
                 ? `nicht möglich: ${d.blocked}`
                 : !d.enabled
                   ? "aus – Sunflow plant nur"
@@ -219,6 +215,10 @@ class SunflowControl extends LitElement {
                   : s?.active
                     ? `${ACTION_LABELS[s.action] ?? s.action}${s.power_w ? ` · ${Math.round(s.power_w)} W` : ""} · ${s.reason}${s.last_write ? ` · zuletzt geschrieben ${time(s.last_write)}` : ""}`
                     : s?.reason ?? "startet mit der nächsten Minute"}</span>
+              ${d.kind === "loadpoint" && d.enabled && t.enabled
+                ? html`<span class="small muted">Wird der Ladepunkt auch an anderer Stelle gesteuert (z. B. eine Automation oder ein
+                    Zeitplan), dort ausschalten – sonst schalten zwei Steuerungen gegeneinander.</span>`
+                : nothing}
               ${s?.error ? html`<span class="small warn-text">Fehler: ${s.error} – nächster Versuch in einer Minute</span>` : nothing}
               ${s?.note ? html`<span class="small muted">${s.note}</span>` : nothing}
             </li>`;
@@ -471,6 +471,7 @@ class SunflowControl extends LitElement {
     .takeover.on { border-color: var(--sf-primary); }
     .takeover-devices { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
     .takeover-devices li { display: flex; flex-direction: column; gap: 2px; }
+    .takeover-devices .status { padding-left: 26px; }
     .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
     .switch input { width: 18px; height: 18px; margin: 0; }
     .alert.warn { padding: 10px 14px; border-radius: 8px; background: var(--sf-warn-bg); color: var(--sf-warn-text); margin-top: 8px; }

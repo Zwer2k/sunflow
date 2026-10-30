@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.3
+
+- Steuerung → „Sunflow steuert“: Der Zustand jedes Geräts steht direkt unter seinem Namen und ist besser lesbar; der Hinweis zu anderen Steuerungen erscheint bei Ladepunkten nur noch, wenn Sunflow sie tatsächlich steuert.
+
 ## 0.41.2
 
 - Steuerung: Der Hinweis bei Ladepunkten nennt allgemein „an anderer Stelle gesteuert“ statt evcc.
