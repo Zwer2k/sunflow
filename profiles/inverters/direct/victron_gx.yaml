@@ -1,0 +1,63 @@
+# Victron ESS (GX device with Multi/Quattro) directly over Modbus TCP: enable "Modbus TCP"
+# in the GX settings. All values come from com.victronenergy.system (unit 100).
+# Battery control as evcc does it, by the ESS minimum SoC (BatteryLife minimum SoC limit):
+# holding raises it to the current SoC, forced charging to 100 % (the Multi then charges
+# with its full power from PV and grid), auto restores the configured minimum. The limit is
+# a GX setting kept over restarts, so it is only written when it changes.
+# Registers as in evcc's victron-energy template; not verified on hardware by Sunflow.
+profile: modbus/victron_gx
+version: 1
+
+connection:
+  type: modbus_tcp
+  port: 502
+  unit_id: 100
+  manufacturer: Victron Energy
+  model: GX (ESS)
+  points:
+    battery_power: {address: 842, type: input, encoding: int16, unit: W, device_class: power}
+    battery_soc: {address: 843, type: input, encoding: uint16, unit: "%", device_class: battery}
+    grid_l1: {address: 820, type: input, encoding: int16, unit: W, device_class: power}
+    grid_l2: {address: 821, type: input, encoding: int16, unit: W, device_class: power}
+    grid_l3: {address: 822, type: input, encoding: int16, unit: W, device_class: power}
+    pv_dc: {address: 850, type: input, encoding: uint16, unit: W, device_class: power}
+    pv_acout_l1: {address: 808, type: input, encoding: uint16, unit: W, device_class: power}
+    pv_acout_l2: {address: 809, type: input, encoding: uint16, unit: W, device_class: power}
+    pv_acout_l3: {address: 810, type: input, encoding: uint16, unit: W, device_class: power}
+    pv_acin_l1: {address: 811, type: input, encoding: uint16, unit: W, device_class: power}
+    pv_acin_l2: {address: 812, type: input, encoding: uint16, unit: W, device_class: power}
+    pv_acin_l3: {address: 813, type: input, encoding: uint16, unit: W, device_class: power}
+
+capabilities: [pv, battery, grid_meter, battery_control]
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: battery_soc, unit: "%"}
+  battery_power: {key: battery_power, unit: W, sign: charge_positive}
+  # DC (MPPT) and AC coupled PV together
+  pv_power:
+    key: pv_dc
+    unit: W
+    fine_keys: [pv_dc, pv_acout_l1, pv_acout_l2, pv_acout_l3, pv_acin_l1, pv_acin_l2, pv_acin_l3]
+  grid_power: {key: grid_l1, unit: W, sign: import_positive, fine_keys: [grid_l1, grid_l2, grid_l3]}
+
+parameters:
+  capacity_wh: {unit: Wh, min: 1000}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, default: 5000, min: 0}
+  max_discharge: {unit: W, default: 5000, min: 0}
+  efficiency_pct: {unit: "%", default: 92, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 94, min: 80, max: 100}
+
+battery_control:
+  auto:
+    - modbus: {address: 2901, value: "{{ min_soc }}", scale: 0.1, storage: eeprom, write: if_differs}
+  hold:
+    - modbus: {address: 2901, value: "{{ role_battery_soc }}", scale: 0.1, min: 0, max: 100, storage: eeprom, write: if_differs, tolerance: 5}
+  force_charge:
+    - modbus: {address: 2901, value: 100, scale: 0.1, storage: eeprom, write: if_differs}
+  full_power_only: true
+
+eeprom_guard:
+  max_writes_per_day: 30

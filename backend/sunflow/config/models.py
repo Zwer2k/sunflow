@@ -102,7 +102,8 @@ class Connection(BaseModel):
     host: str
     # None: the profile's default port
     port: int | None = Field(default=None, ge=1, le=65535)
-    unit_id: int = Field(default=1, ge=0, le=255)
+    # None: the profile's default unit id
+    unit_id: int | None = Field(default=None, ge=0, le=255)
 
 
 class DeviceConfig(BaseModel):
