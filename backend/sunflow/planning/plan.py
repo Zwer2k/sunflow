@@ -8,7 +8,13 @@ import math
 import time
 from typing import Any
 
-from sunflow.config.models import BATTERY_PRIORITY_ID, DeviceConfig, SunflowConfig
+from sunflow.config.models import (
+    BATTERY_PRIORITY_ID,
+    DeviceConfig,
+    FeedIn,
+    ForecastPlane,
+    SunflowConfig,
+)
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import battery_actions, controls_battery, supported_action
 from sunflow.devices.resolver import preview
@@ -739,13 +745,49 @@ def device_actions(plan: Plan, profile: dict[str, Any]) -> None:
             slot.action, slot.action_power_w = action
 
 
-def feed_in_price(config: SunflowConfig, battery_device: DeviceConfig | None) -> float:
-    """Feed-in €/kWh: the battery inverter's plant first, else the first configured rate."""
+def feed_in_of(config: SunflowConfig, battery_device: DeviceConfig | None) -> FeedIn | None:
+    """Feed-in of the battery inverter's plant first, else the first configured rate."""
     candidates = ([battery_device] if battery_device else []) + config.devices
     for device in candidates:
         if (feed_in := config.feed_in.get(device.id)) and feed_in.rate_ct_per_kwh is not None:
-            return feed_in.rate_ct_per_kwh / 100
-    return 0.0
+            return feed_in
+    return None
+
+
+def feed_in_price(config: SunflowConfig, battery_device: DeviceConfig | None) -> float:
+    """Feed-in €/kWh (see feed_in_of)."""
+    feed_in = feed_in_of(config, battery_device)
+    return feed_in.rate_ct_per_kwh / 100 if feed_in and feed_in.rate_ct_per_kwh is not None else 0.0
+
+
+def slot_feed_in(inputs: list[SlotInput], feed_in: FeedIn | None) -> list[SlotInput]:
+    """Feed-in per slot: under the solar peak law nothing is paid at negative prices.
+
+    Only the import price is known; when even it is negative the market price is too.
+    """
+    if feed_in is None or feed_in.model != "solar_peak":
+        return inputs
+    return [replace(slot, feed_in=0.0) if slot.price < 0 else slot for slot in inputs]
+
+
+def curtailable_shares(
+    config: SunflowConfig,
+    profiles: dict[str, dict[str, Any]],
+    planes: list[ForecastPlane],
+    plane_slots: dict[str, list[float]],
+    n: int,
+) -> list[float]:
+    """Share of the PV per slot from plants whose output Sunflow can limit (their planes)."""
+    limited = {d.id for d in config.devices if "pv_limit" in profiles[d.profile]}
+    keys = {p.key for p in planes if p.device_id in limited}
+    if not keys:
+        return [0.0] * n
+    shares = []
+    for t in range(n):
+        total = sum(powers[t] for powers in plane_slots.values())
+        part = sum(powers[t] for key, powers in plane_slots.items() if key in keys)
+        shares.append(part / total if total > 0 else 0.0)
+    return shares
 
 
 def value_at(points: list[Any], moment: datetime, attribute: str) -> float | None:
@@ -974,7 +1016,7 @@ async def compute_plan(
         )
 
     settings = optimizer_settings(config, battery)
-    inputs = build_inputs(start, prices, pv, load, feed_in_price(config, battery_device))
+    inputs = slot_feed_in(build_inputs(start, prices, pv, load, feed_in_price(config, battery_device)), feed_in_of(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
     raw_pv = [slot.pv_w for slot in inputs]
@@ -1047,6 +1089,8 @@ async def compute_plan(
         settings = replace(settings, allow_grid_charge=True, full_charge_penalty=OVERDUE_FULL_CHARGE_PENALTY)
     warnings += care.notes
     settings = restrict_to_device(settings, battery_actions(profile), warnings)
+    shares = curtailable_shares(config, profiles, used_planes, plane_slots, len(inputs))
+    inputs = [replace(slot, curtailable_w=slot.pv_w * share) for slot, share in zip(inputs, shares, strict=True)]
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
     device_actions(plan, profile)

@@ -35,6 +35,7 @@ from sunflow.devices.executor import (
     find_entity,
     plan_battery,
     plan_charge,
+    plan_pv_limit,
 )
 from sunflow.devices.profiles import controls_battery, supported_action
 from sunflow.devices.resolver import device_entities, preview
@@ -58,6 +59,13 @@ SWITCH_ON_SHARE = 0.5
 GRID_MARGIN_W = 300.0
 # Already charging, it keeps the minimum current down to this share of it
 KEEP_CHARGING_SHARE = 0.5
+# Actions of the PV limit, besides the battery and charge actions of a device
+PV_LIMIT_PREFIX = "pv_"
+PV_SET, PV_RELEASE = f"{PV_LIMIT_PREFIX}set", f"{PV_LIMIT_PREFIX}release"
+# Planned curtailment from which the output is limited
+MIN_CURTAIL_W = 100.0
+# Limits are written in these steps, so the minutely correction does not write every time
+LIMIT_STEP_W = 100.0
 # A temporary current (amx) is sent again after this time even when unchanged
 CURRENT_REFRESH = timedelta(minutes=5)
 VOLTS = 230.0
@@ -89,6 +97,8 @@ class DeviceControl:
     current_a: int | None = None
     # Batteries: grid power the inverter regulates to (buffer only with PV surplus)
     grid_target_w: float | None = None
+    # PV plants: output limit in force (None: not limited)
+    limit_w: float | None = None
     last_current_write: datetime | None = None
     calls: list[dict[str, Any]] = field(default_factory=list)
 
@@ -141,6 +151,22 @@ def grid_buffer(buffer: float, slot: Any, planned: bool) -> float:
     if planned and slot is not None and (getattr(slot, "export_w", 0.0) or 0.0) > abs(buffer):
         return buffer
     return 0.0
+
+
+def pv_limit_w(output: Any, slot: Any, live: Any) -> float:
+    """Output limit for a curtailed slot: what the plant gives now minus the export above the plan.
+
+    Below the plan (also while already limited) the limit rises again by the difference.
+    Without live values the planned curtailment is taken off the output, without the
+    output off the planned PV. Rounded to steps so small fluctuations cause no writes.
+    """
+    if not isinstance(output, int | float):
+        limit = (getattr(slot, "pv_w", 0.0) or 0.0) - slot.curtail_w
+    elif live is not None and live.grid_w is not None:
+        limit = output - (-live.grid_w - (getattr(slot, "export_w", 0.0) or 0.0))
+    else:
+        limit = output - slot.curtail_w
+    return max(round(limit / LIMIT_STEP_W) * LIMIT_STEP_W, 0.0)
 
 
 def charge_current(power: float, params: dict[str, float]) -> int:
@@ -242,6 +268,8 @@ class DeviceAccess:
     release: str | None = "auto"
     # Whether the device already holds what a call would write
     matches: Callable[[PlannedCall, dict[str, dict[str, Any]]], bool] = current_matches
+    # The device limits its PV: the limit is lifted when handing back as well
+    pv_limit: bool = False
 
 
 async def apply(
@@ -300,6 +328,9 @@ async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str
         return
     if access.release is not None:
         await apply(access, status, access.release, None, datetime.now(UTC))
+    if access.pv_limit:
+        await apply(access, DeviceControl(device_id=device_id, name=status.name), PV_RELEASE, None, datetime.now(UTC))
+        status.limit_w = None
     if (previous := taken[device_id]) and access.set_mode:
         await access.set_mode(previous)
     marker.clear(device_id)
@@ -332,6 +363,10 @@ def device_access(
     async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, dict[str, Any]]]:
         snapshot = await fetch_snapshot(client, hub)
         entities = device_entities(snapshot, device.ha_device_id)
+        if action.startswith(PV_LIMIT_PREFIX):
+            return plan_pv_limit(
+                profile, action.removeprefix(PV_LIMIT_PREFIX), device.parameters, runtime, entities
+            ), snapshot.states
         if charging:
             # Own consumers have no HA device: their steps address the entities chosen per role
             bound = {k: o.entity_id for k, o in device.role_overrides.items() if o.entity_id}
@@ -374,8 +409,11 @@ def device_access(
             plan=plan, run=run, ensure_mode=current_option, set_mode=restore, release=release, matches=matches
         )
 
+    limits = "pv_limit" in profile
+    # Only the PV is controlled (e.g. a PV inverter without battery)
+    release = "release" if controls_battery(profile) else None
     if not (control_mode := profile.get("control_mode")):
-        return DeviceAccess(plan=plan, run=run, release="release", matches=matches)
+        return DeviceAccess(plan=plan, run=run, release=release, matches=matches, pv_limit=limits)
 
     async def select(option: str) -> str | None:
         snapshot = await fetch_snapshot(client, hub)
@@ -399,7 +437,9 @@ def device_access(
     async def set_mode(option: str) -> None:
         await select(option)
 
-    return DeviceAccess(plan=plan, run=run, ensure_mode=ensure_mode, set_mode=set_mode, release="release", matches=matches)
+    return DeviceAccess(
+        plan=plan, run=run, ensure_mode=ensure_mode, set_mode=set_mode, release=release, matches=matches, pv_limit=limits
+    )
 
 
 class PlanController:
@@ -418,16 +458,18 @@ class PlanController:
         self.statuses: dict[str, DeviceControl] = {}
         self.paused: str | None = None
         self._config = SunflowConfig()
+        # Writes of the PV limits, apart from the battery writes of the same device (refresh)
+        self._limit_writes: dict[str, DeviceControl] = {}
 
     def controllable(self, device: DeviceConfig) -> bool:
-        """A battery with a control primitive or a loadpoint with charge control."""
+        """A battery with a control primitive, a loadpoint with charge control or a PV limit."""
         profile = self._profiles()[device.profile]
-        return controls_battery(profile) or "charge_control" in profile
+        return controls_battery(profile) or "charge_control" in profile or "pv_limit" in profile
 
     def eligible(self, config: SunflowConfig, device: DeviceConfig) -> str | None:
         """Why a device cannot be controlled, None if it can."""
         profile = self._profiles()[device.profile]
-        if "charge_control" in profile:
+        if "charge_control" in profile or ("pv_limit" in profile and not controls_battery(profile)):
             return None
         if not controls_battery(profile):
             return "nicht steuerbar"
@@ -457,12 +499,49 @@ class PlanController:
         for device in config.devices:
             if not self.wanted(config, device):
                 continue
-            if "charge_control" in self._profiles()[device.profile]:
+            profile = self._profiles()[device.profile]
+            if "charge_control" in profile:
                 await self._safely(device.id, device, lambda d, s: self._charge(d, s, plan, plan_at, now, live))
+            elif not controls_battery(profile):
+                pass
             elif self.paused:
                 self._status(device).reason = self.paused
             else:
                 await self._safely(device.id, device, lambda d, s: self._battery(d, s, plan, plan_at, now))
+            if "pv_limit" in profile:
+                await self._safely(device.id, device, lambda d, s: self._limit(d, s, plan, plan_at, now, snapshot, live))
+
+    async def _limit(
+        self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime,
+        snapshot: Snapshot, live: Any,
+    ) -> None:
+        """Limit the PV output while the plan curtails, corrected by the export actually measured."""
+        access = self._access_for(device)
+        await take_over(access, self._marker, device.id)
+        profile = self._profiles()[device.profile]
+        bookkeeping = self._limit_writes.setdefault(device.id, DeviceControl(device_id=device.id, name=device.name))
+        _, _, reason = desired_action(plan, plan_at, now)
+        slot = current_slot(plan, now) if reason == "nach Plan" else None
+        curtail = getattr(slot, "curtail_w", 0.0) or 0.0
+        if curtail < MIN_CURTAIL_W:
+            if status.limit_w is not None or bookkeeping.last_write is None:
+                await apply(access, bookkeeping, PV_RELEASE, None, now)
+            status.limit_w = None
+            status.active = True
+            return
+        roles = {
+            r.role: r.value
+            for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+        }
+        output = roles.get("ac_power") if isinstance(roles.get("ac_power"), int | float) else roles.get("pv_power")
+        limit = pv_limit_w(output, slot, live)
+        refresh = profile["pv_limit"].get("refresh")
+        await apply(
+            access, bookkeeping, PV_SET, None, now, {"limit_w": limit},
+            refresh=parse_duration(refresh, timedelta()) if refresh else None,
+        )
+        status.active, status.limit_w = True, limit
+        status.reason = f"PV auf {limit / 1000:.1f} kW begrenzt ({reason})".replace(".", ",")
 
     async def _battery(self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime) -> None:
         action, power, reason = desired_action(plan, plan_at, now)
@@ -564,7 +643,16 @@ class PlanController:
                 # Without Sunflow nobody would start or stop charging
                 await self._safely(device.id, device, lambda d, s: hand_back(self._access_for(d), self._marker, d.id, s))
             else:
-                await self._safely(device.id, device, lambda d, s: apply(self._access_for(d), s, "auto", None, datetime.now(UTC)))
+                await self._safely(device.id, device, self._release_on_shutdown)
+
+    async def _release_on_shutdown(self, device: DeviceConfig, status: DeviceControl) -> None:
+        access = self._access_for(device)
+        if access.release is not None:
+            await apply(access, status, "auto", None, datetime.now(UTC))
+        # Without Sunflow nobody would lift the limit again
+        if access.pv_limit:
+            await apply(access, DeviceControl(device_id=device.id, name=device.name), PV_RELEASE, None, datetime.now(UTC))
+            status.limit_w = None
 
     def _status(self, device: DeviceConfig) -> DeviceControl:
         status = self.statuses.setdefault(device.id, DeviceControl(device_id=device.id, name=device.name))

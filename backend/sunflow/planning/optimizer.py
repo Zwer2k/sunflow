@@ -81,6 +81,8 @@ class SlotInput:
     feed_in: float  # export €/kWh
     # Pessimistic PV (p10), when the forecast has a range
     pv_low_w: float | None = None
+    # Part of pv_w from plants whose output Sunflow can limit
+    curtailable_w: float = 0.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -139,6 +141,9 @@ class FlexResult:
 
 
 SOLVER_TIME_LIMIT = 15
+# €/kWh for PV limited away: above the export tie-breaker, so PV is only limited when
+# exporting it really costs (negative feed-in, peak penalty)
+CURTAIL_COST = 0.01
 # Above this share of the capacity the battery counts as full when choosing actions
 FULL_FRACTION = 0.98
 # Cost per W of change between consecutive slots (import, export, flexible loads): far below
@@ -164,6 +169,8 @@ class PlanSlot:
     action: Action
     action_power_w: float | None
     flex_w: dict[str, float] = field(default_factory=dict)
+    # PV the plan limits away (negative feed-in, above the grid friendly export limit)
+    curtail_w: float = 0.0
 
 
 @dataclass(kw_only=True)
@@ -351,6 +358,10 @@ def optimize(
     full_short = count if settings.full_charge_slot is not None and 0 <= settings.full_charge_slot < n else None
     if full_short is not None:
         count += 1
+    # PV limited away per slot, only where plants can be limited
+    cu = count + np.arange(n) if any(i.curtailable_w > 0 for i in inputs) else None
+    if cu is not None:
+        count += n
     battery = replace(battery, soc_wh=min(max(battery.soc_wh, 0), battery.capacity_wh))
     wear = settings.wear_ct_per_kwh / 100
     mean_price = float(np.mean([i.price for i in inputs]))
@@ -376,6 +387,8 @@ def optimize(
     cost[s[-1]] -= terminal / 1000
     if full_short is not None:
         cost[full_short] = settings.full_charge_penalty / 1000
+    if cu is not None:
+        cost[cu] = CURTAIL_COST * DT_H / 1000
     for over in (over_export, over_import):
         if over is not None:
             cost[over] = settings.peak_penalty_ct_per_kwh / 100 * DT_H / 1000
@@ -405,6 +418,8 @@ def optimize(
         for k in range(len(flex)):
             a_eq[t, f[k][t]] = -1
         b_eq[t] = slot.load_w - slot.pv_w
+        if cu is not None:
+            a_eq[t, cu[t]] = -1
         # State of charge
         row = n + t
         a_eq[row, s[t]] = 1
@@ -453,6 +468,8 @@ def optimize(
         )
         lower[s[t]] = soc_min
         upper[s[t]] = soc_upper
+        if cu is not None:
+            upper[cu[t]] = min(max(slot.curtailable_w, 0.0), max(slot.pv_w, 0.0))
         for k, load in enumerate(flex):
             limit = load.max_power_w if load.available[t] else 0.0
             if load.pv_only:
@@ -658,8 +675,9 @@ def optimize(
     x = result.x
     for t, slot in enumerate(inputs):
         flex_now = sum(x[f[k][t]] for k in range(len(flex)))
+        curtail = float(x[cu[t]]) if cu is not None else 0.0
         action, power = choose_action(
-            slot.pv_w,
+            slot.pv_w - curtail,
             slot.load_w + flex_now,
             x[c[t]],
             x[d[t]],
@@ -683,6 +701,7 @@ def optimize(
                 action=action,
                 action_power_w=power,
                 flex_w={load.name: float(x[f[k][t]]) for k, load in enumerate(flex)},
+                curtail_w=curtail,
             )
         )
     plan.flex = [

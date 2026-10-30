@@ -28,6 +28,8 @@ class DummyInverter:
         """Stop listening."""
         assert self._server is not None
         self._server.close()
+        # A test that failed before closing its client must not hang here
+        self._server.close_clients()
         await self._server.wait_closed()
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
