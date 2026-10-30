@@ -1318,13 +1318,21 @@ async def set_priority_conditions(
 
 
 @router.get("/history")
-async def get_history(request: Request, hours: Annotated[int, Query(ge=1, le=31 * 24)] = 24) -> dict[str, Any]:
-    """Return measured SoC, PV, load and grid of the last hours from HA statistics."""
+async def get_history(
+    request: Request,
+    hours: Annotated[int, Query(ge=1, le=31 * 24)] = 24,
+    end: datetime | None = None,
+) -> dict[str, Any]:
+    """Return measured SoC, PV, load and grid of the hours before end (default: now) from HA statistics."""
     hours = max(1, min(hours, 7 * 24))
     snapshot = await _snapshot(request)
     config = request.app.state.store.load()
     series = history_series(config, _library(request).profiles, snapshot)
-    end = _slot_start()
+    now = _slot_start()
+    # An earlier window when the charts are scrolled back; never into the future
+    end = now if end is None else min(end.astimezone(UTC), now)
+    if end < now - timedelta(days=31):
+        raise HTTPException(status_code=422, detail="Nicht weiter als 31 Tage zurück")
     # 15 minute resolution up to two days, hourly above to keep charts readable
     bucket = timedelta(minutes=15) if hours <= 48 else timedelta(hours=1)
     start = end - timedelta(hours=hours)

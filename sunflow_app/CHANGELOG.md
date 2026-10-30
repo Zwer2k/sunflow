@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.44.0
+
+Planung → Verlauf und Prognose:
+
+- 24 h, 48 h und 7 Tage wählen die Breite des Zeitfensters (ein Drittel Vergangenheit, zwei Drittel Zukunft; Standard 48 h).
+- Mit ‹ und › springt das Fenster um eine halbe Breite in die Vergangenheit (bis 31 Tage) oder Zukunft (bis 7 Tage), „Jetzt“ springt zurück.
+- Hinter dem Planende (der Plan reicht so weit wie die Strompreise, höchstens 48 h) zeigt das PV-Diagramm die längere Solcast-Prognose, mit der gelernten Korrektur.
+
 ## 0.43.1
 
 - PV-Prognose: Der Sicherheitsabschlag von „Unsichere PV-Prognose“ (Richtung pessimistische Prognose) wirkt nicht mehr dort, wo gerade gemessen wird – in den nächsten Stunden im Maß der Kurzfristprognose – und bei klarem Himmel laut Wetter nur noch zu einem Viertel. Vorher plante Sunflow z. B. bei wolkenlosem Himmel mittags weniger PV, als schon vormittags gemessen wurde.

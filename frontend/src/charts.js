@@ -165,12 +165,20 @@ function isolated(points) {
  */
 let clipCount = 0;
 
-export function lineChart(series, { label, formatY, yMax: fixedMax, yMin = 0, now = null, limits = [], scaleMax = null, onScale = null }) {
+export function lineChart(
+  series,
+  { label, formatY, yMax: fixedMax, yMin = 0, now = null, limits = [], scaleMax = null, onScale = null, range = null },
+) {
   fit();
+  if (range) {
+    // A chosen time window (scrolling through days): only what lies in it, the axis exactly it
+    const inside = (p) => new Date(p.end) > range.start && new Date(p.start) < range.end;
+    series = series.map((s) => ({ ...s, points: s.points.filter(inside) }));
+  }
   const all = series.flatMap((s) => s.points).filter((p) => p.value !== null && p.value !== undefined);
   if (!all.length) return nothing;
-  const start = new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
-  const end = new Date(Math.max(...series.flatMap((s) => s.points.map((p) => new Date(p.end)))));
+  const start = range?.start ?? new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
+  const end = range?.end ?? new Date(Math.max(...series.flatMap((s) => s.points.map((p) => new Date(p.end)))));
   const zoomed = scaleMax !== null && scaleMax > yMin;
   // A chosen maximum keeps its value as top line, above it the lines are cut off
   const scale = niceScale(zoomed ? scaleMax : (fixedMax ?? Math.max(...all.map((p) => p.value)) * 1.05), yMin);
