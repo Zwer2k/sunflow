@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.7
+
+- Fahrzeuge: Jedes Fahrzeug und die Erkennung je Wallbox erscheinen kompakt und klappen sich wie die übrigen Karten auf; aufgeklappt sind die Felder gleich bearbeitbar (Speichern, Abbrechen, Entfernen).
+
 ## 0.41.6
 
 - Kenndaten: Die Geräte erscheinen kompakt mit den wichtigsten Werten und lassen sich aufklappen wie unter Geräte. Offen bleiben Geräte mit ungespeicherten Änderungen oder einer fehlenden Pflichtangabe (Speicherkapazität, Volumen des Warmwasserspeichers).
