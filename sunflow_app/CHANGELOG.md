@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.46.0
+
+- Planung → Vorgaben → „Ladegrenze gilt“: „immer“ (wie bisher) oder „außer vor Schlechtwetter-Tagen“. Sagt die PV-Prognose für morgen bzw. die nächsten Tage (einstellbar 1–5) weniger Ertrag als den erwarteten Tagesverbrauch voraus, setzt Sunflow die Ladegrenze aus und lässt den Speicher mit der PV vorher voll laden. Der Plan nennt den betreffenden Tag. Gezählt werden nur Tage, die die Prognose ganz abdeckt; der heutige Tag zählt nicht.
+
 ## 0.45.0
 
 Einstellungen neu geordnet:

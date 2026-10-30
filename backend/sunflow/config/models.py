@@ -205,6 +205,10 @@ class OptimizerConfig(BaseModel):
     large_load_threshold_w: float | None = 3500.0
     # Battery care: everyday charge limit and how often a full charge (balancing) is wanted
     max_soc_pct: float = Field(default=100, ge=50, le=100)
+    # "always": the limit holds every day; "unless_poor_days": lifted while a day with less
+    # PV than consumption is forecast within poor_days_ahead days, to store what PV gives
+    max_soc_mode: Literal["always", "unless_poor_days"] = "always"
+    poor_days_ahead: int = Field(default=2, ge=1, le=5)
     full_charge_every_days: int | None = Field(default=None, ge=1, le=90)
     # When PV did not fill the battery for this long, charge it full from the grid at the cheapest time
     full_charge_grid_after_days: int | None = Field(default=None, ge=1, le=120)

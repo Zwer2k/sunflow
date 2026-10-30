@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 import math
 import time
 from typing import Any
@@ -499,6 +499,8 @@ class BatteryCare:
     full_charge_at: datetime | None = None
     # Overdue: charge full from the grid if PV does not do it in time
     from_grid: bool = False
+    # A day with less PV than consumption ahead, for which the charge limit is lifted
+    poor_day: date | None = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -549,6 +551,28 @@ async def last_full_charge(client: HAClient, entity_id: str | None, days: int) -
     return datetime.fromtimestamp(max(full) / 1000, UTC) if full else None
 
 
+def poor_pv_day(pv: list[ForecastPoint], inputs: list[SlotInput], tz: tzinfo, days: int) -> date | None:
+    """First of the next days whose PV forecast is below the expected consumption.
+
+    Tomorrow and the following days up to days ahead; today does not count, its PV is
+    what the battery is charged with now. Consumption is the mean of the load forecast,
+    the PV forecast the full range of the source (beyond the price horizon).
+    """
+    if not inputs or not pv:
+        return None
+    daily_load_wh = sum(slot.load_w for slot in inputs) / len(inputs) * 24
+    today = inputs[0].start.astimezone(tz).date()
+    energy: dict[date, float] = {}
+    for point in pv:
+        day = point.start.astimezone(tz).date()
+        if today < day <= today + timedelta(days=days):
+            energy[day] = energy.get(day, 0.0) + point.power * (point.end - point.start).total_seconds() / 3600
+    # A day only counts when the forecast reaches past it (some sources leave out the night)
+    last = max(point.end for point in pv).astimezone(tz)
+    covered = [day for day in sorted(energy) if last >= datetime.combine(day, datetime.max.time(), tz) - timedelta(hours=4)]
+    return next((day for day in covered if energy[day] < daily_load_wh), None)
+
+
 async def battery_care(
     client: HAClient,
     config: SunflowConfig,
@@ -558,16 +582,30 @@ async def battery_care(
     battery: BatterySpec,
     inputs: list[SlotInput],
     tz: tzinfo,
+    pv: list[ForecastPoint] | None = None,
 ) -> BatteryCare:
     """Everyday charge limit, and when a full charge is due the slot to reach it.
 
     The full charge is aimed at the end of the PV surplus on the day it falls due (or
-    later in the horizon), so it comes from PV rather than the grid.
+    later in the horizon), so it comes from PV rather than the grid. With
+    "unless_poor_days" the limit is lifted while a poor PV day is ahead.
     """
     options = config.optimizer
     care = BatteryCare()
     if options.max_soc_pct < 100:
-        care.limit_wh = battery.capacity_wh * options.max_soc_pct / 100
+        poor = (
+            poor_pv_day(pv or [], inputs, tz, options.poor_days_ahead)
+            if options.max_soc_mode == "unless_poor_days"
+            else None
+        )
+        if poor is None:
+            care.limit_wh = battery.capacity_wh * options.max_soc_pct / 100
+        else:
+            care.poor_day = poor
+            care.notes.append(
+                f"Wenig PV erwartet am {WEEKDAYS[poor.weekday()]} {poor.strftime('%d.%m.')} – "
+                "Ladegrenze ausgesetzt, der Speicher darf voll laden."
+            )
     every = options.full_charge_every_days
     grid_after = options.full_charge_grid_after_days
     if not (every or grid_after) or not inputs:
@@ -1086,7 +1124,7 @@ async def compute_plan(
     )
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings
-    care = await battery_care(client, config, profile, battery_device, snapshot, battery, inputs, tz)
+    care = await battery_care(client, config, profile, battery_device, snapshot, battery, inputs, tz, pv)
     settings = replace(settings, soc_limit_wh=care.limit_wh, full_charge_slot=care.full_charge_slot)
     if care.from_grid:
         # Explicitly wanted by the user: grid charging for the overdue full charge
