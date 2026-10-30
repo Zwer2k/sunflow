@@ -59,3 +59,9 @@ def test_duplicate_profile_id(tmp_path: Path, schema: dict[str, Any]) -> None:
 
     assert list(library.profiles) == ["x/y"]
     assert library.errors[0].message == "Duplicate profile x/y"
+
+
+def test_every_profile_is_documented(library: ProfileLibrary) -> None:
+    """The device list in the docs names every shipped profile."""
+    text = (Path(__file__).resolve().parents[1] / "docs" / "geraete.md").read_text()
+    assert [p for p in library.profiles if f"`{p}`" not in text] == []

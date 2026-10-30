@@ -14,6 +14,7 @@ pump around PV forecasts and dynamic prices.
 | `profiles/` | Manufacturer profiles mapping roles/actions to HA entities |
 | `schema/` | JSON schemas for profiles and configuration |
 | `tests/` | Tests |
+| `docs/` | User documentation (German), e.g. the list of supported devices |
 
 The same repository is added both to the App store (`repository.yaml`) and to
 HACS (`hacs.json`).
