@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.47.1
+
+- Planung → Steuerbare Verbraucher: Eine Wallbox mit zugeordnetem Fahrzeug zeigt Ladestand und Ziel des erkannten Fahrzeugs und dessen Namen auch, wenn es gerade nicht angesteckt ist (eingeplant wird es erst angesteckt). Vorher fehlte der Ladestand bei Wallboxen ohne eigenen Ladestand (go-e).
+
 ## 0.47.0
 
 Phasenumschaltung der Wallbox (go-e):

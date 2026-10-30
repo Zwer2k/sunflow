@@ -208,14 +208,15 @@ def flex_loads(
             info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
             info.daily_wh = daily
         else:
-            if roles.get("connected") is None or roles["connected"].raw_state != "on":
-                info.reason = "Fahrzeug nicht angesteckt"
-                continue
+            connected = roles.get("connected") is not None and roles["connected"].raw_state == "on"
             if config.vehicles_at(device.id):
                 recognized = recognize(config, device, roles, snapshot.states)
                 if (vehicle := recognized.vehicle) is None:
-                    info.reason = f"{recognized.reason} – Wallbox regelt selbst"
-                    info.unknown_vehicle = True
+                    if connected:
+                        info.reason = f"{recognized.reason} – Wallbox regelt selbst"
+                        info.unknown_vehicle = True
+                    else:
+                        info.reason = "Fahrzeug nicht angesteckt"
                     continue
                 info.vehicle_id, info.vehicle, info.vehicle_method = vehicle.id, vehicle.name, recognized.method
                 params = params | {"vehicle_capacity_wh": vehicle.capacity_wh, "charge_efficiency_pct": vehicle.charge_efficiency_pct}
@@ -225,6 +226,10 @@ def flex_loads(
                 settings, paused = config.effective_flex(device, slot_starts[0], profile_at.flex if profile_at else None)
                 ready_by = next_time(settings.ready_by, slot_starts[0], tz) if settings.ready_by else None
                 target = info.target = settings.target if settings.target is not None else target
+            # Recognized but not plugged in: its SoC and target show, nothing is planned
+            if not connected:
+                info.reason = "Fahrzeug nicht angesteckt"
+                continue
             capacity = params.get("vehicle_capacity_wh")
             if not capacity:
                 info.reason = "Akkukapazität fehlt in den Kenndaten"
