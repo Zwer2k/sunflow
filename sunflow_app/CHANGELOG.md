@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.47.2
+
+- Phasenumschaltung: „Hochschalten nach“ und „Herunterschalten nach“ sind mindestens 1 Minute, der „Mindestabstand zwischen Umschaltungen“ mindestens 5 Minuten, „Höchstens Umschaltungen pro Tag“ mindestens 1. Kleinere Werte werden beim Speichern abgelehnt, früher gespeicherte wirken wie die Untergrenze.
+- Kenndaten: Werte außerhalb des erlaubten Bereichs eines Geräts werden beim Speichern mit Hinweis auf den Bereich abgelehnt statt übernommen.
+
 ## 0.47.1
 
 - Planung → Steuerbare Verbraucher: Eine Wallbox mit zugeordnetem Fahrzeug zeigt Ladestand und Ziel des erkannten Fahrzeugs und dessen Namen auch, wenn es gerade nicht angesteckt ist (eingeplant wird es erst angesteckt). Vorher fehlte der Ladestand bei Wallboxen ohne eigenen Ladestand (go-e).

@@ -668,3 +668,25 @@ def test_add_direct_device(tmp_path: Path) -> None:
     assert device["connection"] == {"host": "127.0.0.1", "port": 1, "unit_id": None}
     status = client.get("/api/v1/direct/status").json()
     assert "battery_soc" in status[device["id"]]["error"]
+
+
+def test_parameters_outside_their_range_are_rejected(tmp_path: Path) -> None:
+    """A phase switch interval below 5 minutes is refused and not stored; one inside is kept."""
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[DeviceConfig(id="wb", ha_device_id="x", profile="goecharger_mqtt/charger", profile_version=2, name="W")]))
+    app = create_app()
+    app.state.store = store
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: None})()
+    client = TestClient(app)
+
+    assert client.patch("/api/v1/config/devices/wb", json={"parameters": {"phase_min_interval_min": 2}}).status_code == 422
+    assert client.patch("/api/v1/config/devices/wb", json={"parameters": {"phase_up_delay_min": 0}}).status_code == 422
+    assert store.load().devices[0].parameters == {}
+    assert client.patch("/api/v1/config/devices/wb", json={"parameters": {"phase_min_interval_min": 5}}).status_code == 200
+    assert store.load().devices[0].parameters == {"phase_min_interval_min": 5}

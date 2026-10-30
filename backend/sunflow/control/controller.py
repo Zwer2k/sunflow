@@ -72,6 +72,8 @@ LIMIT_STEP_W = 100.0
 # Phase switching of chargers: actions besides the charge actions
 PHASES_PREFIX = "phases_"
 PHASES_ONE, PHASES_THREE, PHASES_RESTORE = f"{PHASES_PREFIX}one", f"{PHASES_PREFIX}three", f"{PHASES_PREFIX}restore"
+MIN_PHASE_DELAY_MIN = 1.0
+MIN_PHASE_INTERVAL_MIN = 5.0
 PHASE_OPTIONS = {"one_phase": 1, "1": 1, "three_phases": 3, "3": 3}
 # A temporary current (amx) is sent again after this time even when unchanged
 CURRENT_REFRESH = timedelta(minutes=5)
@@ -197,18 +199,19 @@ class PhaseSettings:
         """Settings from the device parameters (defaults where missing)."""
         defaults = cls()
 
-        def get(name: str, default: float) -> float:
+        def get(name: str, default: float, low: float = 0.0) -> float:
             value = params.get(name)
-            return default if value is None else float(value)
+            return max(default if value is None else float(value), low)
 
         return cls(
             mode=int(get("phase_mode", defaults.mode)),
             up_w=get("phase_up_w", defaults.up_w),
             down_w=min(get("phase_down_w", defaults.down_w), get("phase_up_w", defaults.up_w)),
-            up_delay=timedelta(minutes=get("phase_up_delay_min", 5)),
-            down_delay=timedelta(minutes=get("phase_down_delay_min", 2)),
-            min_interval=timedelta(minutes=get("phase_min_interval_min", 15)),
-            max_per_day=int(get("phase_max_switches_day", defaults.max_per_day)),
+            # Lower bounds as in the profile, also for values stored before them
+            up_delay=timedelta(minutes=get("phase_up_delay_min", 5, MIN_PHASE_DELAY_MIN)),
+            down_delay=timedelta(minutes=get("phase_down_delay_min", 2, MIN_PHASE_DELAY_MIN)),
+            min_interval=timedelta(minutes=get("phase_min_interval_min", 15, MIN_PHASE_INTERVAL_MIN)),
+            max_per_day=int(get("phase_max_switches_day", defaults.max_per_day, 1)),
         )
 
 
