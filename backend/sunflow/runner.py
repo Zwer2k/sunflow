@@ -49,6 +49,7 @@ EARLY_REPLAN_SOC_SHARE = 0.05
 # Not more often than this; the deviation has to last a few minutes (clouds pass)
 EARLY_REPLAN_PAUSE = timedelta(minutes=5)
 RECENT_SAMPLES = 5
+NOWCAST_MIN_SAMPLES = 4
 
 
 async def current_plan(
@@ -283,7 +284,8 @@ class ShadowRunner:
     def live_pv(self) -> float | None:
         """Mean PV of the last minutes."""
         values = [s.pv_w for s in self._recent if s.pv_w is not None]
-        return sum(values) / len(values) if len(values) >= 2 else None
+        # A single reading after a restart is chance (a passing cloud)
+        return sum(values) / len(values) if len(values) >= NOWCAST_MIN_SAMPLES else None
 
     def _deviation(self) -> str | None:
         """Why the plan no longer fits the live values (lasting the last minutes), None if it does."""

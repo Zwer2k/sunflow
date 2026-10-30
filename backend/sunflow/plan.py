@@ -752,6 +752,14 @@ NOWCAST_HALF_LIFE = timedelta(minutes=60)
 NOWCAST_RANGE = (0.2, 3.0)
 # Twilight: the ratio of small values says nothing
 NOWCAST_MIN_W = 150.0
+# Cloud coverage (%) below which the sky counts as clear, and the share of the risk left then
+CLEAR_SKY_CLOUD = 20
+CLEAR_SKY_RISK = 0.25
+
+
+def nowcast_weights(count: int) -> list[float]:
+    """How much the measured PV counts per slot ahead: fully now, half after an hour."""
+    return [0.5 ** ((t * SLOT) / NOWCAST_HALF_LIFE) for t in range(count)]
 
 
 def nowcast(inputs: list[SlotInput], live_pv_w: float) -> list[SlotInput]:
@@ -765,15 +773,23 @@ def nowcast(inputs: list[SlotInput], live_pv_w: float) -> list[SlotInput]:
         return inputs
     ratio = min(max((live_pv_w + 50) / (forecast + 50), NOWCAST_RANGE[0]), NOWCAST_RANGE[1])
     result = []
-    for t, slot in enumerate(inputs):
-        weight = 0.5 ** ((t * SLOT) / NOWCAST_HALF_LIFE)
+    for slot, weight in zip(inputs, nowcast_weights(len(inputs)), strict=True):
         factor = 1 + (ratio - 1) * weight
-        if abs(factor - 1) < 0.01:
-            result.extend(inputs[t:])
-            break
         low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
         result.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
     return result
+
+
+def risk_shares(risk: float, clouds: list[float | None], measured: list[float]) -> list[float]:
+    """Share of the way towards the pessimistic forecast per slot.
+
+    Nothing where the PV is being measured (the nowcast covers it) and only a quarter
+    under a clear sky: the forecast's spread is about clouds that may or may not come.
+    """
+    return [
+        risk * (1 - known) * (CLEAR_SKY_RISK if cloud is not None and cloud < CLEAR_SKY_CLOUD else 1.0)
+        for cloud, known in zip(clouds, measured, strict=True)
+    ]
 
 
 async def compute_plan(
@@ -958,16 +974,18 @@ async def compute_plan(
             low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
             corrected.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
         inputs = corrected
+    measured = [0.0] * len(inputs)
     if live_pv_w is not None and inputs:
         inputs = nowcast(inputs, live_pv_w)
+        measured = nowcast_weights(len(inputs))
     if (risk := PV_RISK[config.optimizer.pv_risk]) > 0:
         # Plan part of the way towards the pessimistic forecast: a shortfall costs grid
         # power at the full price, a surplus only the feed-in tariff
         inputs = [
-            replace(slot, pv_w=slot.pv_w - risk * max(slot.pv_w - slot.pv_low_w, 0.0))
+            replace(slot, pv_w=slot.pv_w - share * max(slot.pv_w - slot.pv_low_w, 0.0))
             if slot.pv_low_w is not None
             else slot
-            for slot in inputs
+            for slot, share in zip(inputs, risk_shares(risk, clouds, measured), strict=True)
         ]
     departures = await vehicle_departures(client, config, profiles, snapshot, tz)
     usages = await consumer_usages(client, config, profiles, snapshot)

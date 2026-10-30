@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.43.1
+
+- PV-Prognose: Der Sicherheitsabschlag von „Unsichere PV-Prognose“ (Richtung pessimistische Prognose) wirkt nicht mehr dort, wo gerade gemessen wird – in den nächsten Stunden im Maß der Kurzfristprognose – und bei klarem Himmel laut Wetter nur noch zu einem Viertel. Vorher plante Sunflow z. B. bei wolkenlosem Himmel mittags weniger PV, als schon vormittags gemessen wurde.
+- Die Kurzfristprognose startet erst mit vier Minutenwerten (nach einem Neustart der App war einer zu zufällig).
+
 ## 0.43.0
 
 Planung reagiert schneller auf die tatsächlichen Werte:
