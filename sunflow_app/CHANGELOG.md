@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.5
+
+- Kenndaten und Geräte: Die Gruppen-Überschriften (Wechselrichter, Speicher, Wallboxen …) sind deutlicher. Kann die Kategorie nicht vom Server geladen werden, ordnet die Oberfläche die Geräte selbst nach ihren Fähigkeiten ein, statt alles unter „Verbraucher“ zu zeigen.
+
 ## 0.41.4
 
 - Rückfragen (Steuerung einschalten, Gerät entfernen oder deaktivieren, Wechselrichter zurücksetzen, PV neu lernen, Fahrzeug entfernen) erscheinen als eigener Sunflow-Dialog statt als Browser-Meldung.

@@ -1905,7 +1905,13 @@ async def get_categories(request: Request) -> dict[str, str]:
     config = request.app.state.store.load()
     profiles = _library(request).profiles
     snapshot = await _snapshot(request)
-    return {d.id: device_category(profiles[d.profile], d, snapshot) for d in [*config.devices, *config.disabled_devices]}
+    result = {}
+    for device in [*config.devices, *config.disabled_devices]:
+        if (profile := profiles.get(device.profile)) is None:
+            # Profile no longer shipped: the UI groups it by itself
+            continue
+        result[device.id] = device_category(profile, device, snapshot)
+    return result
 
 
 class DeviceKind(BaseModel):
