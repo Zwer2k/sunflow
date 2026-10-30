@@ -24,6 +24,7 @@ from sunflow.devices.device_test import RestoreMarker
 from sunflow.devices.discovery import SnapshotCache
 from sunflow.devices.executor import EepromGuard
 from sunflow.devices.profiles import load_profiles, load_schema
+from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient, HAError
 from sunflow.settings import Settings
 from sunflow.shadow.runner import ShadowRunner
@@ -38,7 +39,7 @@ def _plan_controller(app: FastAPI, settings: Settings) -> PlanController:
     def access_for(device: DeviceConfig) -> DeviceAccess:
         profile = app.state.profiles.profiles[device.profile]
         limit = profile.get("eeprom_guard", {}).get("max_writes_per_day", DEFAULT_MAX_EEPROM_WRITES)
-        return device_access(app.state.ha, profile, device, EepromGuard(settings.data_dir, limit))
+        return device_access(app.state.ha, profile, device, EepromGuard(settings.data_dir, limit), app.state.direct)
 
     return PlanController(TakeoverMarker(settings.data_dir), access_for, lambda: app.state.profiles.profiles)
 
@@ -78,7 +79,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.profiles_dir, load_schema(settings.schema_dir)
         )
         app.state.ha = HAClient(settings.ha_websocket_url, settings.ha_token)
-        app.state.snapshots = SnapshotCache(app.state.ha)
+        app.state.direct = DirectHub()
+        app.state.direct.start(lambda: (app.state.store.load(), app.state.profiles))
+        app.state.snapshots = SnapshotCache(app.state.ha, direct=app.state.direct)
         app.state.device_tests = {}
         app.state.restore_marker = RestoreMarker(settings.data_dir)
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
@@ -104,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             keeper.cancel()
             with suppress(asyncio.CancelledError):
                 await keeper
+            await app.state.direct.stop()
             await app.state.ha.close()
 
     app = FastAPI(title="Sunflow", version=__version__, lifespan=lifespan)

@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Protocol
 
 from sunflow.ha import HAClient
 
@@ -15,6 +15,9 @@ from .discovery import entity_has_key
 _LOGGER = logging.getLogger(__name__)
 
 PLACEHOLDER = re.compile(r"\{\{\s*(-?)([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+# Calls for a directly connected device (sunflow.direct) instead of Home Assistant
+DIRECT = "direct"
+DIRECT_STEPS = {"modbus", "http"}
 STEP_DOMAINS = {"number": "number", "select": "select", "press": "button", "switch": "switch"}
 
 
@@ -70,6 +73,15 @@ def render(template: Any, variables: dict[str, float]) -> Any:
     )
 
 
+def render_deep(template: Any, variables: dict[str, float]) -> Any:
+    """render() for every string inside lists and dicts (request bodies)."""
+    if isinstance(template, dict):
+        return {k: render_deep(v, variables) for k, v in template.items()}
+    if isinstance(template, list):
+        return [render_deep(v, variables) for v in template]
+    return render(template, variables)
+
+
 def find_entity(
     entities: list[dict[str, Any]], domain: str, key: str
 ) -> str | None:
@@ -101,6 +113,27 @@ def plan_steps(
         ((kind, spec),) = step.items()
         storage = spec.get("storage", default_storage)
         write = spec.get("write", "always")
+        if kind in DIRECT_STEPS:
+            if kind == "modbus":
+                value = render(spec["value"], variables)
+                if isinstance(value, int | float):
+                    value = min(max(value, spec.get("min", value)), spec.get("max", value))
+                target = f"modbus:{spec['address']}"
+            else:
+                value = render_deep(spec.get("body"), variables)
+                target = f"http:{spec['path']}"
+            calls.append(
+                PlannedCall(
+                    domain=DIRECT,
+                    service=kind,
+                    data={"spec": {k: v for k, v in spec.items() if k not in ("value", "body")}, "value": value},
+                    entity_id=f"{DIRECT}:{target}",
+                    storage=storage,
+                    write=write,
+                    tolerance=spec.get("tolerance", 0.0),
+                )
+            )
+            continue
         if kind == "service":
             domain, service = spec["action"].split(".", 1)
             calls.append(
@@ -232,8 +265,17 @@ class EepromGuard:
         self._path.write_text(json.dumps({date.today().isoformat(): counts}))
 
 
-def current_matches(call: PlannedCall, states: dict[str, dict[str, Any]]) -> bool:
+def current_matches(
+    call: PlannedCall, states: dict[str, dict[str, Any]], direct: DirectWriter | None = None
+) -> bool:
     """Return True if the entity already has the value the call would write."""
+    if call.domain == DIRECT:
+        if direct is None or call.entity_id not in direct.values_written:
+            return False
+        last, value = direct.values_written[call.entity_id], call.data["value"]
+        if isinstance(last, int | float) and isinstance(value, int | float):
+            return abs(last - value) <= call.tolerance
+        return last == value
     state = states.get(call.entity_id or "", {}).get("state")
     match call.service:
         case "select_option":
@@ -248,17 +290,28 @@ def current_matches(call: PlannedCall, states: dict[str, dict[str, Any]]) -> boo
     return False
 
 
+class DirectWriter(Protocol):
+    """A directly connected device (sunflow.direct.hub.DirectDevice)."""
+
+    values_written: dict[str, Any]
+
+    async def write(self, spec: dict[str, Any], value: Any) -> None:
+        """Run a write step of the profile."""
+
+
 async def execute(
     client: HAClient,
     calls: list[PlannedCall],
     states: dict[str, dict[str, Any]],
     guard: EepromGuard,
     dry_run: bool,
+    direct: DirectWriter | None = None,
 ) -> None:
     """Run planned calls in order, honoring if_differs and the EEPROM guard.
 
     A press with write=if_differs commits preceding values and is skipped
-    when none of them was written.
+    when none of them was written. Register writes go to the direct device;
+    if_differs compares them with the value last written there.
     """
     wrote_since_press = False
     for call in calls:
@@ -267,7 +320,7 @@ async def execute(
                 if not wrote_since_press:
                     call.status, call.reason = "skipped", "nothing to commit"
                     continue
-            elif current_matches(call, states):
+            elif current_matches(call, states, direct):
                 call.status, call.reason = "skipped", "already set"
                 continue
         if call.storage == "eeprom" and call.entity_id and not guard.allowed(call.entity_id):
@@ -277,8 +330,14 @@ async def execute(
         if dry_run:
             call.status = "dry_run"
         else:
-            target = {"entity_id": call.entity_id} if call.entity_id else None
-            await client.call_service(call.domain, call.service, call.data, target)
+            if call.domain == DIRECT:
+                if direct is None:
+                    raise ExecutorError(f"{call.service} step for a device without a direct connection")
+                await direct.write(call.data["spec"], call.data["value"])
+                direct.values_written[call.entity_id] = call.data["value"]
+            else:
+                target = {"entity_id": call.entity_id} if call.entity_id else None
+                await client.call_service(call.domain, call.service, call.data, target)
             call.status = "done"
             if call.storage == "eeprom" and call.entity_id:
                 guard.record(call.entity_id)

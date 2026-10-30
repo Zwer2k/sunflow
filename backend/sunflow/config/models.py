@@ -94,6 +94,17 @@ class VehicleDetection(BaseModel):
     authorize: bool = True
 
 
+class Connection(BaseModel):
+    """Address of a device Sunflow talks to itself (profile with a connection)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    host: str
+    # None: the profile's default port
+    port: int | None = Field(default=None, ge=1, le=65535)
+    unit_id: int = Field(default=1, ge=0, le=255)
+
+
 class DeviceConfig(BaseModel):
     """A device managed by Sunflow: what it is and how its entities are read.
 
@@ -116,6 +127,8 @@ class DeviceConfig(BaseModel):
     kind: Literal["vehicle", "heater"] | None = None
     # Consumers with fixed power steps: option of the select -> watts (0 for off)
     power_steps: dict[str, float] | None = None
+    # Devices without an integration: ha_device_id is a pseudo id (direct_<id>)
+    connection: Connection | None = None
 
 
 class TariffConfig(BaseModel):
