@@ -4,8 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-
-from sunflow.history import Series, fetch_history
+from sunflow.analysis.history import Series, fetch_history
 
 START = datetime(2026, 10, 24, 10, 0, tzinfo=UTC)
 
@@ -70,7 +69,7 @@ async def test_long_ranges_use_hourly_statistics() -> None:
 
 def test_efficiency_estimate() -> None:
     """A battery cycling with 95 % per direction is recognized; implausible values are flagged."""
-    from sunflow.efficiency import estimate
+    from sunflow.analysis.efficiency import estimate
 
     eta = 0.95
     capacity = 20000.0

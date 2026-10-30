@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from sunflow.profiles import ProfileLibrary, load_profiles
+from sunflow.devices.profiles import ProfileLibrary, load_profiles
 
 
 def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:

@@ -3,11 +3,10 @@
 from typing import Any
 
 import pytest
-
-from sunflow.config_store import DeviceConfig, MeasuredBy
-from sunflow.discovery import Snapshot
-from sunflow.profiles import ProfileLibrary
-from sunflow.site import derive_parameter, device_parameters, site_status
+from sunflow.config.models import DeviceConfig, MeasuredBy
+from sunflow.devices.discovery import Snapshot
+from sunflow.devices.profiles import ProfileLibrary
+from sunflow.devices.site import derive_parameter, device_parameters, site_status
 
 
 def _entity(entity_id: str, unique_id: str, device_id: str) -> dict[str, Any]:
@@ -111,8 +110,8 @@ def test_battery_capacity_from_assigned_modules() -> None:
     """Automatic: the inverter's sub-devices; chosen in the setup: exactly those modules."""
     from types import SimpleNamespace
 
-    from sunflow.config_store import DeviceConfig
-    from sunflow.site import battery_module_ids, derive_parameter
+    from sunflow.config.models import DeviceConfig
+    from sunflow.devices.site import battery_module_ids, derive_parameter
 
     spec = {"unit": "Wh", "derive": {"sum_key": "pack_full_charge_capacity", "factor": 51.2}}
     devices = [

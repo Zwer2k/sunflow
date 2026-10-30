@@ -1,6 +1,7 @@
 """Tests for the setup summary."""
 
-from sunflow.config_store import (
+from sunflow.analysis.summary import STEP_DEVICES, STEP_SOURCES, build_summary
+from sunflow.config.models import (
     DeviceConfig,
     FeedIn,
     ForecastPlane,
@@ -8,8 +9,7 @@ from sunflow.config_store import (
     SunflowConfig,
     TariffConfig,
 )
-from sunflow.profiles import ProfileLibrary
-from sunflow.summary import STEP_DEVICES, STEP_SOURCES, build_summary
+from sunflow.devices.profiles import ProfileLibrary
 
 
 def _complete_config() -> SunflowConfig:

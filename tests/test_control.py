@@ -6,15 +6,15 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from sunflow.config_store import ControlSettings, DeviceConfig, SunflowConfig
-from sunflow.control import (
-    PlanController,
+from sunflow.config.models import ControlSettings, DeviceConfig, SunflowConfig
+from sunflow.control.controller import (
     DeviceAccess,
+    PlanController,
     TakeoverMarker,
     desired_action,
     evcc_controls_battery,
 )
-from sunflow.executor import PlannedCall
+from sunflow.devices.executor import PlannedCall
 
 NOW = datetime(2026, 10, 29, 10, 5, tzinfo=UTC)
 SOFAR = {"capabilities": ["battery_window"]}
@@ -208,7 +208,7 @@ class FakeCharger:
 
         async def run(calls: list[PlannedCall], states: dict[str, Any]) -> None:
             for call in calls:
-                from sunflow.executor import current_matches
+                from sunflow.devices.executor import current_matches
 
                 if call.write == "if_differs" and current_matches(call, states):
                     call.status = "skipped"
@@ -336,7 +336,7 @@ GOE_CARDS = GOE | {"charge_control": {"charge": [], "stop": [], "release": [], "
 )
 async def test_authorizes_only_surely_recognized_vehicles(tmp_path: Path, method: str, transaction: str) -> None:
     """With a card required, Sunflow starts the transaction for a car recognized by sensor or choice."""
-    from sunflow.config_store import Vehicle
+    from sunflow.config.models import Vehicle
 
     charger = AuthorizingCharger()
     controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE_CARDS})
@@ -381,7 +381,7 @@ PARAMS = {"phases": 3, "min_current_a": 6, "max_current_a": 16}
 )
 def test_follow_surplus(planned: float, pv: float, grid: float, charging: bool, expected: float | None) -> None:
     """The planned power corrected by the PV actually there (planned PV 5 kW)."""
-    from sunflow.control import follow_surplus
+    from sunflow.control.controller import follow_surplus
 
     live = SimpleNamespace(pv_w=pv, grid_w=grid)
 
@@ -392,9 +392,9 @@ def test_amx_topic_from_device_serial() -> None:
     """The go-e topic uses the serial from the device registry; role values are available too."""
     from pathlib import Path
 
-    from sunflow.control import device_variables
-    from sunflow.executor import plan_charge
-    from sunflow.profiles import load_profiles, load_schema
+    from sunflow.control.controller import device_variables
+    from sunflow.devices.executor import plan_charge
+    from sunflow.devices.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
     profile = load_profiles(repo / "profiles", load_schema(repo / "schema")).profiles["goecharger_mqtt/charger"]
@@ -445,7 +445,7 @@ async def test_disabled_device_is_handed_back(tmp_path: Path) -> None:
 )
 def test_grid_buffer(buffer: float, export: float, planned: bool, expected: float) -> None:
     """The feed-in buffer only costs nothing while the plan exports PV surplus anyway."""
-    from sunflow.control import grid_buffer
+    from sunflow.control.controller import grid_buffer
 
     assert grid_buffer(buffer, SimpleNamespace(export_w=export), planned) == expected
 

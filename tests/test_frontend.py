@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-
 from sunflow.api import create_app
 from sunflow.settings import Settings
 
@@ -56,8 +55,8 @@ def test_asset_outside_frontend_is_rejected(tmp_path: Path) -> None:
 
 def test_manual_device_and_flex_settings(tmp_path: Path) -> None:
     """A switchable consumer can be added and its planning strategy stored."""
-    from sunflow.config_store import ConfigStore
-    from sunflow.profiles import load_profiles, load_schema
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
     app = create_app()
@@ -104,7 +103,7 @@ def test_manual_device_and_flex_settings(tmp_path: Path) -> None:
 
 def test_combine_batteries() -> None:
     """Several batteries become one node with capacity-weighted SoC."""
-    from sunflow.api import combine_batteries
+    from sunflow.api.live import combine_batteries
 
     assert combine_batteries([]) is None
     combined = combine_batteries(
@@ -123,8 +122,9 @@ def test_control_overrides_and_priorities(tmp_path: Path) -> None:
     """Overrides, battery strategy and priorities are stored and trigger a replan."""
     from datetime import UTC, datetime, timedelta
 
-    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
-    from sunflow.profiles import load_profiles, load_schema
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
     store = ConfigStore(tmp_path)
@@ -157,8 +157,9 @@ def test_control_overrides_and_priorities(tmp_path: Path) -> None:
 
 def test_priority_conditions(tmp_path: Path) -> None:
     """Conditions are stored per consumer, validated and removed with an empty list."""
-    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
-    from sunflow.profiles import load_profiles, load_schema
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
     store = ConfigStore(tmp_path)
@@ -205,8 +206,9 @@ def test_priority_conditions(tmp_path: Path) -> None:
 
 def test_measurement_sources(tmp_path: Path) -> None:
     """A dedicated grid meter wins automatically; the user can choose another device or go back."""
-    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
-    from sunflow.profiles import load_profiles, load_schema
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
     store = ConfigStore(tmp_path)
@@ -245,7 +247,7 @@ def test_ingress_only(tmp_path: Path) -> None:
         frontend_dir=tmp_path / "missing",
         ingress_only=True,
     )
-    from sunflow.config_store import ConfigStore
+    from sunflow.config.store import ConfigStore
 
     app = create_app(settings)
     app.state.store = ConfigStore(tmp_path)
@@ -260,7 +262,8 @@ def test_ingress_only(tmp_path: Path) -> None:
 
 def test_rejects_nan_parameters(tmp_path: Path) -> None:
     """NaN must not reach config.json, where it would break every later request."""
-    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
 
     store = ConfigStore(tmp_path)
     store.save(SunflowConfig(devices=[DeviceConfig(id="d", ha_device_id="x", profile="solax_modbus/sofar", profile_version=1, name="S")]))
@@ -278,7 +281,13 @@ def test_rejects_nan_parameters(tmp_path: Path) -> None:
 
 def test_remove_device_cleans_references(tmp_path: Path) -> None:
     """Removing a device drops its overrides, priority entry, limits and measurement choice."""
-    from sunflow.config_store import ConfigStore, DeviceConfig, DeviceOverride, PriorityCondition, SunflowConfig
+    from sunflow.config.models import (
+        DeviceConfig,
+        DeviceOverride,
+        PriorityCondition,
+        SunflowConfig,
+    )
+    from sunflow.config.store import ConfigStore
 
     store = ConfigStore(tmp_path)
     store.save(
@@ -309,8 +318,8 @@ def test_remove_device_cleans_references(tmp_path: Path) -> None:
 
 def test_restore_requires_confirmation(tmp_path: Path) -> None:
     """Restoring writes to the device: only with confirm=true; without a marker nothing is written."""
-    from sunflow.config_store import ConfigStore
-    from sunflow.device_test import RestoreMarker
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.device_test import RestoreMarker
 
     app = create_app()
     app.state.store = ConfigStore(tmp_path)
@@ -329,7 +338,7 @@ def test_pv_strings() -> None:
     """String power is measured or voltage x current; strings without entities are left out."""
     from types import SimpleNamespace
 
-    from sunflow.site import pv_strings
+    from sunflow.devices.site import pv_strings
 
     def role(value: float | None, entity: str | None = "sensor.x") -> SimpleNamespace:
         return SimpleNamespace(value=value, entity_id=entity, display={"unit": "kW", "precision": 2})
@@ -351,7 +360,7 @@ def test_pv_strings() -> None:
 
 def test_display_precision_from_registry() -> None:
     """The user's display precision wins over the integration's suggestion."""
-    from sunflow.resolver import display_precision
+    from sunflow.devices.resolver import display_precision
 
     assert display_precision({"options": {"sensor": {"suggested_display_precision": 1}}}) == 1
     assert display_precision({"options": {"sensor": {"suggested_display_precision": 1, "display_precision": 3}}}) == 3
@@ -364,7 +373,8 @@ async def test_live_weather_hours_and_days() -> None:
     from datetime import UTC, datetime, timedelta
     from types import SimpleNamespace
 
-    from sunflow import api
+    from sunflow.api import live as api
+    from sunflow.config.models import SunflowConfig
 
     now = datetime.now(UTC)
     calls = []
@@ -385,7 +395,7 @@ async def test_live_weather_hours_and_days() -> None:
             return {"time_zone": "Europe/Berlin"}
 
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(ha=Client())))
-    config = api.SunflowConfig()
+    config = SunflowConfig()
     config.optimizer.weather_entity = "weather.home"
     snapshot = SimpleNamespace(states={"weather.home": {"state": "sunny", "attributes": {"temperature": 11}}})
 
@@ -401,7 +411,8 @@ async def test_live_weather_hours_and_days() -> None:
 
 def test_restart_plane_learning_survives_setup_save(tmp_path: Path) -> None:
     """The restart is stored with the plane; saving the planes from the setup keeps it."""
-    from sunflow.config_store import ConfigStore, ForecastPlane, SunflowConfig
+    from sunflow.config.models import ForecastPlane, SunflowConfig
+    from sunflow.config.store import ConfigStore
 
     store = ConfigStore(tmp_path)
     store.save(SunflowConfig(forecast_planes=[ForecastPlane(source="solcast", ref="cp", name="Carport", strings=["h:1"])]))
@@ -427,9 +438,10 @@ def test_takeover_needs_confirmation_and_a_passed_test(tmp_path: Path) -> None:
     """Switching control on writes to the inverter: confirm=true and a passed device test are required."""
     from datetime import UTC, datetime
 
-    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
-    from sunflow.control import PlanController, TakeoverMarker
-    from sunflow.profiles import load_profiles, load_schema
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
+    from sunflow.control.controller import PlanController, TakeoverMarker
+    from sunflow.devices.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
     store = ConfigStore(tmp_path)
@@ -464,13 +476,14 @@ def test_takeover_needs_confirmation_and_a_passed_test(tmp_path: Path) -> None:
 
 def test_vehicles_cards_and_manual_choice(tmp_path: Path) -> None:
     """Vehicles are stored per wallbox; a card may belong to one vehicle per wallbox; the choice is validated."""
-    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
 
     store = ConfigStore(tmp_path)
     store.save(SunflowConfig(devices=[DeviceConfig(id="wb", ha_device_id="x", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")]))
     from types import SimpleNamespace
 
-    from sunflow.profiles import load_profiles, load_schema
+    from sunflow.devices.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
     app = create_app()
@@ -507,7 +520,8 @@ def test_vehicles_cards_and_manual_choice(tmp_path: Path) -> None:
 
 def test_disable_device_keeps_settings(tmp_path: Path) -> None:
     """A switched off device is kept aside with its settings and comes back unchanged."""
-    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
 
     store = ConfigStore(tmp_path)
     store.save(SunflowConfig(devices=[
@@ -531,8 +545,9 @@ def test_loadpoint_kind_sets_the_category(tmp_path: Path) -> None:
     """An evcc loadpoint is a wallbox or heat; the choice is stored and wins over the SoC unit."""
     from types import SimpleNamespace
 
-    from sunflow.config_store import ConfigStore, DeviceConfig, SunflowConfig
-    from sunflow.profiles import load_profiles, load_schema
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
 
     repo = Path(__file__).resolve().parents[1]
     store = ConfigStore(tmp_path)

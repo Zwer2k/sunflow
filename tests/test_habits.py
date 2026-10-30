@@ -3,7 +3,7 @@
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sunflow.habits import departures_from
+from sunflow.planning.habits import departures_from
 
 BERLIN = ZoneInfo("Europe/Berlin")
 
@@ -45,7 +45,7 @@ def test_too_few_sessions_learn_nothing() -> None:
 
 def test_consumer_usage_from_power_means() -> None:
     """An e-bike charger: 2 h at 250 W each day, 1 W standby otherwise."""
-    from sunflow.habits import usage_from
+    from sunflow.planning.habits import usage_from
 
     start = datetime(2026, 10, 1, tzinfo=BERLIN)
     means = [
