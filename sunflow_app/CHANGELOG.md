@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.43.0
+
+Planung reagiert schneller auf die tatsächlichen Werte:
+
+- Kurzfristprognose: Weicht die gemessene PV gerade von der Prognose ab (Mittel der letzten Minuten), wird das auf die nächsten Stunden übertragen – jetzt voll, nach einer Stunde zur Hälfte, danach immer weniger. Mehr Sonne als vorhergesagt fließt so sofort in den Plan ein (z. B. Auto oder Heizstab früher), weniger ebenso.
+- Neuberechnung bei Abweichung: Liegen PV (mehr als 800 W bzw. 30 %), Verbrauch (mehr als 1,5 kW) oder Ladestand (mehr als 5 % der Kapazität) fünf Minuten lang in dieselbe Richtung neben dem Plan, rechnet Sunflow sofort neu statt bis zur nächsten Viertelstunde zu warten – höchstens alle 5 Minuten. Kurze Wolken lösen nichts aus.
+- Gelernt wird weiter aus der unveränderten Prognose; die Kurzfristkorrektur verfälscht das Lernen nicht.
+
 ## 0.42.0
 
 - Netz-Zielwert („Einspeise-Puffer“) wird jetzt nach Plan gesetzt: Ein negativer Puffer (z. B. −200 W) gilt nur in Viertelstunden, in denen der Plan ohnehin mehr einspeist (PV-Überschuss). Bei wenig PV, beim Halten, bei Autarkie und ohne aktuellen Plan regelt der Wechselrichter auf 0 W – so geht kein gespeicherter Strom ins Netz, der später teurer zurückgekauft wird. Ein positiver Wert (bewusst leichter Bezug) gilt immer.

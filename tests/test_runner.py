@@ -65,3 +65,52 @@ async def test_replan_pause_grows_up_to_the_maximum(tmp_path: Path, monkeypatch:
         shadow.close()
 
     assert pauses == [5, 10, 20, 30, 30]
+
+
+def test_nowcast_carries_the_live_deviation_ahead() -> None:
+    """Twice the forecast PV now: the next slots get more, fading out over the hours."""
+    from datetime import UTC, datetime, timedelta
+
+    from sunflow.optimizer import SlotInput
+    from sunflow.plan import nowcast
+
+    start = datetime(2026, 10, 30, 11, tzinfo=UTC)
+    inputs = [SlotInput(start=start + timedelta(minutes=15 * t), pv_w=2000, load_w=500, price=0.3, feed_in=0.08) for t in range(16)]
+
+    result = nowcast(inputs, 4000)
+
+    assert result[0].pv_w == pytest.approx(2000 * 4050 / 2050)
+    # One hour ahead half of the deviation is left
+    assert result[4].pv_w == pytest.approx(2000 * (1 + (4050 / 2050 - 1) / 2))
+    assert result[0].pv_w > result[4].pv_w > result[15].pv_w > 2000
+    # At night nothing changes
+    assert nowcast([SlotInput(start=start, pv_w=0, load_w=500, price=0.3, feed_in=0.08)], 20)[0].pv_w == 0
+
+
+def _runner_with_plan(tmp_path: Path, pv: float, load: float = 500, soc: float = 10000) -> ShadowRunner:
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    slot = SimpleNamespace(start=now - timedelta(minutes=5), end=now + timedelta(minutes=10), pv_w=pv, load_w=load, soc_wh=soc, flex_w={})
+    runner = ShadowRunner(SimpleNamespace(connected=True), None, None, ShadowStore(tmp_path))
+    runner.latest = SimpleNamespace(plan=SimpleNamespace(slots=[slot]), battery=SimpleNamespace(capacity_wh=20000))
+    runner.status.last_plan = now - timedelta(minutes=10)
+    return runner
+
+
+@pytest.mark.parametrize(
+    ("pv", "expected"),
+    [
+        pytest.param([3500] * 5, "PV +2500 W gegenüber Plan", id="more-pv-lasting"),
+        pytest.param([3500, 3500, 1000, 3500, 3500], None, id="passing-cloud"),
+        pytest.param([1500] * 5, None, id="small-deviation"),
+    ],
+)
+def test_early_replan_on_lasting_deviation(tmp_path: Path, pv: list[float], expected: str | None) -> None:
+    """Only a deviation lasting all of the last minutes replans before the next slot."""
+    runner = _runner_with_plan(tmp_path, pv=1000)
+    for value in pv:
+        runner._recent.append(Sample(soc_wh=10000, battery_w=0, grid_w=0, pv_w=value, load_w=500))
+
+    assert runner._deviation() == expected
+    runner.shadow.close()

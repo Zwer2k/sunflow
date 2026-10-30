@@ -747,6 +747,35 @@ def build_inputs(
     return inputs
 
 
+# Weight of the live PV deviation halves over this time ahead
+NOWCAST_HALF_LIFE = timedelta(minutes=60)
+NOWCAST_RANGE = (0.2, 3.0)
+# Twilight: the ratio of small values says nothing
+NOWCAST_MIN_W = 150.0
+
+
+def nowcast(inputs: list[SlotInput], live_pv_w: float) -> list[SlotInput]:
+    """Carry the current deviation of the measured PV over to the next hours.
+
+    Clouds that are there now (or a sunnier hour than forecast) usually last a while:
+    the forecast is scaled by measured / forecast, fully now and fading out ahead.
+    """
+    forecast = inputs[0].pv_w
+    if max(forecast, live_pv_w) < NOWCAST_MIN_W:
+        return inputs
+    ratio = min(max((live_pv_w + 50) / (forecast + 50), NOWCAST_RANGE[0]), NOWCAST_RANGE[1])
+    result = []
+    for t, slot in enumerate(inputs):
+        weight = 0.5 ** ((t * SLOT) / NOWCAST_HALF_LIFE)
+        factor = 1 + (ratio - 1) * weight
+        if abs(factor - 1) < 0.01:
+            result.extend(inputs[t:])
+            break
+        low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
+        result.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
+    return result
+
+
 async def compute_plan(
     client: HAClient,
     config: SunflowConfig,
@@ -757,6 +786,7 @@ async def compute_plan(
     pv_correction: PvCorrection | None = None,
     load_model: LoadModel | None = None,
     plane_corrections: dict[str, PvCorrection] | None = None,
+    live_pv_w: float | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule."""
     warnings: list[str] = []
@@ -928,6 +958,8 @@ async def compute_plan(
             low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
             corrected.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
         inputs = corrected
+    if live_pv_w is not None and inputs:
+        inputs = nowcast(inputs, live_pv_w)
     if (risk := PV_RISK[config.optimizer.pv_risk]) > 0:
         # Plan part of the way towards the pessimistic forecast: a shortfall costs grid
         # power at the full price, a surplus only the feed-in tariff
