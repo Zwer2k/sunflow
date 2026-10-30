@@ -27,6 +27,7 @@ from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import PlanResult, compute_plan
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
 from sunflow.planning.vehicles import unplugged_choices
+from sunflow.shadow.counters import EnergyCounters
 
 from .store import Sample, ShadowStore, SlotRecorder, slot_start
 
@@ -195,6 +196,8 @@ class ShadowRunner:
         self._correction: PvCorrection | None = None
         self.load_model: LoadModel | None = None
         self.plane_corrections: dict[str, PvCorrection] = {}
+        # Energy per PV string for Home Assistant (set by the app)
+        self.counters: EnergyCounters | None = None
         self._correction_at = datetime.min.replace(tzinfo=UTC)
         self._recorder: SlotRecorder | None = None
         self._replan_task: asyncio.Task[None] | None = None
@@ -248,6 +251,8 @@ class ShadowRunner:
                 self._recent.append(sample)
                 self.last_sample = sample
                 self.last_sample_at = datetime.now(UTC)
+                if self.counters is not None and sample.strings:
+                    self.counters.add(sample.strings, self.last_sample_at)
         except (HAError, KeyError, ValueError) as err:
             _LOGGER.warning("Sample failed: %s", err)
         if (why := self._deviation()) is not None and now >= self._replan_retry_at:

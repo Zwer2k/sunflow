@@ -12,8 +12,10 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import pv_strings
 from sunflow.ha import HAClient, HAError
+from sunflow.planning.forecast_export import as_response, export_forecasts
 from sunflow.planning.plan import cloud_coverage, weather_entity
 from sunflow.planning.sources import (
+    ForecastPoint,
     PricePoint,
     detect_price_adapter,
     forecast_solar_forecast,
@@ -181,6 +183,65 @@ async def get_forecast_series(
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     return {"planes": planes}
+
+
+@router.get("/strings/energy")
+async def get_string_energy(request: Request) -> dict[str, Any]:
+    """Energy (Wh, counted by Sunflow) and power of every PV string, with plant and plane."""
+    config = request.app.state.store.load()
+    runner: ShadowRunner = request.app.state.runner
+    counters = runner.counters.wh if runner.counters is not None else {}
+    powers = runner.last_sample.strings if runner.last_sample is not None else {}
+    names = {d.id: d.name for d in config.devices}
+    planes = {s: p.display_name for p in config.forecast_planes for s in p.strings}
+    strings = []
+    for key in sorted(counters):
+        device_id, _, index = key.partition(":")
+        if device_id not in names:
+            continue
+        strings.append(
+            {
+                "id": key,
+                "device_id": device_id,
+                "plant": names[device_id],
+                "name": f"{names[device_id]} String {index}",
+                "plane": planes.get(key),
+                "energy_wh": round(counters[key], 1),
+                "power_w": powers.get(key),
+            }
+        )
+    return {"strings": strings}
+
+
+# The energy dashboard shows today and the days ahead
+EXPORT_DAYS = 7
+
+
+@router.get("/forecast/export")
+async def get_forecast_export(request: Request) -> dict[str, Any]:
+    """The learned PV forecast by hour from the start of today: per plane, per plant and in total."""
+    config = request.app.state.store.load()
+    client: HAClient = request.app.state.ha
+    runner: ShadowRunner = request.app.state.runner
+    tz = await _local_tz(request)
+    now = datetime.now(UTC)
+    midnight = now.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    hours = int((now - midnight).total_seconds() // 3600) + 1 + EXPORT_DAYS * 24
+
+    async def fetch(plane: ForecastPlane) -> list[ForecastPoint]:
+        match plane.source:
+            case "solcast":
+                return await solcast_forecast(client, plane.ref, midnight, hours)
+            case "forecast_solar":
+                return await forecast_solar_forecast(client, plane.ref, midnight, hours)
+        return []
+
+    try:
+        site = await runner.pv_correction()
+        targets = await export_forecasts(config, fetch, site, runner.plane_corrections, tz)
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    return as_response(targets, now, tz)
 
 
 @router.get("/pv-learning")
