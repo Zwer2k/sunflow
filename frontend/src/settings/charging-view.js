@@ -21,6 +21,7 @@ class SunflowCharging extends LitElement {
     _profiles: { state: true },
     _open: { state: true },
     _dirty: { state: true },
+    _detections: { state: true },
     _error: { state: true },
     _busy: { state: true },
   };
@@ -30,7 +31,9 @@ class SunflowCharging extends LitElement {
     this._data = null;
     this._profiles = [];
     this._open = new Set();
-    this._dirty = false;
+    // Wallbox ids with unsaved changes; detection edits by wallbox id
+    this._dirty = new Set();
+    this._detections = {};
     this._error = null;
     this._busy = false;
   }
@@ -44,7 +47,8 @@ class SunflowCharging extends LitElement {
     try {
       this._data = await api.vehicles();
       this._profiles = this._data.charging.map((c) => ({ ...c, flex: { ...c.flex } }));
-      this._dirty = false;
+      this._dirty = new Set();
+      this._detections = {};
     } catch (err) {
       this._error = `Ladeprofile nicht verfügbar: ${err.message}`;
     }
@@ -66,12 +70,6 @@ class SunflowCharging extends LitElement {
             mit ihren Kenndaten und den Vorgaben unter „Verbraucher“.</p>`
         : nothing}
       ${data?.vehicles.length ? data.wallboxes.map((w) => this._renderWallbox(w)) : nothing}
-      ${this._dirty
-        ? html`<div class="actions sticky">
-            <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>Ladeprofile speichern</button>
-            <button class="secondary" @click=${() => this._load()}>Verwerfen</button>
-          </div>`
-        : nothing}
     `;
   }
 
@@ -86,6 +84,12 @@ class SunflowCharging extends LitElement {
           : "Noch kein Fahrzeug – ein angestecktes Auto gilt als unbekannt, die Wallbox regelt dann selbst."}</div>
         ${vehicles.map((v) => this._renderProfile(wallbox, v))}
         ${this._renderDetection(wallbox)}
+        ${this._dirty.has(wallbox.id)
+          ? html`<div class="actions">
+              <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>Speichern</button>
+              <button class="secondary" ?disabled=${this._busy} @click=${() => this._load()}>Verwerfen</button>
+            </div>`
+          : nothing}
       </section>
     `;
   }
@@ -94,13 +98,13 @@ class SunflowCharging extends LitElement {
     const profile = this._profiles.find((p) => p.wallbox_id === wallbox.id && p.vehicle_id === vehicle.id);
     const update = (changes) => {
       this._profiles = this._profiles.map((p) => (p === profile ? { ...p, ...changes, flex: { ...p.flex, ...(changes.flex ?? {}) } } : p));
-      this._dirty = true;
+      this._markDirty(wallbox.id);
     };
     const toggle = (on) => {
       this._profiles = on
         ? [...this._profiles, { vehicle_id: vehicle.id, wallbox_id: wallbox.id, card: null, flex: { strategy: "cost", target: null, ready_by: null, uses_battery: true } }]
         : this._profiles.filter((p) => p !== profile);
-      this._dirty = true;
+      this._markDirty(wallbox.id);
     };
     return html`
       <div class="sub ${profile ? "" : "off"}">
@@ -149,8 +153,11 @@ class SunflowCharging extends LitElement {
   }
 
   _renderDetection(wallbox) {
-    const d = wallbox.detection;
-    const set = (field, value) => this._saveDetection(wallbox, { ...d, [field]: value });
+    const d = this._detections[wallbox.id] ?? wallbox.detection;
+    const set = (field, value) => {
+      this._detections = { ...this._detections, [wallbox.id]: { ...d, [field]: value } };
+      this._markDirty(wallbox.id);
+    };
     const open = this._open.has(wallbox.id);
     const methods = DETECTION.filter(([key]) => d[key] && (key !== "card" || wallbox.cards)).map(([, label]) => label);
     const toggle = () => {
@@ -184,6 +191,11 @@ class SunflowCharging extends LitElement {
     `;
   }
 
+  _markDirty(wallboxId) {
+    this._dirty = new Set([...this._dirty, wallboxId]);
+  }
+
+  /** Charging profiles and recognition together, so one button saves what was changed. */
   async _save() {
     if (this._profiles.some((p) => p.flex.target === undefined)) {
       this._error = "Bitte einen gültigen Ziel-Ladestand eingeben.";
@@ -191,31 +203,26 @@ class SunflowCharging extends LitElement {
     }
     this._busy = true;
     try {
+      for (const [wallboxId, detection] of Object.entries(this._detections)) {
+        await api.setVehicleDetection(wallboxId, detection);
+      }
       this._data = await api.setCharging(this._profiles);
       this._profiles = this._data.charging.map((c) => ({ ...c, flex: { ...c.flex } }));
-      this._dirty = false;
+      this._dirty = new Set();
+      this._detections = {};
       this._error = null;
     } catch (err) {
-      this._error = `Ladeprofile nicht gespeichert: ${err.message}`;
+      this._error = `Nicht gespeichert: ${err.message}`;
     } finally {
       this._busy = false;
     }
   }
 
-  async _saveDetection(wallbox, detection) {
-    try {
-      await api.setVehicleDetection(wallbox.id, detection);
-      this._data = { ...this._data, wallboxes: this._data.wallboxes.map((w) => (w.id === wallbox.id ? { ...w, detection } : w)) };
-    } catch (err) {
-      this._error = `Erkennung nicht gespeichert: ${err.message}`;
-    }
-  }
-
-  /** Called by the settings when leaving the area: unsaved profiles are kept. */
+  /** Called by the settings when leaving the area: unsaved changes are kept. */
   async saveIfChanged() {
-    if (!this._dirty) return true;
+    if (!this._dirty.size) return true;
     await this._save();
-    return !this._dirty;
+    return !this._dirty.size;
   }
 
   static styles = css`
@@ -246,7 +253,6 @@ class SunflowCharging extends LitElement {
     .device-toggle { display: flex; gap: 8px; align-items: flex-start; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; font-size: 14px; }
     .caret { width: 14px; color: var(--sf-muted); line-height: 20px; }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; }
-    .actions.sticky { position: sticky; bottom: 0; padding: 12px 0; background: var(--sf-bg); }
     .primary, .secondary { min-height: 44px; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
