@@ -74,6 +74,8 @@ class DeviceControl:
     error: str | None = None
     note: str | None = None
     current_a: int | None = None
+    # Batteries: grid power the inverter regulates to (buffer only with PV surplus)
+    grid_target_w: float | None = None
     last_current_write: datetime | None = None
     calls: list[dict[str, Any]] = field(default_factory=list)
 
@@ -110,6 +112,22 @@ def desired_charge(
     if power >= MIN_CHARGE_W:
         return "charge", power, "nach Plan"
     return "stop", None, "nach Plan: jetzt nicht"
+
+
+def grid_buffer(buffer: float, slot: Any, planned: bool) -> float:
+    """Grid target of the battery window: the buffer only while the plan exports anyway.
+
+    A buffer against load steps (e.g. -200 W) makes the battery feed that much into the
+    grid. With PV surplus that the plan exports anyway this costs nothing; with little
+    PV it would give away stored energy that is bought back dearer later, so then the
+    inverter regulates to zero.
+    """
+    if buffer > 0:
+        # A slight import on purpose (e.g. no feed-in allowed) always applies
+        return buffer
+    if planned and slot is not None and (getattr(slot, "export_w", 0.0) or 0.0) > abs(buffer):
+        return buffer
+    return 0.0
 
 
 def charge_current(power: float, params: dict[str, float]) -> int:
@@ -399,8 +417,14 @@ class PlanController:
         action, power, reason = desired_action(plan, plan_at, now)
         access = self._access_for(device)
         await take_over(access, self._marker, device.id)
-        await apply(access, status, action, power, now)
+        profile = self._profiles()[device.profile]
+        defaults = {n: spec["default"] for n, spec in profile.get("parameters", {}).items() if "default" in spec}
+        runtime: dict[str, float] = {"P": abs(power)} if power is not None else {}
+        if (buffer := (defaults | device.parameters).get("grid_offset")) is not None:
+            runtime["grid_offset"] = grid_buffer(buffer, current_slot(plan, now) if plan else None, reason == "nach Plan")
+        await apply(access, status, action, power, now, runtime)
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
+        status.grid_target_w = runtime.get("grid_offset")
 
     async def _charge(
         self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime, live: Any

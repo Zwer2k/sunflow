@@ -107,8 +107,9 @@ const PARAM_LABELS = {
 // Short explanation below a parameter
 const PARAM_HINTS = {
   grid_offset:
-    "Auf diese Leistung am Netzanschluss regelt der Wechselrichter, während Sunflow steuert. Negativ = leichte Einspeisung als " +
-    "Puffer gegen Lastsprünge (Bezug kostet mehr als die Vergütung bringt), 0 = genau null, positiv = leichter Bezug.",
+    "Puffer gegen Lastsprünge, während Sunflow steuert. Negativ (z. B. −200 W) gilt nur, wenn der Plan ohnehin einspeist " +
+    "(PV-Überschuss) – sonst regelt der Wechselrichter auf 0, damit kein gespeicherter Strom ins Netz geht. Positiv = " +
+    "bewusst leichter Bezug, gilt immer.",
 };
 
 export function paramHint(name) {
