@@ -6,7 +6,14 @@ from typing import Any
 from sunflow.config.models import DeviceConfig, MeasuredBy, SunflowConfig
 
 from .discovery import Snapshot, entity_has_key
-from .resolver import Balance, RoleValue, check_balance, device_entities, preview
+from .resolver import (
+    UNIT_FACTORS,
+    Balance,
+    RoleValue,
+    check_balance,
+    device_entities,
+    preview,
+)
 
 # Roles that carry a plant's AC output, in order of preference
 PV_OUTPUT_ROLES = ("ac_power", "pv_power")
@@ -42,9 +49,13 @@ def derive_parameter(
         if not entity_has_key(entity, derive["sum_key"]):
             continue
         try:
-            total += float(snapshot.states[entity["entity_id"]]["state"])
+            state = snapshot.states[entity["entity_id"]]
+            value = float(state["state"])
         except KeyError, TypeError, ValueError:
             continue
+        # Shown in kWh (e.g. a suggested unit) but asked for in Wh
+        canonical, factor = UNIT_FACTORS.get(state.get("attributes", {}).get("unit_of_measurement") or "", (None, 1))
+        total += value * factor if canonical == spec["unit"] else value
         found = True
     return round(total * derive.get("factor", 1)) if found else None
 

@@ -40,6 +40,7 @@ from sunflow.devices.executor import (
 )
 from sunflow.devices.profiles import controls_battery, supported_action
 from sunflow.devices.resolver import device_entities, preview
+from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
 
@@ -349,11 +350,14 @@ async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str
 
 
 def device_variables(profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot) -> dict[str, Any]:
-    """Values a profile step may use besides its parameters: the device's serial and its role values."""
+    """Values a profile step may use: effective parameters (also derived), serial, role values and device ids."""
     ha_device = next((d for d in snapshot.devices if d.get("id") == device.ha_device_id), {})
     serial = next((ident[1] for ident in ha_device.get("identifiers") or [] if len(ident) > 1), None)
     roles = preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
-    values: dict[str, Any] = {f"role_{r.role}": round(r.value) for r in roles if isinstance(r.value, int | float)}
+    values: dict[str, Any] = {
+        p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot) if p["effective"] is not None
+    }
+    values |= {f"role_{r.role}": round(r.value) for r in roles if isinstance(r.value, int | float)}
     if serial is not None:
         values["device_serial"] = serial
     # Integrations whose actions take a (sub-)device, e.g. Huawei's battery: device_id_batteries

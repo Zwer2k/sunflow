@@ -1,0 +1,64 @@
+# SolarEdge StorEdge / Home Hub with battery via the solaredge_modbus integration.
+# Battery control by storage remote control: the control mode is switched to remote
+# control once (kept in flash, restored when handing back), then command mode and
+# charge/discharge limits select the behaviour, like evcc does over Modbus.
+# Battery and meter entities carry their serial (or slot) in the key, hence the wildcards.
+# Signs: battery dc_power + = charge, meter ac_power + = export (as in evcc's template).
+# PV = inverter DC power + battery charge power (the inverter's DC side feeds both).
+# Not verified on hardware yet.
+profile: solaredge_modbus/storedge
+version: 1
+match:
+  integration: solaredge_modbus
+  requires: [storage_control_mode, storage_command_mode, charge_limit, discharge_limit]
+
+capabilities: [pv, battery, grid_meter, battery_control]
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: "battery_*_state_of_energy", unit: "%"}
+  battery_power: {key: "battery_*_dc_power", unit: W, sign: charge_positive}
+  pv_power: {key: dc_power, unit: W, fine_keys: [dc_power, "battery_*_dc_power"]}
+  ac_power: {key: ac_power, unit: W}
+  grid_power: {key: "meter_*_ac_power", unit: W, sign: export_positive, optional: true}
+  pv_energy: {key: ac_energy, unit: kWh, optional: true}
+  grid_import_energy: {key: "meter_*_energy_imported", unit: kWh, optional: true}
+  grid_export_energy: {key: "meter_*_energy_exported", unit: kWh, optional: true}
+  battery_charge_energy: {key: "battery_*_energy_imported", unit: kWh, optional: true}
+  battery_discharge_energy: {key: "battery_*_energy_exported", unit: kWh, optional: true}
+
+# Remote control only takes effect in this storage control mode
+control_mode: {key: storage_control_mode, option: remote_control}
+
+parameters:
+  capacity_wh: {unit: Wh, derive: {sum_key: "battery_*_energy_max"}}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, derive: {sum_key: "battery_*_max_charge_power"}}
+  max_discharge: {unit: W, derive: {sum_key: "battery_*_max_discharge_power"}}
+  efficiency_pct: {unit: "%", default: 92, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 97, min: 80, max: 100}
+
+battery_control:
+  auto:
+    - select: {key: storage_command_mode, option: maximize_self_consumption, write: if_differs}
+    - number: {key: charge_limit, value: "{{ max_charge }}", write: if_differs, tolerance: 50}
+    - number: {key: discharge_limit, value: "{{ max_discharge }}", write: if_differs, tolerance: 50}
+  hold:
+    - select: {key: storage_command_mode, option: maximize_self_consumption, write: if_differs}
+    - number: {key: charge_limit, value: "{{ max_charge }}", write: if_differs, tolerance: 50}
+    - number: {key: discharge_limit, value: 0, write: if_differs}
+  limit_charge:
+    - select: {key: storage_command_mode, option: maximize_self_consumption, write: if_differs}
+    - number: {key: charge_limit, value: "{{ P }}", write: if_differs, tolerance: 100}
+    - number: {key: discharge_limit, value: "{{ max_discharge }}", write: if_differs, tolerance: 50}
+  limit_discharge:
+    - select: {key: storage_command_mode, option: maximize_self_consumption, write: if_differs}
+    - number: {key: charge_limit, value: "{{ max_charge }}", write: if_differs, tolerance: 50}
+    - number: {key: discharge_limit, value: "{{ P }}", write: if_differs, tolerance: 100}
+  force_charge:
+    - select: {key: storage_command_mode, option: charge_from_solar_and_grid, write: if_differs}
+    - number: {key: charge_limit, value: "{{ P }}", write: if_differs, tolerance: 100}
+  force_discharge:
+    - select: {key: storage_command_mode, option: discharge_to_maximize_export, write: if_differs}
+    - number: {key: discharge_limit, value: "{{ P }}", write: if_differs, tolerance: 100}
