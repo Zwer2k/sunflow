@@ -42,6 +42,103 @@
       },
       "string_power": {
         "name": "{name} power"
+      },
+      "battery_action": {
+        "name": "Battery action",
+        "state": {
+          "auto": "Self-consumption",
+          "hold": "Hold",
+          "force_charge": "Charge",
+          "force_discharge": "Discharge",
+          "limit_charge": "Limit charging",
+          "limit_discharge": "Limit discharging"
+        }
+      },
+      "price_now": {
+        "name": "Electricity price now"
+      },
+      "cheapest_start": {
+        "name": "Cheapest window"
+      },
+      "cheapest_price": {
+        "name": "Cheapest price"
+      },
+      "soc_in_an_hour": {
+        "name": "Battery in an hour"
+      },
+      "savings": {
+        "name": "Savings of the plan"
+      },
+      "surplus": {
+        "name": "PV surplus"
+      },
+      "plan_updated": {
+        "name": "Plan updated"
+      },
+      "device_action": {
+        "name": "{name} action",
+        "state": {
+          "auto": "Self-consumption",
+          "hold": "Hold",
+          "force_charge": "Charge",
+          "force_discharge": "Discharge",
+          "limit_charge": "Limit charging",
+          "limit_discharge": "Limit discharging",
+          "charge": "Charging",
+          "stop": "Stopped",
+          "follow": "Follows PV surplus",
+          "release": "Device decides",
+          "off": "Not controlled"
+        }
+      },
+      "consumer_next_start": {
+        "name": "{name} next start"
+      },
+      "consumer_planned_energy": {
+        "name": "{name} planned energy"
+      }
+    },
+    "binary_sensor": {
+      "surplus": {
+        "name": "PV surplus"
+      },
+      "grid_charging": {
+        "name": "Charging from the grid"
+      },
+      "curtailing": {
+        "name": "PV limited"
+      },
+      "plan_problem": {
+        "name": "Plan"
+      },
+      "controlling": {
+        "name": "Sunflow controls"
+      },
+      "consumer_running": {
+        "name": "{name} planned now"
+      }
+    },
+    "switch": {
+      "control": {
+        "name": "Sunflow controls"
+      },
+      "device_control": {
+        "name": "Control {name}"
+      }
+    },
+    "select": {
+      "strategy": {
+        "name": "Strategy",
+        "state": {
+          "balanced": "Balanced",
+          "pv_absorption": "Take up PV",
+          "autarky": "Autarky"
+        }
+      }
+    },
+    "button": {
+      "replan": {
+        "name": "Plan again"
       }
     }
   }

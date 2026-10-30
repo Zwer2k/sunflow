@@ -83,3 +83,42 @@ def test_string_energy_counts_and_survives_a_restart(tmp_path: Path) -> None:
     again = EnergyCounters(tmp_path)
     again.add({"sofar:1": 2000.0}, start + timedelta(minutes=20))
     assert again.wh["sofar:1"] == pytest.approx(1500 / 60)
+
+
+def test_integration_state_from_plan_and_sample() -> None:
+    """Current slot, cheapest window, SoC in an hour, surplus and when a consumer starts."""
+    from types import SimpleNamespace
+
+    from sunflow.api.integration import integration_state
+
+    now = datetime(2026, 10, 30, 12, 5, tzinfo=UTC)
+
+    def slot(minutes: int, price: float, wallbox: float = 0.0, action: str = "auto") -> SimpleNamespace:
+        return SimpleNamespace(
+            start=(now.replace(minute=0) + timedelta(minutes=minutes)).isoformat(), action=action, action_power_w=None,
+            price=price, feed_in=0.08, soc_wh=10000 + minutes * 100, import_w=0.0, curtail_w=0.0,
+            flex_w={"Wallbox": wallbox},
+        )
+
+    slots = [slot(0, 0.30), slot(15, 0.20), slot(30, 0.25, 4000), slot(45, 0.25, 4000), slot(60, 0.31), slot(75, 0.32)]
+    info = SimpleNamespace(
+        device_id="wb", name="Wallbox", kind="vehicle", current=40.0, target=80.0, unit="%", vehicle="Fiat",
+        need_wh=12000.0, reason=None,
+    )
+    result = SimpleNamespace(
+        plan=SimpleNamespace(slots=slots, savings=1.234), battery=SimpleNamespace(capacity_wh=20000), flex=[info]
+    )
+    sample = SimpleNamespace(pv_w=5000.0, load_w=800.0, grid_w=-3000.0, battery_w=1200.0, soc_wh=10000.0)
+
+    state = integration_state(SunflowConfig(), result, now, sample, None, now)
+
+    assert state["plan"]["price_ct"] == 30.0
+    assert state["plan"]["cheapest_start"] == slots[1].start
+    # The slot starting at 13:15 is the first a full hour ahead: 10000 + 75 * 100 Wh of 20000
+    assert state["plan"]["soc_in_an_hour_pct"] == 87.5
+    assert state["live"] == {
+        "pv_w": 5000.0, "load_w": 800.0, "grid_w": -3000.0, "battery_w": 1200.0, "soc_pct": 50.0,
+        "surplus_w": 4200.0, "surplus": True,
+    }
+    (consumer,) = state["consumers"]
+    assert (consumer["next_start"], consumer["planned_wh"], consumer["running"]) == (slots[2].start, 2000.0, False)

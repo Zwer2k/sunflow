@@ -54,6 +54,7 @@ class SunflowData:
     client: SunflowClient
     forecasts: SunflowCoordinator
     strings: SunflowCoordinator
+    state: SunflowCoordinator
 
 
 def create_coordinators(
@@ -68,4 +69,5 @@ def create_coordinators(
         strings=SunflowCoordinator(
             hass, entry, client, "strings", STATE_INTERVAL, "string_energy"
         ),
+        state=SunflowCoordinator(hass, entry, client, "state", STATE_INTERVAL, "state"),
     )

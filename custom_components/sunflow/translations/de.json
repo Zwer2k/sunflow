@@ -42,6 +42,103 @@
       },
       "string_power": {
         "name": "{name} Leistung"
+      },
+      "battery_action": {
+        "name": "Aktion Speicher",
+        "state": {
+          "auto": "Eigenverbrauch",
+          "hold": "Halten",
+          "force_charge": "Laden",
+          "force_discharge": "Entladen",
+          "limit_charge": "Laden begrenzen",
+          "limit_discharge": "Entladen begrenzen"
+        }
+      },
+      "price_now": {
+        "name": "Strompreis jetzt"
+      },
+      "cheapest_start": {
+        "name": "Günstigstes Fenster"
+      },
+      "cheapest_price": {
+        "name": "Günstigster Preis"
+      },
+      "soc_in_an_hour": {
+        "name": "Speicher in einer Stunde"
+      },
+      "savings": {
+        "name": "Ersparnis des Plans"
+      },
+      "surplus": {
+        "name": "PV-Überschuss"
+      },
+      "plan_updated": {
+        "name": "Plan aktualisiert"
+      },
+      "device_action": {
+        "name": "{name} Aktion",
+        "state": {
+          "auto": "Eigenverbrauch",
+          "hold": "Halten",
+          "force_charge": "Laden",
+          "force_discharge": "Entladen",
+          "limit_charge": "Laden begrenzen",
+          "limit_discharge": "Entladen begrenzen",
+          "charge": "Lädt",
+          "stop": "Gestoppt",
+          "follow": "Folgt PV-Überschuss",
+          "release": "Gerät regelt selbst",
+          "off": "Nicht gesteuert"
+        }
+      },
+      "consumer_next_start": {
+        "name": "{name} nächster Start"
+      },
+      "consumer_planned_energy": {
+        "name": "{name} geplante Energie"
+      }
+    },
+    "binary_sensor": {
+      "surplus": {
+        "name": "PV-Überschuss"
+      },
+      "grid_charging": {
+        "name": "Laden aus dem Netz"
+      },
+      "curtailing": {
+        "name": "PV begrenzt"
+      },
+      "plan_problem": {
+        "name": "Plan"
+      },
+      "controlling": {
+        "name": "Sunflow steuert"
+      },
+      "consumer_running": {
+        "name": "{name} jetzt eingeplant"
+      }
+    },
+    "switch": {
+      "control": {
+        "name": "Sunflow steuert"
+      },
+      "device_control": {
+        "name": "{name} steuern"
+      }
+    },
+    "select": {
+      "strategy": {
+        "name": "Strategie",
+        "state": {
+          "balanced": "Ausgewogen",
+          "pv_absorption": "PV aufnehmen",
+          "autarky": "Autarkie"
+        }
+      }
+    },
+    "button": {
+      "replan": {
+        "name": "Neu planen"
       }
     }
   }
