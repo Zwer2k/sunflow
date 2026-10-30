@@ -197,7 +197,7 @@
     },
     "plan_load": {
       "name": "Einmalige Last einplanen",
-      "description": "Sucht die günstigste Startzeit für einen Lauf (z. B. die Waschmaschine). Löst zum Start sunflow_load_start aus.",
+      "description": "Sucht die günstigste Startzeit für einen Lauf (z. B. die Waschmaschine). Löst zum Start sunflow_ems_load_start aus.",
       "fields": {
         "name": {
           "name": "Name",

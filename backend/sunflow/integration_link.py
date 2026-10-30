@@ -9,7 +9,7 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
-DISCOVERY_SERVICE = "sunflow"
+DISCOVERY_SERVICE = "sunflow_ems"
 
 
 def integration_token(data_dir: Path) -> str:

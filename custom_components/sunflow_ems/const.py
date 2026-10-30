@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-DOMAIN = "sunflow"
+DOMAIN = "sunflow_ems"
 API_VERSION = "v1"
 DEFAULT_URL = "http://localhost:8099"
 
