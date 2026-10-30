@@ -207,8 +207,8 @@ class SunflowControl extends LitElement {
                 <span class="small muted">${d.kind === "battery" ? "Speicher" : CATEGORY_LABELS[d.category] ?? ""}</span>
               </label>
               ${d.kind === "loadpoint" && d.enabled
-                ? html`<span class="small muted">Wird der Ladepunkt auch von evcc oder einer Automation gesteuert, dort ausschalten –
-                    sonst schalten zwei Steuerungen gegeneinander.</span>`
+                ? html`<span class="small muted">Wird der Ladepunkt auch an anderer Stelle gesteuert (z. B. eine Automation oder ein
+                    Zeitplan), dort ausschalten – sonst schalten zwei Steuerungen gegeneinander.</span>`
                 : nothing}
               <span class="small muted">${d.blocked
                 ? `nicht möglich: ${d.blocked}`
