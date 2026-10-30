@@ -366,7 +366,7 @@ class PlanController:
         self._profiles = profiles
         self.statuses: dict[str, DeviceControl] = {}
         self.paused: str | None = None
-        self._vehicles: dict[str, Any] = {}
+        self._config = SunflowConfig()
 
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive or a loadpoint with charge control."""
@@ -396,7 +396,7 @@ class PlanController:
         """One control step; a failure on one device does not stop the others."""
         # Disabled devices are not controlled, but one taken over earlier is handed back properly
         devices = {d.id: d for d in [*config.disabled_devices, *config.devices]}
-        self._vehicles = {v.id: v for v in config.vehicles}
+        self._config = config
         # Devices taken over earlier but no longer wanted (switched off, removed, test reset)
         for device_id in list(self._marker.get()):
             device = devices.get(device_id)
@@ -440,12 +440,12 @@ class PlanController:
             and info is not None
             # Only a sure recognition: "the only vehicle" would also let a foreign car charge
             and info.vehicle_method in ("manual", "sensor")
-            and device.vehicle_detection.authorize
+            and self._config.detection_of(device.id).authorize
             and "authorize" in self._profiles()[device.profile]["charge_control"]
-            and (vehicle := self._vehicles.get(info.vehicle_id or "")) is not None
+            and (profile := self._config.charging_profile(info.vehicle_id or "", device.id)) is not None
         ):
             # Recognized without its card: start the transaction as if the card had been scanned
-            transaction = f"card_{vehicle.card - 1}" if vehicle.card else "without_card"
+            transaction = f"card_{profile.card - 1}" if profile.card else "without_card"
             await apply(access, status, "authorize", None, now, {"transaction": transaction})
         if action == "release" and access.release is None:
             # Nothing of its own to fall back to (evcc): its previous mode until a plan is there again

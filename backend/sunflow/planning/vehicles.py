@@ -42,10 +42,11 @@ def recognize(
 ) -> Recognized:
     """The vehicle connected to the wallbox, from its roles (transaction) and the cars' sensors."""
     assigned = config.vehicles_at(wallbox.id)
-    detection = wallbox.vehicle_detection
+    detection = config.detection_of(wallbox.id)
     transaction = roles["transaction"].raw_state if "transaction" in roles else None
     if detection.card and (card := scanned_card(transaction)) is not None:
-        vehicle = next((v for v in assigned if v.card == card), None)
+        cards = {c.vehicle_id: c.card for c in config.charging if c.wallbox_id == wallbox.id}
+        vehicle = next((v for v in assigned if cards.get(v.id) == card), None)
         if vehicle is None:
             return Recognized(vehicle=None, method=None, reason=f"Karte {card} gehört zu keinem Fahrzeug dieser Wallbox")
         return Recognized(vehicle=vehicle, method="card")

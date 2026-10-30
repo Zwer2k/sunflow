@@ -254,7 +254,7 @@ async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, A
     config.devices.append(device)
     store.save(config)
     _replan(request)
-    return device.model_dump(mode="json")
+    return device_with_relations(config, device)
 
 
 @router.put("/config/devices/manual/{device_id}")
@@ -277,7 +277,7 @@ async def update_manual_device(request: Request, device_id: str, body: ManualDev
         device.parameters["daily_energy_wh"] = body.daily_energy_wh
     store.save(config)
     _replan(request)
-    return device.model_dump(mode="json")
+    return device_with_relations(config, device)
 
 
 @router.put("/config/devices/{device_id}/role_overrides")
@@ -292,6 +292,16 @@ async def set_role_overrides(
     device.role_overrides = overrides
     store.save(config)
     return device.model_dump()
+
+
+def device_with_relations(config: SunflowConfig, device: DeviceConfig) -> dict[str, Any]:
+    """The device with what belongs to it (planning, feed-in, measurement link), for the UI."""
+    feed_in, measured = config.feed_in.get(device.id), config.measured_by.get(device.id)
+    return device.model_dump(mode="json") | {
+        "flex": config.flex_of(device.id).model_dump(),
+        "feed_in": feed_in.model_dump() if feed_in else None,
+        "measured_by": measured.model_dump() if measured else None,
+    }
 
 
 class DeviceUpdate(BaseModel):
@@ -323,19 +333,20 @@ async def update_device(
                 device.parameters.pop(name, None)
             else:
                 device.parameters[name] = value
+    # Not the device itself but what belongs to it: kept by device id
     if body.feed_in is not None:
-        device.feed_in = body.feed_in
+        config.feed_in[device.id] = body.feed_in
     if body.flex is not None:
-        device.flex = body.flex
+        config.planning[device.id] = body.flex
     if body.clear_measured_by:
-        device.measured_by = None
+        config.measured_by.pop(device.id, None)
     elif body.measured_by is not None:
         if config.device(body.measured_by.device_id) is None:
             raise HTTPException(status_code=422, detail="Measuring device not configured")
-        device.measured_by = body.measured_by
+        config.measured_by[device.id] = body.measured_by
     store.save(config)
     _replan(request)
-    return device.model_dump()
+    return device_with_relations(config, device)
 
 
 @router.get("/config/devices/{device_id}/parameters")
@@ -343,7 +354,8 @@ async def get_parameters(request: Request, device_id: str) -> list[dict[str, Any
     """Return profile parameters with stored, derived and default values."""
     device = _configured_device(request, device_id)
     snapshot = await _snapshot(request)
-    return device_parameters(_library(request).profiles[device.profile], device, snapshot)
+    modules = request.app.state.store.load().battery_modules.get(device.id)
+    return device_parameters(_library(request).profiles[device.profile], device, snapshot, modules)
 
 
 @router.get("/config/devices/{device_id}/efficiency")
@@ -364,7 +376,8 @@ async def _efficiency_estimate(request: Request, device: DeviceConfig, days: int
         )
     }
     power, soc = roles.get("battery_power"), roles.get("battery_soc")
-    params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+    modules = request.app.state.store.load().battery_modules.get(device.id)
+    params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot, modules)}
     if soc is None or not soc.entity_id or not params.get("capacity_wh"):
         return None
     charge, discharge = roles.get("battery_charge_energy"), roles.get("battery_discharge_energy")
@@ -421,14 +434,15 @@ async def get_batteries(request: Request) -> list[dict[str, Any]]:
     for device in batteries:
         profile = profiles[device.profile]
         roles = {r.role: r for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})}
-        params = {p["name"]: p for p in device_parameters(profile, device, snapshot)}
-        assigned = battery_module_ids(snapshot, device)
+        chosen = config.battery_modules.get(device.id)
+        params = {p["name"]: p for p in device_parameters(profile, device, snapshot, chosen)}
+        assigned = battery_module_ids(snapshot, device, chosen)
         spec = profile.get("parameters", {}).get("capacity_wh")
         result.append(
             {
                 "device_id": device.id,
                 "inverter": device.name,
-                "auto": device.battery_modules is None,
+                "auto": chosen is None,
                 "soc_pct": roles["battery_soc"].value if "battery_soc" in roles else None,
                 "power_w": roles["battery_power"].value if "battery_power" in roles else None,
                 "capacity_wh": params.get("capacity_wh", {}).get("effective"),
@@ -462,11 +476,13 @@ async def set_battery_modules(request: Request, device_id: str, body: BatteryMod
     device = config.device(device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not configured")
-    if body.modules is not None:
-        taken = {m for d in config.devices if d.id != device_id and d.battery_modules for m in d.battery_modules}
+    if body.modules is None:
+        config.battery_modules.pop(device.id, None)
+    else:
+        taken = {m for owner, modules in config.battery_modules.items() if owner != device_id for m in modules}
         if taken & set(body.modules):
             raise HTTPException(status_code=422, detail="Ein Modul ist schon einem anderen Wechselrichter zugeordnet")
-    device.battery_modules = body.modules
+        config.battery_modules[device.id] = body.modules
     store.save(config)
     _replan(request)
     return await get_batteries(request)
@@ -556,6 +572,7 @@ async def remove_device(request: Request, device_id: str) -> None:
         if (kept := [c for c in conditions if c.device_id != device_id])
     }
     config.measurement_sources = {q: d for q, d in config.measurement_sources.items() if d != device_id}
+    config.forget_device(device_id)
     store.save(config)
     _replan(request)
 

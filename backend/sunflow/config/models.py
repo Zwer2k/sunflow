@@ -7,7 +7,7 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Raised with every change that needs a migration step (see store.MIGRATIONS)
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 
 
 class RoleOverride(BaseModel):
@@ -50,7 +50,10 @@ class FlexSettings(BaseModel):
 
 
 class Vehicle(BaseModel):
-    """A car that charges at one or more wallboxes; recognized by card, sensor or choice."""
+    """A car as it is: battery and the sensors of its own integration.
+
+    Where it charges, with which card and to what target is a charging profile.
+    """
 
     model_config = ConfigDict(allow_inf_nan=False)
 
@@ -62,10 +65,18 @@ class Vehicle(BaseModel):
     soc_entity: str | None = None
     # "on"/"home"/"connected" while the car is plugged in or at home (optional)
     plugged_entity: str | None = None
-    # RFID card number of the charger (1..10 at the go-e)
+
+
+class ChargingProfile(BaseModel):
+    """A vehicle allowed at a wallbox: its card there and how it is charged there."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    vehicle_id: str
+    wallbox_id: str
+    # RFID card number at this charger (1..10 at the go-e)
     card: int | None = Field(default=None, ge=1, le=10)
-    # Device ids of the wallboxes it may charge at
-    wallboxes: list[str] = Field(default_factory=list)
+    # Target (%), ready by, strategy, battery use
     flex: FlexSettings = Field(default_factory=FlexSettings)
 
 
@@ -84,7 +95,11 @@ class VehicleDetection(BaseModel):
 
 
 class DeviceConfig(BaseModel):
-    """A device managed by Sunflow."""
+    """A device managed by Sunflow: what it is and how its entities are read.
+
+    How it is planned, which other devices it belongs to and what its energy earns
+    are kept in SunflowConfig, by device id.
+    """
 
     model_config = ConfigDict(extra="allow", allow_inf_nan=False)
 
@@ -95,16 +110,9 @@ class DeviceConfig(BaseModel):
     name: str
     parameters: dict[str, float] = Field(default_factory=dict)
     role_overrides: dict[str, RoleOverride] = Field(default_factory=dict)
-    feed_in: FeedIn | None = None
-    measured_by: MeasuredBy | None = None
     test_passed_at: datetime | None = None
-    flex: FlexSettings = Field(default_factory=FlexSettings)
-    # Wallboxes with assigned vehicles
-    vehicle_detection: VehicleDetection = Field(default_factory=VehicleDetection)
     # Loadpoints: a car or a heater; None: from the unit of its "SoC" (°C means heater)
     kind: Literal["vehicle", "heater"] | None = None
-    # Battery modules (HA device ids) of an inverter's battery; None: its sub-devices in HA
-    battery_modules: list[str] | None = None
 
 
 class TariffConfig(BaseModel):
@@ -278,15 +286,47 @@ class SunflowConfig(BaseModel):
     priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
     control: ControlSettings = Field(default_factory=ControlSettings)
     vehicles: list[Vehicle] = Field(default_factory=list)
+    # Vehicle at wallbox: card, target, ready by
+    charging: list[ChargingProfile] = Field(default_factory=list)
+    # By device id: how a consumer is planned (missing: defaults)
+    planning: dict[str, FlexSettings] = Field(default_factory=dict)
+    # By wallbox id: how the connected vehicle is recognized
+    vehicle_detection: dict[str, VehicleDetection] = Field(default_factory=dict)
+    # By inverter id: HA devices of its battery modules (missing: its sub-devices in HA)
+    battery_modules: dict[str, list[str]] = Field(default_factory=dict)
+    # By plant id: what its feed-in earns
+    feed_in: dict[str, FeedIn] = Field(default_factory=dict)
+    # By device id: another device whose sensors measure it
+    measured_by: dict[str, MeasuredBy] = Field(default_factory=dict)
     # Switched off in the setup (e.g. a wallbox both as evcc loadpoint and directly): kept
     # with all settings, but planning, measuring and control only see self.devices
     disabled_devices: list[DeviceConfig] = Field(default_factory=list)
     # Wallbox id -> vehicle chosen in the control tab (until the car is unplugged)
     selected_vehicles: dict[str, str] = Field(default_factory=dict)
 
+    def flex_of(self, device_id: str) -> FlexSettings:
+        """How a consumer is planned (defaults when nothing was set)."""
+        return self.planning.get(device_id) or FlexSettings()
+
+    def detection_of(self, wallbox_id: str) -> VehicleDetection:
+        """How a wallbox recognizes the connected vehicle."""
+        return self.vehicle_detection.get(wallbox_id) or VehicleDetection()
+
+    def charging_profile(self, vehicle_id: str, wallbox_id: str) -> ChargingProfile | None:
+        """Card and charging settings of a vehicle at a wallbox, None if it may not charge there."""
+        return next((c for c in self.charging if c.vehicle_id == vehicle_id and c.wallbox_id == wallbox_id), None)
+
+    def forget_device(self, device_id: str) -> None:
+        """Drop everything that refers to a removed device."""
+        for relation in (self.planning, self.vehicle_detection, self.battery_modules, self.feed_in, self.measured_by):
+            relation.pop(device_id, None)
+        self.measured_by = {k: v for k, v in self.measured_by.items() if v.device_id != device_id}
+        self.charging = [c for c in self.charging if c.wallbox_id != device_id]
+
     def vehicles_at(self, wallbox_id: str) -> list[Vehicle]:
         """Vehicles that may charge at a wallbox."""
-        return [v for v in self.vehicles if wallbox_id in v.wallboxes]
+        allowed = {c.vehicle_id for c in self.charging if c.wallbox_id == wallbox_id}
+        return [v for v in self.vehicles if v.id in allowed]
 
     def vehicle(self, vehicle_id: str) -> Vehicle | None:
         """Return a vehicle by its id."""
@@ -296,13 +336,16 @@ class SunflowConfig(BaseModel):
         """Return a configured device by its Sunflow id."""
         return next((d for d in self.devices if d.id == device_id), None)
 
-    def effective_flex(self, device: DeviceConfig, now: datetime) -> tuple[FlexSettings, bool]:
-        """Return the planning settings with an active override applied, and whether it is paused."""
+    def effective_flex(
+        self, device: DeviceConfig, now: datetime, base: FlexSettings | None = None
+    ) -> tuple[FlexSettings, bool]:
+        """Planning settings (base: e.g. a charging profile) with an active override, and whether it is paused."""
+        settings = base or self.flex_of(device.id)
         override = self.overrides.get(device.id)
         if override is None or not override.active(now):
-            return device.flex, False
+            return settings, False
         changes = {k: v for k, v in (("strategy", override.strategy), ("target", override.target)) if v is not None}
-        return device.flex.model_copy(update=changes), override.paused
+        return settings.model_copy(update=changes), override.paused
 
     def effective_strategy(self, now: datetime) -> Strategy:
         """Return the battery strategy with an active override applied."""

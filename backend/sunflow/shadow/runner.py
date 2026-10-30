@@ -113,14 +113,17 @@ async def take_sample(
         }
 
     roles = values(device)
-    params = {p["name"]: p["effective"] for p in device_parameters(profiles[device.profile], device, snapshot)}
+    params = {
+        p["name"]: p["effective"]
+        for p in device_parameters(profiles[device.profile], device, snapshot, config.battery_modules.get(device.id))
+    }
     capacity = params.get("capacity_wh")
     soc = roles.get("battery_soc")
     return Sample(
         soc_wh=capacity * soc / 100 if capacity and soc is not None else None,
         battery_w=roles.get("battery_power"),
         grid_w=values(measurement_device(config, profiles, "grid")).get("grid_power"),
-        pv_w=site_status(config.devices, profiles, snapshot).pv_total,
+        pv_w=site_status(config.devices, profiles, snapshot, measured_by=config.measured_by).pv_total,
         load_w=values(measurement_device(config, profiles, "load")).get("load_power"),
         loadpoint_w=consumer_power(config, profiles, values),
         strings=string_powers(config, profiles, snapshot),

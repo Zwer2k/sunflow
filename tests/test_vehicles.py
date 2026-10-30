@@ -3,18 +3,30 @@
 from types import SimpleNamespace
 
 import pytest
-from sunflow.config.models import DeviceConfig, SunflowConfig, Vehicle, VehicleDetection
+from sunflow.config.models import (
+    ChargingProfile,
+    DeviceConfig,
+    SunflowConfig,
+    Vehicle,
+    VehicleDetection,
+)
 from sunflow.planning.vehicles import recognize, scanned_card
 
-FIAT = Vehicle(id="fiat", name="Fiat 500e", capacity_wh=37500, card=1, plugged_entity="binary_sensor.fiat_plugged", wallboxes=["wb"])
-TESLA = Vehicle(id="tesla", name="Model 3", capacity_wh=60000, card=2, plugged_entity="binary_sensor.tesla_plugged", wallboxes=["wb"])
+FIAT = Vehicle(id="fiat", name="Fiat 500e", capacity_wh=37500, plugged_entity="binary_sensor.fiat_plugged")
+TESLA = Vehicle(id="tesla", name="Model 3", capacity_wh=60000, plugged_entity="binary_sensor.tesla_plugged")
+# The card belongs to the vehicle at this wallbox, not to the vehicle itself
+CARDS = {"fiat": 1, "tesla": 2}
 
 
 def _config(vehicles: list[Vehicle], detection: VehicleDetection | None = None, chosen: str | None = None) -> SunflowConfig:
     wallbox = DeviceConfig(id="wb", ha_device_id="w", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
-    if detection:
-        wallbox.vehicle_detection = detection
-    return SunflowConfig(devices=[wallbox], vehicles=vehicles, selected_vehicles={"wb": chosen} if chosen else {})
+    return SunflowConfig(
+        devices=[wallbox],
+        vehicles=vehicles,
+        charging=[ChargingProfile(vehicle_id=v.id, wallbox_id="wb", card=CARDS[v.id]) for v in vehicles],
+        vehicle_detection={"wb": detection} if detection else {},
+        selected_vehicles={"wb": chosen} if chosen else {},
+    )
 
 
 def _roles(transaction: str = "none") -> dict:

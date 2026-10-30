@@ -35,7 +35,7 @@ async def get_live(request: Request) -> dict[str, Any]:
     config = request.app.state.store.load()
     profiles = _library(request).profiles
     snapshot = await _snapshot(request)
-    site = site_status(config.devices, profiles, snapshot)
+    site = site_status(config.devices, profiles, snapshot, measured_by=config.measured_by)
     by_id = {d.id: d for d in config.devices}
     grid_device = measurement_device(config, profiles, "grid")
     load_device = measurement_device(config, profiles, "load")
@@ -72,7 +72,10 @@ async def get_live(request: Request) -> dict[str, Any]:
             )
         # The node stays without readings, e.g. while the inverter restarts
         if "battery" in capabilities:
-            params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+            params = {
+                p["name"]: p["effective"]
+                for p in device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))
+            }
             batteries.append(
                 {
                     "name": device.name,
@@ -216,7 +219,7 @@ async def get_site(request: Request) -> dict[str, Any]:
     """Return live status, cross checks and PV total of all configured devices."""
     config = request.app.state.store.load()
     snapshot = await _snapshot(request)
-    site = site_status(config.devices, _library(request).profiles, snapshot)
+    site = site_status(config.devices, _library(request).profiles, snapshot, measured_by=config.measured_by)
     result = asdict(site)
     for device in result["devices"]:
         for role in device["roles"]:

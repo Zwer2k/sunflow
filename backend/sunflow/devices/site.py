@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from sunflow.config.models import DeviceConfig, SunflowConfig
+from sunflow.config.models import DeviceConfig, MeasuredBy, SunflowConfig
 
 from .discovery import Snapshot, entity_has_key
 from .resolver import Balance, RoleValue, check_balance, device_entities, preview
@@ -12,20 +12,24 @@ from .resolver import Balance, RoleValue, check_balance, device_entities, previe
 PV_OUTPUT_ROLES = ("ac_power", "pv_power")
 
 
-def battery_module_ids(snapshot: Snapshot, device: DeviceConfig) -> list[str]:
+def battery_module_ids(snapshot: Snapshot, device: DeviceConfig, chosen: list[str] | None = None) -> list[str]:
     """HA devices of the battery modules: chosen in the setup, else the inverter's sub-devices."""
-    if device.battery_modules is not None:
-        return list(device.battery_modules)
+    if chosen is not None:
+        return list(chosen)
     return [d["id"] for d in snapshot.devices if d.get("via_device_id") == device.ha_device_id]
 
 
-def _battery_entities(snapshot: Snapshot, device: DeviceConfig) -> list[dict[str, Any]]:
-    ids = {device.ha_device_id, *battery_module_ids(snapshot, device)}
+def _battery_entities(snapshot: Snapshot, device: DeviceConfig, modules: list[str] | None) -> list[dict[str, Any]]:
+    ids = {device.ha_device_id, *battery_module_ids(snapshot, device, modules)}
     return [e for e in snapshot.entities if e.get("device_id") in ids and not e.get("disabled_by")]
 
 
 def derive_parameter(
-    spec: dict[str, Any], snapshot: Snapshot, ha_device_id: str, device: DeviceConfig | None = None
+    spec: dict[str, Any],
+    snapshot: Snapshot,
+    ha_device_id: str,
+    device: DeviceConfig | None = None,
+    modules: list[str] | None = None,
 ) -> float | None:
     """Suggest a parameter value from sensors as defined by the profile (over the battery modules)."""
     derive = spec.get("derive")
@@ -33,7 +37,7 @@ def derive_parameter(
         return None
     total = 0.0
     found = False
-    entities = _battery_entities(snapshot, device) if device is not None else device_entities(snapshot, ha_device_id)
+    entities = _battery_entities(snapshot, device, modules) if device is not None else device_entities(snapshot, ha_device_id)
     for entity in entities:
         if not entity_has_key(entity, derive["sum_key"]):
             continue
@@ -75,7 +79,7 @@ def device_category(profile: dict[str, Any], device: DeviceConfig, snapshot: Sna
 
 
 def device_parameters(
-    profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot
+    profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot, modules: list[str] | None = None
 ) -> list[dict[str, Any]]:
     """Return the profile parameters for this device with stored, derived and default value."""
     kind = device_kind(profile, device, snapshot)
@@ -83,7 +87,7 @@ def device_parameters(
     for name, spec in profile.get("parameters", {}).items():
         if "kind" in spec and spec["kind"] != kind:
             continue
-        derived = derive_parameter(spec, snapshot, device.ha_device_id, device)
+        derived = derive_parameter(spec, snapshot, device.ha_device_id, device, modules)
         stored = device.parameters.get(name)
         default = spec.get("default")
         result.append(
@@ -179,6 +183,7 @@ def site_status(
     snapshot: Snapshot,
     tolerance: float = 0.2,
     min_abs: float = 150,
+    measured_by: dict[str, MeasuredBy] | None = None,
 ) -> SiteStatus:
     """Build the site view; PV measured by another device is counted once."""
     site = SiteStatus()
@@ -205,25 +210,25 @@ def site_status(
 
     measured_roles: set[tuple[str, str]] = set()
     for device in devices:
-        if device.measured_by is None:
+        if (link := (measured_by or {}).get(device.id)) is None:
             continue
         own = by_id[device.id].pv_output
-        other = by_id.get(device.measured_by.device_id)
+        other = by_id.get(link.device_id)
         measured = (
             next(
-                (r.value for r in other.roles if r.role == device.measured_by.role),
+                (r.value for r in other.roles if r.role == link.role),
                 None,
             )
             if other
             else None
         )
-        measured_roles.add((device.measured_by.device_id, device.measured_by.role))
+        measured_roles.add((link.device_id, link.role))
         deviation = own - measured if own is not None and measured is not None else None
         site.cross_checks.append(
             CrossCheck(
                 device_id=device.id,
-                measured_by=device.measured_by.device_id,
-                role=device.measured_by.role,
+                measured_by=link.device_id,
+                role=link.role,
                 own_value=own,
                 measured_value=measured,
                 deviation=deviation,

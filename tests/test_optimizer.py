@@ -573,13 +573,11 @@ def test_with_conditions(
 
     devices = [
         DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
-        DeviceConfig(
-            id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser",
-            flex=FlexSettings(strategy=strategy),
-        ),
+        DeviceConfig(id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser"),
     ]
     config = SunflowConfig(
         devices=devices,
+        planning={"ww": FlexSettings(strategy=strategy)},
         priorities=["battery", "ev", "ww"],
         priority_conditions={"ww": [PriorityCondition(device_id=d, min_pct=p) for d, p in conditions]},
     )

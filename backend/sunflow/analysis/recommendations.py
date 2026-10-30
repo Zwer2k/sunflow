@@ -102,7 +102,7 @@ def missing_settings(config: SunflowConfig, latest: PlanResult | None) -> list[R
                 )
             )
     for device in config.devices:
-        if device.parameters.get("tank_l") and device.flex.alternative_cost_ct is None:
+        if device.parameters.get("tank_l") and config.flex_of(device.id).alternative_cost_ct is None:
             result.append(
                 Recommendation(
                     id=f"alternative_cost:{device.id}",
@@ -150,7 +150,7 @@ def limits_cost_pv(config: SunflowConfig, latest: PlanResult | None) -> list[Rec
     for info in latest.flex:
         device = config.device(info.device_id)
         planned = results.get(info.name)
-        if device is None or planned is None or device.flex.alternative_cost_ct is None:
+        if device is None or planned is None or config.flex_of(device.id).alternative_cost_ct is None:
             continue
         limit = next(
             (c for c in config.valid_conditions(device.id) if c.device_id == BATTERY_PRIORITY_ID and c.min_pct >= 80),
