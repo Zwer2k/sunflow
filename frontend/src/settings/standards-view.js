@@ -14,7 +14,7 @@ const STRATEGIES = {
   },
 };
 
-/** Default planning settings ("Standards" step of the setup). */
+/** Default planning settings (settings area "Planung"). */
 class SunflowStandards extends LitElement {
   static properties = {
     _settings: { state: true },
@@ -67,8 +67,8 @@ class SunflowStandards extends LitElement {
     return html`
       <div class="heading">
         <div>
-          <h1>Standards</h1>
-          <p class="muted">Voreinstellungen für die Planung. Vorübergehende Änderungen machst du im Tab „Steuerung“.</p>
+          <h1>Planung</h1>
+          <p class="muted">Wie Sunflow den Speicher plant: Strategie, Schonung, netzdienliches Verhalten. Vorübergehende Änderungen machst du im Tab „Steuerung“.</p>
         </div>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}

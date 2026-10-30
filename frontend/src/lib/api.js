@@ -114,6 +114,7 @@ export const api = {
   setBatteryModules: (id, modules) => request("PUT", `/config/devices/${encodeURIComponent(id)}/battery-modules`, { modules }),
   setDeviceEnabled: (id, enabled) => request("PUT", `/config/devices/${encodeURIComponent(id)}/enabled`, { enabled }),
   setVehicles: (vehicles) => request("PUT", "/config/vehicles", vehicles),
+  setCharging: (profiles) => request("PUT", "/config/charging", profiles),
   setVehicleDetection: (id, body) => request("PUT", `/config/devices/${encodeURIComponent(id)}/vehicle-detection`, body),
   chooseVehicle: (wallboxId, vehicleId) => request("PUT", `/control/vehicles/${encodeURIComponent(wallboxId)}`, { vehicle_id: vehicleId }),
   addManual: (body) => request("POST", "/config/devices/manual", body),

@@ -97,8 +97,8 @@ def missing_settings(config: SunflowConfig, latest: PlanResult | None) -> list[R
                     severity="warn",
                     title=f"{info.name}: Energiebedarf pro Tag fehlt",
                     text="Ohne Tagesbedarf plant Sunflow den Verbraucher nicht ein. Trage ein, wie viel er an einem "
-                    "typischen Tag braucht (Geräte → Eigene Verbraucher → Bearbeiten).",
-                    action={"type": "navigate", "view": "setup", "step": 1},
+                    "typischen Tag braucht (Einstellungen → Geräte).",
+                    action={"type": "navigate", "view": "setup", "step": "devices"},
                 )
             )
     for device in config.devices:
@@ -109,8 +109,8 @@ def missing_settings(config: SunflowConfig, latest: PlanResult | None) -> list[R
                     severity="warn",
                     title=f"{device.name}: Preis der üblichen Heizung fehlt",
                     text="Ohne ihn behandelt Sunflow das Warmwasser als Pflicht und heizt im Zweifel mit Netzstrom. "
-                    "Trage den Preis z. B. der Fernwärme in ct/kWh ein (Kenndaten → Planung).",
-                    action={"type": "navigate", "view": "setup", "step": 2},
+                    "Trage den Preis z. B. der Fernwärme in ct/kWh ein (Einstellungen → Verbraucher).",
+                    action={"type": "navigate", "view": "setup", "step": "consumers"},
                 )
             )
     return result
@@ -134,7 +134,7 @@ def hot_water_demand(config: SunflowConfig) -> list[Recommendation]:
                         f"Das entspricht einer Abkühlung der {litres:.0f} l um etwa {drop:.0f} K pro Tag. "
                         "Ist der Verbrauch geringer, plant Sunflow zu viel Warmwasser ein."
                     ),
-                    action={"type": "navigate", "view": "setup", "step": 2},
+                    action={"type": "navigate", "view": "setup", "step": "devices"},
                     fingerprint=_fingerprint(daily, litres),
                 )
             )

@@ -4,15 +4,9 @@ import { confirmDialog } from "../components/dialog.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import "../components/picker.js";
 
-const EMPTY = { name: "", capacity_kwh: "", soc_entity: "", plugged_entity: "", card: "", target: "", ready_by: "", wallboxes: [] };
-const DETECTION = [
-  ["card", "Karte an der Wallbox", "Die gescannte Karte bestimmt das Fahrzeug."],
-  ["manual", "Auswahl in der Steuerung", "Gilt bis zum Abstecken."],
-  ["sensor", "Sensor des Fahrzeugs", "„Angesteckt“ oder „zuhause“ aus der Integration des Autos."],
-  ["single", "Einziges zugeordnetes Fahrzeug", "Ist nur eines zugeordnet, gilt immer dieses."],
-];
+const EMPTY = { name: "", capacity_kwh: "", efficiency: "", soc_entity: "", plugged_entity: "" };
 
-/** Vehicles, their wallboxes and cards, and how each wallbox recognizes them (setup step "Geräte"). */
+/** Vehicles as they are: battery and the sensors of their own integration (settings area "Fahrzeuge"). */
 class SunflowVehicles extends LitElement {
   static properties = {
     _data: { state: true },
@@ -21,7 +15,6 @@ class SunflowVehicles extends LitElement {
     _editId: { state: true },
     _error: { state: true },
     _busy: { state: true },
-    _openDetection: { state: true },
   };
 
   constructor() {
@@ -32,7 +25,6 @@ class SunflowVehicles extends LitElement {
     this._editId = null;
     this._error = null;
     this._busy = false;
-    this._openDetection = new Set();
   }
 
   connectedCallback() {
@@ -50,51 +42,44 @@ class SunflowVehicles extends LitElement {
 
   render() {
     const data = this._data;
-    if (!data || !data.wallboxes.length) return nothing;
     return html`
-      <section class="device">
-        <div class="device-head">
-          <div>
-            <div class="device-title">Fahrzeuge</div>
-            <div class="small muted">Mehrere Autos an einer Wallbox: Sunflow erkennt das angesteckte und plant mit dessen
-              Ladestand, Akku und Ziel. Ohne Fahrzeuge gelten die Kenndaten der Wallbox.</div>
-          </div>
-        </div>
-        ${this._error ? html`<div class="alert error">${this._error}</div>` : nothing}
-        ${data.vehicles.map((v) => {
-          const open = this._form !== null && this._editId === v.id;
-          return html`
-            <div class="sub ${open ? "" : "compact"}">
-              <button class="device-toggle" aria-expanded=${open} @click=${() => (open ? this._cancel() : this._edit(v))}>
-                <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
-                <span>
-                  <strong>${v.name}</strong>
-                  <span class="small muted block">${toDisplay(v.capacity_wh / 1000, "kWh")} kWh${v.card ? ` · Karte ${v.card}` : ""}
-                    · ${v.wallboxes.map((id) => data.wallboxes.find((w) => w.id === id)?.name ?? "?").join(", ") || "keiner Wallbox zugeordnet"}</span>
-                </span>
-              </button>
-              ${v.soc_entity ? nothing : html`<span class="small warn-text">kein Ladestand-Sensor</span>`}
-              ${open ? this._renderForm(data, v) : nothing}
-            </div>`;
-        })}
-        ${this._form !== null && this._editId === null
-          ? html`<div class="sub">${this._renderForm(data, null)}</div>`
-          : html`<div><button class="secondary" @click=${() => this._edit(null)}>Fahrzeug hinzufügen …</button></div>`}
-        ${data.vehicles.length ? data.wallboxes.map((w) => this._renderDetection(w)) : nothing}
-      </section>
+      <div class="heading">
+        <h1>Fahrzeuge</h1>
+        <p class="muted">Was das Auto ist: Akku und die Sensoren seiner eigenen Integration. An welcher Wallbox es mit welcher
+          Karte und welchem Ziel lädt, steht unter „Laden“.</p>
+      </div>
+      ${this._error ? html`<div class="alert error">${this._error}</div>` : nothing}
+      ${data === null ? html`<p class="muted">Lade …</p>` : nothing}
+      ${(data?.vehicles ?? []).map((v) => {
+        const open = this._form !== null && this._editId === v.id;
+        const where = (data.charging ?? []).filter((c) => c.vehicle_id === v.id)
+          .map((c) => data.wallboxes.find((w) => w.id === c.wallbox_id)?.name)
+          .filter(Boolean);
+        return html`
+          <section class="device ${open ? "" : "compact"}">
+            <button class="device-toggle" aria-expanded=${open} @click=${() => (open ? this._cancel() : this._edit(v))}>
+              <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
+              <span>
+                <span class="device-title">${v.name}</span>
+                <span class="small muted block">${toDisplay(v.capacity_wh / 1000, "kWh")} kWh${where.length
+                  ? ` · lädt an ${where.join(", ")}`
+                  : " · noch an keiner Wallbox (→ Laden)"}</span>
+              </span>
+            </button>
+            ${v.soc_entity ? nothing : html`<span class="small warn-text">kein Ladestand-Sensor</span>`}
+            ${open ? this._renderForm(v) : nothing}
+          </section>`;
+      })}
+      ${this._form !== null && this._editId === null
+        ? html`<section class="device">${this._renderForm(null)}</section>`
+        : html`<div><button class="secondary" @click=${() => this._edit(null)}>Fahrzeug hinzufügen …</button></div>`}
     `;
   }
 
-  _cancel() {
-    this._form = null;
-    this._editId = null;
-  }
-
-  _renderForm(data, vehicle) {
+  _renderForm(vehicle) {
     const form = this._form;
     const set = (field, value) => (this._form = { ...this._form, [field]: value });
     const options = (list, detail) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: detail(c) }));
-    const cards = data.wallboxes.some((w) => w.cards);
     return html`
       <div class="editor">
         <div class="fields">
@@ -106,6 +91,11 @@ class SunflowVehicles extends LitElement {
             <span class="field-label">Akkukapazität (nutzbar)</span>
             <span class="input-unit"><input inputmode="decimal" placeholder="37,5" .value=${form.capacity_kwh}
               @input=${(e) => set("capacity_kwh", e.target.value)}><span class="muted">kWh</span></span>
+          </label>
+          <label class="field">
+            <span class="field-label">Ladewirkungsgrad</span>
+            <span class="input-unit"><input inputmode="decimal" placeholder="90" .value=${form.efficiency}
+              @input=${(e) => set("efficiency", e.target.value)}><span class="muted">%</span></span>
           </label>
           <div class="field">
             <span class="field-label">Ladestand</span>
@@ -119,82 +109,12 @@ class SunflowVehicles extends LitElement {
               .options=${options(this._candidates?.presence, (c) => c.state ?? "–")}
               @change=${(e) => set("plugged_entity", e.detail.value)}></sf-picker>
           </div>
-          ${cards
-            ? html`<label class="field">
-                <span class="field-label">Karte an der Wallbox (optional)</span>
-                <select @change=${(e) => set("card", e.target.value)}>
-                  <option value="" ?selected=${!form.card}>keine</option>
-                  ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => html`<option value=${n} ?selected=${String(form.card) === String(n)}>Karte ${n}</option>`)}
-                </select>
-              </label>`
-            : nothing}
-          <label class="field">
-            <span class="field-label">Ziel-Ladestand (optional)</span>
-            <span class="input-unit"><input inputmode="decimal" placeholder="80" .value=${form.target}
-              @input=${(e) => set("target", e.target.value)}><span class="muted">%</span></span>
-          </label>
-          <label class="field">
-            <span class="field-label">Fertig bis (optional)</span>
-            <span class="input-unit"><input type="time" .value=${form.ready_by} @input=${(e) => set("ready_by", e.target.value)}></span>
-          </label>
-        </div>
-        <div class="field">
-          <span class="field-label">Lädt an</span>
-          <div class="checks">
-            ${data.wallboxes.map((w) => html`<label class="inline">
-              <input type="checkbox" .checked=${form.wallboxes.includes(w.id)}
-                @change=${(e) => set("wallboxes", e.target.checked ? [...form.wallboxes, w.id] : form.wallboxes.filter((id) => id !== w.id))}>
-              ${w.name}</label>`)}
-          </div>
         </div>
         <div class="actions">
           <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>Speichern</button>
           <button class="secondary" @click=${() => this._cancel()}>Abbrechen</button>
           ${vehicle ? html`<span class="spacer"></span><button class="link danger" @click=${() => this._remove(vehicle)}>Entfernen</button>` : nothing}
         </div>
-      </div>
-    `;
-  }
-
-  _renderDetection(wallbox) {
-    const d = wallbox.detection;
-    const set = (field, value) => this._saveDetection(wallbox, { ...d, [field]: value });
-    const open = this._openDetection.has(wallbox.id);
-    const toggle = () => {
-      const next = new Set(this._openDetection);
-      if (open) next.delete(wallbox.id);
-      else next.add(wallbox.id);
-      this._openDetection = next;
-    };
-    const methods = DETECTION.filter(([key]) => d[key] && (key !== "card" || wallbox.cards)).map(([, label]) => label);
-    if (!open) {
-      return html`
-        <div class="detection">
-          <button class="device-toggle" aria-expanded="false" @click=${toggle}>
-            <span class="caret" aria-hidden="true">▸</span>
-            <span><strong>Erkennung an ${wallbox.name}</strong>
-              <span class="small muted block">${methods.join(" · ") || "aus"}${wallbox.cards && d.authorize ? " · gibt ohne Karte frei" : ""}</span></span>
-          </button>
-        </div>`;
-    }
-    return html`
-      <div class="detection">
-        <button class="device-toggle" aria-expanded="true" @click=${toggle}>
-          <span class="caret" aria-hidden="true">▾</span>
-          <span><strong>Erkennung an ${wallbox.name}</strong></span>
-        </button>
-        <div class="field-label">Fahrzeug erkennen über</div>
-        <div class="checks">
-          ${DETECTION.filter(([key]) => key !== "card" || wallbox.cards).map(([key, label, hint]) => html`
-            <label class="inline" title=${hint}>
-              <input type="checkbox" .checked=${d[key]} @change=${(e) => set(key, e.target.checked)}>${label}</label>`)}
-        </div>
-        ${wallbox.cards
-          ? html`<label class="inline">
-              <input type="checkbox" .checked=${d.authorize} @change=${(e) => set("authorize", e.target.checked)}>
-              Ladevorgang ohne Karte freigeben, wenn das Fahrzeug sicher erkannt ist (Sensor oder Auswahl)</label>`
-          : nothing}
-        <span class="small muted">Unbekanntes Fahrzeug (fremde Karte, nichts erkannt): Die Wallbox regelt selbst.</span>
       </div>
     `;
   }
@@ -212,22 +132,24 @@ class SunflowVehicles extends LitElement {
       ? {
           name: vehicle.name,
           capacity_kwh: toDisplay(vehicle.capacity_wh / 1000, "kWh"),
+          efficiency: toDisplay(vehicle.charge_efficiency_pct, "%"),
           soc_entity: vehicle.soc_entity ?? "",
           plugged_entity: vehicle.plugged_entity ?? "",
-          card: vehicle.card ?? "",
-          target: vehicle.flex.target ?? "",
-          ready_by: vehicle.flex.ready_by ?? "",
-          wallboxes: [...vehicle.wallboxes],
         }
-      : { ...EMPTY, wallboxes: this._data.wallboxes.length === 1 ? [this._data.wallboxes[0].id] : [] };
+      : { ...EMPTY };
+  }
+
+  _cancel() {
+    this._form = null;
+    this._editId = null;
   }
 
   async _save() {
     const form = this._form;
     const capacity = fromDisplay(form.capacity_kwh, "kWh");
-    const target = form.target === "" ? null : fromDisplay(form.target, "%");
-    if (!form.name.trim() || !capacity || capacity <= 0) {
-      this._error = "Bitte Name und Akkukapazität angeben.";
+    const efficiency = form.efficiency === "" ? 90 : fromDisplay(form.efficiency, "%");
+    if (!form.name.trim() || !capacity || capacity <= 0 || !efficiency) {
+      this._error = "Bitte Name, Akkukapazität und einen gültigen Wirkungsgrad angeben.";
       return;
     }
     const previous = this._data.vehicles.find((v) => v.id === this._editId);
@@ -235,11 +157,9 @@ class SunflowVehicles extends LitElement {
       ...(previous ?? {}),
       name: form.name.trim(),
       capacity_wh: capacity * 1000,
+      charge_efficiency_pct: efficiency,
       soc_entity: form.soc_entity || null,
       plugged_entity: form.plugged_entity || null,
-      card: form.card ? Number(form.card) : null,
-      wallboxes: form.wallboxes,
-      flex: { ...(previous?.flex ?? {}), target, ready_by: form.ready_by || null },
     };
     const vehicles = previous
       ? this._data.vehicles.map((v) => (v.id === previous.id ? vehicle : v))
@@ -249,8 +169,14 @@ class SunflowVehicles extends LitElement {
   }
 
   async _remove(vehicle) {
-    if (!(await confirmDialog({ title: `„${vehicle.name}“ entfernen?`, text: "Das Fahrzeug wird aus allen Wallboxen entfernt.", confirm: "Entfernen", danger: true }))) return;
+    if (!(await confirmDialog({
+      title: `„${vehicle.name}“ entfernen?`,
+      text: "Mit dem Fahrzeug gehen auch seine Ladeprofile an den Wallboxen.",
+      confirm: "Entfernen",
+      danger: true,
+    }))) return;
     await this._store(this._data.vehicles.filter((v) => v.id !== vehicle.id));
+    this._cancel();
   }
 
   async _store(vehicles) {
@@ -265,42 +191,31 @@ class SunflowVehicles extends LitElement {
     }
   }
 
-  async _saveDetection(wallbox, detection) {
-    try {
-      await api.setVehicleDetection(wallbox.id, detection);
-      await this._load();
-    } catch (err) {
-      this._error = `Erkennung nicht gespeichert: ${err.message}`;
-    }
-  }
-
   static styles = css`
-    :host { display: block; }
+    :host { display: flex; flex-direction: column; gap: 12px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
+    h1 { margin: 0; font-size: 20px; }
+    .heading { display: flex; flex-direction: column; gap: 4px; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
-    .device { border: 1px solid var(--sf-border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-    .device-title { font-weight: 600; font-size: 16px; }
-    .sub { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--sf-border); border-radius: 8px; padding: 12px 14px; }
-    .device-toggle { display: flex; gap: 8px; align-items: flex-start; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; font-size: 14px; }
-    .caret { width: 14px; color: var(--sf-muted); line-height: 20px; }
     .block { display: block; }
-    .spacer { flex: 1; }
+    .device { border: 1px solid var(--sf-border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+    .device.compact { padding: 12px 18px; gap: 6px; }
+    .device-title { font-weight: 600; font-size: 16px; display: block; }
+    .device-toggle { display: flex; gap: 8px; align-items: flex-start; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; }
+    .caret { width: 14px; color: var(--sf-muted); line-height: 22px; }
     .editor { display: flex; flex-direction: column; gap: 14px; padding: 14px; background: var(--sf-subtle); border-radius: 8px; }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
     .field-label { font-weight: 500; font-size: 13px; }
     .input-unit { display: flex; align-items: center; gap: 8px; }
-    .input-unit input, select {
+    .input-unit input {
       flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; font-size: 15px;
       border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
     }
-    .checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
-    .inline { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; }
-    .inline input { width: 18px; height: 18px; margin: 0; }
-    .detection { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--sf-border); padding-top: 12px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .spacer { flex: 1; }
     .primary, .secondary { min-height: 44px; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
