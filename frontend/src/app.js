@@ -8,6 +8,7 @@ import "./control-view.js";
 import "./analysis-view.js";
 import "./standards-view.js";
 import "./vehicles-view.js";
+import "./batteries-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./charts.js";
 import {
   devicePurpose,
@@ -1044,8 +1045,13 @@ class SunflowApp extends LitElement {
       ${devices.length === 0 ? html`<p class="muted">Keine Geräte mit passendem Profil ausgewählt.</p>` : nothing}
       ${CATEGORIES.map(([key, title]) => {
         const members = devices.filter((d) => deviceCategory(d, this._previews[d.device_id]) === key);
-        const extra = key === "wallbox" ? html`<sf-vehicles></sf-vehicles>` : key === "load" ? this._renderManualDevices() : nothing;
-        if (!members.length && key !== "load") return nothing;
+        const hasBattery = devices.some((d) => (d.capabilities ?? []).includes("battery"));
+        const extra =
+          key === "wallbox" ? html`<sf-vehicles></sf-vehicles>`
+          : key === "battery" && hasBattery ? html`<sf-batteries></sf-batteries>`
+          : key === "load" ? this._renderManualDevices()
+          : nothing;
+        if (!members.length && key !== "load" && !(key === "battery" && hasBattery)) return nothing;
         return html`<h2 class="category">${title}</h2>${members.map((d) => this._renderDevice(d))}${extra}`;
       })}
     `;

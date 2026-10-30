@@ -104,3 +104,32 @@ def test_site_hint_for_unassigned_pv_ext(snapshot: Snapshot, library: ProfileLib
 
     assert site.cross_checks == []
     assert len(site.hints) == 1
+
+
+def test_battery_capacity_from_assigned_modules() -> None:
+    """Automatic: the inverter's sub-devices; chosen in the setup: exactly those modules."""
+    from types import SimpleNamespace
+
+    from sunflow.config_store import DeviceConfig
+    from sunflow.site import battery_module_ids, derive_parameter
+
+    spec = {"unit": "Wh", "derive": {"sum_key": "pack_full_charge_capacity", "factor": 51.2}}
+    devices = [
+        {"id": "inv"},
+        {"id": "m1", "via_device_id": "inv"},
+        {"id": "m2", "via_device_id": "inv"},
+        {"id": "m3", "via_device_id": "other"},
+    ]
+    entities = [
+        {"entity_id": f"sensor.{m}", "unique_id": f"{m}_pack_full_charge_capacity", "device_id": m} for m in ("m1", "m2", "m3")
+    ]
+    snapshot = SimpleNamespace(devices=devices, entities=entities, states={e["entity_id"]: {"state": "100"} for e in entities})
+    inverter = DeviceConfig(ha_device_id="inv", profile="p", profile_version=1, name="WR")
+
+    assert battery_module_ids(snapshot, inverter) == ["m1", "m2"]
+    assert derive_parameter(spec, snapshot, "inv", inverter) == 2 * 5120
+
+    inverter.battery_modules = ["m1", "m3"]
+    assert derive_parameter(spec, snapshot, "inv", inverter) == 2 * 5120
+    inverter.battery_modules = ["m1"]
+    assert derive_parameter(spec, snapshot, "inv", inverter) == 5120

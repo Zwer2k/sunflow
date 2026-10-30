@@ -11,16 +11,29 @@ from .resolver import Balance, RoleValue, check_balance, device_entities, previe
 PV_OUTPUT_ROLES = ("ac_power", "pv_power")
 
 
+def battery_module_ids(snapshot: Snapshot, device: DeviceConfig) -> list[str]:
+    """HA devices of the battery modules: chosen in the setup, else the inverter's sub-devices."""
+    if device.battery_modules is not None:
+        return list(device.battery_modules)
+    return [d["id"] for d in snapshot.devices if d.get("via_device_id") == device.ha_device_id]
+
+
+def _battery_entities(snapshot: Snapshot, device: DeviceConfig) -> list[dict[str, Any]]:
+    ids = {device.ha_device_id, *battery_module_ids(snapshot, device)}
+    return [e for e in snapshot.entities if e.get("device_id") in ids and not e.get("disabled_by")]
+
+
 def derive_parameter(
-    spec: dict[str, Any], snapshot: Snapshot, ha_device_id: str
+    spec: dict[str, Any], snapshot: Snapshot, ha_device_id: str, device: DeviceConfig | None = None
 ) -> float | None:
-    """Suggest a parameter value from sensors as defined by the profile."""
+    """Suggest a parameter value from sensors as defined by the profile (over the battery modules)."""
     derive = spec.get("derive")
     if derive is None:
         return None
     total = 0.0
     found = False
-    for entity in device_entities(snapshot, ha_device_id):
+    entities = _battery_entities(snapshot, device) if device is not None else device_entities(snapshot, ha_device_id)
+    for entity in entities:
         if not entity_has_key(entity, derive["sum_key"]):
             continue
         try:
@@ -49,7 +62,7 @@ def device_parameters(
     for name, spec in profile.get("parameters", {}).items():
         if "kind" in spec and spec["kind"] != kind:
             continue
-        derived = derive_parameter(spec, snapshot, device.ha_device_id)
+        derived = derive_parameter(spec, snapshot, device.ha_device_id, device)
         stored = device.parameters.get(name)
         default = spec.get("default")
         result.append(

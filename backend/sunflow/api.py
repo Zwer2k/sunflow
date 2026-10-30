@@ -60,7 +60,7 @@ from .device_test import (
     run_device_test,
     state_response,
 )
-from .discovery import Snapshot, SnapshotCache, discover, fetch_snapshot
+from .discovery import Snapshot, SnapshotCache, discover, entity_has_key, fetch_snapshot
 from .efficiency import (
     EfficiencyEstimate,
     estimate_from_counters,
@@ -89,6 +89,7 @@ from .shadow import ShadowStore, actual_action, evaluate as evaluate_shadow
 from .site import (
     MEASUREMENTS,
     PV_OUTPUT_ROLES,
+    battery_module_ids,
     device_kind,
     device_parameters,
     measurement_candidates,
@@ -1809,6 +1810,83 @@ async def get_site(request: Request) -> dict[str, Any]:
         for role in device["roles"]:
             role["missing"] = role["entity_id"] is None
     return result
+
+
+def _module_capacity(spec: dict[str, Any] | None, snapshot: Snapshot, ha_device_id: str) -> float | None:
+    """Capacity of one battery module from the profile's derive key (e.g. full charge Ah x 51.2 V)."""
+    if not spec or "derive" not in spec:
+        return None
+    values = []
+    for entity in snapshot.entities:
+        if entity.get("device_id") == ha_device_id and entity_has_key(entity, spec["derive"]["sum_key"]):
+            with suppress(KeyError, TypeError, ValueError):
+                values.append(float(snapshot.states[entity["entity_id"]]["state"]))
+    return round(sum(values) * spec["derive"].get("factor", 1)) if values else None
+
+
+@router.get("/config/batteries")
+async def get_batteries(request: Request) -> list[dict[str, Any]]:
+    """Each inverter's battery with its modules (sub-devices in HA or chosen in the setup)."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    snapshot = await _snapshot(request)
+    names = {d["id"]: d.get("name_by_user") or d.get("name") or d["id"] for d in snapshot.devices}
+    batteries = [d for d in config.devices if "battery" in profiles[d.profile]["capabilities"]]
+    # Modules may move between inverters: the sub-devices of all of them are offered
+    candidates = {d["id"]: d for d in snapshot.devices if d.get("via_device_id") in {b.ha_device_id for b in batteries}}
+    result = []
+    for device in batteries:
+        profile = profiles[device.profile]
+        roles = {r.role: r for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})}
+        params = {p["name"]: p for p in device_parameters(profile, device, snapshot)}
+        assigned = battery_module_ids(snapshot, device)
+        spec = profile.get("parameters", {}).get("capacity_wh")
+        result.append(
+            {
+                "device_id": device.id,
+                "inverter": device.name,
+                "auto": device.battery_modules is None,
+                "soc_pct": roles["battery_soc"].value if "battery_soc" in roles else None,
+                "power_w": roles["battery_power"].value if "battery_power" in roles else None,
+                "capacity_wh": params.get("capacity_wh", {}).get("effective"),
+                "modules": [
+                    {
+                        "ha_device_id": module_id,
+                        "name": names.get(module_id, module_id),
+                        "model": candidates[module_id].get("model"),
+                        "capacity_wh": _module_capacity(spec, snapshot, module_id),
+                        "assigned": module_id in assigned,
+                        "native": candidates[module_id].get("via_device_id") == device.ha_device_id,
+                    }
+                    for module_id in sorted(candidates, key=lambda i: names.get(i, i))
+                ],
+            }
+        )
+    return result
+
+
+class BatteryModules(BaseModel):
+    """The modules of an inverter's battery; None: its sub-devices in HA."""
+
+    modules: list[str] | None = None
+
+
+@router.put("/config/devices/{device_id}/battery-modules")
+async def set_battery_modules(request: Request, device_id: str, body: BatteryModules) -> list[dict[str, Any]]:
+    """Assign battery modules to an inverter (the capacity follows from them)."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    device = config.device(device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    if body.modules is not None:
+        taken = {m for d in config.devices if d.id != device_id and d.battery_modules for m in d.battery_modules}
+        if taken & set(body.modules):
+            raise HTTPException(status_code=422, detail="Ein Modul ist schon einem anderen Wechselrichter zugeordnet")
+    device.battery_modules = body.modules
+    store.save(config)
+    _replan(request)
+    return await get_batteries(request)
 
 
 class DeviceEnabled(BaseModel):

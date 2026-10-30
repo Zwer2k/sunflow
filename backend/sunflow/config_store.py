@@ -131,6 +131,8 @@ class DeviceConfig(BaseModel):
     flex: FlexSettings = Field(default_factory=FlexSettings)
     # Wallboxes with assigned vehicles
     vehicle_detection: VehicleDetection = Field(default_factory=VehicleDetection)
+    # Battery modules (HA device ids) of an inverter's battery; None: its sub-devices in HA
+    battery_modules: list[str] | None = None
 
 
 class TariffConfig(BaseModel):

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.40.0
+
+- Einstellungen → Geräte → Speicher: Jeder Wechselrichter mit Speicher hat eine eigene Speicher-Karte mit Ladestand, Leistung, Kapazität und seinen Modulen (z. B. 4× BTS mit der jeweiligen Kapazität). Die Module werden automatisch zugeordnet (Untergeräte des Wechselrichters in Home Assistant) oder lassen sich von Hand zuordnen, auch Module, die in Home Assistant an einem anderen Wechselrichter hängen. Die vorgeschlagene Kapazität ergibt sich aus den zugeordneten Modulen.
+
 ## 0.39.0
 
 - Einstellungen → Geräte: Geräte lassen sich mit „aktiv“ ausschalten. Ein deaktiviertes Gerät behält alle Einstellungen, wird aber weder geplant, gemessen noch gesteuert – z. B. um zwischen der Wallbox über evcc und direkt am go-e zu wechseln. Stand es unter Sunflow-Steuerung, wird es vorher zurückgegeben.
