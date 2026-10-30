@@ -234,7 +234,7 @@ export function lineChart(
           style="fill: ${s.color}" fill-opacity=${s.dim ? 0.15 : 1}></circle>`,
       ))}
       ${[...series.filter((s) => s.dim), ...series.filter((s) => !s.dim)].map(
-        (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width=${s.dim === false ? 3 : 2}
+        (s) => svg`<path d=${pathOf(s.points)} fill="none" style="stroke: ${s.color}" stroke-width=${s.thin ? 1 : s.dim === false ? 3 : 2}
           stroke-opacity=${s.dim ? 0.15 : 1}
           stroke-dasharray=${s.dashed ? "5 4" : "none"} stroke-linejoin="round" stroke-linecap="round"></path>`,
       )}

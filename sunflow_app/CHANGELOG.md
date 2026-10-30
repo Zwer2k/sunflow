@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.44.1
+
+- Planung → PV-Erzeugung: Per Häkchen lässt sich die unkorrigierte Prognose der gewählten Quelle (Solcast, Forecast.Solar oder beide) als dünne Linie einblenden – in der Vergangenheit, wie der Schattenbetrieb sie aufgezeichnet hat, im Planzeitraum und danach. So ist sichtbar, wie weit die gelernte Korrektur und die Kurzfristprognose von der Rohprognose abweichen. Die Auswahl wird im Browser gemerkt; der Legendeneintrag hebt die Linie hervor.
+
 ## 0.44.0
 
 Planung → Verlauf und Prognose:
