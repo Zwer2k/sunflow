@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../vendor/lit-all.min.js";
 import { api } from "./api.js";
+import { confirmDialog } from "./dialog.js";
 import { poll } from "./poll.js";
 import "./picker.js";
 import "./live-view.js";
@@ -294,7 +295,11 @@ class SunflowApp extends LitElement {
   async _restoreAfterTest() {
     const pending = this._pendingRestore;
     const mode = pending?.previous_mode ? ` und den Betriebsmodus „${pending.previous_mode}“` : "";
-    if (!confirm(`Sunflow stellt jetzt am Wechselrichter den Eigenverbrauch${mode} wieder her. Fortfahren?`)) return;
+    if (!(await confirmDialog({
+      title: "Wechselrichter zurücksetzen",
+      text: `Sunflow stellt jetzt am Wechselrichter den Eigenverbrauch${mode} wieder her.`,
+      confirm: "Zurücksetzen",
+    }))) return;
     this._restoring = true;
     try {
       const result = await api.restoreAfterTest();
@@ -698,7 +703,13 @@ class SunflowApp extends LitElement {
   }
 
   async _removeDevice(device) {
-    if (!confirm(`„${device.name}“ aus Sunflow entfernen? Planung, Live und Steuerung berücksichtigen es dann nicht mehr. In Home Assistant bleibt das Gerät unverändert.`)) {
+    if (!(await confirmDialog({
+      title: `„${device.name}“ entfernen?`,
+      text: "Planung, Live und Steuerung berücksichtigen es dann nicht mehr. In Home Assistant bleibt das Gerät unverändert. " +
+        "Zum vorübergehenden Abschalten genügt „aktiv“ – dann bleiben die Einstellungen erhalten.",
+      confirm: "Entfernen",
+      danger: true,
+    }))) {
       return;
     }
     try {
@@ -1316,7 +1327,11 @@ class SunflowApp extends LitElement {
 
   async _setEnabled(device, enabled, input) {
     const stored = this._configDevices[device.device_id];
-    if (!enabled && !window.confirm(`„${device.name}“ deaktivieren? Die Einstellungen bleiben erhalten; Sunflow plant und steuert das Gerät nicht mehr.`)) {
+    if (!enabled && !(await confirmDialog({
+      title: `„${device.name}“ deaktivieren?`,
+      text: "Die Einstellungen bleiben erhalten; Sunflow plant, misst und steuert das Gerät nicht mehr, bis es wieder aktiv ist.",
+      confirm: "Deaktivieren",
+    }))) {
       input.checked = true;
       return;
     }
