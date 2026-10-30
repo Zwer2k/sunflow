@@ -14,7 +14,13 @@ from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_kind, device_parameters
 from sunflow.ha import HAClient, HACommandError, HAError
 
-from .habits import ConsumerUsage, Departure, learn_departure, learn_usage
+from .habits import (
+    ConsumerUsage,
+    Departure,
+    learn_departure,
+    learn_usage,
+    learn_usage_from_energy,
+)
 from .load_forecast import (
     LoadForecast,
     build_load_forecast,
@@ -70,6 +76,8 @@ MUST_HAVE_COST = 2.0
 FAST_URGENCY = 1.0
 # Heating 1 litre of water by 1 K takes 1.163 Wh
 WATER_WH_PER_LITRE_KELVIN = 1.163
+# Target of a heating own consumer when none is set (evcc loadpoints report their own)
+DEFAULT_HOT_WATER_C = 60.0
 HEATER_DEADLINE = timedelta(hours=24)
 # Without a configured daily need the tank is assumed to cool down by this much per day
 HEATER_DAILY_DROP_K = 10
@@ -144,8 +152,12 @@ def flex_loads(
         kind = device_kind(profile, device, snapshot) or ("load" if "load" in profile["capabilities"] else "vehicle")
         usage = (usages or {}).get(device.id)
         max_power = params.get("max_power") or (usage.running_w if usage and usage.running_w else 0.0)
-        current = roles["vehicle_soc"].value if "vehicle_soc" in roles else None
+        # A loadpoint reports the tank temperature as its "SoC", an own heating consumer as temperature
+        level = roles.get("vehicle_soc") or roles.get("temperature")
+        current = level.value if level is not None else None
         target = roles["limit_soc"].value if "limit_soc" in roles else None
+        if kind == "heater" and target is None:
+            target = DEFAULT_HOT_WATER_C
         if settings.target is not None:
             target = settings.target
         info = FlexInfo(
@@ -367,24 +379,26 @@ class PlanResult:
 async def consumer_usages(
     client: HAClient, config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot
 ) -> dict[str, ConsumerUsage]:
-    """Learned daily energy and running power of own consumers with a power sensor."""
+    """Learned daily energy (and running power) of own consumers with a power sensor or energy counter."""
     result = {}
     for device in config.devices:
         profile = profiles[device.profile]
         if "load" not in profile["capabilities"]:
             continue
-        role = next(
-            (
-                r
-                for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
-                if r.role == "power"
-            ),
-            None,
-        )
-        if role is None or not role.entity_id:
+        roles = {
+            r.role: r
+            for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+            if r.entity_id
+        }
+        # The power sensor also tells the running power; a counter only the energy
+        if "power" in roles:
+            entity, learner = roles["power"].entity_id, learn_usage
+        elif "energy" in roles:
+            entity, learner = roles["energy"].entity_id, learn_usage_from_energy
+        else:
             continue
         try:
-            usage = await cached(("usage", role.entity_id), HABITS_TTL, lambda entity=role.entity_id: learn_usage(client, entity))
+            usage = await cached(("usage", entity), HABITS_TTL, lambda entity=entity, learner=learner: learner(client, entity))
         except HAError:
             continue
         if usage is not None:

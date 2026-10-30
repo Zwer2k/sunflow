@@ -109,6 +109,34 @@ def usage_from(means: list[tuple[datetime, float]]) -> ConsumerUsage | None:
     return ConsumerUsage(daily_wh=energy_wh / days, running_w=running_w, days=days)
 
 
+def usage_from_energy(changes: list[tuple[datetime, float]]) -> ConsumerUsage | None:
+    """From hourly energy counter changes (Wh); the running power stays unknown."""
+    days = len({moment.date() for moment, _ in changes})
+    if days < MIN_CONSUMER_DAYS:
+        return None
+    return ConsumerUsage(daily_wh=sum(max(c, 0.0) for _, c in changes) / days, running_w=None, days=days)
+
+
+async def learn_usage_from_energy(client: HAClient, entity_id: str) -> ConsumerUsage | None:
+    """Typical daily energy from an energy counter, for consumers without a power sensor."""
+    end = datetime.now(UTC)
+    result = await client.command(
+        "recorder/statistics_during_period",
+        start_time=(end - timedelta(days=CONSUMER_DAYS)).isoformat(),
+        end_time=end.isoformat(),
+        statistic_ids=[entity_id],
+        period="hour",
+        types=["change"],
+        units={"energy": "Wh"},
+    )
+    changes = [
+        (datetime.fromtimestamp(row["start"] / 1000, UTC), row["change"])
+        for row in result.get(entity_id, [])
+        if row.get("change") is not None
+    ]
+    return usage_from_energy(changes)
+
+
 async def learn_usage(client: HAClient, entity_id: str) -> ConsumerUsage | None:
     """Typical daily energy and running power from the power sensor's statistics."""
     end = datetime.now(UTC)

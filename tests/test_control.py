@@ -471,3 +471,22 @@ async def test_battery_window_gets_the_smart_grid_target(tmp_path: Path) -> None
 
     assert seen[-1]["grid_offset"] == 0
     assert controller.statuses["bat"].grid_target_w == 0
+
+
+@pytest.mark.parametrize(
+    ("power", "expected"),
+    [
+        pytest.param(2500, "2,1kW", id="largest-fitting"),
+        pytest.param(2830, "2,8kW", id="within-tolerance"),
+        pytest.param(700, "0,7kW", id="smallest"),
+        pytest.param(500, None, id="below-smallest"),
+    ],
+)
+def test_choose_power_step(power: float, expected: str | None) -> None:
+    """The heating rod gets the largest step that fits the planned power."""
+    from sunflow.control.controller import choose_step, off_step
+
+    steps = {"off": 0, "0,7kW": 700, "1,4kW": 1400, "2,1kW": 2100, "2,8kW": 2800}
+
+    assert choose_step(steps, power) == expected
+    assert off_step(steps) == "off"

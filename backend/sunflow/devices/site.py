@@ -50,7 +50,9 @@ def derive_parameter(
 
 
 def device_kind(profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot) -> str | None:
-    """Return "heater" or "vehicle" for loadpoints (a temperature as SoC means heater)."""
+    """Return "heater" or "vehicle" for loadpoints (a temperature as SoC means heater), "heater" for heating own consumers."""
+    if "load" in profile["capabilities"]:
+        return "heater" if device.kind == "heater" else None
     if "loadpoint" not in profile["capabilities"]:
         return None
     if device.kind is not None:
@@ -75,7 +77,7 @@ def device_category(profile: dict[str, Any], device: DeviceConfig, snapshot: Sna
         return "battery"
     if "grid_meter" in capabilities:
         return "meter"
-    return "load"
+    return "heat" if device.kind == "heater" else "load"
 
 
 def device_parameters(

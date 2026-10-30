@@ -126,7 +126,13 @@ const ISSUE_STYLES = {
 };
 
 const FIXED_PRICE = "__fixed__";
-const MANUAL_PROFILE = "generic/switch";
+// Own consumers: profile per way of control
+const MANUAL_PREFIX = "generic/";
+const MANUAL_TYPES = { switch: "Schalter (ein/aus)", stepped: "Leistungsstufen (Auswahl)", current: "Stromstärke (Zahl)" };
+const EMPTY_MANUAL = {
+  name: "", type: "switch", kind: "load", switch_entity: "", level_entity: "", current_entity: "", power_entity: "",
+  energy_entity: "", temperature_entity: "", steps: {}, max_power: "", daily_energy: "", tank_l: "",
+};
 const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" };
 
 const PRICE_ADAPTERS = {
@@ -242,7 +248,7 @@ class SunflowApp extends LitElement {
     this._efficiency = {};
     this._flexEdits = {};
     this._candidates = null;
-    this._manual = { name: "", switch_entity: "", power_entity: "", max_power: "", daily_energy: "" };
+    this._manual = { ...EMPTY_MANUAL };
     // Sunflow device id -> device test state
     this._tests = {};
     this._testConfirm = new Set();
@@ -708,7 +714,7 @@ class SunflowApp extends LitElement {
   /** Capabilities of a configured device; manual devices are not part of discovery. */
   _capabilitiesOf(device) {
     return (
-      this._capabilitiesByHaDevice[device.ha_device_id] ?? (device.profile === MANUAL_PROFILE ? ["load"] : [])
+      this._capabilitiesByHaDevice[device.ha_device_id] ?? (device.profile.startsWith(MANUAL_PREFIX) ? ["load"] : [])
     );
   }
 
@@ -1131,21 +1137,25 @@ class SunflowApp extends LitElement {
   }
 
   _renderManualDevices() {
-    const manual = Object.values(this._configDevices).filter((d) => d.profile === MANUAL_PROFILE);
+    const manual = Object.values(this._configDevices).filter((d) => d.profile.startsWith(MANUAL_PREFIX));
     const form = this._manual;
     const set = (field, value) => (this._manual = { ...this._manual, [field]: value });
     const candidates = this._candidates;
+    const entity = (list, detail) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: detail(c) }));
+    const unitDetail = (c) => `${c.state ?? "–"} ${c.unit ?? ""}`;
+    const control = { switch: form.switch_entity, stepped: form.level_entity, current: form.current_entity }[form.type];
+    const selected = (candidates?.selects ?? []).find((c) => c.entity_id === form.level_entity);
     return html`
       <section class="device">
         <div class="device-title">Eigene Verbraucher</div>
-        <p class="small muted">Schaltbare Geräte, die Sunflow nicht automatisch erkennt – z. B. ein E-Bike-Ladegerät an einem
-          Shelly oder einer ESPHome-Steckdose. Sunflow plant sie wie Wallbox und Warmwasser ein.</p>
+        <p class="small muted">Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in
+          Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs-
+          und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant.</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
               (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
-                <div class="small muted">${d.role_overrides.switch?.entity_id ?? "–"}${d.role_overrides.power?.entity_id
-                  ? ` · Leistung: ${d.role_overrides.power.entity_id}`
-                  : ""} · Strategie unter „Verbraucher“</div>
+                <div class="small muted">${MANUAL_TYPES[d.profile.slice(MANUAL_PREFIX.length)] ?? ""}${d.kind === "heater" ? " · Wärme" : ""}
+                  · ${Object.values(d.role_overrides).map((o) => o.entity_id).filter(Boolean).join(", ")}</div>
                 ${this._usages?.[d.id]
                   ? html`<div class="small">gemessen: ${formatValue(this._usages[d.id].daily_wh, "Wh")} pro Tag${this._usages[d.id].running_w
                       ? html` · läuft mit ${formatValue(this._usages[d.id].running_w, "W")}`
@@ -1168,33 +1178,96 @@ class SunflowApp extends LitElement {
                   <span class="field-label">Name</span>
                   <span class="input-unit"><input placeholder="z. B. E-Bike" .value=${form.name} @input=${(e) => set("name", e.target.value)}></span>
                 </label>
-                <div class="field">
-                  <span class="field-label">Schalter</span>
-                  <sf-picker label="Schalter" placeholder="Name oder Entität suchen …"
-                    .value=${form.switch_entity}
-                    .options=${candidates.switches.map((c) => ({ value: c.entity_id, label: c.name, detail: c.state }))}
-                    @change=${(e) => set("switch_entity", e.detail.value)}></sf-picker>
-                </div>
+                <label class="field">
+                  <span class="field-label">Gesteuert über</span>
+                  <select @change=${(e) => set("type", e.target.value)}>
+                    ${Object.entries(MANUAL_TYPES).map(([value, label]) => html`<option value=${value} ?selected=${form.type === value}>${label}</option>`)}
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Art</span>
+                  <select @change=${(e) => set("kind", e.target.value)}>
+                    <option value="load" ?selected=${form.kind === "load"}>Verbraucher (Energie pro Tag)</option>
+                    <option value="heater" ?selected=${form.kind === "heater"}>Wärme (Speicher mit Temperatur)</option>
+                  </select>
+                </label>
+                ${form.type === "switch" || form.type === "current"
+                  ? html`<div class="field">
+                      <span class="field-label">Schalter${form.type === "current" ? " (optional)" : ""}</span>
+                      <sf-picker label="Schalter" empty-label=${form.type === "current" ? "keiner" : nothing} placeholder="Name oder Entität suchen …"
+                        .value=${form.switch_entity} .options=${entity(candidates.switches, (c) => c.state)}
+                        @change=${(e) => set("switch_entity", e.detail.value)}></sf-picker>
+                    </div>`
+                  : nothing}
+                ${form.type === "stepped"
+                  ? html`<div class="field">
+                      <span class="field-label">Leistungsstufe (Auswahl)</span>
+                      <sf-picker label="Leistungsstufe" placeholder="z. B. Heizstab Heizleistung …"
+                        .value=${form.level_entity} .options=${entity(candidates.selects, (c) => c.state)}
+                        @change=${(e) => this._setStepEntity(e.detail.value)}></sf-picker>
+                    </div>`
+                  : nothing}
+                ${form.type === "current"
+                  ? html`<div class="field">
+                      <span class="field-label">Ziel-Stromstärke (Zahl)</span>
+                      <sf-picker label="Stromstärke" placeholder="number-Entität in A …"
+                        .value=${form.current_entity} .options=${entity(candidates.numbers, unitDetail)}
+                        @change=${(e) => set("current_entity", e.detail.value)}></sf-picker>
+                    </div>`
+                  : nothing}
                 <div class="field">
                   <span class="field-label">Leistungsmessung (optional)</span>
                   <sf-picker label="Leistungsmessung" empty-label="keine" placeholder="Name oder Entität suchen …"
-                    .value=${form.power_entity}
-                    .options=${candidates.power.map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} ${c.unit ?? ""}` }))}
+                    .value=${form.power_entity} .options=${entity(candidates.power, unitDetail)}
                     @change=${(e) => set("power_entity", e.detail.value)}></sf-picker>
                 </div>
-                <label class="field">
-                  <span class="field-label">Leistung</span>
-                  <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
-                    @input=${(e) => set("max_power", e.target.value)}><span class="muted">W</span></span>
-                </label>
-                <label class="field">
-                  <span class="field-label">Energiebedarf pro Tag</span>
-                  <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 0,5" .value=${form.daily_energy}
-                    @input=${(e) => set("daily_energy", e.target.value)}><span class="muted">kWh</span></span>
-                </label>
+                <div class="field">
+                  <span class="field-label">Verbrauchsmessung (optional)</span>
+                  <sf-picker label="Verbrauchsmessung" empty-label="keine" placeholder="Energiezähler (kWh) …"
+                    .value=${form.energy_entity} .options=${entity(candidates.energy, unitDetail)}
+                    @change=${(e) => set("energy_entity", e.detail.value)}></sf-picker>
+                </div>
+                ${form.type !== "stepped"
+                  ? html`<label class="field">
+                      <span class="field-label">Leistung</span>
+                      <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
+                        @input=${(e) => set("max_power", e.target.value)}><span class="muted">W</span></span>
+                    </label>`
+                  : nothing}
+                ${form.kind === "heater"
+                  ? html`
+                      <div class="field">
+                        <span class="field-label">Temperatur im Speicher</span>
+                        <sf-picker label="Temperatur" placeholder="z. B. Speicher Temperatur oben …"
+                          .value=${form.temperature_entity} .options=${entity(candidates.temperature, unitDetail)}
+                          @change=${(e) => set("temperature_entity", e.detail.value)}></sf-picker>
+                      </div>
+                      <label class="field">
+                        <span class="field-label">Speichervolumen</span>
+                        <span class="input-unit"><input inputmode="decimal" placeholder="300" .value=${form.tank_l}
+                          @input=${(e) => set("tank_l", e.target.value)}><span class="muted">l</span></span>
+                      </label>`
+                  : html`<label class="field">
+                      <span class="field-label">Energiebedarf pro Tag</span>
+                      <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 0,5" .value=${form.daily_energy}
+                        @input=${(e) => set("daily_energy", e.target.value)}><span class="muted">kWh</span></span>
+                    </label>`}
               </div>
+              ${form.type === "stepped" && Object.keys(form.steps).length
+                ? html`<div class="field">
+                    <span class="field-label">Leistung je Stufe${selected ? ` (${selected.name})` : ""}</span>
+                    <div class="steps">
+                      ${Object.entries(form.steps).map(([option, watts]) => html`<label class="step-power">
+                        <span>${option}</span>
+                        <span class="input-unit"><input inputmode="decimal" .value=${toDisplay(watts, "W")}
+                          @input=${(e) => set("steps", { ...form.steps, [option]: fromDisplay(e.target.value, "W") })}><span class="muted">W</span></span>
+                      </label>`)}
+                    </div>
+                    <span class="small muted">Aus den Namen der Optionen gelesen; 0 W ist „aus“. Sunflow wählt die größte Stufe, die in die geplante Leistung passt.</span>
+                  </div>`
+                : nothing}
               <div class="actions">
-                <button class="ok" ?disabled=${!form.switch_entity || !form.name.trim()} @click=${() => this._addManual()}>
+                <button class="ok" ?disabled=${!control || !form.name.trim()} @click=${() => this._addManual()}>
                   ${this._manualEditId ? "Speichern" : "Hinzufügen"}
                 </button>
                 <button class="secondary" @click=${() => this._closeManualForm()}>Abbrechen</button>
@@ -1202,6 +1275,18 @@ class SunflowApp extends LitElement {
             `}
       </section>
     `;
+  }
+
+  /** A select chosen for the power steps: its options with the watts read from their names. */
+  _setStepEntity(entityId) {
+    const options = (this._candidates?.selects ?? []).find((c) => c.entity_id === entityId)?.options ?? [];
+    const steps = {};
+    for (const option of options) {
+      const match = option.match(/(\d+(?:[.,]\d+)?)\s*(kw|w)\b/i);
+      if (["off", "aus", "0", "none", "stop"].includes(option.trim().toLowerCase())) steps[option] = 0;
+      else if (match) steps[option] = Number(match[1].replace(",", ".")) * (match[2].toLowerCase() === "kw" ? 1000 : 1);
+    }
+    this._manual = { ...this._manual, level_entity: entityId, steps };
   }
 
   async _loadCandidates() {
@@ -1214,40 +1299,60 @@ class SunflowApp extends LitElement {
 
   async _editManual(device) {
     if (this._candidates === null) await this._loadCandidates();
+    const role = (name) => device.role_overrides[name]?.entity_id ?? "";
     this._manualEditId = device.id;
     this._manual = {
+      ...EMPTY_MANUAL,
       name: device.name,
-      switch_entity: device.role_overrides.switch?.entity_id ?? "",
-      power_entity: device.role_overrides.power?.entity_id ?? "",
+      type: device.profile.slice(MANUAL_PREFIX.length),
+      kind: device.kind === "heater" ? "heater" : "load",
+      switch_entity: role("switch"),
+      level_entity: role("level"),
+      current_entity: role("current"),
+      power_entity: role("power"),
+      energy_entity: role("energy"),
+      temperature_entity: role("temperature"),
+      steps: { ...(device.power_steps ?? {}) },
       max_power: toDisplay(device.parameters.max_power, "W"),
       daily_energy: toDisplay(device.parameters.daily_energy_wh, "Wh"),
+      tank_l: device.parameters.tank_l ? String(device.parameters.tank_l) : "",
     };
   }
 
   _closeManualForm() {
     this._candidates = null;
     this._manualEditId = null;
-    this._manual = { name: "", switch_entity: "", power_entity: "", max_power: "", daily_energy: "" };
+    this._manual = { ...EMPTY_MANUAL };
   }
 
   async _addManual() {
     const form = this._manual;
-    const power = fromDisplay(form.max_power || "500", "W");
+    const power = form.max_power === "" ? null : fromDisplay(form.max_power, "W");
     const daily = fromDisplay(form.daily_energy, "kWh");
-    if (power === undefined || power === null || daily === undefined) {
-      this._error = "Bitte gültige Zahlen für Leistung und Energiebedarf eingeben.";
+    const tank = form.tank_l === "" ? null : fromDisplay(form.tank_l, "");
+    if (power === undefined || daily === undefined || tank === undefined || Object.values(form.steps).some((w) => w === undefined)) {
+      this._error = "Bitte gültige Zahlen eingeben.";
       return;
     }
     const body = {
       name: form.name.trim(),
-      switch_entity: form.switch_entity,
+      type: form.type,
+      kind: form.kind,
+      switch_entity: form.switch_entity || null,
+      level_entity: form.type === "stepped" ? form.level_entity || null : null,
+      current_entity: form.type === "current" ? form.current_entity || null : null,
       power_entity: form.power_entity || null,
-      max_power: power,
-      daily_energy_wh: daily === null ? null : daily * 1000,
+      energy_entity: form.energy_entity || null,
+      temperature_entity: form.kind === "heater" ? form.temperature_entity || null : null,
+      tank_l: form.kind === "heater" ? tank : null,
+      max_power: form.type === "stepped" ? null : power ?? 500,
+      daily_energy_wh: daily === null || form.kind === "heater" ? null : daily * 1000,
+      power_steps: form.type === "stepped" && Object.keys(form.steps).length ? form.steps : null,
     };
     try {
       const device = this._manualEditId ? await api.updateManual(this._manualEditId, body) : await api.addManual(body);
       this._configDevices = { ...this._configDevices, [device.ha_device_id]: device };
+      this._loadCategories();
       this._closeManualForm();
       this._error = null;
     } catch (err) {
@@ -2473,6 +2578,8 @@ class SunflowApp extends LitElement {
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     .danger { color: var(--sf-error-text); }
+    .steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .step-power { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
     .plane-strings { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
     .manual-item { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
     .item-actions { display: flex; gap: 8px; }

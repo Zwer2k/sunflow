@@ -1,7 +1,8 @@
-# Any switchable consumer (Shelly, ESPHome, smart plug, input_boolean ...), added
-# manually in the setup wizard. Roles are bound to entities chosen by the user.
+# A consumer switched on and off (Shelly, smart plug, ESPHome relay, input_boolean …),
+# added by hand. Roles are bound to entities the user chose; power and energy
+# measurement are optional. As "heat" (heating rod) it also needs a temperature.
 profile: generic/switch
-version: 1
+version: 2
 match:
   integration: manual
 
@@ -10,7 +11,16 @@ capabilities: [load]
 roles:
   switch: {key: manual_switch}
   power: {key: manual_power, unit: W, optional: true}
+  energy: {key: manual_energy, unit: Wh, optional: true}
+  temperature: {key: manual_temperature, unit: "°C", optional: true}
 
 parameters:
   max_power: {unit: W, default: 500, min: 0}
   daily_energy_wh: {unit: Wh, min: 0}
+  tank_l: {unit: L, min: 0, kind: heater}
+
+charge_control:
+  charge:
+    - switch: {role: switch, state: "on", write: if_differs}
+  stop:
+    - switch: {role: switch, state: "off", write: if_differs}

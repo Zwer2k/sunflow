@@ -111,8 +111,11 @@ class DeviceConfig(BaseModel):
     parameters: dict[str, float] = Field(default_factory=dict)
     role_overrides: dict[str, RoleOverride] = Field(default_factory=dict)
     test_passed_at: datetime | None = None
-    # Loadpoints: a car or a heater; None: from the unit of its "SoC" (°C means heater)
+    # Loadpoints: a car or a heater; None: from the unit of its "SoC" (°C means heater).
+    # Own consumers: "heater" when they heat a tank
     kind: Literal["vehicle", "heater"] | None = None
+    # Consumers with fixed power steps: option of the select -> watts (0 for off)
+    power_steps: dict[str, float] | None = None
 
 
 class TariffConfig(BaseModel):

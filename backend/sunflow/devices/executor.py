@@ -85,11 +85,17 @@ def find_entity(
 
 def plan_steps(
     steps: list[dict[str, Any]],
-    variables: dict[str, float],
+    variables: dict[str, Any],
     entities: list[dict[str, Any]],
     default_storage: str,
+    roles: dict[str, str] | None = None,
 ) -> list[PlannedCall]:
-    """Turn profile steps into planned action calls."""
+    """Turn profile steps into planned action calls.
+
+    A step names its entity by key (unique id suffix) or by role; the latter for
+    devices whose entities the user chose (own consumers). A step with an optional
+    role that is not bound is left out.
+    """
     calls: list[PlannedCall] = []
     for step in steps:
         ((kind, spec),) = step.items()
@@ -109,10 +115,19 @@ def plan_steps(
             )
             continue
 
-        domain = STEP_DOMAINS[kind]
-        entity_id = find_entity(entities, domain, spec["key"])
-        if entity_id is None:
-            raise ExecutorError(f"No {domain} entity for key {spec['key']}")
+        if "role" in spec:
+            entity_id = (roles or {}).get(spec["role"])
+            if entity_id is None:
+                if spec.get("optional"):
+                    continue
+                raise ExecutorError(f"No entity for role {spec['role']}")
+            # A switch role may be an input_boolean as well
+            domain = entity_id.split(".", 1)[0]
+        else:
+            domain = STEP_DOMAINS[kind]
+            entity_id = find_entity(entities, domain, spec["key"])
+            if entity_id is None:
+                raise ExecutorError(f"No {domain} entity for key {spec['key']}")
         match kind:
             case "number":
                 value = render(spec["value"], variables)
@@ -168,14 +183,19 @@ def plan_action(
 
 
 def plan_charge(
-    profile: dict[str, Any], action: str, parameters: dict[str, float], runtime: dict[str, float], entities: list[dict[str, Any]]
+    profile: dict[str, Any],
+    action: str,
+    parameters: dict[str, float],
+    runtime: dict[str, Any],
+    entities: list[dict[str, Any]],
+    roles: dict[str, str] | None = None,
 ) -> list[PlannedCall]:
-    """Calls of a charge control action ("charge", "stop", "release") of a loadpoint profile."""
+    """Calls of a charge control action ("charge", "stop", "release") of a loadpoint or own consumer."""
     control = profile.get("charge_control", {})
     if action not in control:
         raise ExecutorError(f"Unknown charge action {action}")
     defaults = {name: spec["default"] for name, spec in profile.get("parameters", {}).items() if "default" in spec}
-    return plan_steps(control[action], {**defaults, **parameters, **runtime}, entities, "volatile")
+    return plan_steps(control[action], {**defaults, **parameters, **runtime}, entities, "volatile", roles)
 
 
 def plan_setup(
