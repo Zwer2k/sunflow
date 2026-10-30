@@ -96,6 +96,9 @@
       },
       "consumer_planned_energy": {
         "name": "{name} planned energy"
+      },
+      "next_load": {
+        "name": "Next one-time load"
       }
     },
     "binary_sensor": {
@@ -140,6 +143,120 @@
       "replan": {
         "name": "Plan again"
       }
+    },
+    "calendar": {
+      "plan": {
+        "name": "Plan"
+      }
+    }
+  },
+  "services": {
+    "set_strategy": {
+      "name": "Set strategy",
+      "description": "Strategy of the home battery, until a time or until changed.",
+      "fields": {
+        "strategy": {
+          "name": "Strategy",
+          "description": "Default goes back to the strategy set in Sunflow."
+        },
+        "until": {
+          "name": "Until",
+          "description": "Empty: until changed again."
+        }
+      }
+    },
+    "set_consumer": {
+      "name": "Change consumer planning",
+      "description": "Strategy, target or pause of a consumer for a while.",
+      "fields": {
+        "consumer": {
+          "name": "Consumer",
+          "description": "Name of the consumer as in Sunflow."
+        },
+        "strategy": {
+          "name": "Strategy",
+          "description": "Cheapest, PV only or as fast as possible."
+        },
+        "target": {
+          "name": "Target",
+          "description": "Target SoC (%) or temperature (°C)."
+        },
+        "paused": {
+          "name": "Pause",
+          "description": "Not planned while paused."
+        },
+        "until": {
+          "name": "Until",
+          "description": "Empty: until reset."
+        },
+        "reset": {
+          "name": "Reset",
+          "description": "Back to the consumer's settings."
+        }
+      }
+    },
+    "plan_load": {
+      "name": "Plan a one-time load",
+      "description": "Finds the cheapest start for a run (e.g. the washing machine). Fires sunflow_load_start when it is due.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Shown in the plan and the event."
+        },
+        "energy_kwh": {
+          "name": "Energy",
+          "description": "Energy of the run."
+        },
+        "power_kw": {
+          "name": "Power",
+          "description": "Mean power while running."
+        },
+        "earliest": {
+          "name": "Earliest",
+          "description": "Not before this time."
+        },
+        "finish_by": {
+          "name": "Finish by",
+          "description": "Done by this time."
+        }
+      }
+    },
+    "cancel_load": {
+      "name": "Cancel a one-time load",
+      "description": "Forgets a planned run.",
+      "fields": {
+        "load_id": {
+          "name": "Load",
+          "description": "ID returned by plan_load."
+        }
+      }
+    },
+    "replan": {
+      "name": "Plan again",
+      "description": "Sunflow plans again now."
+    }
+  },
+  "selector": {
+    "strategy": {
+      "options": {
+        "balanced": "Balanced",
+        "pv_absorption": "Take up PV",
+        "autarky": "Autarky",
+        "default": "Default"
+      }
+    },
+    "consumer_strategy": {
+      "options": {
+        "cost": "Cheapest",
+        "pv_only": "PV only",
+        "fast": "As fast as possible"
+      }
+    }
+  },
+  "issues": {
+    "app_unreachable": {
+      "title": "Sunflow App not reachable",
+      "description": "The Sunflow App has not answered for {minutes} minutes. The devices Sunflow controlled were handed back to their own logic. Check the App in Settings → Apps."
     }
   }
 }

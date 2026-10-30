@@ -69,6 +69,8 @@ PV_SET, PV_RELEASE = f"{PV_LIMIT_PREFIX}set", f"{PV_LIMIT_PREFIX}release"
 MIN_CURTAIL_W = 100.0
 # Limits are written in these steps, so the minutely correction does not write every time
 LIMIT_STEP_W = 100.0
+# How often the hand-back calls for the integration's watchdog are planned again
+FALLBACK_REFRESH = timedelta(minutes=10)
 # Phase switching of chargers: actions besides the charge actions
 PHASES_PREFIX = "phases_"
 PHASES_ONE, PHASES_THREE, PHASES_RESTORE = f"{PHASES_PREFIX}one", f"{PHASES_PREFIX}three", f"{PHASES_PREFIX}restore"
@@ -642,6 +644,10 @@ class PlanController:
         self._config = SunflowConfig()
         # Writes of the PV limits, apart from the battery writes of the same device (refresh)
         self._limit_writes: dict[str, DeviceControl] = {}
+        # Home Assistant calls that hand the taken-over devices back, for the integration's
+        # watchdog when the App stops answering; refreshed now and then
+        self.fallback: list[dict[str, Any]] = []
+        self._fallback_at = datetime.min.replace(tzinfo=UTC)
 
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive, a loadpoint with charge control or a PV limit."""
@@ -692,6 +698,37 @@ class PlanController:
                 await self._safely(device.id, device, lambda d, s: self._battery(d, s, plan, plan_at, now))
             if "pv_limit" in profile:
                 await self._safely(device.id, device, lambda d, s: self._limit(d, s, plan, plan_at, now, snapshot, live))
+        if now - self._fallback_at >= FALLBACK_REFRESH:
+            self._fallback_at = now
+            self.fallback = await self._fallback_calls(devices)
+
+    async def _fallback_calls(self, devices: dict[str, DeviceConfig]) -> list[dict[str, Any]]:
+        """Calls that hand every taken-over device back (without Sunflow running)."""
+        calls: list[dict[str, Any]] = []
+        for device_id in self._marker.get():
+            if (device := devices.get(device_id)) is None:
+                continue
+            access = self._access_for(device)
+            actions = [a for a in (access.release, PV_RELEASE if access.pv_limit else None) if a]
+            for action in actions:
+                try:
+                    # Without Sunflow the inverter regulates the grid to zero, no buffer
+                    planned, _ = await access.plan(action, {"grid_offset": 0.0})
+                except Exception as err:  # noqa: BLE001 - the fallback is best effort
+                    _LOGGER.debug("No fallback for %s: %s", device.name, err)
+                    continue
+                calls += [
+                    {
+                        "domain": c.domain,
+                        "service": c.service,
+                        "data": c.data,
+                        "target": {"entity_id": c.entity_id} if c.entity_id else None,
+                    }
+                    for c in planned
+                    # Directly connected devices are written by the App only
+                    if c.domain != "direct"
+                ]
+        return calls
 
     async def _limit(
         self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime,

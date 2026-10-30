@@ -122,3 +122,77 @@ def test_integration_state_from_plan_and_sample() -> None:
     }
     (consumer,) = state["consumers"]
     assert (consumer["next_start"], consumer["planned_wh"], consumer["running"]) == (slots[2].start, 2000.0, False)
+
+
+def _slots(now: datetime, prices: list[float], exports: list[float]) -> list:
+    from types import SimpleNamespace
+
+    return [
+        SimpleNamespace(start=(now + timedelta(minutes=15 * i)).isoformat(), price=p, feed_in=0.08, export_w=e)
+        for i, (p, e) in enumerate(zip(prices, exports, strict=True))
+    ]
+
+
+@pytest.mark.parametrize(
+    ("prices", "exports", "finish_by_slots", "expected_slot"),
+    [
+        pytest.param([0.3] * 8, [0, 0, 0, 2000, 2000, 2000, 2000, 0], None, 3, id="into-the-pv-surplus"),
+        pytest.param([0.3, 0.3, 0.1, 0.1, 0.1, 0.1, 0.3, 0.3], [0] * 8, None, 2, id="into-the-cheap-hour"),
+        pytest.param([0.3, 0.3, 0.1, 0.1, 0.1, 0.1, 0.3, 0.3], [0] * 8, 4, 0, id="done-in-time-beats-cheap"),
+        pytest.param([0.3] * 8, [0] * 8, None, 0, id="equal-means-now"),
+    ],
+)
+def test_one_time_load_starts_when_cheapest(
+    prices: list[float], exports: list[float], finish_by_slots: int | None, expected_slot: int
+) -> None:
+    """A 2 kW run of an hour is placed contiguously where it costs least and is done in time."""
+    from sunflow.planning.one_time import OneTimeLoad, best_start
+
+    now = datetime(2026, 10, 30, 10, 0, tzinfo=UTC)
+    finish_by = now + timedelta(minutes=15 * finish_by_slots) if finish_by_slots else None
+    load = OneTimeLoad(name="Waschmaschine", energy_wh=2000, power_w=2000, finish_by=finish_by)
+    found = best_start(load, _slots(now, prices, exports), now)
+    assert found is not None
+    assert found[0] == now + timedelta(minutes=15 * expected_slot)
+
+
+def test_one_time_load_is_fixed_once_started_and_dropped_when_done(tmp_path: Path) -> None:
+    """The start stays once it came; after the end the load is gone, also after a restart."""
+    from sunflow.planning.one_time import OneTimeLoad, OneTimeLoads
+
+    now = datetime(2026, 10, 30, 10, 0, tzinfo=UTC)
+    loads = OneTimeLoads(tmp_path)
+    loads.loads.append(OneTimeLoad(name="Spülmaschine", energy_wh=1000, power_w=2000))
+    loads.update(_slots(now, [0.3] * 8, [0] * 8), now)
+    (load,) = OneTimeLoads(tmp_path).as_list()
+    assert (load["start"], load["started"]) == (now.isoformat(), True)
+
+    later = now + timedelta(minutes=45)
+    loads.update(_slots(later, [0.1] * 8, [0] * 8), later)
+    assert OneTimeLoads(tmp_path).as_list() == []
+
+
+def test_calendar_windows() -> None:
+    """Consecutive planned slots become one event per consumer, grid charging and one-time load."""
+    from types import SimpleNamespace
+
+    from sunflow.api.integration import calendar
+
+    now = datetime(2026, 10, 30, 10, 0, tzinfo=UTC)
+
+    def slot(i: int, wallbox: float, action: str = "auto", import_w: float = 0.0) -> SimpleNamespace:
+        return SimpleNamespace(
+            start=(now + timedelta(minutes=15 * i)).isoformat(), flex_w={"Wallbox": wallbox}, action=action,
+            import_w=import_w, curtail_w=0.0,
+        )
+
+    slots = [slot(0, 0, "force_charge", 3000), slot(1, 4000), slot(2, 4000), slot(3, 0), slot(4, 2000)]
+    info = SimpleNamespace(name="Wallbox", kind="vehicle")
+    load = {"name": "Waschmaschine", "start": slots[3].start, "end": slots[4].start}
+    events = calendar(slots, [info], [load])
+    assert [(e["summary"], e["start"], e["end"]) for e in events] == [
+        ("Speicher lädt aus dem Netz", slots[0].start, slots[1].start),
+        ("Wallbox lädt", slots[1].start, slots[3].start),
+        ("Waschmaschine", slots[3].start, slots[4].start),
+        ("Wallbox lädt", slots[4].start, (now + timedelta(minutes=75)).isoformat()),
+    ]

@@ -1,0 +1,74 @@
+set_strategy:
+  fields:
+    strategy:
+      required: true
+      selector:
+        select:
+          translation_key: strategy
+          options: [balanced, pv_absorption, autarky, default]
+    until:
+      selector:
+        datetime:
+set_consumer:
+  fields:
+    consumer:
+      required: true
+      example: Wallbox
+      selector:
+        text:
+    strategy:
+      selector:
+        select:
+          translation_key: consumer_strategy
+          options: [cost, pv_only, fast]
+    target:
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+    paused:
+      selector:
+        boolean:
+    until:
+      selector:
+        datetime:
+    reset:
+      selector:
+        boolean:
+plan_load:
+  fields:
+    name:
+      required: true
+      example: Waschmaschine
+      selector:
+        text:
+    energy_kwh:
+      required: true
+      selector:
+        number:
+          min: 0.01
+          max: 100
+          step: 0.01
+          unit_of_measurement: kWh
+    power_kw:
+      required: true
+      selector:
+        number:
+          min: 0.01
+          max: 50
+          step: 0.01
+          unit_of_measurement: kW
+    earliest:
+      selector:
+        datetime:
+    finish_by:
+      selector:
+        datetime:
+cancel_load:
+  fields:
+    load_id:
+      required: true
+      selector:
+        text:
+replan:

@@ -8,7 +8,10 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    TimestampDataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .api import SunflowAuthError, SunflowClient, SunflowError
 from .const import DOMAIN, FORECAST_INTERVAL, STATE_INTERVAL
@@ -16,7 +19,7 @@ from .const import DOMAIN, FORECAST_INTERVAL, STATE_INTERVAL
 _LOGGER = logging.getLogger(__name__)
 
 
-class SunflowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class SunflowCoordinator(TimestampDataUpdateCoordinator[dict[str, Any]]):
     """One endpoint of the App, polled at its own interval."""
 
     def __init__(
