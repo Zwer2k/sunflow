@@ -63,19 +63,19 @@ Je Prognose gibt es zusätzlich die Sensoren „Prognose heute“, „Prognose R
 
 | Aktion | Wofür |
 |---|---|
-| `sunflow.set_strategy` | Strategie bis zu einer Uhrzeit; `default` kehrt zur eingestellten zurück |
-| `sunflow.set_consumer` | Ziel, Strategie oder Pause eines Verbrauchers für eine Weile; `reset` hebt das auf |
-| `sunflow.plan_load` | einmalige Last einplanen; antwortet mit Start, Ende und Kosten |
-| `sunflow.cancel_load` | einmalige Last abbrechen |
-| `sunflow.replan` | sofort neu planen |
+| `sunflow_ems.set_strategy` | Strategie bis zu einer Uhrzeit; `default` kehrt zur eingestellten zurück |
+| `sunflow_ems.set_consumer` | Ziel, Strategie oder Pause eines Verbrauchers für eine Weile; `reset` hebt das auf |
+| `sunflow_ems.plan_load` | einmalige Last einplanen; antwortet mit Start, Ende und Kosten |
+| `sunflow_ems.cancel_load` | einmalige Last abbrechen |
+| `sunflow_ems.replan` | sofort neu planen |
 
 ## Ereignisse
 
 | Ereignis | Wann |
 |---|---|
-| `sunflow_plan_updated` | ein neuer Plan liegt vor |
-| `sunflow_consumer_start` | ein Verbraucher ist ab jetzt eingeplant |
-| `sunflow_load_start` | eine einmalige Last soll jetzt starten |
+| `sunflow_ems_plan_updated` | ein neuer Plan liegt vor |
+| `sunflow_ems_consumer_start` | ein Verbraucher ist ab jetzt eingeplant |
+| `sunflow_ems_load_start` | eine einmalige Last soll jetzt starten |
 
 ### Beispiel: Waschmaschine zum günstigsten Zeitpunkt
 
@@ -87,7 +87,7 @@ Je Prognose gibt es zusätzlich die Sensoren „Prognose heute“, „Prognose R
       entity_id: input_boolean.waschmaschine_bereit
       to: "on"
   actions:
-    - action: sunflow.plan_load
+    - action: sunflow_ems.plan_load
       data:
         name: Waschmaschine
         energy_kwh: 1.2
@@ -98,7 +98,7 @@ Je Prognose gibt es zusätzlich die Sensoren „Prognose heute“, „Prognose R
 - alias: Waschmaschine starten
   triggers:
     - trigger: event
-      event_type: sunflow_load_start
+      event_type: sunflow_ems_load_start
       event_data:
         name: Waschmaschine
   actions:

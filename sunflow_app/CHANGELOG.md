@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.48.2
+
+- Die Integration heißt jetzt `sunflow_ems` (Integration 0.3.0). Unter `sunflow` gibt es bereits eine fremde Integration, deren Icon Home Assistant anzeigte. Mit der neuen Domain erscheint überall das Sunflow-Icon der App. Aktionen und Ereignisse heißen entsprechend `sunflow_ems.plan_load`, `sunflow_ems_load_start` usw.
+- Umstellung: Die alte Integration „Sunflow“ unter „Einstellungen → Geräte & Dienste“ löschen, in HACS aktualisieren und Home Assistant neu starten; den Ordner `custom_components/sunflow` entfernen, falls er bleibt. Danach die Integration neu einrichten (sie wird wieder automatisch gefunden).
+
 ## 0.48.1
 
 - Vorrang „erst ab Hausspeicher …%“: Sunflow prüft den Ladestand jetzt am Ende der Viertelstunde statt am Anfang. In der Viertelstunde, in der der Speicher die Schwelle erreicht, bekommt der Verbraucher (z. B. der Heizstab) den restlichen Überschuss. Vorher wurde dieser Rest eingespeist – besonders sichtbar, wenn die Schwelle gleich der Ladegrenze im Alltag ist.

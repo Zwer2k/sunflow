@@ -1,5 +1,5 @@
 name: Sunflow
-version: "0.48.1"
+version: "0.48.2"
 slug: sunflow
 description: Predictive energy management with PV forecasts and dynamic prices
 url: https://github.com/Zwer2k/sunflow
@@ -12,7 +12,7 @@ ingress: true
 ingress_port: 8099
 # The App announces itself to the Sunflow integration (host, port, token)
 discovery:
-  - sunflow
+  - sunflow_ems
 panel_icon: mdi:solar-power-variant
 panel_title: Sunflow
 # Built locally by the Supervisor (see Dockerfile). Later: prebuilt images by CI

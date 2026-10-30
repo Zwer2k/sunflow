@@ -1,16 +1,16 @@
 {
   "config": {
     "abort": {
-      "already_configured": "Service is already configured"
+      "already_configured": "[%key:common::config_flow::abort::already_configured_service%]"
     },
     "error": {
-      "cannot_connect": "Failed to connect",
-      "invalid_auth": "Invalid authentication"
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]"
     },
     "step": {
       "user": {
         "data": {
-          "url": "URL",
+          "url": "[%key:common::config_flow::data::url%]",
           "token": "Token"
         },
         "data_description": {
@@ -197,7 +197,7 @@
     },
     "plan_load": {
       "name": "Plan a one-time load",
-      "description": "Finds the cheapest start for a run (e.g. the washing machine). Fires sunflow_load_start when it is due.",
+      "description": "Finds the cheapest start for a run (e.g. the washing machine). Fires sunflow_ems_load_start when it is due.",
       "fields": {
         "name": {
           "name": "Name",

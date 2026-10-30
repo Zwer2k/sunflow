@@ -59,16 +59,16 @@ async def test_setup_forecast_entries_and_energy(hass: HomeAssistant, aioclient_
     aioclient_mock.put(f"{URL}/api/v1/control/strategy", json={})
     aioclient_mock.post(f"{URL}/api/v1/integration/replan", json={})
 
-    result = await hass.config_entries.flow.async_init("sunflow", context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_init("sunflow_ems", context={"source": SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"url": URL, "token": "t"})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
 
-    entries = hass.config_entries.async_entries("sunflow")
+    entries = hass.config_entries.async_entries("sunflow_ems")
     assert sorted(e.title for e in entries) == ["PV-Prognose · Gesamt", "PV-Prognose · Nord-Ost (Fläche)", "Sunflow"]
     assert all(e.state is ConfigEntryState.LOADED for e in entries)
 
-    from custom_components.sunflow.energy import async_get_solar_forecast
+    from custom_components.sunflow_ems.energy import async_get_solar_forecast
 
     plane = next(e for e in entries if e.title.startswith("PV-Prognose · Nord"))
     assert await async_get_solar_forecast(hass, plane.entry_id) == {"wh_hours": {"2026-10-30T11:00:00+00:00": 500}}
@@ -101,7 +101,7 @@ async def test_setup_forecast_entries_and_energy(hass: HomeAssistant, aioclient_
     app = next(e for e in entries if e.title == "Sunflow")
     await app.runtime_data.forecasts.async_refresh()
     await hass.async_block_till_done()
-    assert len(hass.config_entries.async_entries("sunflow")) == 2
+    assert len(hass.config_entries.async_entries("sunflow_ems")) == 2
 
 
 async def _setup(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, state: dict[str, Any]) -> None:
@@ -109,13 +109,13 @@ async def _setup(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, state
     aioclient_mock.get(f"{URL}/api/v1/strings/energy", json=STRINGS)
     aioclient_mock.get(f"{URL}/api/v1/forecast/export", json=FORECAST)
     aioclient_mock.get(f"{URL}/api/v1/integration/state", json=state)
-    result = await hass.config_entries.flow.async_init("sunflow", context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_init("sunflow_ems", context={"source": SOURCE_USER})
     await hass.config_entries.flow.async_configure(result["flow_id"], {"url": URL, "token": "t"})
     await hass.async_block_till_done()
 
 
 async def test_plan_load_events_and_calendar(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
-    """plan_load answers with the start; a load that starts fires sunflow_load_start; the calendar shows the plan."""
+    """plan_load answers with the start; a load that starts fires sunflow_ems_load_start; the calendar shows the plan."""
     from pytest_homeassistant.common import async_capture_events
 
     load = {"id": "l1", "name": "Waschmaschine", "energy_wh": 1500, "power_w": 2000, "finish_by": None,
@@ -124,15 +124,15 @@ async def test_plan_load_events_and_calendar(hass: HomeAssistant, aioclient_mock
     await _setup(hass, aioclient_mock, STATE)
 
     response = await hass.services.async_call(
-        "sunflow", "plan_load", {"name": "Waschmaschine", "energy_kwh": 1.5, "power_kw": 2}, blocking=True,
+        "sunflow_ems", "plan_load", {"name": "Waschmaschine", "energy_kwh": 1.5, "power_kw": 2}, blocking=True,
         return_response=True,
     )
     assert response == {"id": "l1", "start": load["start"], "end": load["end"], "cost_eur": 0.12}
     (method, url, body, _) = next(c for c in aioclient_mock.mock_calls if c[0] == "POST")
     assert body == {"name": "Waschmaschine", "energy_wh": 1500.0, "power_w": 2000.0, "earliest": None, "finish_by": None}
 
-    events = async_capture_events(hass, "sunflow_load_start")
-    app = next(e for e in hass.config_entries.async_entries("sunflow") if e.title == "Sunflow")
+    events = async_capture_events(hass, "sunflow_ems_load_start")
+    app = next(e for e in hass.config_entries.async_entries("sunflow_ems") if e.title == "Sunflow")
     app.runtime_data.state.async_set_updated_data({**STATE, "loads": [{**load, "started": True}]})
     await hass.async_block_till_done()
     assert [e.data["name"] for e in events] == ["Waschmaschine"]
@@ -163,4 +163,4 @@ async def test_watchdog_hands_back_when_the_app_is_gone(
         await hass.async_block_till_done()
 
     assert [c.data["entity_id"] for c in calls] == ["input_boolean.charge"]
-    assert ir.async_get(hass).async_get_issue("sunflow", "app_unreachable") is not None
+    assert ir.async_get(hass).async_get_issue("sunflow_ems", "app_unreachable") is not None
