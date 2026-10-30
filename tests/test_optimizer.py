@@ -897,3 +897,45 @@ def test_curtailment(feed_in: float, curtailable: float, limit: float | None, ex
     plan = optimize(inputs, FULL, Settings(export_soft_limit_w=limit))
     assert plan.slots[0].curtail_w == pytest.approx(expected, abs=1)
     assert plan.slots[0].export_w == pytest.approx(3500 - expected, abs=1)
+
+
+def _daily_pv(start: datetime, kwh_per_day: list[float]) -> list[ForecastPoint]:
+    """Hourly PV between 08:00 and 16:00 local with the given energy per day."""
+    points = []
+    for day, kwh in enumerate(kwh_per_day):
+        for hour in range(8, 16):
+            begin = start + timedelta(days=day, hours=hour)
+            points.append(ForecastPoint(start=begin, end=begin + timedelta(hours=1), power=kwh * 1000 / 8))
+    return points
+
+
+@pytest.mark.parametrize(
+    ("mode", "pv_kwh", "lifted"),
+    [
+        pytest.param("always", [20, 3, 20], False, id="always-keeps-the-limit"),
+        pytest.param("unless_poor_days", [20, 3, 20], True, id="poor-tomorrow-lifts-it"),
+        pytest.param("unless_poor_days", [20, 20, 3, 20], True, id="poor-in-two-days-lifts-it"),
+        pytest.param("unless_poor_days", [20, 20, 20, 3], False, id="poor-day-too-far-ahead"),
+        pytest.param("unless_poor_days", [3, 20, 20], False, id="poor-today-does-not-count"),
+    ],
+)
+async def test_charge_limit_lifted_before_poor_pv_days(mode: str, pv_kwh: list[float], lifted: bool) -> None:
+    """With "unless_poor_days" a day with less PV than consumption ahead lifts the everyday limit."""
+    from types import SimpleNamespace
+    from zoneinfo import ZoneInfo
+
+    from sunflow.config.models import OptimizerConfig
+    import sunflow.planning.plan as plan_module
+
+    tz = ZoneInfo("Europe/Berlin")
+    config = SunflowConfig(optimizer=OptimizerConfig(max_soc_pct=80, max_soc_mode=mode, poor_days_ahead=2))
+    battery = BatterySpec(capacity_wh=20000, soc_wh=5000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    begin = datetime(2026, 10, 26, 0, 0, tzinfo=tz)
+    # 500 W load: 12 kWh per day
+    inputs = [SlotInput(start=begin + i * SLOT, pv_w=0.0, load_w=500, price=0.3, feed_in=0.08) for i in range(192)]
+    care = await plan_module.battery_care(
+        None, config, {"roles": {}}, SimpleNamespace(ha_device_id="x", role_overrides={}),
+        SimpleNamespace(states={}, devices=[], entities=[]), battery, inputs, tz, _daily_pv(begin, pv_kwh),
+    )
+    assert (care.limit_wh is None) == lifted
+    assert (care.poor_day is not None) == lifted

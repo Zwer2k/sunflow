@@ -294,8 +294,32 @@ class SunflowStandards extends LitElement {
                 @input=${(e) => (this._maxSoc = e.target.value)}>
               <span class="muted">%</span>
             </span>
-            <span class="small muted">Schont die Zellen: höher lädt Sunflow nur für eine fällige Vollladung. 100 % = keine Grenze.</span>
+            <span class="small muted">Schont die Zellen: höher lädt Sunflow nur für eine fällige Vollladung${settings.max_soc_mode === "unless_poor_days"
+              ? " oder vor Tagen mit wenig PV"
+              : ""}. 100 % = keine Grenze.</span>
           </label>
+          ${settings.max_soc_pct < 100
+            ? html`<label class="field">
+                <span class="field-label">Ladegrenze gilt</span>
+                <select ?disabled=${this._saving} @change=${(e) => this._saveSettings({ max_soc_mode: e.target.value })}>
+                  <option value="always" ?selected=${settings.max_soc_mode !== "unless_poor_days"}>immer</option>
+                  <option value="unless_poor_days" ?selected=${settings.max_soc_mode === "unless_poor_days"}>
+                    außer vor Schlechtwetter-Tagen</option>
+                </select>
+                ${settings.max_soc_mode === "unless_poor_days"
+                  ? html`<span class="input-unit">
+                      <span class="muted">Vorschau</span>
+                      <select aria-label="Tage im Voraus" ?disabled=${this._saving}
+                        @change=${(e) => this._saveSettings({ poor_days_ahead: Number(e.target.value) })}>
+                        ${[1, 2, 3, 4, 5].map((d) => html`<option value=${d} ?selected=${(settings.poor_days_ahead ?? 2) === d}>
+                          ${d === 1 ? "morgen" : `${d} Tage`}</option>`)}
+                      </select>
+                    </span>`
+                  : nothing}
+                <span class="small muted">Sagt die PV-Prognose für die nächsten Tage weniger Ertrag als den
+                  Tagesverbrauch voraus, setzt Sunflow die Grenze aus und speichert, was die Sonne vorher noch liefert.</span>
+              </label>`
+            : nothing}
           <label class="field">
             <span class="field-label">Voll laden alle</span>
             <span class="input-unit">
