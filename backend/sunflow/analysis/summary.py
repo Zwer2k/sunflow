@@ -6,11 +6,12 @@ from typing import Any, Literal
 from sunflow.config.models import SunflowConfig
 
 # Wizard step indices the UI links to
-STEP_DEVICES = 1
-STEP_PARAMETERS = 2
-STEP_DEVICE_TEST = 3
-STEP_SITE = 4
-STEP_SOURCES = 5
+# Settings areas the UI opens for an issue
+STEP_DEVICES = "devices"
+STEP_PARAMETERS = "devices"
+STEP_DEVICE_TEST = "test"
+STEP_SITE = "site"
+STEP_SOURCES = "sources"
 
 # Defaults that come from register ranges, not from the device data sheet
 DEFAULTS_TO_CONFIRM = ("max_charge", "max_discharge")
@@ -21,7 +22,7 @@ class Issue:
     """Something to fix (error) or check (warning, info) before planning."""
 
     level: Literal["error", "warning", "info"]
-    step: int
+    step: str
     message: str
 
 
@@ -92,7 +93,7 @@ def build_summary(
             pv_plants.append(device)
             if (feed_in := config.feed_in.get(device.id)) is None or feed_in.rate_ct_per_kwh is None:
                 summary.issues.append(
-                    Issue(level="warning", step=STEP_PARAMETERS, message=f"{device.name}: Einspeisevergütung fehlt.")
+                    Issue(level="warning", step=STEP_SOURCES, message=f"{device.name}: Einspeisevergütung fehlt.")
                 )
         if "battery_window" in capabilities and device.test_passed_at is None:
             summary.issues.append(

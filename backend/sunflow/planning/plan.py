@@ -177,7 +177,7 @@ def flex_loads(
             if settings.alternative_cost_ct is None:
                 warnings.append(
                     f"{device.name}: Kosten der üblichen Heizung (z. B. Fernwärme) fehlen – Sunflow heizt im "
-                    "Zweifel mit Netzstrom. Preis unter Kenndaten → Planung eintragen."
+                    "Zweifel mit Netzstrom. Preis unter Einstellungen → Verbraucher eintragen."
                 )
         elif kind == "load":
             # Set by the user, else learned from the power sensor
