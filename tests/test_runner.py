@@ -114,3 +114,12 @@ def test_early_replan_on_lasting_deviation(tmp_path: Path, pv: list[float], expe
 
     assert runner._deviation() == expected
     runner.shadow.close()
+
+
+def test_risk_fades_where_measured_and_under_clear_sky() -> None:
+    """The pessimistic share applies to cloudy hours ahead, not to now or a clear sky."""
+    from sunflow.plan import risk_shares
+
+    shares = risk_shares(0.5, [80, 80, 5, None], [1.0, 0.0, 0.0, 0.5])
+
+    assert shares == pytest.approx([0.0, 0.5, 0.125, 0.25])
