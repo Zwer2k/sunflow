@@ -1,8 +1,12 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
-import { fromDisplay, toDisplay } from "../lib/format.js";
+import { formatValue, fromDisplay, toDisplay } from "../lib/format.js";
+import { poll } from "../lib/poll.js";
 import "../components/picker.js";
+
+// Live values follow the car's sensors; they change slowly
+const REFRESH_MS = 30000;
 
 const EMPTY = { name: "", capacity_kwh: "", efficiency: "", soc_entity: "", plugged_entity: "" };
 
@@ -29,15 +33,58 @@ class SunflowVehicles extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this._load();
+    this._stopPolling = poll(() => this._load(), REFRESH_MS);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._stopPolling?.();
   }
 
   async _load() {
     try {
-      this._data = await api.vehicles();
+      const data = await api.vehicles();
+      // A poll must not overwrite what is being saved
+      if (!this._busy) this._data = data;
     } catch (err) {
       this._error = `Fahrzeuge nicht verfügbar: ${err.message}`;
     }
+  }
+
+  /** Values of the car's sensors as tiles (open card) or one line (closed card). */
+  _liveValues(vehicle) {
+    const live = this._data?.live?.[vehicle.id];
+    if (!live) return [];
+    const values = [];
+    if (vehicle.soc_entity) {
+      values.push({
+        label: "Ladestand",
+        value: live.soc_pct === null ? "–" : formatValue(live.soc_pct, "%"),
+        hint: live.soc_unavailable ? "Sensor gerade nicht lesbar" : since(live.soc_updated),
+      });
+      if (live.energy_wh !== null) {
+        values.push({ label: "Im Akku", value: formatValue(live.energy_wh, "Wh"), hint: `von ${formatValue(vehicle.capacity_wh, "Wh")}` });
+      }
+    }
+    if (vehicle.plugged_entity) {
+      values.push({
+        label: "Angesteckt / zuhause",
+        value: live.plugged === null ? (live.plugged_state ?? "–") : live.plugged ? "ja" : "nein",
+        hint: "",
+      });
+    }
+    return values;
+  }
+
+  _renderTiles(vehicle) {
+    const values = this._liveValues(vehicle);
+    return values.length
+      ? html`<div class="tiles">${values.map((v) => html`<div class="tile">
+          <div class="small muted">${v.label}</div>
+          <div class="value">${v.value}</div>
+          <div class="small muted">${v.hint}</div>
+        </div>`)}</div>`
+      : nothing;
   }
 
   render() {
@@ -67,7 +114,11 @@ class SunflowVehicles extends LitElement {
               </span>
             </button>
             ${v.soc_entity ? nothing : html`<span class="small warn-text">kein Ladestand-Sensor</span>`}
-            ${open ? this._renderForm(v) : nothing}
+            ${open
+              ? html`${this._renderTiles(v)}${this._renderForm(v)}`
+              : this._liveValues(v).length
+                ? html`<div class="summary small">${this._liveValues(v).map((x) => `${x.label} ${x.value}`).join(" · ")}</div>`
+                : nothing}
           </section>`;
       })}
       ${this._form !== null && this._editId === null
@@ -222,9 +273,23 @@ class SunflowVehicles extends LitElement {
     .link { border: 0; background: none; padding: 0; color: var(--sf-primary-text); text-decoration: underline; cursor: pointer; font-size: 13px; }
     .danger { color: var(--sf-error-text); }
     .warn-text { color: var(--sf-error-text); }
+    .summary { padding-left: 22px; color: var(--sf-text); }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }
+    .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     button:disabled { cursor: not-allowed; opacity: .6; }
   `;
+}
+
+/** "vor 3 min" for an ISO time, empty without one. */
+function since(iso) {
+  if (!iso) return "";
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return "gerade eben";
+  if (minutes < 60) return `vor ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `vor ${hours} h` : `vor ${Math.round(hours / 24)} Tagen`;
 }
 
 customElements.define("sf-vehicles", SunflowVehicles);
