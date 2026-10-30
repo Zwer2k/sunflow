@@ -363,3 +363,57 @@ async def test_unknown_vehicle_leaves_the_wallbox_to_itself(tmp_path: Path) -> N
 
     assert charger.option == "neutral"
     assert controller.statuses["wb"].reason.startswith("Fahrzeug nicht erkannt")
+
+
+PARAMS = {"phases": 3, "min_current_a": 6, "max_current_a": 16}
+
+
+@pytest.mark.parametrize(
+    ("planned", "pv", "grid", "charging", "expected"),
+    [
+        pytest.param(5000, 7000, 0, True, 7000, id="more-pv-than-forecast"),
+        pytest.param(5000, 5500, 900, True, 4900, id="grid-import-taken-from-car"),
+        pytest.param(5000, 3000, 0, False, None, id="too-little-stops"),
+        # Already charging: keeps the minimum current down to half of it
+        pytest.param(5000, 3000, 0, True, 6 * 230 * 3, id="hysteresis"),
+        pytest.param(5000, 500, 0, True, None, id="far-too-little"),
+    ],
+)
+def test_follow_surplus(planned: float, pv: float, grid: float, charging: bool, expected: float | None) -> None:
+    """The planned power corrected by the PV actually there (planned PV 5 kW)."""
+    from sunflow.control import follow_surplus
+
+    live = SimpleNamespace(pv_w=pv, grid_w=grid)
+
+    assert follow_surplus(planned, 6000 - 1000, live, charging, PARAMS) == expected
+
+
+def test_amx_topic_from_device_serial() -> None:
+    """The go-e topic uses the serial from the device registry; role values are available too."""
+    from pathlib import Path
+
+    from sunflow.control import device_variables
+    from sunflow.executor import plan_charge
+    from sunflow.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    profile = load_profiles(repo / "profiles", load_schema(repo / "schema")).profiles["goecharger_mqtt/charger"]
+    entities = [
+        {"entity_id": "select.goe_frc", "unique_id": "216505-select-frc-frc", "device_id": "d"},
+        {"entity_id": "number.goe_amp", "unique_id": "216505-number-amp-0", "device_id": "d"},
+    ]
+    snapshot = SimpleNamespace(
+        devices=[{"id": "d", "identifiers": [["goecharger_mqtt", "216505"]]}],
+        entities=entities,
+        states={"number.goe_amp": {"state": "16", "attributes": {"unit_of_measurement": "A"}}, "select.goe_frc": {"state": "neutral"}},
+    )
+    device = DeviceConfig(id="wb", ha_device_id="d", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
+
+    variables = device_variables(profile, device, snapshot)
+    charge = plan_charge(profile, "charge", {}, variables | {"current_a": 7}, entities)
+    release = plan_charge(profile, "release", {}, variables, entities)
+
+    assert (charge[0].domain, charge[0].service) == ("mqtt", "publish")
+    assert charge[0].data == {"topic": "go-eCharger/216505/amx/set", "payload": 7}
+    # Handing back sets the temporary current to the stored one again
+    assert release[0].data["payload"] == 16

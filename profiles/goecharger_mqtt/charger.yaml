@@ -1,9 +1,10 @@
 # go-e Charger (Gemini, HOME) via the goecharger_mqtt custom integration (HACS).
 # Sunflow controls the charger directly; evcc must not control the same charger then.
 # Unique ids look like "216505-select-frc-frc", so keys include the platform.
-# The requested current ("amp") is stored in the charger's flash: it is only changed
-# by at least the tolerance and counted by the EEPROM guard. Charging is started and
-# stopped with the force state.
+# The current is set as "amx" over MQTT: a temporary current that is not stored in
+# the charger's flash (like evcc does), so it may follow the PV surplus every minute.
+# The integration has no entity for it; the topic is "go-eCharger/<serial>" (the
+# integration's default). Charging is started and stopped with the force state.
 profile: goecharger_mqtt/charger
 version: 1
 match:
@@ -17,6 +18,8 @@ roles:
   charge_power: {key: sensor-nrg-11, unit: W}
   connected: {key: binary_sensor-car-1}
   charged_energy: {key: sensor-wh-0, unit: Wh, optional: true}
+  # Current stored in flash; it applies again when Sunflow hands the charger back
+  stored_current: {key: number-amp-0, unit: A, optional: true}
   # RFID: the scanned card ("card_0" = card 1) and whether one is required to charge
   transaction: {key: select-trx-trx, optional: true}
   card_required: {key: switch-acs-0, optional: true}
@@ -33,7 +36,7 @@ parameters:
 
 charge_control:
   charge:
-    - number: {key: number-amp-0, value: "{{ current_a }}", min: 6, max: 32, storage: eeprom, write: if_differs, tolerance: 2}
+    - service: {action: mqtt.publish, data: {topic: "go-eCharger/{{ device_serial }}/amx/set", payload: "{{ current_a }}"}, storage: volatile}
     - select: {key: select-frc-frc, option: "charge", write: if_differs}
   stop:
     - select: {key: select-frc-frc, option: "dont_charge", write: if_differs}
@@ -42,7 +45,8 @@ charge_control:
     - select: {key: select-trx-trx, option: "{{ transaction }}"}
   # The charger's own logic again (charges when plugged in, unless its schedule says otherwise)
   release:
+    - service: {action: mqtt.publish, data: {topic: "go-eCharger/{{ device_serial }}/amx/set", payload: "{{ role_stored_current }}"}, storage: volatile}
     - select: {key: select-frc-frc, option: "neutral", write: if_differs}
 
 eeprom_guard:
-  max_writes_per_day: 20
+  max_writes_per_day: 10

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.0
+
+- go-e: Der Ladestrom wird als vorübergehender Strom („amx“) per MQTT gesetzt, wie evcc es macht – er landet nicht im Flash der Wallbox. Das Thema ist „go-eCharger/<Seriennummer>“ (Standard der Integration). Beim Zurückgeben gilt wieder der gespeicherte Strom.
+- In Viertelstunden, in denen nur ein Teil der Ladeleistung (aus PV) geplant ist, folgt der Strom jede Minute dem tatsächlichen PV-Überschuss: mehr PV als vorhergesagt geht ins Auto, weniger wird abgezogen, ebenso Netzbezug. Reicht es nicht für den Mindeststrom, wird das Laden gesperrt (mit Hysterese, damit es nicht ständig schaltet).
+
 ## 0.37.0
 
 Mehrere Fahrzeuge an einer Wallbox:
