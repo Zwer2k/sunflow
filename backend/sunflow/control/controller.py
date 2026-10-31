@@ -157,6 +157,13 @@ def desired_charge(
     return "stop", None, "nach Plan: jetzt nicht"
 
 
+def planned_from_grid(slot: Any) -> bool:
+    """The slot buys from the grid or has no PV: a loadpoint charges its planned power steadily."""
+    if slot is None:
+        return False
+    return (getattr(slot, "import_w", 0.0) or 0.0) >= MIN_CHARGE_W or (getattr(slot, "pv_w", 0.0) or 0.0) < MIN_CHARGE_W
+
+
 def grid_buffer(buffer: float, slot: Any, planned: bool) -> float:
     """Grid target of the battery window: the buffer only while the plan exports anyway.
 
@@ -865,7 +872,9 @@ class PlanController:
             roles = profile.get("roles", {})
             binary = not steps and "switch" in roles and "current" not in roles
             max_power = params.get("max_power") or 0
-            partial = action == "charge" and power < FOLLOW_BELOW * max_power
+            # Planned from the grid (e.g. cheap night hours) the power is held, not taken from the PV surplus
+            from_grid = planned_from_grid(current_slot(plan, now) if action == "charge" else None)
+            partial = action == "charge" and power < FOLLOW_BELOW * max_power and not from_grid
             if binary:
                 if action == "charge" and power < SWITCH_ON_SHARE * max_power:
                     action, reason = "stop", "nach Plan: zu wenig für die volle Leistung"
@@ -892,6 +901,9 @@ class PlanController:
                 phases = await self._switch_phases(device, status, profile, params, power, True, plan, now, snapshot)
                 params = params | {"phases": phases}
             runtime: dict[str, Any] = {"current_a": charge_current(power, params)} if action == "charge" else {}
+            if action == "charge" and "phases" in params:
+                # What the current on these phases gives (e.g. one phase: at most 3.7 kW at 16 A)
+                power = min(power, (params.get("max_current_a") or 16) * VOLTS * params["phases"])
             if steps:
                 runtime["off_option"] = off_step(steps) or ""
                 if action == "charge":

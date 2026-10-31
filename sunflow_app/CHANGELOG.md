@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.56.1
+
+- Wallbox: Laden, das der Plan aus dem Netz vorsieht (z. B. nachts bei günstigem Preis), hält jetzt die geplante Leistung. Bisher wurde es wie PV-Überschussladen behandelt („folgt dem PV-Überschuss“): die Phasen wurden nur nach PV-Regeln umgeschaltet, so blieb die go-e z. B. einphasig bei höchstens 3,7 kW statt der geplanten 4,8 kW; ein evcc-Ladepunkt wartete im PV-Modus. Jetzt wählt Sunflow die Phasen sofort nach der geplanten Leistung.
+- Steuerung und Protokoll zeigen die Leistung, die der Strom auf den aktuellen Phasen tatsächlich ergibt, statt der geplanten.
+
 ## 0.56.0
 
 - Protokoll (Steuerung → Protokoll): Schreibfehler, die Home Assistant meldet (z. B. eine Modbus-Exception des Wechselrichters), erscheinen jetzt mit der Fehlermeldung. Ein Fehler, der jede Minute wiederkommt, steht nur einmal da – erneut erst, nachdem das Gerät zwischendurch wieder in Ordnung war. Neuer Filter „nur Fehler“.
