@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.49.3
+
+- Planung → „Tatsächlich: … weicht vom Plan ab“: beurteilt jetzt das Mittel der letzten 5 Minuten statt einer einzelnen Messung. Eine Messung verbindet Zähler, die zu verschiedenen Zeitpunkten gelesen werden (Netz alle paar Sekunden, Wechselrichter etwa alle halbe Minute), und fängt Lastsprünge ab, die der Wechselrichter gerade ausregelt – das sah oft nach Laden aus dem Netz aus, das es nicht gab.
+
 ## 0.49.2
 
 - PV-Prognose für Home Assistant: Auch die vergangenen 31 Tage werden geliefert – aus der Prognose, die Sunflow damals je Fläche aufgezeichnet hat, mit der gelernten Korrektur (ähnlich wie Solcast seine Vergangenheit liefert). Wochen- und Monatsansicht im Energie-Dashboard zeigen damit Prognose und Ertrag auch für zurückliegende Tage.

@@ -122,3 +122,19 @@ def test_risk_fades_where_measured_and_under_clear_sky() -> None:
     shares = risk_shares(0.5, [80, 80, 5, None], [1.0, 0.0, 0.0, 0.5])
 
     assert shares == pytest.approx([0.0, 0.5, 0.125, 0.25])
+
+
+def test_recent_action_goes_by_the_mean_of_the_last_minutes() -> None:
+    """One reading with grid import while charging is no grid charging when the minutes around it are fine."""
+    from sunflow.shadow.runner import ShadowRunner
+    from sunflow.shadow.store import Sample
+
+    runner = ShadowRunner.__new__(ShadowRunner)
+    from collections import deque
+
+    runner._recent = deque(
+        [Sample(soc_wh=None, battery_w=560, grid_w=g, pv_w=None, load_w=None) for g in (-150, -120, -200, -100, 560)]
+    )
+    assert runner.recent_action() == "auto"
+    runner._recent = deque([Sample(soc_wh=None, battery_w=560, grid_w=560, pv_w=None, load_w=None)] * 5)
+    assert runner.recent_action() == "force_charge"
