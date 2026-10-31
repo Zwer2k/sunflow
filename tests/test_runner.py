@@ -100,13 +100,16 @@ def _runner_with_plan(tmp_path: Path, pv: float, load: float = 500, soc: float =
 @pytest.mark.parametrize(
     ("pv", "expected"),
     [
-        pytest.param([3500] * 5, "PV +2500 W gegenüber Plan", id="more-pv-lasting"),
+        pytest.param([3500] * 3, "PV +2500 W gegenüber Plan", id="more-pv-lasting"),
         pytest.param([3500, 3500, 1000, 3500, 3500], None, id="passing-cloud"),
+        # Only the last three minutes count: the sun came out after a cloud
+        pytest.param([1000, 1000, 3500, 3500, 3500], "PV +2500 W gegenüber Plan", id="sun-after-cloud"),
+        pytest.param([3500] * 2, None, id="too-short"),
         pytest.param([1500] * 5, None, id="small-deviation"),
     ],
 )
 def test_early_replan_on_lasting_deviation(tmp_path: Path, pv: list[float], expected: str | None) -> None:
-    """Only a deviation lasting all of the last minutes replans before the next slot."""
+    """Only a deviation lasting all of the last three minutes replans before the next slot."""
     runner = _runner_with_plan(tmp_path, pv=1000)
     for value in pv:
         runner._recent.append(Sample(soc_wh=10000, battery_w=0, grid_w=0, pv_w=value, load_w=500))
@@ -138,3 +141,6 @@ def test_recent_action_goes_by_the_mean_of_the_last_minutes() -> None:
     assert runner.recent_action() == "auto"
     runner._recent = deque([Sample(soc_wh=None, battery_w=560, grid_w=560, pv_w=None, load_w=None)] * 5)
     assert runner.recent_action() == "force_charge"
+    # Just after a start one reading is no judgement yet
+    runner._recent = deque([Sample(soc_wh=None, battery_w=560, grid_w=560, pv_w=None, load_w=None)] * 2)
+    assert runner.recent_action() is None

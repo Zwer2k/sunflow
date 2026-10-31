@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.49.4
+
+- Planung: Weicht die PV 3 Minuten lang deutlich vom Plan ab, wird neu geplant (bisher 5 Minuten, und frühestens 5 statt jetzt 3 Minuten nach dem letzten Plan). Die Seite holt den Plan jede Minute statt alle 2 Minuten – mehr Sonne als vorhergesagt zeigt sich damit nach etwa 4 statt bis zu 12 Minuten in der Prognose.
+- „Tatsächlich: Speicher lädt … aus dem Netz“: Ob aus dem Netz oder aus PV, entscheidet jetzt auch das Mittel der letzten Minuten (bisher eine einzelne Messung). Direkt nach einem Neustart gibt es erst nach 3 Messungen ein Urteil. Bei einer Abweichung stehen die gemittelten Werte von Netz und Speicher dabei.
+
 ## 0.49.3
 
 - Planung → „Tatsächlich: … weicht vom Plan ab“: beurteilt jetzt das Mittel der letzten 5 Minuten statt einer einzelnen Messung. Eine Messung verbindet Zähler, die zu verschiedenen Zeitpunkten gelesen werden (Netz alle paar Sekunden, Wechselrichter etwa alle halbe Minute), und fängt Lastsprünge ab, die der Wechselrichter gerade ausregelt – das sah oft nach Laden aus dem Netz aus, das es nicht gab.
