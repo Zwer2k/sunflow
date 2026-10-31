@@ -196,3 +196,25 @@ def test_calendar_windows() -> None:
         ("Waschmaschine", slots[3].start, slots[4].start),
         ("Wallbox lädt", slots[4].start, (now + timedelta(minutes=75)).isoformat()),
     ]
+
+
+async def test_recorded_hours_fill_today_and_a_partial_last_day_is_left_out() -> None:
+    """A source without today's past hours gets them from the recording; a day it only starts is dropped."""
+    from sunflow.planning.forecast_export import export_forecasts
+
+    config = _config().model_copy(update={"forecast_planes": _config().forecast_planes[:1]})
+    now = MIDNIGHT + timedelta(hours=10)
+    # The source delivers from 10:00 local on, until 03:00 two days later
+    ahead = [p for p in _points(1000.0, 51) if p.start >= now]
+    recorded = {"solcast:ne": [p for p in _points(800.0, 24) if p.start < now]}
+
+    async def fetch(plane: ForecastPlane) -> list[ForecastPoint]:
+        return ahead
+
+    (total, *_) = await export_forecasts(config, fetch, None, {}, TZ, recorded)
+    hours = total.wh_hours
+    assert hours[MIDNIGHT.isoformat()] == pytest.approx(800)
+    assert hours[now.isoformat()] == pytest.approx(1000)
+    # 30.10. and 31.10. complete; the 1.11. reaches only to 03:00 and is left out
+    days = {datetime.fromisoformat(k).astimezone(TZ).date().isoformat() for k in hours}
+    assert days == {"2026-10-30", "2026-10-31"}

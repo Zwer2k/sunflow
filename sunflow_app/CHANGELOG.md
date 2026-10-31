@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.49.1
+
+- PV-Prognose für Home Assistant: Der letzte Tag, den die Quelle nur anreißt (Solcast reicht bis kurz nach Mitternacht des 7. Tages), wird nicht mehr geliefert – er erschien im Energie-Dashboard als Tag ohne Sonne.
+- Liefert die Quelle die schon vergangenen Stunden von heute nicht mehr, kommen sie aus der Prognose, die Sunflow damals aufgezeichnet hat (mit der gelernten Korrektur). So hat der heutige Tag im Energie-Dashboard eine durchgehende Prognose.
+
 ## 0.49.0
 
 - Integrationen → Sunflow-Integration: wählbar, welche PV-Prognosen Home Assistant bekommt – gesamt, je Wechselrichter, je Fläche/String (Standard: alle). Abgewählte verschwinden in Home Assistant samt Gerät beim nächsten Abgleich (bis zu 15 Minuten), wieder angewählte kommen zurück. Eine in Home Assistant gelöschte, aber weiter angebotene Prognose bleibt gelöscht (Integration 0.3.1).

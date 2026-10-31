@@ -1,5 +1,6 @@
 """Tariff, PV forecast planes, weather and what was learned about the PV forecast."""
 
+import asyncio
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
@@ -238,7 +239,16 @@ async def get_forecast_export(request: Request) -> dict[str, Any]:
 
     try:
         site = await runner.pv_correction()
-        targets = await export_forecasts(config, fetch, site, runner.plane_corrections, tz)
+        rows = await asyncio.to_thread(runner.shadow.rows, midnight)
+        recorded: dict[str, list[ForecastPoint]] = {}
+        for row in rows:
+            begin = datetime.fromisoformat(row["start"])
+            for key, power in (row.get("plane_forecasts") or {}).items():
+                if power is not None:
+                    recorded.setdefault(key, []).append(
+                        ForecastPoint(start=begin, end=begin + timedelta(minutes=15), power=power)
+                    )
+        targets = await export_forecasts(config, fetch, site, runner.plane_corrections, tz, recorded)
         targets = [t for t in targets if t.kind in config.integration.forecast_kinds]
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err

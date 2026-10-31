@@ -67,11 +67,15 @@ async def export_forecasts(
     site: PvCorrection | None,
     planes: dict[str, PvCorrection],
     tz: tzinfo,
+    recorded: dict[str, list[ForecastPoint]] | None = None,
 ) -> list[ForecastTarget]:
     """Corrected forecasts of every plane assigned to a plant, of each plant and of all.
 
     A plane uses its own learned correction, else the site's (as the planner does,
-    without the cloud classes: the weather forecast does not reach as far).
+    without the cloud classes: the weather forecast does not reach as far). Hours of
+    today the source no longer delivers come from the forecast Sunflow recorded then.
+    A last day the source covers only partly is left out, it would show as a day
+    without sun.
     """
     names = {d.id: d.name for d in config.devices}
     total = ForecastTarget(id=TOTAL, kind="total", name="Gesamt")
@@ -81,7 +85,10 @@ async def export_forecasts(
         if plane.device_id is None or plane.device_id not in names:
             continue
         own = planes.get(plane.key)
-        hours = corrected(await fetch(plane), own if own is not None and own.slots else site, tz)
+        points = await fetch(plane)
+        first = min((p.start for p in points), default=None)
+        earlier = [p for p in (recorded or {}).get(plane.key, []) if first is None or p.end <= first]
+        hours = corrected([*earlier, *points], own if own is not None and own.slots else site, tz)
         targets.append(
             ForecastTarget(
                 id=f"plane:{plane.key}", kind="plane", name=plane.display_name, plant=names[plane.device_id], wh_hours=hours
@@ -92,7 +99,21 @@ async def export_forecasts(
         )
         _add(plant.wh_hours, hours)
         _add(total.wh_hours, hours)
-    return [total, *plants.values(), *targets]
+    result = [total, *plants.values(), *targets]
+    for target in result:
+        target.wh_hours = complete_days(target.wh_hours, tz)
+    return result
+
+
+def complete_days(hours: dict[str, float], tz: tzinfo) -> dict[str, float]:
+    """Without a last day whose evening the forecast does not reach."""
+    if not hours:
+        return hours
+    starts = {key: datetime.fromisoformat(key).astimezone(tz) for key in hours}
+    last_day = max(starts.values()).date()
+    if any(moment.date() == last_day and moment.hour == 23 for moment in starts.values()):
+        return hours
+    return {key: wh for key, wh in hours.items() if starts[key].date() != last_day}
 
 
 def round_hours(hours: dict[str, float]) -> dict[str, float]:
