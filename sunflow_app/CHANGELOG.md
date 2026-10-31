@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.55.2
+
+- Verständlichere Meldungen ohne Verbindung zu Home Assistant: Das Log sagt „Home Assistant not connected (restarting?) – planning again once it is back“ statt einer Warnung, Fehler nennen „Not connected to Home Assistant“.
+
 ## 0.55.1
 
 - Keine Warnung „Replan failed: Not connected“ mehr, wenn während eines Neustarts von Home Assistant eine Einstellung gespeichert oder der Plan geöffnet wird. Sunflow plant dann neu, sobald die Verbindung wieder steht, statt die Änderung bis zur nächsten Viertelstunde liegen zu lassen.

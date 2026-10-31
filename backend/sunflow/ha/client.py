@@ -166,7 +166,7 @@ class HAClient:
 
     async def _send(self, msg_type: str, **data: Any) -> Any:
         if self._ws is None:
-            raise HAError("Not connected")
+            raise HAError("Not connected to Home Assistant")
         msg_id = next(self._ids)
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._pending[msg_id] = future
@@ -185,7 +185,7 @@ class HAClient:
     ) -> Callable[[], Any]:
         """Subscribe and return a coroutine function that unsubscribes."""
         if self._ws is None:
-            raise HAError("Not connected")
+            raise HAError("Not connected to Home Assistant")
         msg_id = next(self._ids)
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._pending[msg_id] = future
