@@ -77,6 +77,7 @@ def test_flex_loads_plan_the_recognized_vehicle(library, plugged: str, energies:
 
     from sunflow.config.models import FlexSettings
     from sunflow.devices.discovery import Snapshot
+    from sunflow.devices.site import device_parameters
     from sunflow.planning.plan import flex_loads
 
     entities = [
@@ -84,15 +85,21 @@ def test_flex_loads_plan_the_recognized_vehicle(library, plugged: str, energies:
         {"entity_id": "sensor.goe_power", "unique_id": "216505-sensor-nrg-11", "device_id": "goe"},
         {"entity_id": "select.goe_frc", "unique_id": "216505-select-frc-frc", "device_id": "goe"},
         {"entity_id": "number.goe_amp", "unique_id": "216505-number-amp-0", "device_id": "goe"},
+        {"entity_id": "number.goe_ama", "unique_id": "216505-number-ama-0", "device_id": "goe"},
     ]
     states = {
         "binary_sensor.goe_car": {"state": plugged, "attributes": {}},
         "sensor.goe_power": {"state": "0", "attributes": {"unit_of_measurement": "W"}},
         "sensor.fiat_soc": {"state": "40", "attributes": {"unit_of_measurement": "%"}},
+        # A 22 kW go-e
+        "number.goe_ama": {"state": "32", "attributes": {"unit_of_measurement": "A"}},
     }
     snapshot = Snapshot(entries=[], devices=[{"id": "goe"}], entities=entities, states=states, energy_prefs=None)
     wallbox = DeviceConfig(id="wb", ha_device_id="goe", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
-    fiat = Vehicle(id="fiat", name="Fiat", capacity_wh=37500, charge_efficiency_pct=90, soc_entity="sensor.fiat_soc")
+    fiat = Vehicle(
+        id="fiat", name="Fiat", capacity_wh=37500, charge_efficiency_pct=90, soc_entity="sensor.fiat_soc",
+        max_power_1p_w=7400, max_power_3p_w=11000,
+    )
     config = SunflowConfig(
         devices=[wallbox],
         vehicles=[fiat],
@@ -106,6 +113,10 @@ def test_flex_loads_plan_the_recognized_vehicle(library, plugged: str, energies:
     assert (info.vehicle, info.vehicle_method, info.current, info.target) == ("Fiat", "single", 40.0, 80.0)
     assert [load.energy_wh for load in loads] == energies
     assert info.reason == reason
+    # The 22 kW wallbox, but the car takes at most 11 kW
+    assert info.max_power_w == 11000
+    derived = {p["name"]: p["effective"] for p in device_parameters(library.profiles[wallbox.profile], wallbox, snapshot)}
+    assert (derived["max_current_a"], derived["max_power"]) == (32, 22080)
 
 
 def test_flex_loads_plan_an_own_heating_rod(library) -> None:

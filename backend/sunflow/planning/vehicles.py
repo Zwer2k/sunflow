@@ -66,6 +66,23 @@ def recognize(
     return Recognized(vehicle=None, method=None, reason="Fahrzeug nicht erkannt")
 
 
+# Volts per phase
+PHASE_VOLTS = 230.0
+
+
+def vehicle_max_current(vehicle: Vehicle | None, phases: int) -> int | None:
+    """Whole amperes the car takes at most on these phases, None without a limit."""
+    limit = (vehicle.max_power_1p_w if phases == 1 else vehicle.max_power_3p_w) if vehicle else None
+    # 11 kW on three phases are the usual 16 A (15.9)
+    return round(limit / (PHASE_VOLTS * phases)) if limit else None
+
+
+def vehicle_max_power(vehicle: Vehicle) -> float | None:
+    """Most the car takes on any phases, None without a limit."""
+    limits = [w for w in (vehicle.max_power_1p_w, vehicle.max_power_3p_w) if w]
+    return max(limits) if limits else None
+
+
 def soc_of(vehicle: Vehicle, states: dict[str, dict[str, Any]]) -> float | None:
     """The vehicle's state of charge in %, None while unreadable."""
     try:

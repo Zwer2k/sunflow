@@ -46,7 +46,7 @@ from sunflow.devices.resolver import device_entities, preview
 from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
-from sunflow.planning.vehicles import vehicle_at
+from sunflow.planning.vehicles import vehicle_at, vehicle_max_current
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -900,6 +900,9 @@ class PlanController:
             elif "phase_switch" in profile and action == "charge":
                 phases = await self._switch_phases(device, status, profile, params, power, True, plan, now, snapshot)
                 params = params | {"phases": phases}
+            vehicle = next((v for v in self._config.vehicles if info is not None and v.id == info.vehicle_id), None)
+            if (car_max := vehicle_max_current(vehicle, int(params.get("phases") or 3))) is not None:
+                params = params | {"max_current_a": min(params.get("max_current_a") or 16, max(car_max, params.get("min_current_a") or 6))}
             runtime: dict[str, Any] = {"current_a": charge_current(power, params)} if action == "charge" else {}
             if action == "charge" and "phases" in params:
                 # What the current on these phases gives (e.g. one phase: at most 3.7 kW at 16 A)

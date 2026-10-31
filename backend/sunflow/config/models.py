@@ -85,6 +85,9 @@ class Vehicle(BaseModel):
     soc_entity: str | None = None
     # "on"/"home"/"connected" while the car is plugged in or at home (optional)
     plugged_entity: str | None = None
+    # Most the car's charger takes on one and on three phases (e.g. Fiat 500e: 7.4 / 11 kW); None: no limit
+    max_power_1p_w: float | None = Field(default=None, gt=0, le=50000)
+    max_power_3p_w: float | None = Field(default=None, gt=0, le=50000)
     aux_battery: AuxBatteryGuard = Field(default_factory=AuxBatteryGuard)
 
 

@@ -29,7 +29,8 @@ roles:
   vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
 
 parameters:
-  max_power: {unit: W, default: 11000, min: 0}
+  # From the charger's absolute maximum current (ama, set by the installer) on three phases
+  max_power: {unit: W, default: 11000, min: 0, derive: {sum_key: number-ama-0, factor: 690}}
   vehicle_capacity_wh: {unit: Wh, min: 0}
   charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
   # Phases of the connection when the charger does not switch them
@@ -44,7 +45,7 @@ parameters:
   phase_min_interval_min: {unit: min, default: 15, min: 5, max: 240, advanced: true}
   phase_max_switches_day: {unit: "", default: 12, min: 1, max: 100, advanced: true}
   min_current_a: {unit: A, default: 6, min: 6, max: 32}
-  max_current_a: {unit: A, default: 16, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32, derive: {sum_key: number-ama-0}}
 
 charge_control:
   charge:
