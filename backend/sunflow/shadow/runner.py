@@ -72,6 +72,7 @@ async def current_plan(
     load_model: LoadModel | None = None,
     plane_corrections: dict[str, PvCorrection] | None = None,
     live_pv_w: float | None = None,
+    live_load_w: float | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -87,6 +88,7 @@ async def current_plan(
         load_model,
         plane_corrections,
         live_pv_w,
+        live_load_w,
     )
 
 
@@ -305,6 +307,11 @@ class ShadowRunner:
         # A single reading after a restart is chance (a passing cloud)
         return sum(values) / len(values) if len(values) >= NOWCAST_MIN_SAMPLES else None
 
+    def live_load(self) -> float | None:
+        """Mean consumption of the last minutes without the controllable consumers (as forecast)."""
+        values = [s.load_w - (s.loadpoint_w or 0.0) for s in self._recent if s.load_w is not None]
+        return max(sum(values) / len(values), 0.0) if len(values) >= NOWCAST_MIN_SAMPLES else None
+
     def _deviation(self) -> str | None:
         """Why the plan no longer fits the live values (lasting the last minutes), None if it does."""
         if self.latest is None or self.status.last_plan is None or len(self._recent) < EARLY_REPLAN_SAMPLES:
@@ -419,6 +426,7 @@ class ShadowRunner:
             self.load_model,
             self.plane_corrections,
             self.live_pv(),
+            self.live_load(),
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)

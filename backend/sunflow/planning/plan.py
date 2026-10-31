@@ -877,6 +877,8 @@ def build_inputs(
 # Weight of the live PV deviation halves over this time ahead
 NOWCAST_HALF_LIFE = timedelta(minutes=60)
 NOWCAST_RANGE = (0.2, 3.0)
+# Weight of the live consumption deviation halves over this time ahead
+LOAD_NOWCAST_HALF_LIFE = timedelta(minutes=30)
 # Twilight: the ratio of small values says nothing
 NOWCAST_MIN_W = 150.0
 # Cloud coverage (%) below which the sky counts as clear, and the share of the risk left then
@@ -907,6 +909,19 @@ def nowcast(inputs: list[SlotInput], live_pv_w: float) -> list[SlotInput]:
     return result
 
 
+def load_nowcast(inputs: list[SlotInput], live_load_w: float) -> list[SlotInput]:
+    """Start the consumption forecast at what the house uses now, fading into the forecast.
+
+    The forecast knows typical hours, not the moment: someone away or a device running
+    now usually lasts a while, but less long than a cloud does.
+    """
+    difference = live_load_w - inputs[0].load_w
+    return [
+        replace(slot, load_w=max(slot.load_w + difference * 0.5 ** ((t * SLOT) / LOAD_NOWCAST_HALF_LIFE), 0.0))
+        for t, slot in enumerate(inputs)
+    ]
+
+
 def risk_shares(risk: float, clouds: list[float | None], measured: list[float]) -> list[float]:
     """Share of the way towards the pessimistic forecast per slot.
 
@@ -930,6 +945,7 @@ async def compute_plan(
     load_model: LoadModel | None = None,
     plane_corrections: dict[str, PvCorrection] | None = None,
     live_pv_w: float | None = None,
+    live_load_w: float | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule."""
     warnings: list[str] = []
@@ -1106,6 +1122,8 @@ async def compute_plan(
     if live_pv_w is not None and inputs:
         inputs = nowcast(inputs, live_pv_w)
         measured = nowcast_weights(len(inputs))
+    if live_load_w is not None and inputs:
+        inputs = load_nowcast(inputs, live_load_w)
     if (risk := PV_RISK[config.optimizer.pv_risk]) > 0:
         # Plan part of the way towards the pessimistic forecast: a shortfall costs grid
         # power at the full price, a surplus only the feed-in tariff

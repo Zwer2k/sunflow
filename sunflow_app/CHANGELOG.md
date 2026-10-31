@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.53.0
+
+- Planung: Der Verbrauch der nächsten Stunde richtet sich nach dem, was das Haus gerade braucht (Mittel der letzten Minuten, ohne steuerbare Verbraucher). Die erste Viertelstunde beginnt beim gemessenen Wert, die Abweichung zur Prognose halbiert sich alle 30 Minuten – wie es die PV-Prognose schon mit der gemessenen PV tut, nur schneller abklingend.
+- Planung: Alle Grafiken zeigen denselben Zeitraum. Kostenverlauf und Bezugspreis folgen jetzt auch dem gewählten Fenster (24 h, 48 h, 7 Tage, verschoben) statt eigener Zeiträume.
+
 ## 0.52.0
 
 - Optimierer: In der Live-Ansicht öffnet ein Klick auf einen PV-String (Zahl am Kreis = Anzahl Optimierer) seine Module, angeordnet wie auf dem Dach, mit aktueller Leistung und je nach Quelle Spannung, Strom, Temperatur und PWM. Die Werte lassen sich einzeln ein- und ausblenden.

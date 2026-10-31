@@ -86,6 +86,34 @@ def test_nowcast_carries_the_live_deviation_ahead() -> None:
     assert nowcast([SlotInput(start=start, pv_w=0, load_w=500, price=0.3, feed_in=0.08)], 20)[0].pv_w == 0
 
 
+def test_load_nowcast_starts_at_the_measured_consumption() -> None:
+    """The house uses less than forecast now: the next slots start there and return to the forecast."""
+    from datetime import UTC, datetime, timedelta
+
+    from sunflow.planning.optimizer import SlotInput
+    from sunflow.planning.plan import load_nowcast
+
+    start = datetime(2026, 10, 31, 13, 45, tzinfo=UTC)
+    inputs = [SlotInput(start=start + timedelta(minutes=15 * t), pv_w=900, load_w=1300, price=0.3, feed_in=0.08) for t in range(12)]
+
+    result = [slot.load_w for slot in load_nowcast(inputs, 600)]
+
+    assert result[0] == pytest.approx(600)
+    # Half an hour ahead half of the deviation is left
+    assert result[2] == pytest.approx(950)
+    assert result[0] < result[2] < result[11] < 1300
+
+
+def test_live_load_leaves_out_the_controllable_consumers() -> None:
+    """Like the forecast it continues: without wallbox and heating rod."""
+    from collections import deque
+
+    runner = ShadowRunner.__new__(ShadowRunner)
+    runner._recent = deque([Sample(soc_wh=None, battery_w=0, grid_w=0, pv_w=0, load_w=3400, loadpoint_w=2800)] * 4)
+
+    assert runner.live_load() == pytest.approx(600)
+
+
 def _runner_with_plan(tmp_path: Path, pv: float, load: float = 500, soc: float = 10000) -> ShadowRunner:
     from datetime import UTC, datetime, timedelta
 

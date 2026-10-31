@@ -438,8 +438,8 @@ class SunflowPlan extends LitElement {
       <section>
         <h3>Bezugspreis <span class="tag">Vorschau</span></h3>
         ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price })), "Bezugspreis im Plan", {
-          // Same time axis as the charts above (history plus plan)
-          start: history.length ? new Date(history[0].start) : null,
+          // Same time axis as the charts above
+          range: this._range,
           now: nowDate,
         })}
       </section>
@@ -520,7 +520,8 @@ class SunflowPlan extends LitElement {
             { name: "mit Sunflow", color: SERIES_COLORS[0], points: withSunflow },
             { name: "reiner Eigenverbrauch", color: UNASSIGNED_COLOR, dashed: true, points: withoutSunflow },
           ],
-          { label: "Aufsummierte Stromkosten mit und ohne Sunflow", formatY: (v) => euro.format(v), yMin: lowest },
+          // Same time axis as the charts above; the sum starts now
+          { label: "Aufsummierte Stromkosten mit und ohne Sunflow", formatY: (v) => euro.format(v), yMin: lowest, now: new Date(slots[0].start), range: this._range },
         )}
       </section>
     `;
