@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.50.3
+
+- Einstellungen auf dem Handy: Pfeile am Rand der Bereichszeile zeigen, dass es links bzw. rechts weitere Bereiche gibt. Antippen scrollt weiter.
+
 ## 0.50.2
 
 - Einstellungen auf dem Handy: Die Bereiche sind wieder auswählbar. Nach abgeschlossener Einrichtung (ohne Schrittnummern) waren alle Einträge außer dem aktuellen leer und damit unsichtbar. Jetzt stehen alle Namen in einer seitlich scrollbaren Zeile, der gewählte Bereich wird ins Bild geholt.

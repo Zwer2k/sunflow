@@ -177,6 +177,7 @@ const BALANCE_FORMULAS = {
 class SunflowApp extends LitElement {
   static properties = {
     _step: { state: true },
+    _navMore: { state: true },
     _setupCompleted: { state: true },
     _advanced: { state: true },
     _integrations: { state: true },
@@ -269,10 +270,14 @@ class SunflowApp extends LitElement {
     this._haConnected = null;
     this._timer = null;
     this._balanceHistory = {};
+    // Areas hidden left/right of the sideways scrolling row (phones)
+    this._navMore = { left: false, right: false };
+    this._onResize = () => this._updateNavMore();
   }
 
   connectedCallback() {
     super.connectedCallback();
+    window.addEventListener("resize", this._onResize);
     this._load();
     this._loadRecommendationCount();
     this._stopRecommendations = poll(() => this._loadRecommendationCount(), 15 * 60 * 1000);
@@ -294,6 +299,7 @@ class SunflowApp extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener("resize", this._onResize);
     this._stopPreview();
     this._stopRecommendations?.();
   }
@@ -1019,11 +1025,33 @@ class SunflowApp extends LitElement {
     else this._stopPreview();
   }
 
+  updated() {
+    this._updateNavMore();
+  }
+
+  _updateNavMore() {
+    const nav = this.renderRoot?.querySelector(".sidebar nav");
+    const more = nav
+      ? { left: nav.scrollLeft > 2, right: nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 2 }
+      : { left: false, right: false };
+    // Only a real change renders again
+    if (more.left !== this._navMore.left || more.right !== this._navMore.right) this._navMore = more;
+  }
+
+  _scrollNav(direction) {
+    const nav = this.renderRoot.querySelector(".sidebar nav");
+    nav?.scrollBy({ left: direction * nav.clientWidth * 0.7, behavior: "smooth" });
+  }
+
   _renderWizard() {
     return html`
       <div class="layout">
         <aside class="sidebar">
-        <nav aria-label="Schritte">
+        <div class="nav-wrap">
+        ${this._navMore.left
+          ? html`<button class="nav-more left" aria-label="Weitere Bereiche links" @click=${() => this._scrollNav(-1)}>‹</button>`
+          : nothing}
+        <nav aria-label="Schritte" @scroll=${() => this._updateNavMore()}>
           ${STEPS.map(
             ([, label], i) => html`
               <button class="step ${i === this._step ? "active" : ""}" aria-current=${i === this._step ? "step" : "false"}
@@ -1036,6 +1064,10 @@ class SunflowApp extends LitElement {
             `,
           )}
         </nav>
+        ${this._navMore.right
+          ? html`<button class="nav-more right" aria-label="Weitere Bereiche rechts" @click=${() => this._scrollNav(1)}>›</button>`
+          : nothing}
+        </div>
         <button class="switch" aria-pressed=${this._advanced} @click=${() => this._setAdvanced(!this._advanced)}>
           <span class="track ${this._advanced ? "on" : ""}"><span class="knob"></span></span>
           Expertenmodus
@@ -2589,6 +2621,7 @@ class SunflowApp extends LitElement {
     }
     /* Fixed width: long step names must not squeeze the switch below */
     .sidebar { flex: 0 0 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .nav-more { display: none; }
     .sidebar nav {
       background: var(--sf-surface);
       border: 1px solid var(--sf-border); border-radius: 12px; padding: 8px;
@@ -2633,6 +2666,15 @@ class SunflowApp extends LitElement {
       .sidebar nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; min-width: 0; padding: 4px; }
       .step { width: auto; flex: none; min-height: 40px; padding: 4px 6px; white-space: nowrap; }
       .step:not(.active) .dot + span { display: none; }
+      .nav-wrap { position: relative; }
+      /* Arrows over the edges: more areas to swipe to */
+      .nav-more {
+        display: flex; position: absolute; top: 1px; bottom: 1px; z-index: 1; width: 36px; align-items: center;
+        justify-content: center; border: 0; padding: 0; cursor: pointer; font-size: 26px; line-height: 1;
+        color: var(--sf-primary);
+      }
+      .nav-more.left { left: 1px; border-radius: 12px 0 0 12px; background: linear-gradient(to right, var(--sf-surface) 60%, transparent); }
+      .nav-more.right { right: 1px; border-radius: 0 12px 12px 0; background: linear-gradient(to left, var(--sf-surface) 60%, transparent); }
       /* Own row below the steps, always visible */
       .switch { align-self: flex-end; padding: 0 4px; }
     }
