@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.50.1
+
+- Empfehlung „… läuft mit etwa … W statt … W“ entfällt für Geräte mit Leistungsstufen (z. B. Heizstab): Der gemessene Mittelwert mischt die Stufen und die Ein-/Aus-Phasen und ist keine Leistung, die man einstellen sollte. Die Stufen selbst legen die Leistung fest.
+
 ## 0.50.0
 
 - Steuerung → Protokoll: jeder Schaltbefehl, den Sunflow an gesteuerte Geräte schickt – Zeit, Aktion, Leistung, Grund und die geschriebenen Werte (bei Fehlern mit Ursache), dazu Übernahme und Rückgabe.
