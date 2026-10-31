@@ -301,6 +301,14 @@ def phase_option(key: str | None, device: DeviceConfig, snapshot: Snapshot | Non
     return snapshot.states.get(entity_id or "", {}).get("state")
 
 
+def wrong_mode(profile: dict[str, Any], device: DeviceConfig, snapshot: Snapshot | None) -> str | None:
+    """The operating mode the device shows when it is not the one control needs (e.g. changed in its app)."""
+    if (control := profile.get("control_mode")) is None:
+        return None
+    mode = phase_option(control["key"], device, snapshot)
+    return mode if mode not in (None, control["option"], "unknown", "unavailable") else None
+
+
 def phase_steps(profile: dict[str, Any], action: str) -> list[dict[str, Any]]:
     """Steps of a phase action; restoring selects the remembered option again."""
     switch = profile["phase_switch"]
@@ -457,8 +465,16 @@ async def apply(
         calls = [c for c in calls if c.entity_id is not None]
     # Numbers and selects that already hold the value need no write; a press commits them
     if not due and all(access.matches(c, states) for c in calls if c.service != "press"):
+        if access.journal is not None:
+            access.journal.settled(status.device_id)
         return
-    await access.run(calls, states, due)
+    try:
+        await access.run(calls, states, due)
+    except Exception as err:
+        # Raised by Home Assistant (e.g. a Modbus exception of the inverter)
+        if access.journal is not None:
+            access.journal.wrote(status.device_id, status.name, action, power, reason, calls, now, str(err))
+        raise
     status.calls = [{"entity_id": c.entity_id, "service": c.service, "data": c.data, "status": c.status} for c in calls]
     # The daily write limit of a flash value keeps the last value; the rest still applies
     failed = [c for c in calls if c.status not in ("done", "skipped", "blocked")]
@@ -717,7 +733,7 @@ class PlanController:
             elif self.paused:
                 self._status(device).reason = self.paused
             else:
-                await self._safely(device.id, device, lambda d, s: self._battery(d, s, plan, plan_at, now))
+                await self._safely(device.id, device, lambda d, s: self._battery(d, s, plan, plan_at, now, snapshot))
             if "pv_limit" in profile:
                 await self._safely(device.id, device, lambda d, s: self._limit(d, s, plan, plan_at, now, snapshot, live))
         if now - self._fallback_at >= FALLBACK_REFRESH:
@@ -784,7 +800,10 @@ class PlanController:
         )
         status.active, status.limit_w = True, limit
 
-    async def _battery(self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime) -> None:
+    async def _battery(
+        self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime,
+        snapshot: Snapshot | None = None,
+    ) -> None:
         action, power, reason = desired_action(plan, plan_at, now)
         access = self._access_for(device)
         await take_over(access, self._marker, device)
@@ -798,7 +817,12 @@ class PlanController:
         runtime: dict[str, float] = {"P": abs(power)} if power is not None else {}
         if (buffer := (defaults | device.parameters).get("grid_offset")) is not None:
             runtime["grid_offset"] = grid_buffer(buffer, current_slot(plan, now) if plan else None, reason == "nach Plan")
-        await apply(access, status, action, power, now, runtime, refresh=refresh, services_on_change=True, reason=reason)
+        try:
+            await apply(access, status, action, power, now, runtime, refresh=refresh, services_on_change=True, reason=reason)
+        except Exception as err:
+            if (mode := wrong_mode(profile, device, snapshot)) is not None:
+                raise RuntimeError(f"{err} – der Wechselrichter steht auf „{mode}“ statt „{profile['control_mode']['option']}“") from err
+            raise
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
         status.grid_target_w = runtime.get("grid_offset")
 

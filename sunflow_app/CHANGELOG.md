@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.56.0
+
+- Protokoll (Steuerung → Protokoll): Schreibfehler, die Home Assistant meldet (z. B. eine Modbus-Exception des Wechselrichters), erscheinen jetzt mit der Fehlermeldung. Ein Fehler, der jede Minute wiederkommt, steht nur einmal da – erneut erst, nachdem das Gerät zwischendurch wieder in Ordnung war. Neuer Filter „nur Fehler“.
+- Lehnt der Wechselrichter die Werte ab und steht er nicht im Steuermodus (z. B. in seiner App auf „Self Use“ umgestellt), nennt die Fehlermeldung den Modus, auf dem er steht.
+
 ## 0.55.2
 
 - Verständlichere Meldungen ohne Verbindung zu Home Assistant: Das Log sagt „Home Assistant not connected (restarting?) – planning again once it is back“ statt einer Warnung, Fehler nennen „Not connected to Home Assistant“.

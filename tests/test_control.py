@@ -501,3 +501,20 @@ async def test_fallback_calls_hand_the_battery_back(tmp_path: Path) -> None:
     assert controller.fallback == [
         {"domain": "number", "service": "set_value", "data": {"value": -10000}, "target": {"entity_id": "number.min"}}
     ]
+
+
+def test_wrong_mode_explains_a_failed_write() -> None:
+    """A Sofar switched out of passive mode (e.g. in its app) rejects the passive values."""
+    from sunflow.control.controller import wrong_mode
+    from sunflow.devices.discovery import Snapshot
+
+    profile = {"control_mode": {"key": "charger_use_mode", "option": "Passive Mode"}}
+    device = DeviceConfig(id="bat", ha_device_id="h", profile="sofar", profile_version=1, name="Sofar")
+    entities = [{"entity_id": "select.sofar_mode", "unique_id": "sofar_charger_use_mode", "device_id": "h"}]
+
+    def snapshot(mode: str) -> Snapshot:
+        return Snapshot(entries=[], devices=[], entities=entities, states={"select.sofar_mode": {"state": mode}}, energy_prefs=None)
+
+    assert wrong_mode(profile, device, snapshot("Self Use")) == "Self Use"
+    assert wrong_mode(profile, device, snapshot("Passive Mode")) is None
+    assert wrong_mode({}, device, snapshot("Self Use")) is None

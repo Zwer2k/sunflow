@@ -116,3 +116,24 @@ async def test_controller_logs_its_writes_with_the_reason(tmp_path: Path) -> Non
     assert journal.entries(NOW - timedelta(hours=1))[2]["calls"] == [
         {"entity_id": "number.min", "service": "set_value", "data": {"value": 3000}, "status": "done"}
     ]
+
+
+async def test_failure_repeated_every_minute_is_logged_once(tmp_path: Path) -> None:
+    """An error raised by Home Assistant is logged; again only after the device was fine in between."""
+    device = FakeDevice()
+    journal = ControlJournal(tmp_path)
+    controller = PlanController(
+        TakeoverMarker(tmp_path), lambda d: replace(device.access(), journal=journal), lambda: {"sofar": {"capabilities": ["battery_window"], "roles": {}}}, journal
+    )
+    snapshot = Snapshot(entries=[], devices=[], entities=[], states={}, energy_prefs=None)
+    device.fail = True
+    for minute in range(3):
+        await controller.tick(_config(), _plan(), NOW, snapshot, NOW + timedelta(minutes=minute))
+    device.fail = False
+    await controller.tick(_config(), _plan(), NOW, snapshot, NOW + timedelta(minutes=3))
+    device.fail = True
+    device.values.clear()
+    await controller.tick(_config(), _plan(), NOW, snapshot, NOW + timedelta(minutes=4))
+
+    errors = [e.get("error") for e in reversed(journal.entries(NOW - timedelta(hours=1))) if e["action"] == "force_charge"]
+    assert errors == ["Modbus timeout", None, "Modbus timeout"]
