@@ -25,7 +25,8 @@ export function optimizerValue(key, value) {
  *
  * optimizers: [{id, name, row, col, values}]; visible: value keys to show.
  * editable: empty cells to drop on; fires "move" with detail {id, row, col} and "rotate" with {id}.
- * Rotated modules lie landscape; columns and rows take the size of their widest module.
+ * Rotated modules lie landscape and push the following modules of their row aside; each row
+ * is laid out on its own, so other rows keep their spacing.
  * Moving works by drag and drop or by tapping a module and then a cell (phones).
  */
 class SunflowRoof extends LitElement {
@@ -52,17 +53,19 @@ class SunflowRoof extends LitElement {
     const cols = Math.max(0, ...placed.map((o) => o.col + 1)) + extra;
     const at = new Map(placed.map((o) => [`${o.row}:${o.col}`, o]));
     const maxPower = Math.max(1, ...this.optimizers.map((o) => o.values?.power ?? 0));
-    const cells = [];
+    const lines = [];
     for (let row = 0; row < rows; row += 1) {
-      for (let col = 0; col < cols; col += 1) {
+      const cells = [];
+      // Showing only: free places count up to the row's last module, as gaps
+      const last = this.editable ? cols - 1 : Math.max(-1, ...placed.filter((o) => o.row === row).map((o) => o.col));
+      for (let col = 0; col <= last; col += 1) {
         const optimizer = at.get(`${row}:${col}`);
         cells.push(optimizer ? this._module(optimizer, maxPower, row, col) : this._empty(row, col));
       }
+      lines.push(html`<div class="row">${cells}</div>`);
     }
     const selected = this.optimizers.find((o) => o.id === this._selected);
-    return html`<div class="roof" style="grid-template-columns: repeat(${Math.max(cols, 1)}, auto)">
-      ${cells}
-    </div>
+    return html`<div class="roof">${lines}</div>
     ${this.editable
       ? html`<p class="caption">${selected
           ? html`Ausgewählt: <strong>${selected.name}</strong>${selected.name !== selected.label ? ` (${selected.label})` : ""} –
@@ -78,7 +81,7 @@ class SunflowRoof extends LitElement {
     const share = power === null || power === undefined ? 0 : Math.round((Math.max(power, 0) / maxPower) * 70);
     const offline = power === null || power === undefined;
     return html`<div class="module ${offline ? "offline" : ""} ${optimizer.rotated ? "rotated" : ""} ${this._selected === optimizer.id ? "selected" : ""}"
-      style="grid-row: ${row + 1}; grid-column: ${col + 1}; --share: ${share}%"
+      style="--share: ${share}%"
       title=${`${optimizer.name}\n${Object.keys(OPTIMIZER_VALUES)
         .filter((k) => k in (optimizer.values ?? {}))
         .map((k) => `${OPTIMIZER_VALUES[k].label}: ${optimizerValue(k, optimizer.values[k])}`)
@@ -96,8 +99,8 @@ class SunflowRoof extends LitElement {
   }
 
   _empty(row, col) {
-    if (!this.editable) return nothing;
-    return html`<div class="cell ${this._selected ? "target" : ""}" style="grid-row: ${row + 1}; grid-column: ${col + 1}"
+    if (!this.editable) return html`<div class="gap"></div>`;
+    return html`<div class="cell ${this._selected ? "target" : ""}"
       @dragover=${(e) => e.preventDefault()} @drop=${(e) => this._drop(e, row, col)}
       @click=${() => this._tap(null, row, col)}></div>`;
   }
@@ -130,8 +133,9 @@ class SunflowRoof extends LitElement {
 
   static styles = css`
     :host { display: block; overflow-x: auto; --module-width: 64px; }
-    .roof { display: grid; gap: 4px; padding: 4px; width: max-content; place-items: center; }
-    .module, .cell { width: var(--module-width); height: calc(var(--module-width) * 1.6); border-radius: 4px; }
+    .roof { display: flex; flex-direction: column; gap: 4px; padding: 4px; width: max-content; }
+    .row { display: flex; gap: 4px; align-items: center; min-height: var(--module-width); }
+    .module, .cell, .gap { flex: none; width: var(--module-width); height: calc(var(--module-width) * 1.6); border-radius: 4px; }
     .module.rotated { width: calc(var(--module-width) * 1.6); height: var(--module-width); }
     .module {
       display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; padding: 2px;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.53.3
+
+- Optimierer: Ein quer gelegtes Modul schiebt nur die Module seiner eigenen Reihe zur Seite; die anderen Reihen behalten ihre Abstände (bisher wurde die ganze Spalte breiter).
+
 ## 0.53.2
 
 - Optimierer: Einzelne Module lassen sich quer legen (Editor: Modul antippen → „quer legen“, zurück mit „hochkant stellen“). Spalten und Reihen passen sich dem breitesten Modul an; Dach- und Live-Ansicht zeigen sie ebenso.
