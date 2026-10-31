@@ -295,6 +295,8 @@ class OptimizerPlacement(BaseModel):
     row: int | None = Field(default=None, ge=0)
     col: int | None = Field(default=None, ge=0)
     name: str | None = None
+    # Landscape instead of portrait
+    rotated: bool | None = None
 
 
 class OptimizerSettings(BaseModel):

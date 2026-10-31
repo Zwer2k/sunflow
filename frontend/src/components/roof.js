@@ -24,7 +24,8 @@ export function optimizerValue(key, value) {
  * Optimizers as small PV modules where they sit on the roof.
  *
  * optimizers: [{id, name, row, col, values}]; visible: value keys to show.
- * editable: empty cells to drop on; fires "move" with detail {id, row, col}.
+ * editable: empty cells to drop on; fires "move" with detail {id, row, col} and "rotate" with {id}.
+ * Rotated modules lie landscape; columns and rows take the size of their widest module.
  * Moving works by drag and drop or by tapping a module and then a cell (phones).
  */
 class SunflowRoof extends LitElement {
@@ -59,13 +60,14 @@ class SunflowRoof extends LitElement {
       }
     }
     const selected = this.optimizers.find((o) => o.id === this._selected);
-    return html`<div class="roof" style="grid-template-columns: repeat(${Math.max(cols, 1)}, var(--module-width))">
+    return html`<div class="roof" style="grid-template-columns: repeat(${Math.max(cols, 1)}, auto)">
       ${cells}
     </div>
     ${this.editable
       ? html`<p class="caption">${selected
           ? html`Ausgewählt: <strong>${selected.name}</strong>${selected.name !== selected.label ? ` (${selected.label})` : ""} –
-              jetzt den Platz antippen`
+              jetzt den Platz antippen oder
+              <button class="rotate" @click=${() => this._rotate(selected.id)}>${selected.rotated ? "hochkant stellen" : "quer legen"}</button>`
           : "Modul antippen, um es auszuwählen"}</p>`
       : nothing}`;
   }
@@ -75,7 +77,7 @@ class SunflowRoof extends LitElement {
     // Lighter modules deliver less than the best one
     const share = power === null || power === undefined ? 0 : Math.round((Math.max(power, 0) / maxPower) * 70);
     const offline = power === null || power === undefined;
-    return html`<div class="module ${offline ? "offline" : ""} ${this._selected === optimizer.id ? "selected" : ""}"
+    return html`<div class="module ${offline ? "offline" : ""} ${optimizer.rotated ? "rotated" : ""} ${this._selected === optimizer.id ? "selected" : ""}"
       style="grid-row: ${row + 1}; grid-column: ${col + 1}; --share: ${share}%"
       title=${`${optimizer.name}\n${Object.keys(OPTIMIZER_VALUES)
         .filter((k) => k in (optimizer.values ?? {}))
@@ -115,6 +117,11 @@ class SunflowRoof extends LitElement {
     }
   }
 
+  _rotate(id) {
+    this._selected = null;
+    this.dispatchEvent(new CustomEvent("rotate", { detail: { id } }));
+  }
+
   _move(id, row, col) {
     this._selected = null;
     if (!id) return;
@@ -123,19 +130,24 @@ class SunflowRoof extends LitElement {
 
   static styles = css`
     :host { display: block; overflow-x: auto; --module-width: 64px; }
-    .roof { display: grid; gap: 4px; padding: 4px; width: max-content; }
-    .module, .cell { width: var(--module-width); aspect-ratio: 1 / 1.6; border-radius: 4px; }
+    .roof { display: grid; gap: 4px; padding: 4px; width: max-content; place-items: center; }
+    .module, .cell { width: var(--module-width); height: calc(var(--module-width) * 1.6); border-radius: 4px; }
+    .module.rotated { width: calc(var(--module-width) * 1.6); height: var(--module-width); }
     .module {
       display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; padding: 2px;
       border: 1px solid var(--sf-border-strong); cursor: default; user-select: none; overflow: hidden;
       /* Solar cells: a fine grid over the module, filled by the share of the best module's power */
+      --cells-short: to right;
+      --cells-long: to bottom;
       background:
-        linear-gradient(to right, transparent 32%, rgb(255 255 255 / 0.25) 33%, transparent 34%, transparent 65%,
+        linear-gradient(var(--cells-short), transparent 32%, rgb(255 255 255 / 0.25) 33%, transparent 34%, transparent 65%,
           rgb(255 255 255 / 0.25) 66%, transparent 67%),
-        linear-gradient(to bottom, transparent 24%, rgb(255 255 255 / 0.25) 25%, transparent 26%, transparent 49%,
+        linear-gradient(var(--cells-long), transparent 24%, rgb(255 255 255 / 0.25) 25%, transparent 26%, transparent 49%,
           rgb(255 255 255 / 0.25) 50%, transparent 51%, transparent 74%, rgb(255 255 255 / 0.25) 75%, transparent 76%),
         color-mix(in srgb, var(--sf-series-2) var(--share), var(--sf-subtle));
     }
+    /* Landscape: the cell grid turns with the module */
+    .module.rotated { --cells-short: to bottom; --cells-long: to right; }
     .module.offline { opacity: 0.55; }
     .module.selected { outline: 3px solid var(--sf-primary); outline-offset: 1px; }
     :host([editable]) .module { cursor: grab; }
@@ -147,6 +159,10 @@ class SunflowRoof extends LitElement {
       overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
     }
     .caption { margin: 4px 4px 0; font-size: 13px; color: var(--sf-muted); }
+    .rotate {
+      font: inherit; font-size: 13px; min-height: 32px; padding: 0 10px; margin-left: 2px; border-radius: 8px; cursor: pointer;
+      border: 1px solid var(--sf-primary); background: var(--sf-primary-bg); color: var(--sf-primary-text);
+    }
     .value { font-size: 10px; color: var(--sf-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .value.main { font-size: 12px; font-weight: 600; }
   `;
