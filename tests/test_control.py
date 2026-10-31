@@ -235,8 +235,11 @@ GOE = {"capabilities": ["loadpoint"], "charge_control": {"charge": [], "stop": [
 EVCC = {"capabilities": ["loadpoint"], "charge_control": {"charge": [], "stop": [], "follow": []}, "parameters": {"max_power": {"default": 11000}}}
 
 
-def _charge_plan(power: float) -> SimpleNamespace:
-    slot = SimpleNamespace(start=NOW.replace(minute=0), end=NOW.replace(minute=15), action="auto", action_power_w=None, flex_w={"Wallbox": power})
+def _charge_plan(power: float, pv: float = 6000, grid: float = 0) -> SimpleNamespace:
+    slot = SimpleNamespace(
+        start=NOW.replace(minute=0), end=NOW.replace(minute=15), action="auto", action_power_w=None, flex_w={"Wallbox": power},
+        pv_w=pv, import_w=grid,
+    )
     return SimpleNamespace(plan=SimpleNamespace(slots=[slot]))
 
 
@@ -518,3 +521,34 @@ def test_wrong_mode_explains_a_failed_write() -> None:
     assert wrong_mode(profile, device, snapshot("Self Use")) == "Self Use"
     assert wrong_mode(profile, device, snapshot("Passive Mode")) is None
     assert wrong_mode({}, device, snapshot("Self Use")) is None
+
+
+@pytest.mark.parametrize(
+    ("pv", "grid"),
+    [
+        pytest.param(0, 4800, id="night-from-grid"),
+        pytest.param(1500, 3300, id="partly-from-grid"),
+    ],
+)
+async def test_charging_planned_from_the_grid_is_held(tmp_path: Path, pv: float, grid: float) -> None:
+    """Grid charging at night is not cut down to the (missing) PV surplus; evcc charges, not waits for PV."""
+    charger = FakeCharger(remember=True)
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"evcc": EVCC})
+    live = SimpleNamespace(pv_w=0.0, grid_w=4800.0)
+
+    await controller.tick(_charger_config("evcc"), _charge_plan(4800, pv, grid), NOW, SNAPSHOT, NOW, live)
+
+    assert charger.option == "now"
+    assert controller.statuses["wb"].reason == "nach Plan"
+
+
+async def test_goe_on_one_phase_shows_what_it_can_give(tmp_path: Path) -> None:
+    """16 A on one phase are 3.7 kW, not the 4.8 kW planned."""
+    charger = FakeCharger()
+    goe = GOE | {"parameters": GOE["parameters"] | {"phases": {"default": 1}}}
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": goe})
+
+    await controller.tick(_charger_config("goe"), _charge_plan(4800, 0, 4800), NOW, SNAPSHOT, NOW)
+
+    assert charger.current == 16
+    assert controller.statuses["wb"].power_w == pytest.approx(16 * 230)
