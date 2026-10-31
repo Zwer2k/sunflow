@@ -435,6 +435,10 @@ class SunflowApp extends LitElement {
     if (step !== this._step && !(await this._savePending())) return;
     this._step = step;
     this._stopPreview();
+    // On phones the areas scroll sideways: keep the chosen one in sight
+    this.updateComplete.then(() =>
+      this.renderRoot.querySelector(".step.active")?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+    );
     const area = STEPS[step][0];
     if (area === "devices") {
       this._startPreview();
@@ -2623,11 +2627,12 @@ class SunflowApp extends LitElement {
       :host { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
       .layout { padding: 6px 8px; gap: 8px; }
       .restore-banner { margin: 8px 8px 0; }
-      /* Steps as a compact row; only the current one shows its name */
+      /* Steps as a compact row; during the first setup only the current one shows its name next
+         to the numbers, afterwards (no numbers) all names, scrolling sideways */
       .sidebar { flex: 0 0 100%; }
       .sidebar nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; min-width: 0; padding: 4px; }
-      .step { width: auto; flex: none; min-height: 40px; padding: 4px 6px; }
-      .step:not(.active) span:last-child { display: none; }
+      .step { width: auto; flex: none; min-height: 40px; padding: 4px 6px; white-space: nowrap; }
+      .step:not(.active) .dot + span { display: none; }
       /* Own row below the steps, always visible */
       .switch { align-self: flex-end; padding: 0 4px; }
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.50.2
+
+- Einstellungen auf dem Handy: Die Bereiche sind wieder auswählbar. Nach abgeschlossener Einrichtung (ohne Schrittnummern) waren alle Einträge außer dem aktuellen leer und damit unsichtbar. Jetzt stehen alle Namen in einer seitlich scrollbaren Zeile, der gewählte Bereich wird ins Bild geholt.
+
 ## 0.50.1
 
 - Empfehlung „… läuft mit etwa … W statt … W“ entfällt für Geräte mit Leistungsstufen (z. B. Heizstab): Der gemessene Mittelwert mischt die Stufen und die Ein-/Aus-Phasen und ist keine Leistung, die man einstellen sollte. Die Stufen selbst legen die Leistung fest.
