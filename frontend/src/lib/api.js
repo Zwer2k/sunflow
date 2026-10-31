@@ -97,6 +97,8 @@ export const api = {
   latestPlan: () => request("GET", "/plan/latest"),
   control: () => request("GET", "/control"),
   takeover: () => request("GET", "/control/takeover"),
+  controlLog: (hours, deviceId) =>
+    request("GET", `/control/log?hours=${hours}${deviceId ? `&device_id=${encodeURIComponent(deviceId)}` : ""}`),
   setTakeover: (body, confirm = false) => request("PUT", `/control/takeover${confirm ? "?confirm=true" : ""}`, body),
   setDeviceOverride: (id, body) => request("PUT", `/control/devices/${encodeURIComponent(id)}`, body),
   clearDeviceOverride: (id) => request("DELETE", `/control/devices/${encodeURIComponent(id)}`),

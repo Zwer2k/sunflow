@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.50.0
+
+- Steuerung → Protokoll: jeder Schaltbefehl, den Sunflow an gesteuerte Geräte schickt – Zeit, Aktion, Leistung, Grund und die geschriebenen Werte (bei Fehlern mit Ursache), dazu Übernahme und Rückgabe.
+- Ändert sich an einem gesteuerten Gerät ein Stellwert (Auswahl, Schalter, Zahl), ohne dass Sunflow ihn geschrieben hat, steht das ebenfalls im Protokoll – mit dem, was Home Assistant über den Auslöser weiß: ein Benutzer (oder ein Programm mit dessen Zugangstoken, z. B. evcc), eine bestimmte Automation bzw. ein Skript, oder das Gerät/seine Integration selbst (eigene Regelung des Geräts oder ein System, das direkt aufs Gerät schreibt). Geprüft wird jede Minute; Filter nach Gerät, Zeitraum (bis 14 Tage) und „nur fremde Änderungen“.
+- Das Protokoll (`control_log.jsonl`, 14 Tage) ist im Datenexport enthalten.
+
 ## 0.49.4
 
 - Planung: Weicht die PV 3 Minuten lang deutlich vom Plan ab, wird neu geplant (bisher 5 Minuten, und frühestens 5 statt jetzt 3 Minuten nach dem letzten Plan). Die Seite holt den Plan jede Minute statt alle 2 Minuten – mehr Sonne als vorhergesagt zeigt sich damit nach etwa 4 statt bis zu 12 Minuten in der Prognose.

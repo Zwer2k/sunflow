@@ -26,6 +26,7 @@ import re
 from typing import Any
 
 from sunflow.config.models import DeviceConfig, SunflowConfig
+from sunflow.control.journal import ControlJournal
 from sunflow.devices.discovery import Snapshot, fetch_snapshot
 from sunflow.devices.executor import (
     EepromGuard,
@@ -64,6 +65,8 @@ GRID_MARGIN_W = 300.0
 KEEP_CHARGING_SHARE = 0.5
 # Actions of the PV limit, besides the battery and charge actions of a device
 PV_LIMIT_PREFIX = "pv_"
+HAND_BACK = "an das Gerät zurückgegeben"
+SHUTDOWN = "Sunflow beendet"
 PV_SET, PV_RELEASE = f"{PV_LIMIT_PREFIX}set", f"{PV_LIMIT_PREFIX}release"
 # Planned curtailment from which the output is limited
 MIN_CURTAIL_W = 100.0
@@ -418,6 +421,7 @@ class DeviceAccess:
     matches: Callable[[PlannedCall, dict[str, dict[str, Any]]], bool] = current_matches
     # The device limits its PV: the limit is lifted when handing back as well
     pv_limit: bool = False
+    journal: ControlJournal | None = None
 
 
 async def apply(
@@ -430,6 +434,7 @@ async def apply(
     skip_services: bool = False,
     refresh: timedelta | None = None,
     services_on_change: bool = False,
+    reason: str | None = None,
 ) -> None:
     """Write the action if the device shows other values; status is updated in place.
 
@@ -455,6 +460,9 @@ async def apply(
     status.calls = [{"entity_id": c.entity_id, "service": c.service, "data": c.data, "status": c.status} for c in calls]
     # The daily write limit of a flash value keeps the last value; the rest still applies
     failed = [c for c in calls if c.status not in ("done", "skipped", "blocked")]
+    if access.journal is not None:
+        error = f"{failed[0].entity_id}: {failed[0].status} ({failed[0].reason})" if failed else None
+        access.journal.wrote(status.device_id, status.name, action, power, reason, calls, now, error)
     if failed:
         raise RuntimeError(f"{failed[0].entity_id}: {failed[0].status} ({failed[0].reason})")
     status.note = (
@@ -467,12 +475,14 @@ async def apply(
     _LOGGER.info("%s: %s %s", status.name, action, f"{power:.0f} W" if power is not None else "")
 
 
-async def take_over(access: DeviceAccess, marker: TakeoverMarker, device_id: str) -> None:
+async def take_over(access: DeviceAccess, marker: TakeoverMarker, device: DeviceConfig) -> None:
     """Switch into the control mode once and remember the previous one."""
-    if device_id in marker.get():
+    if device.id in marker.get():
         return
     previous = await access.ensure_mode() if access.ensure_mode else None
-    marker.set(device_id, previous)
+    marker.set(device.id, previous)
+    if previous is not None and access.journal is not None:
+        access.journal.note(device.id, device.name, "take_over", f"Steuermodus eingeschaltet (vorher „{previous}“)", datetime.now(UTC))
 
 
 async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str, status: DeviceControl) -> None:
@@ -481,12 +491,14 @@ async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str
     if device_id not in taken:
         return
     if access.release is not None:
-        await apply(access, status, access.release, None, datetime.now(UTC))
+        await apply(access, status, access.release, None, datetime.now(UTC), reason=HAND_BACK)
     if access.pv_limit:
-        await apply(access, DeviceControl(device_id=device_id, name=status.name), PV_RELEASE, None, datetime.now(UTC))
+        await apply(access, DeviceControl(device_id=device_id, name=status.name), PV_RELEASE, None, datetime.now(UTC), reason=HAND_BACK)
         status.limit_w = None
     if (previous := taken[device_id]) and access.set_mode:
         await access.set_mode(previous)
+        if access.journal is not None:
+            access.journal.note(device_id, status.name, "mode", f"{HAND_BACK}: Modus wieder „{previous}“", datetime.now(UTC))
     marker.clear(device_id)
     status.active = False
     status.action = None
@@ -631,9 +643,11 @@ class PlanController:
         marker: TakeoverMarker,
         access_for: Callable[[DeviceConfig], DeviceAccess],
         profiles: Callable[[], dict[str, dict[str, Any]]],
+        journal: ControlJournal | None = None,
     ) -> None:
         """Initialize; access_for builds the Home Assistant calls of a device."""
         self._marker = marker
+        self.journal = journal
         # Phase switch mode of chargers before Sunflow switched them, restored on hand back
         self._phase_marker = TakeoverMarker(marker.data_dir, "phase_modes.json")
         self._phases: dict[str, PhaseState] = {}
@@ -688,6 +702,10 @@ class PlanController:
             if not self.wanted(config, device):
                 continue
             profile = self._profiles()[device.profile]
+            if self.journal is not None:
+                overrides = {k: o.model_dump() for k, o in device.role_overrides.items()}
+                roles = [r.entity_id for r in preview(profile, snapshot, device.ha_device_id, overrides) if r.entity_id]
+                await self.journal.observe(device.id, device.name, roles, snapshot.states, now)
             if "charge_control" in profile:
                 await self._safely(device.id, device, lambda d, s: self._charge(d, s, plan, plan_at, now, live, snapshot))
             elif not controls_battery(profile):
@@ -736,7 +754,7 @@ class PlanController:
     ) -> None:
         """Limit the PV output while the plan curtails, corrected by the export actually measured."""
         access = self._access_for(device)
-        await take_over(access, self._marker, device.id)
+        await take_over(access, self._marker, device)
         profile = self._profiles()[device.profile]
         bookkeeping = self._limit_writes.setdefault(device.id, DeviceControl(device_id=device.id, name=device.name))
         _, _, reason = desired_action(plan, plan_at, now)
@@ -744,7 +762,7 @@ class PlanController:
         curtail = getattr(slot, "curtail_w", 0.0) or 0.0
         if curtail < MIN_CURTAIL_W:
             if status.limit_w is not None or bookkeeping.last_write is None:
-                await apply(access, bookkeeping, PV_RELEASE, None, now)
+                await apply(access, bookkeeping, PV_RELEASE, None, now, reason=f"keine Begrenzung ({reason})")
             status.limit_w = None
             status.active = True
             return
@@ -755,17 +773,17 @@ class PlanController:
         output = roles.get("ac_power") if isinstance(roles.get("ac_power"), int | float) else roles.get("pv_power")
         limit = pv_limit_w(output, slot, live)
         refresh = profile["pv_limit"].get("refresh")
+        status.reason = f"PV auf {limit / 1000:.1f} kW begrenzt ({reason})".replace(".", ",")
         await apply(
             access, bookkeeping, PV_SET, None, now, {"limit_w": limit},
-            refresh=parse_duration(refresh, timedelta()) if refresh else None, services_on_change=True,
+            refresh=parse_duration(refresh, timedelta()) if refresh else None, services_on_change=True, reason=status.reason,
         )
         status.active, status.limit_w = True, limit
-        status.reason = f"PV auf {limit / 1000:.1f} kW begrenzt ({reason})".replace(".", ",")
 
     async def _battery(self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime) -> None:
         action, power, reason = desired_action(plan, plan_at, now)
         access = self._access_for(device)
-        await take_over(access, self._marker, device.id)
+        await take_over(access, self._marker, device)
         profile = self._profiles()[device.profile]
         if (supported := supported_action(profile, action, power))[0] != action:
             reason = f"{reason} ({ACTION_NAMES.get(action, action)} kann das Gerät nicht)"
@@ -776,7 +794,7 @@ class PlanController:
         runtime: dict[str, float] = {"P": abs(power)} if power is not None else {}
         if (buffer := (defaults | device.parameters).get("grid_offset")) is not None:
             runtime["grid_offset"] = grid_buffer(buffer, current_slot(plan, now) if plan else None, reason == "nach Plan")
-        await apply(access, status, action, power, now, runtime, refresh=refresh, services_on_change=True)
+        await apply(access, status, action, power, now, runtime, refresh=refresh, services_on_change=True, reason=reason)
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
         status.grid_target_w = runtime.get("grid_offset")
 
@@ -789,7 +807,7 @@ class PlanController:
         if info is not None and info.unknown_vehicle:
             action, power, reason = "release", None, info.reason
         access = self._access_for(device)
-        await take_over(access, self._marker, device.id)
+        await take_over(access, self._marker, device)
         if (
             action == "charge"
             and info is not None
@@ -801,7 +819,7 @@ class PlanController:
         ):
             # Recognized without its card: start the transaction as if the card had been scanned
             transaction = f"card_{profile.card - 1}" if profile.card else "without_card"
-            await apply(access, status, "authorize", None, now, {"transaction": transaction})
+            await apply(access, status, "authorize", None, now, {"transaction": transaction}, reason="Fahrzeug erkannt: Laden freigeben")
         if action == "release" and access.release is None:
             # Nothing of its own to fall back to (evcc): its previous mode until a plan is there again
             if (previous := self._marker.get().get(device.id)) and access.set_mode:
@@ -852,7 +870,7 @@ class PlanController:
                 and status.last_current_write is not None
                 and now - status.last_current_write < CURRENT_REFRESH
             )
-            await apply(access, status, action, power, now, runtime, skip_services=unchanged)
+            await apply(access, status, action, power, now, runtime, skip_services=unchanged, reason=reason)
             if action == "charge" and not unchanged:
                 status.current_a, status.last_current_write = runtime["current_a"], now
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
@@ -874,7 +892,10 @@ class PlanController:
         if device.id not in self._phase_marker.get() and (remember := profile["phase_switch"].get("remember")):
             self._phase_marker.set(device.id, phase_option(remember["key"], device, snapshot))
         bookkeeping = DeviceControl(device_id=device.id, name=device.name)
-        await apply(self._access_for(device), bookkeeping, PHASES_ONE if target == 1 else PHASES_THREE, None, now)
+        await apply(
+            self._access_for(device), bookkeeping, PHASES_ONE if target == 1 else PHASES_THREE, None, now,
+            reason=f"Phasenumschaltung {current} → {target}",
+        )
         state.switched(now)
         _LOGGER.info("%s: %d -> %d phases", device.name, current, target)
         return target
@@ -883,7 +904,7 @@ class PlanController:
         """The charger's phase mode as before Sunflow, then the device itself."""
         if previous := self._phase_marker.get().get(device.id):
             await apply(self._access_for(device), DeviceControl(device_id=device.id, name=device.name),
-                        PHASES_RESTORE, None, datetime.now(UTC), {"phase_option": previous})
+                        PHASES_RESTORE, None, datetime.now(UTC), {"phase_option": previous}, reason=HAND_BACK)
         self._phase_marker.clear(device.id)
         self._phases.pop(device.id, None)
         await hand_back(self._access_for(device), self._marker, device.id, status)
@@ -907,10 +928,10 @@ class PlanController:
     async def _release_on_shutdown(self, device: DeviceConfig, status: DeviceControl) -> None:
         access = self._access_for(device)
         if access.release is not None:
-            await apply(access, status, "auto", None, datetime.now(UTC))
+            await apply(access, status, "auto", None, datetime.now(UTC), reason=SHUTDOWN)
         # Without Sunflow nobody would lift the limit again
         if access.pv_limit:
-            await apply(access, DeviceControl(device_id=device.id, name=device.name), PV_RELEASE, None, datetime.now(UTC))
+            await apply(access, DeviceControl(device_id=device.id, name=device.name), PV_RELEASE, None, datetime.now(UTC), reason=SHUTDOWN)
             status.limit_w = None
 
     def _status(self, device: DeviceConfig) -> DeviceControl:
