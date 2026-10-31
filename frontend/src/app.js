@@ -11,6 +11,7 @@ import "./settings/standards-view.js";
 import "./settings/vehicles-view.js";
 import "./settings/charging-view.js";
 import "./settings/batteries-view.js";
+import "./settings/optimizers-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./components/charts.js";
 import {
   CATEGORIES,
@@ -105,6 +106,7 @@ const STEPS = [
   ["devices", "Geräte"],
   ["test", "Gerätetest"],
   ["site", "Bilanzprüfung"],
+  ["optimizers", "Optimierer"],
   ["vehicles", "Fahrzeuge"],
   ["charging", "Laden"],
   ["consumers", "Verbraucher"],
@@ -1115,6 +1117,8 @@ class SunflowApp extends LitElement {
         return html`<sf-standards></sf-standards>`;
       case "display":
         return this._renderDisplay();
+      case "optimizers":
+        return html`<sf-optimizers></sf-optimizers>`;
       default:
         return this._renderSummary();
     }

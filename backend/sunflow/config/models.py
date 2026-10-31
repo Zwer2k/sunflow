@@ -285,6 +285,26 @@ class IntegrationSettings(BaseModel):
     forecast_kinds: list[ForecastKind] = Field(default_factory=lambda: ["total", "plant", "plane"])
 
 
+class OptimizerPlacement(BaseModel):
+    """Where one optimizer (Home Assistant device) hangs and sits; unset fields are proposed."""
+
+    ha_device_id: str
+    # "<device id>:<string>"; "" for none, None for the proposal
+    string: str | None = None
+    # Position on the roof, row 0 at the top
+    row: int | None = Field(default=None, ge=0)
+    col: int | None = Field(default=None, ge=0)
+    name: str | None = None
+
+
+class OptimizerSettings(BaseModel):
+    """Optimizers on the PV strings."""
+
+    # Plant (device id) the Tigo optimizers hang on; None: proposed
+    tigo_plant: str | None = None
+    placements: list[OptimizerPlacement] = Field(default_factory=list)
+
+
 class DisplaySettings(BaseModel):
     """What the App's pages show; phones and wider screens apart."""
 
@@ -325,6 +345,7 @@ class SunflowConfig(BaseModel):
     control: ControlSettings = Field(default_factory=ControlSettings)
     integration: IntegrationSettings = Field(default_factory=IntegrationSettings)
     display: DisplaySettings = Field(default_factory=DisplaySettings)
+    optimizer_settings: OptimizerSettings = Field(default_factory=OptimizerSettings)
     vehicles: list[Vehicle] = Field(default_factory=list)
     # Vehicle at wallbox: card, target, ready by
     charging: list[ChargingProfile] = Field(default_factory=list)

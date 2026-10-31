@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.52.0
+
+- Optimierer: In der Live-Ansicht öffnet ein Klick auf einen PV-String (Zahl am Kreis = Anzahl Optimierer) seine Module, angeordnet wie auf dem Dach, mit aktueller Leistung und je nach Quelle Spannung, Strom, Temperatur und PWM. Die Werte lassen sich einzeln ein- und ausblenden.
+- Einstellungen → Optimierer (neu): gefundene Optimierer von Huawei (Integration Huawei Solar) und Tigo (Integration Tigo RS485), Zuordnung zu den Strings – automatisch (Huawei: der String in Betrieb; Tigo: Label „A1“ = String A, Modul 1) oder von Hand – und ein Editor für die Anordnung auf dem Dach (ziehen oder antippen).
+
 ## 0.51.0
 
 - Einstellungen → Anzeige (neu): Das Wetter in der Live-Ansicht lässt sich für Handy und für Tablet/Computer getrennt ausblenden. Ist es überall aus, wird die Wettervorhersage dafür nicht mehr abgefragt.
