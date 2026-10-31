@@ -41,6 +41,7 @@ class SunflowOptimizers extends LitElement {
       row: o.row,
       col: o.col,
       name: o.name !== o.label ? o.name : null,
+      rotated: o.rotated || null,
       ...(changes[o.id] ?? {}),
     }));
     this._saving = true;
@@ -132,9 +133,11 @@ class SunflowOptimizers extends LitElement {
           <button class="secondary" ?disabled=${this._saving} @click=${() => this._reset(s.optimizers)}>Vorschlag wiederherstellen</button>
         </div>
         <p class="small muted">So anordnen, wie die Module auf dem Dach liegen (oben = First): Modul auf einen freien Platz
-          ziehen – oder antippen und dann den Platz antippen. Auf ein anderes Modul gezogen tauschen beide.</p>
+          ziehen – oder antippen und dann den Platz antippen. Auf ein anderes Modul gezogen tauschen beide. Ein ausgewähltes
+          Modul lässt sich quer legen.</p>
         <sf-roof editable .optimizers=${s.optimizers} .visible=${["power"]}
-          @move=${(e) => this._move(s.optimizers, e.detail)}></sf-roof>
+          @move=${(e) => this._move(s.optimizers, e.detail)}
+          @rotate=${(e) => this._save({ [e.detail.id]: { rotated: !s.optimizers.find((o) => o.id === e.detail.id).rotated || null } })}></sf-roof>
       </section>`)}
       <section class="card">
         <h2>Zuordnung</h2>

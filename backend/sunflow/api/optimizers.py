@@ -40,7 +40,7 @@ async def set_optimizers(request: Request, body: OptimizerSettings) -> dict[str,
     store = request.app.state.store
     config = store.load()
     body.placements = [
-        p for p in body.placements if p.string is not None or p.row is not None or p.col is not None or p.name
+        p for p in body.placements if p.string is not None or p.row is not None or p.col is not None or p.name or p.rotated
     ]
     config.optimizer_settings = body
     store.save(config)

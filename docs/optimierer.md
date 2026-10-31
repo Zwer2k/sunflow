@@ -17,6 +17,7 @@ Wahl merkt sich der Browser. Hellere Module liefern weniger als das beste des St
 
 - **Quellen:** was gefunden wurde; für Tigo der Wechselrichter, an dem sie hängen.
 - **Dach je String:** Module auf freie Plätze ziehen oder antippen und dann den Platz
-  antippen (Handy); auf ein anderes Modul gezogen tauschen beide. „Vorschlag
+  antippen (Handy); auf ein anderes Modul gezogen tauschen beide. Ein ausgewähltes Modul
+  lässt sich quer legen („quer legen“ / „hochkant stellen“). „Vorschlag
   wiederherstellen“ setzt String und Plätze auf den Vorschlag zurück.
 - **Zuordnung:** String und Name je Optimierer; „automatisch“ folgt dem Vorschlag.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.53.2
+
+- Optimierer: Einzelne Module lassen sich quer legen (Editor: Modul antippen → „quer legen“, zurück mit „hochkant stellen“). Spalten und Reihen passen sich dem breitesten Modul an; Dach- und Live-Ansicht zeigen sie ebenso.
+
 ## 0.53.1
 
 - Optimierer: Lange Namen (z. B. Huawei-Seriennummern) brechen im Modul auf zwei Zeilen um statt abgeschnitten zu werden. Im Editor steht unter dem Dach der volle Name des ausgewählten Moduls.

@@ -90,6 +90,7 @@ class Optimizer:
     string_auto: bool = False
     row: int | None = None
     col: int | None = None
+    rotated: bool = False
     values: dict[str, float | None] = field(default_factory=dict)
 
 
@@ -211,6 +212,7 @@ def optimizers(config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapsh
                 placed.add(optimizer.id)
             if placement.name:
                 optimizer.name = placement.name
+            optimizer.rotated = bool(placement.rotated)
         for key, entity_id in optimizer.entities.items():
             state = snapshot.states.get(entity_id)
             raw_unit = state.get("attributes", {}).get("unit_of_measurement") if state else None

@@ -85,13 +85,15 @@ def test_placements_win_over_the_proposal(monkeypatch: pytest.MonkeyPatch) -> No
     config = SunflowConfig(
         devices=[DeviceConfig(id="sofar", ha_device_id="sof", profile="p", profile_version=1, name="Sofar")],
         optimizer_settings=OptimizerSettings(placements=[
-            OptimizerPlacement(ha_device_id="a2", string="sofar:2", row=1, col=3, name="Süd 5"),
+            OptimizerPlacement(ha_device_id="a2", string="sofar:2", row=1, col=3, name="Süd 5", rotated=True),
             OptimizerPlacement(ha_device_id="o1", string=""),
         ]),
     )
     found = _found(config, monkeypatch, _strings())
 
     assert (found["A2"].string, found["A2"].row, found["A2"].col, found["A2"].name, found["A2"].string_auto) == ("sofar:2", 1, 3, "Süd 5", False)
+    assert found["A2"].rotated
+    assert not found["B1"].rotated
     assert found["JV22B1"].string is None
 
 
