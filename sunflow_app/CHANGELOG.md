@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.53.1
+
+- Optimierer: Lange Namen (z. B. Huawei-Seriennummern) brechen im Modul auf zwei Zeilen um statt abgeschnitten zu werden. Im Editor steht unter dem Dach der volle Name des ausgewählten Moduls.
+
 ## 0.53.0
 
 - Planung: Der Verbrauch der nächsten Stunde richtet sich nach dem, was das Haus gerade braucht (Mittel der letzten Minuten, ohne steuerbare Verbraucher). Die erste Viertelstunde beginnt beim gemessenen Wert, die Abweichung zur Prognose halbiert sich alle 30 Minuten – wie es die PV-Prognose schon mit der gemessenen PV tut, nur schneller abklingend.

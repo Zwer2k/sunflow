@@ -58,9 +58,16 @@ class SunflowRoof extends LitElement {
         cells.push(optimizer ? this._module(optimizer, maxPower, row, col) : this._empty(row, col));
       }
     }
+    const selected = this.optimizers.find((o) => o.id === this._selected);
     return html`<div class="roof" style="grid-template-columns: repeat(${Math.max(cols, 1)}, var(--module-width))">
       ${cells}
-    </div>`;
+    </div>
+    ${this.editable
+      ? html`<p class="caption">${selected
+          ? html`Ausgewählt: <strong>${selected.name}</strong>${selected.name !== selected.label ? ` (${selected.label})` : ""} –
+              jetzt den Platz antippen`
+          : "Modul antippen, um es auszuwählen"}</p>`
+      : nothing}`;
   }
 
   _module(optimizer, maxPower, row, col) {
@@ -134,7 +141,12 @@ class SunflowRoof extends LitElement {
     :host([editable]) .module { cursor: grab; }
     .cell { border: 1px dashed var(--sf-border-strong); cursor: pointer; }
     .cell.target { border-color: var(--sf-primary); background: var(--sf-primary-bg); }
-    .name { font-size: 10px; color: var(--sf-muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Long serial numbers (Huawei) break onto a second line instead of being cut */
+    .name {
+      font-size: 9px; line-height: 1.15; color: var(--sf-muted); max-width: 100%; text-align: center;
+      overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    }
+    .caption { margin: 4px 4px 0; font-size: 13px; color: var(--sf-muted); }
     .value { font-size: 10px; color: var(--sf-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .value.main { font-size: 12px; font-weight: 600; }
   `;
