@@ -172,3 +172,23 @@ def test_recent_action_goes_by_the_mean_of_the_last_minutes() -> None:
     # Just after a start one reading is no judgement yet
     runner._recent = deque([Sample(soc_wh=None, battery_w=560, grid_w=560, pv_w=None, load_w=None)] * 2)
     assert runner.recent_action() is None
+
+
+async def test_replan_waits_for_the_connection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A change while Home Assistant restarts is planned by the next tick once connected, without a warning."""
+    attempts = []
+
+    async def replan(self: ShadowRunner, start: Any) -> None:
+        attempts.append(start)
+
+    monkeypatch.setattr(ShadowRunner, "_replan", replan)
+    client = SimpleNamespace(connected=False)
+    runner = ShadowRunner(client, None, None, ShadowStore(tmp_path))
+    runner._planned_slot = runner_module.slot_start(runner_module.datetime.now(runner_module.UTC))
+
+    runner.request_replan()
+    await runner._replan_task
+
+    assert attempts == []
+    assert runner._planned_slot is None
+    assert runner.status.last_error is None

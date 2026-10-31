@@ -366,6 +366,11 @@ class ShadowRunner:
     async def _replan_now(self) -> None:
         while True:
             self._replan_again = False
+            if not self._client.connected:
+                # Home Assistant restarting: the tick plans again once connected
+                _LOGGER.debug("Replan deferred: not connected to Home Assistant")
+                self._planned_slot = None
+                return
             try:
                 await self._replan(slot_start(datetime.now(UTC)))
                 self.status.last_error = None
