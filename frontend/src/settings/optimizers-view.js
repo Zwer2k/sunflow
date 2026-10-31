@@ -34,7 +34,7 @@ class SunflowOptimizers extends LitElement {
   }
 
   /** The stored settings with one optimizer changed; proposals stay proposals (null). */
-  async _save(changes = {}, tigoPlant = this._data.tigo_plant_chosen) {
+  async _save(changes = {}, tigoPlant = this._data.tigo_plant_chosen, layouts = this._data.layouts) {
     const placements = this._data.optimizers.map((o) => ({
       ha_device_id: o.id,
       string: o.string_auto ? null : (o.string ?? ""),
@@ -46,7 +46,7 @@ class SunflowOptimizers extends LitElement {
     }));
     this._saving = true;
     try {
-      await api.setOptimizers({ tigo_plant: tigoPlant || null, placements });
+      await api.setOptimizers({ tigo_plant: tigoPlant || null, placements, layouts });
       await this._load();
     } catch (err) {
       this._error = `Nicht gespeichert: ${err.message}`;
@@ -62,6 +62,15 @@ class SunflowOptimizers extends LitElement {
     // A taken place: the two swap
     if (other) changes[other.id] = { row: moved.row, col: moved.col };
     return this._save(changes);
+  }
+
+  _toggleBreak(key, { row, col }) {
+    const layout = { row_breaks: [], col_breaks: [], ...this._data.layouts[key] };
+    const field = row !== undefined ? "row_breaks" : "col_breaks";
+    const at = row ?? col;
+    const breaks = layout[field];
+    layout[field] = breaks.includes(at) ? breaks.filter((b) => b !== at) : [...breaks, at].sort((a, b) => a - b);
+    return this._save({}, this._data.tigo_plant_chosen, { ...this._data.layouts, [key]: layout });
   }
 
   _reset(optimizers) {
@@ -134,8 +143,12 @@ class SunflowOptimizers extends LitElement {
         </div>
         <p class="small muted">So anordnen, wie die Module auf dem Dach liegen (oben = First): Modul auf einen freien Platz
           ziehen – oder antippen und dann den Platz antippen. Auf ein anderes Modul gezogen tauschen beide. Ein ausgewähltes
-          Modul lässt sich quer legen.</p>
+          Modul lässt sich quer legen. Zwischen zwei Reihen setzt „+ Trenner“ die Reihen darunter ab, das schmale „+“ zwischen
+          zwei Plätzen die Plätze rechts davon in allen Reihen (z. B. ein anderes Dachstück).</p>
         <sf-roof editable .optimizers=${s.optimizers} .visible=${["power"]}
+          .breaks=${data.layouts[s.key]?.row_breaks ?? []}
+          .colBreaks=${data.layouts[s.key]?.col_breaks ?? []}
+          @break=${(e) => this._toggleBreak(s.key, e.detail)}
           @move=${(e) => this._move(s.optimizers, e.detail)}
           @rotate=${(e) => this._save({ [e.detail.id]: { rotated: !s.optimizers.find((o) => o.id === e.detail.id).rotated || null } })}></sf-roof>
       </section>`)}

@@ -25,6 +25,8 @@ export function optimizerValue(key, value) {
  *
  * optimizers: [{id, name, row, col, values}]; visible: value keys to show.
  * editable: empty cells to drop on; fires "move" with detail {id, row, col} and "rotate" with {id}.
+ * breaks / colBreaks: rows and places before which a separator sets the following ones apart; editing
+ * toggles them ("break" with {row} or {col}).
  * Rotated modules lie landscape and push the following modules of their row aside; each row
  * is laid out on its own, so other rows keep their spacing.
  * Moving works by drag and drop or by tapping a module and then a cell (phones).
@@ -33,6 +35,8 @@ class SunflowRoof extends LitElement {
   static properties = {
     optimizers: { attribute: false },
     visible: { attribute: false },
+    breaks: { attribute: false },
+    colBreaks: { attribute: false },
     editable: { type: Boolean },
     _selected: { state: true },
   };
@@ -41,6 +45,8 @@ class SunflowRoof extends LitElement {
     super();
     this.optimizers = [];
     this.visible = ["power"];
+    this.breaks = [];
+    this.colBreaks = [];
     this.editable = false;
     this._selected = null;
   }
@@ -59,9 +65,11 @@ class SunflowRoof extends LitElement {
       // Showing only: free places count up to the row's last module, as gaps
       const last = this.editable ? cols - 1 : Math.max(-1, ...placed.filter((o) => o.row === row).map((o) => o.col));
       for (let col = 0; col <= last; col += 1) {
+        if (col > 0) cells.push(this._colSeparator(col));
         const optimizer = at.get(`${row}:${col}`);
         cells.push(optimizer ? this._module(optimizer, maxPower, row, col) : this._empty(row, col));
       }
+      if (row > 0) lines.push(this._separator(row));
       lines.push(html`<div class="row">${cells}</div>`);
     }
     const selected = this.optimizers.find((o) => o.id === this._selected);
@@ -96,6 +104,25 @@ class SunflowRoof extends LitElement {
         (k) => html`<span class="value ${k === "power" ? "main" : ""}">${optimizerValue(k, optimizer.values[k])}</span>`,
       )}
     </div>`;
+  }
+
+  _separator(row) {
+    const on = this.breaks.includes(row);
+    if (!this.editable) return on ? html`<div class="break" role="separator"></div>` : nothing;
+    return html`<button class="break-toggle ${on ? "on" : ""}" aria-pressed=${on ? "true" : "false"}
+      title=${on ? "Trenner entfernen" : "Trenner einfügen: die Reihen darunter liegen abseits"}
+      @click=${() => this.dispatchEvent(new CustomEvent("break", { detail: { row } }))}>
+      <span>${on ? "Trenner ✕" : "+ Trenner"}</span>
+    </button>`;
+  }
+
+  _colSeparator(col) {
+    const on = this.colBreaks.includes(col);
+    if (!this.editable) return on ? html`<div class="vbreak" role="separator"></div>` : nothing;
+    return html`<button class="vbreak-toggle ${on ? "on" : ""}" aria-pressed=${on ? "true" : "false"}
+      aria-label=${on ? `Trenner vor Platz ${col + 1} entfernen` : `Trenner vor Platz ${col + 1} einfügen`}
+      title=${on ? "Trenner entfernen (alle Reihen)" : "Trenner einfügen: die Plätze rechts liegen abseits (alle Reihen)"}
+      @click=${() => this.dispatchEvent(new CustomEvent("break", { detail: { col } }))}>${on ? "✕" : "+"}</button>`;
   }
 
   _empty(row, col) {
@@ -163,6 +190,30 @@ class SunflowRoof extends LitElement {
       overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
     }
     .caption { margin: 4px 4px 0; font-size: 13px; color: var(--sf-muted); }
+    /* Rows set apart (another roof part): space with a dashed line in the middle */
+    .break { height: 1px; margin: 8px 0; border-top: 2px dashed var(--sf-border-strong); }
+    .break-toggle {
+      display: flex; align-items: center; gap: 6px; width: 100%; min-height: 20px; padding: 0; border: 0; cursor: pointer;
+      background: linear-gradient(var(--sf-border) 0 0) center / 100% 1px no-repeat; color: var(--sf-muted); font: inherit;
+      font-size: 11px; opacity: 0.6;
+    }
+    .break-toggle span { margin: 0 auto; padding: 0 6px; background: var(--sf-surface); border-radius: 4px; }
+    .break-toggle:hover, .break-toggle:focus-visible { opacity: 1; }
+    .vbreak { flex: none; align-self: stretch; width: 2px; margin: 0 8px; border-left: 2px dashed var(--sf-border-strong); }
+    .vbreak-toggle {
+      flex: none; align-self: stretch; width: 14px; margin: 0 -2px; padding: 0; border: 0; cursor: pointer; font: inherit;
+      font-size: 11px; color: var(--sf-muted); opacity: 0.35;
+      background: linear-gradient(var(--sf-border) 0 0) center / 1px 100% no-repeat;
+    }
+    .vbreak-toggle:hover, .vbreak-toggle:focus-visible { opacity: 1; }
+    .vbreak-toggle.on {
+      opacity: 1; width: 20px; margin: 0 2px; color: var(--sf-text);
+      background: linear-gradient(to bottom, var(--sf-border-strong) 50%, transparent 0) center / 2px 10px repeat-y;
+    }
+    .break-toggle.on {
+      opacity: 1; min-height: 28px; color: var(--sf-text);
+      background: linear-gradient(to right, var(--sf-border-strong) 50%, transparent 0) center / 10px 2px repeat-x;
+    }
     .rotate {
       font: inherit; font-size: 13px; min-height: 32px; padding: 0 10px; margin-left: 2px; border-radius: 8px; cursor: pointer;
       border: 1px solid var(--sf-primary); background: var(--sf-primary-bg); color: var(--sf-primary-text);

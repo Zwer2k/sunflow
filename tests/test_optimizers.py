@@ -1,5 +1,6 @@
 """Tests for finding optimizers, assigning them to strings and placing them on the roof."""
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -103,3 +104,19 @@ def test_proposed_places_do_not_cover_placed_modules(monkeypatch: pytest.MonkeyP
     found = _found(config, monkeypatch, _strings())
 
     assert {(o.row, o.col) for o in (found["JV22B1"], found["JV22B2"])} == {(0, 0), (0, 1)}
+
+
+async def test_layout_separators_are_stored(tmp_path: Path) -> None:
+    """Separators between rows and places are kept per string."""
+    from types import SimpleNamespace
+
+    from sunflow.api.optimizers import set_optimizers
+    from sunflow.config.models import StringLayout
+    from sunflow.config.store import ConfigStore
+
+    store = ConfigStore(tmp_path)
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(store=store)))
+
+    await set_optimizers(request, OptimizerSettings(layouts={"sofar:1": StringLayout(row_breaks=[2], col_breaks=[3, 5])}))
+
+    assert ConfigStore(tmp_path).load().optimizer_settings.layouts["sofar:1"] == StringLayout(row_breaks=[2], col_breaks=[3, 5])

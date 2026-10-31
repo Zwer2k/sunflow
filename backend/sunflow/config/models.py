@@ -299,12 +299,23 @@ class OptimizerPlacement(BaseModel):
     rotated: bool | None = None
 
 
+class StringLayout(BaseModel):
+    """How the roof view of one string is drawn."""
+
+    # Rows before which a separator sets the following ones apart (e.g. another roof part)
+    row_breaks: list[int] = Field(default_factory=list)
+    # Places before which a separator sets the following ones apart, in every row
+    col_breaks: list[int] = Field(default_factory=list)
+
+
 class OptimizerSettings(BaseModel):
     """Optimizers on the PV strings."""
 
     # Plant (device id) the Tigo optimizers hang on; None: proposed
     tigo_plant: str | None = None
     placements: list[OptimizerPlacement] = Field(default_factory=list)
+    # Per string key "<device id>:<string>"
+    layouts: dict[str, StringLayout] = Field(default_factory=dict)
 
 
 class DisplaySettings(BaseModel):

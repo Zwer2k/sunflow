@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.54.0
+
+- Optimierer: Trenner zwischen Reihen und zwischen Plätzen deuten an, dass Module abseits liegen (z. B. zwei Reihen auf einem anderen Dachstück). Im Editor „+ Trenner“ zwischen zwei Reihen bzw. das schmale „+“ zwischen zwei Plätzen (gilt für alle Reihen); die Dach- und Live-Ansicht zeigen sie als gestrichelte Linie mit Abstand.
+
 ## 0.53.3
 
 - Optimierer: Ein quer gelegtes Modul schiebt nur die Module seiner eigenen Reihe zur Seite; die anderen Reihen behalten ihre Abstände (bisher wurde die ganze Spalte breiter).
