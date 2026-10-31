@@ -20,6 +20,20 @@ const ACTION_LABELS = {
   stop: "Laden gesperrt",
   release: "Gerät regelt selbst",
 };
+// Writes of the log that are no battery or charge action
+const LOG_ACTIONS = {
+  take_over: "Steuerung übernommen",
+  mode: "Modus zurückgestellt",
+  authorize: "Ladevorgang freigegeben",
+  pv_set: "PV begrenzt",
+  pv_release: "PV-Begrenzung aufgehoben",
+  phases_one: "auf 1 Phase",
+  phases_three: "auf 3 Phasen",
+  phases_restore: "Phasenmodus zurückgestellt",
+};
+const LOG_HOURS = { 24: "24 Stunden", 72: "3 Tage", 336: "14 Tage" };
+// More rows make the page slow and say nothing more
+const LOG_ROWS = 300;
 const STRATEGIES = {
   balanced: "Ausgewogen",
   pv_absorption: "PV aufnehmen",
@@ -67,6 +81,10 @@ class SunflowControl extends LitElement {
     _busy: { state: true },
     _editing: { state: true },
     _takeover: { state: true },
+    _log: { state: true },
+    _logDevice: { state: true },
+    _logHours: { state: true },
+    _logForeign: { state: true },
   };
 
   constructor() {
@@ -76,6 +94,10 @@ class SunflowControl extends LitElement {
     this._duration = "midnight";
     this._busy = false;
     this._editing = null;
+    this._log = null;
+    this._logDevice = "";
+    this._logHours = 24;
+    this._logForeign = false;
   }
 
   connectedCallback() {
@@ -93,11 +115,25 @@ class SunflowControl extends LitElement {
 
   async _load() {
     try {
-      [this._data, this._takeover] = await Promise.all([api.control(), api.takeover()]);
+      [this._data, this._takeover] = await Promise.all([api.control(), api.takeover(), this._loadLog()]);
       this._error = null;
     } catch (err) {
       this._error = `Steuerung nicht verfügbar: ${err.message}`;
     }
+  }
+
+  async _loadLog() {
+    try {
+      this._log = (await api.controlLog(this._logHours, this._logDevice)).entries;
+    } catch {
+      // Not essential: the rest of the page still works
+      this._log = null;
+    }
+  }
+
+  _setLogFilter(changes) {
+    Object.assign(this, changes);
+    this._loadLog();
   }
 
   async _apply(action) {
@@ -176,6 +212,54 @@ class SunflowControl extends LitElement {
             : html`<p class="muted">Noch keine Verbraucher eingerichtet (Wallbox, Warmwasser, eigene Geräte).</p>`}
           ${data.priorities.length > 1 ? this._renderPriorities(data.priorities, data.condition_sources) : nothing}
         ` : nothing}
+      ${this._takeover?.devices.length && this._log ? this._renderLog(this._log, this._takeover.devices) : nothing}
+    `;
+  }
+
+  _renderLog(log, devices) {
+    const entries = (this._logForeign ? log.filter((e) => e.kind === "extern") : log).slice(0, LOG_ROWS);
+    const today = new Date().toDateString();
+    const when = (iso) => (new Date(iso).toDateString() === today ? time : dayTime).format(new Date(iso));
+    return html`
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2>Protokoll</h2>
+            <p class="small muted">Was Sunflow an den gesteuerten Geräten geschrieben hat – und Änderungen, die nicht von
+              Sunflow kamen, mit dem, was Home Assistant über den Auslöser weiß. Geprüft wird jede Minute.</p>
+          </div>
+        </div>
+        <div class="log-filters">
+          <select aria-label="Gerät" @change=${(e) => this._setLogFilter({ _logDevice: e.target.value })}>
+            <option value="" ?selected=${!this._logDevice}>Alle Geräte</option>
+            ${devices.map((d) => html`<option value=${d.device_id} ?selected=${this._logDevice === d.device_id}>${d.name}</option>`)}
+          </select>
+          <select aria-label="Zeitraum" @change=${(e) => this._setLogFilter({ _logHours: Number(e.target.value) })}>
+            ${Object.entries(LOG_HOURS).map(
+              ([hours, label]) => html`<option value=${hours} ?selected=${this._logHours === Number(hours)}>${label}</option>`,
+            )}
+          </select>
+          <label class="switch small">
+            <input type="checkbox" .checked=${this._logForeign} @change=${(e) => (this._logForeign = e.target.checked)}>
+            <span>nur fremde Änderungen</span>
+          </label>
+        </div>
+        ${entries.length
+          ? html`<ul class="log">
+              ${entries.map((e) => html`<li class=${e.kind === "extern" ? "foreign" : ""}>
+                <span class="small muted when">${when(e.time)}</span>
+                <span class="small"><strong>${e.device}</strong> · ${e.kind === "extern"
+                  ? html`<span class="warn-text">nicht von Sunflow geändert: ${e.name ?? e.entity_id} ${e.old} → ${e.new}</span>
+                      <span class="muted">· durch ${e.source}</span>`
+                  : html`${ACTION_LABELS[e.action] ?? LOG_ACTIONS[e.action] ?? e.action}${e.power_w ? ` · ${formatPower(e.power_w)}` : ""}${e.reason
+                      ? html` <span class="muted">· ${e.reason}</span>`
+                      : nothing}${e.calls?.length
+                      ? html`<span class="muted calls">${e.calls.map((c) => `${c.entity_id} → ${Object.values(c.data ?? {}).join(", ") || c.service}${c.status === "done" ? "" : ` (${c.status})`}`).join(" · ")}</span>`
+                      : nothing}${e.error ? html`<span class="warn-text"> · Fehler: ${e.error}</span>` : nothing}`}</span>
+              </li>`)}
+            </ul>`
+          : html`<p class="small muted">${this._logForeign ? "Keine fremden Änderungen" : "Keine Einträge"} im gewählten Zeitraum.</p>`}
+      </section>
     `;
   }
 
@@ -482,6 +566,11 @@ class SunflowControl extends LitElement {
     .switch input { width: 18px; height: 18px; margin: 0; }
     .alert.warn { padding: 10px 14px; border-radius: 8px; background: var(--sf-warn-bg); color: var(--sf-warn-text); margin-top: 8px; }
     .warn-text { color: var(--sf-warn-text); }
+    .log-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 480px; overflow-y: auto; }
+    .log li { display: grid; grid-template-columns: 5.5em 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--sf-border); }
+    .log li.foreign { background: var(--sf-warn-bg); border-radius: 6px; padding: 4px 6px; }
+    .log .calls { display: block; overflow-wrap: anywhere; }
     .card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: flex-start; }
     .chip {
       font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px;

@@ -14,6 +14,7 @@ import zipfile
 from fastapi import APIRouter, HTTPException, Query, Request, Response, UploadFile
 
 from sunflow import API_VERSION, __version__
+from sunflow.control.journal import JOURNAL_FILE
 from sunflow.devices.discovery import discover
 from sunflow.ha import HAClient
 from sunflow.integration_link import app_host
@@ -78,7 +79,7 @@ async def export_data(request: Request) -> Response:
         await asyncio.to_thread(runner.shadow.backup_to, copy)
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.write(copy, "shadow.db")
-            for name in ("config.json", "eeprom_writes.json"):
+            for name in ("config.json", "eeprom_writes.json", JOURNAL_FILE):
                 if (data_dir / name).exists():
                     archive.write(data_dir / name, name)
             if (latest := runner.latest) is not None:

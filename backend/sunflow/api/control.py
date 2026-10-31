@@ -1,7 +1,7 @@
 """The control tab: overrides, priorities, strategy and Sunflow's control of the devices."""
 
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -126,6 +126,16 @@ async def get_control(request: Request) -> dict[str, Any]:
         ],
         "plan_computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
     }
+
+
+@router.get("/control/log")
+async def control_log(request: Request, hours: int = 24, device_id: str | None = None) -> dict[str, Any]:
+    """What Sunflow wrote to the devices it controls and what others changed on them."""
+    controller: PlanController | None = getattr(request.app.state, "controller", None)
+    if controller is None or controller.journal is None:
+        return {"entries": []}
+    since = datetime.now(UTC) - timedelta(hours=min(max(hours, 1), 14 * 24))
+    return {"entries": controller.journal.entries(since, device_id)}
 
 
 @router.put("/control/devices/{device_id}")

@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from dataclasses import replace
 import hashlib
 from pathlib import Path
 import secrets
@@ -21,6 +22,7 @@ from sunflow.control.controller import (
     TakeoverMarker,
     device_access,
 )
+from sunflow.control.journal import ControlJournal
 from sunflow.devices.device_test import RestoreMarker
 from sunflow.devices.discovery import SnapshotCache
 from sunflow.devices.executor import EepromGuard
@@ -40,12 +42,15 @@ RECONNECT_DELAYS = (1, 2, 5, 10, 30)
 
 
 def _plan_controller(app: FastAPI, settings: Settings) -> PlanController:
+    journal = ControlJournal(settings.data_dir, app.state.ha)
+
     def access_for(device: DeviceConfig) -> DeviceAccess:
         profile = app.state.profiles.profiles[device.profile]
         limit = profile.get("eeprom_guard", {}).get("max_writes_per_day", DEFAULT_MAX_EEPROM_WRITES)
-        return device_access(app.state.ha, profile, device, EepromGuard(settings.data_dir, limit), app.state.direct)
+        access = device_access(app.state.ha, profile, device, EepromGuard(settings.data_dir, limit), app.state.direct)
+        return replace(access, journal=journal)
 
-    return PlanController(TakeoverMarker(settings.data_dir), access_for, lambda: app.state.profiles.profiles)
+    return PlanController(TakeoverMarker(settings.data_dir), access_for, lambda: app.state.profiles.profiles, journal)
 
 
 async def _keep_connected(client: HAClient) -> None:
