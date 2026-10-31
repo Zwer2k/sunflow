@@ -80,3 +80,20 @@ def test_consumer_usage_recommendations() -> None:
 
     assert found["consumer_daily:bike"]["action"]["value"] == 520
     assert found["consumer_power:bike"]["action"] == {"type": "set_parameter", "device_id": "bike", "name": "max_power", "value": 250}
+
+
+def test_no_power_recommendation_for_stepped_consumers() -> None:
+    """A heating rod with steps runs with one of them; the measured mean is no power to set."""
+    from types import SimpleNamespace
+
+    from sunflow.planning.habits import ConsumerUsage
+
+    config = SunflowConfig(devices=[
+        DeviceConfig(id="ww", ha_device_id="manual:2", profile="generic/stepped", profile_version=1, name="Warmwasser",
+                     power_steps={"off": 0, "0,7kW": 700, "2,8kW": 2800}, parameters={"max_power": 2800}),
+    ])
+    latest = SimpleNamespace(usages={"ww": ConsumerUsage(daily_wh=3000, running_w=775, days=10)}, flex=[], plan=SimpleNamespace(flex=[], slots=[]))
+
+    found = {r["id"] for r in build(config, latest, {}, [], 0, None, [])}
+
+    assert "consumer_power:ww" not in found

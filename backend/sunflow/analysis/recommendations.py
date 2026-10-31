@@ -229,7 +229,8 @@ def consumer_usage(config: SunflowConfig, latest: PlanResult | None) -> list[Rec
                 )
             )
         power = device.parameters.get("max_power")
-        if usage.running_w and power and abs(usage.running_w / power - 1) > USAGE_DEVIATION:
+        # With power steps the measured mean mixes the steps (and on/off phases): no single power to take over
+        if usage.running_w and power and not device.power_steps and abs(usage.running_w / power - 1) > USAGE_DEVIATION:
             result.append(
                 Recommendation(
                     id=f"consumer_power:{device_id}",
