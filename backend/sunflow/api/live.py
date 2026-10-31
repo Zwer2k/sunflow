@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 
 from sunflow.config.models import DisplaySettings, SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.optimizers import optimizers as optimizer_list
 from sunflow.devices.site import (
     PV_OUTPUT_ROLES,
     device_kind,
@@ -68,6 +69,7 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "available": status.pv_output is not None,
                     "display": next((display(r) for r in PV_OUTPUT_ROLES if value(r) is not None), None)
                     or next((display(r) for r in PV_OUTPUT_ROLES if display(r)), None),
+                    "device_id": device.id,
                     "strings": pv_strings(roles),
                 }
             )
@@ -112,6 +114,11 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
                 }
             )
+    # Strings with optimizers open the roof view
+    assigned = optimizer_counts(config, profiles, snapshot)
+    for plant in pv:
+        for string in plant["strings"]:
+            string["optimizers"] = assigned.get(f"{plant['device_id']}:{string['index']}", 0)
     return {
         "time": datetime.now(UTC).isoformat(),
         "pv": pv,
@@ -127,6 +134,15 @@ async def get_live(request: Request) -> dict[str, Any]:
         else None,
         "display": config.display.model_dump(),
     }
+
+
+def optimizer_counts(config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot) -> dict[str, int]:
+    """Number of optimizers per string key."""
+    counts: dict[str, int] = {}
+    for optimizer in optimizer_list(config, profiles, snapshot)[0]:
+        if optimizer.string:
+            counts[optimizer.string] = counts.get(optimizer.string, 0) + 1
+    return counts
 
 
 @router.get("/config/display")

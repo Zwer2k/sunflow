@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { poll } from "../lib/poll.js";
 import { dailyRatios, splitFlows } from "../components/flows.js";
 import { formatPower, formatValue } from "../lib/format.js";
+import "../components/optimizer-view.js";
 
 const REFRESH_MS = 5000;
 const TODAY_REFRESH_MS = 5 * 60 * 1000;
@@ -109,6 +110,8 @@ class SunflowLive extends LitElement {
     _today: { state: true },
     _error: { state: true },
     _weatherDays: { state: true },
+    // String whose optimizers are shown: {key, name}
+    _optimizers: { state: true },
     _todayError: { state: true },
     _scroll: { state: true },
   };
@@ -206,6 +209,10 @@ class SunflowLive extends LitElement {
       ${live === null && !this._error ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
       ${live ? this._renderFlow(live) : nothing}
       ${this._renderToday()}
+      ${this._optimizers
+        ? html`<sf-optimizer-view .string=${this._optimizers.key} .heading=${`Optimierer · ${this._optimizers.name}`}
+            @close=${() => (this._optimizers = null)}></sf-optimizer-view>`
+        : nothing}
     `;
   }
 
@@ -310,6 +317,8 @@ class SunflowLive extends LitElement {
       (plant.strings ?? []).map((string) => ({
         ...string,
         label: live.pv.length > 1 ? `${plant.name.split(" ")[0]} ${string.name.replace("String ", "S")}` : string.name,
+        key: `${plant.device_id}:${string.index}`,
+        title: `${plant.name} ${string.name}`,
       })),
     );
     const top = strings.length ? STRING_ROW : 0;
@@ -402,9 +411,16 @@ class SunflowLive extends LitElement {
   }
 
   _stringNode(string, x) {
+    // With optimizers the string opens them as they sit on the roof
+    const open = string.optimizers > 0;
     return svg`
-      <g class="node">
+      <g class="node ${open ? "clickable" : ""}" role=${open ? "button" : "img"} tabindex=${open ? "0" : "-1"}
+        aria-label=${open ? `${string.title}: ${string.optimizers} Optimierer anzeigen` : string.title}
+        @click=${() => open && (this._optimizers = { key: string.key, name: string.title })}
+        @keydown=${(e) => open && (e.key === "Enter" || e.key === " ") && (this._optimizers = { key: string.key, name: string.title })}>
         <circle cx=${x} cy=${STRING_Y} r=${STRING_R} class="disc thin" style="stroke: ${COLOR.pv}"></circle>
+        ${open ? svg`<circle cx=${x + STRING_R * 0.72} cy=${STRING_Y - STRING_R * 0.72} r="9" class="badge"></circle>
+          <text x=${x + STRING_R * 0.72} y=${STRING_Y - STRING_R * 0.72 + 4} class="badge-text" text-anchor="middle">${string.optimizers}</text>` : nothing}
         <text x=${x} y=${STRING_Y + 5} class="string-value" text-anchor="middle">${formatPower(string.power_w, string.display)}</text>
         <text x=${x} y=${STRING_Y - STRING_R - 6} class="detail" text-anchor="middle">${string.label}</text>
       </g>
@@ -538,6 +554,11 @@ class SunflowLive extends LitElement {
     @media (prefers-reduced-motion: reduce) { .edge.flow { animation: none; stroke-dasharray: none; opacity: 0.8; } }
     .disc { fill: var(--sf-surface); stroke-width: 3; }
     .disc.thin { stroke-width: 2; }
+    .node.clickable { cursor: pointer; }
+    .node.clickable:hover .disc, .node.clickable:focus-visible .disc { stroke-width: 4; }
+    .node.clickable:focus { outline: none; }
+    .badge { fill: var(--sf-series-2); }
+    .badge-text { fill: var(--sf-surface); font-size: 11px; font-weight: 700; }
     .string-value { fill: var(--sf-text); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .icon path { fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .value { fill: var(--sf-text); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }

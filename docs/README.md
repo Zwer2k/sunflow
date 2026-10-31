@@ -10,5 +10,7 @@ und setzt den Plan auf Wunsch selbst um.
   geprüft ist.
 - [Sunflow-Integration](integration.md): Prognose im Energie-Dashboard, Entitäten,
   Aktionen, Ereignisse und Watchdog in Home Assistant.
+- [Optimierer](optimierer.md): Modul-Optimierer (Huawei, Tigo) je String auf dem Dach
+  anzeigen, zuordnen und anordnen.
 
 Weitere Seiten folgen, z. B. zu Einrichtung, Planung, Steuerung und eigenen Profilen.
