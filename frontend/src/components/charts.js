@@ -122,14 +122,18 @@ function frame(start, end, scale, formatY, { onScale = null, zoomed = false } = 
 
 /**
  * Step line of prices; points: [{start, end, price}] in €/kWh, shown in ct/kWh.
- * `start`/`end` widen the time axis to match other charts; `now` draws a marker.
+ * `range` ({start, end}) sets the time axis of the other charts, cutting off what lies outside;
+ * `now` draws a marker.
  */
-export function priceChart(points, label, { start: rangeStart = null, end: rangeEnd = null, now = null } = {}) {
+export function priceChart(points, label, { range = null, now = null } = {}) {
   fit();
-  if (!points.length) return nothing;
-  const parsed = points.map((p) => ({ start: new Date(p.start), end: new Date(p.end), ct: p.price * 100 }));
-  const start = rangeStart && rangeStart < parsed[0].start ? rangeStart : parsed[0].start;
-  const end = rangeEnd && rangeEnd > parsed.at(-1).end ? rangeEnd : parsed.at(-1).end;
+  const parsed = points
+    .map((p) => ({ start: new Date(p.start), end: new Date(p.end), ct: p.price * 100 }))
+    .filter((p) => !range || (p.end > range.start && p.start < range.end))
+    .map((p) => (range ? { ...p, start: new Date(Math.max(p.start, range.start)), end: new Date(Math.min(p.end, range.end)) } : p));
+  if (!parsed.length) return nothing;
+  const start = range?.start ?? parsed[0].start;
+  const end = range?.end ?? parsed.at(-1).end;
   const { x, y, axes, left } = frame(start, end, niceScale(Math.max(...parsed.map((p) => p.ct)) * 1.05), (v) => `${Math.round(v)} ct`);
   const nowX = now ? x(now) : null;
   const path = parsed.map((p, i) => `${i ? "L" : "M"}${x(p.start)},${y(p.ct)} L${x(p.end)},${y(p.ct)}`).join(" ");
