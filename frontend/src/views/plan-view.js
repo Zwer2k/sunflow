@@ -540,7 +540,7 @@ class SunflowPlan extends LitElement {
     return html`<div class="small ${differs ? "warn-text" : "muted"}">
       Tatsächlich: Speicher ${what}${differs
         ? plan.controlling
-          ? " – weicht vom Plan ab (Sunflow steuert; Grenzen des Wechselrichters oder eine Viertelstunde Verzögerung)"
+          ? " – weicht seit einigen Minuten vom Plan ab (Sunflow steuert; Grenzen des Wechselrichters oder eine Viertelstunde Verzögerung)"
           : " – nicht von Sunflow, eine andere Steuerung ist aktiv (Sunflow plant nur)"
         : ""}
     </div>`;

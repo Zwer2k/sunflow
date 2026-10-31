@@ -11,7 +11,6 @@ from sunflow.config.models import SunflowConfig
 from sunflow.control.controller import PlanController
 from sunflow.ha import HAError
 from sunflow.shadow.runner import ShadowRunner, current_plan
-from sunflow.shadow.store import actual_action
 
 from .common import _library, _local_tz, _slot_start, _snapshot
 
@@ -117,7 +116,8 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
         # What the battery does right now (Sunflow does not control yet; another system may)
         "actual": asdict(sample)
         | {"time": runner.last_sample_at.isoformat() if runner.last_sample_at else None}
-        | {"action": actual_action(sample.grid_w, sample.battery_w)}
+        # Judged over the last minutes: a single reading often shows a deviation that is none
+        | {"action": runner.recent_action()}
         if sample
         else None,
     }

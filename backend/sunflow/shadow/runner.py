@@ -29,7 +29,7 @@ from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
 from sunflow.planning.vehicles import unplugged_choices
 from sunflow.shadow.counters import EnergyCounters
 
-from .store import Sample, ShadowStore, SlotRecorder, slot_start
+from .store import Sample, ShadowStore, SlotRecorder, actual_action, slot_start
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -364,6 +364,18 @@ class ShadowRunner:
                 self.status.last_error = f"Plan: {err}"
             if not self._replan_again:
                 return
+
+    def recent_action(self) -> str | None:
+        """What the battery did over the last minutes (mean of the recent samples).
+
+        One sample combines meters read at different moments (e.g. the grid meter every
+        few seconds, the inverter every half minute) and catches load steps the inverter
+        is still regulating; it often looks like grid charging that is not there.
+        """
+        pairs = [(s.grid_w, s.battery_w) for s in self._recent if s.grid_w is not None and s.battery_w is not None]
+        if not pairs:
+            return None
+        return actual_action(sum(g for g, _ in pairs) / len(pairs), sum(b for _, b in pairs) / len(pairs))
 
     def relearn(self) -> None:
         """Learn again with the next plan instead of within the hour."""
