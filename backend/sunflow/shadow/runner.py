@@ -368,7 +368,7 @@ class ShadowRunner:
             self._replan_again = False
             if not self._client.connected:
                 # Home Assistant restarting: the tick plans again once connected
-                _LOGGER.debug("Replan deferred: not connected to Home Assistant")
+                _LOGGER.info("Home Assistant not connected (restarting?) – planning again once it is back")
                 self._planned_slot = None
                 return
             try:
