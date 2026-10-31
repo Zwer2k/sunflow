@@ -72,8 +72,9 @@ async def export_forecasts(
     """Corrected forecasts of every plane assigned to a plant, of each plant and of all.
 
     A plane uses its own learned correction, else the site's (as the planner does,
-    without the cloud classes: the weather forecast does not reach as far). Hours of
-    today the source no longer delivers come from the forecast Sunflow recorded then.
+    without the cloud classes: the weather forecast does not reach as far). Hours the
+    source no longer delivers (today's past, earlier days) come from the forecast Sunflow
+    recorded then.
     A last day the source covers only partly is left out, it would show as a day
     without sun.
     """

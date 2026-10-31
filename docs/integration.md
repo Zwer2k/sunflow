@@ -39,7 +39,9 @@ erneut an, solange er angeboten bleibt.
    „Sunflow PV-Strings“ als Solarquelle nehmen.
 
 Die Prognose ist die der gewählten Quelle (Solcast, Forecast.Solar) mit der gelernten
-Korrektur je Fläche, stündlich ab Tagesbeginn und über die volle Reichweite der Quelle.
+Korrektur je Fläche, stündlich über die volle Reichweite der Quelle. Zurückliegende
+Stunden (auch die vergangenen 31 Tage) kommen aus der Prognose, die Sunflow damals
+aufgezeichnet hat.
 Je Prognose gibt es zusätzlich die Sensoren „Prognose heute“, „Prognose Rest heute“,
 „Prognose morgen“ und „Prognose Leistung jetzt“.
 

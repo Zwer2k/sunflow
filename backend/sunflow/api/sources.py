@@ -214,8 +214,10 @@ async def get_string_energy(request: Request) -> dict[str, Any]:
     return {"strings": strings}
 
 
-# The energy dashboard shows today and the days ahead
+# The energy dashboard shows the days ahead, and past days (week and month views) from
+# the forecast Sunflow recorded then
 EXPORT_DAYS = 7
+EXPORT_PAST_DAYS = 31
 
 
 @router.get("/forecast/export")
@@ -239,7 +241,7 @@ async def get_forecast_export(request: Request) -> dict[str, Any]:
 
     try:
         site = await runner.pv_correction()
-        rows = await asyncio.to_thread(runner.shadow.rows, midnight)
+        rows = await asyncio.to_thread(runner.shadow.rows, midnight - timedelta(days=EXPORT_PAST_DAYS))
         recorded: dict[str, list[ForecastPoint]] = {}
         for row in rows:
             begin = datetime.fromisoformat(row["start"])
