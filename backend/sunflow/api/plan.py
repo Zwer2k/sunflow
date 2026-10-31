@@ -110,6 +110,7 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
             *response["warnings"],
         ]
     controller: PlanController | None = getattr(request.app.state, "controller", None)
+    recent = runner.recent_means() or (None, None)
     return response | {
         "controlling": bool(controller and any(s.active for s in controller.statuses.values())),
         "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
@@ -117,7 +118,7 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
         "actual": asdict(sample)
         | {"time": runner.last_sample_at.isoformat() if runner.last_sample_at else None}
         # Judged over the last minutes: a single reading often shows a deviation that is none
-        | {"action": runner.recent_action()}
+        | {"action": runner.recent_action(), "recent_grid_w": recent[0], "recent_battery_w": recent[1]}
         if sample
         else None,
     }

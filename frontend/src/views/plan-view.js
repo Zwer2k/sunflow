@@ -24,7 +24,7 @@ const MAX_AHEAD_DAYS = 7;
 // The plan never reaches further than this; beyond it only the PV forecast is shown
 const MAX_PLAN_HOURS = 48;
 // The plan is kept by the background runner; reloading only fetches it and the statistics
-const REFRESH_MS = 2 * 60 * 1000;
+const REFRESH_MS = 60 * 1000;
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const TOTAL_KEY = "sunflow.plan.total";
 const RAW_PV_KEY = "sunflow.plan.rawPv";
@@ -530,8 +530,10 @@ class SunflowPlan extends LitElement {
     const actual = plan.actual;
     if (!actual || actual.battery_w === null || actual.battery_w === undefined) return nothing;
     const power = formatValue(Math.abs(actual.battery_w), "W");
+    // The source goes by the last minutes, like the deviation below
+    const fromGrid = (actual.recent_grid_w ?? actual.grid_w ?? 0) > 100;
     const what =
-      actual.battery_w > 100 ? `lädt ${power}${(actual.grid_w ?? 0) > 100 ? " aus dem Netz" : " aus PV"}`
+      actual.battery_w > 100 ? `lädt ${power}${fromGrid ? " aus dem Netz" : " aus PV"}`
       : actual.battery_w < -100 ? `entlädt ${power}`
       : "ruht";
     // Limits count as their basic behaviour; the measurement cannot tell them apart
@@ -542,6 +544,8 @@ class SunflowPlan extends LitElement {
         ? plan.controlling
           ? " – weicht seit einigen Minuten vom Plan ab (Sunflow steuert; Grenzen des Wechselrichters oder eine Viertelstunde Verzögerung)"
           : " – nicht von Sunflow, eine andere Steuerung ist aktiv (Sunflow plant nur)"
+        : ""}${differs && actual.recent_grid_w !== null && actual.recent_grid_w !== undefined
+        ? ` · Ø letzte Minuten: Netz ${formatValue(actual.recent_grid_w, "W")}, Speicher ${formatValue(actual.recent_battery_w, "W")}`
         : ""}
     </div>`;
   }

@@ -55,8 +55,11 @@ EARLY_REPLAN_PV_SHARE = 0.3
 EARLY_REPLAN_LOAD_W = 1500.0
 EARLY_REPLAN_SOC_SHARE = 0.05
 # Not more often than this; the deviation has to last a few minutes (clouds pass)
-EARLY_REPLAN_PAUSE = timedelta(minutes=5)
+EARLY_REPLAN_PAUSE = timedelta(minutes=3)
+EARLY_REPLAN_SAMPLES = 3
 RECENT_SAMPLES = 5
+# Fewer samples (just after a start) say nothing about what the battery does
+RECENT_ACTION_MIN_SAMPLES = 3
 NOWCAST_MIN_SAMPLES = 4
 
 
@@ -304,7 +307,7 @@ class ShadowRunner:
 
     def _deviation(self) -> str | None:
         """Why the plan no longer fits the live values (lasting the last minutes), None if it does."""
-        if self.latest is None or self.status.last_plan is None or len(self._recent) < RECENT_SAMPLES:
+        if self.latest is None or self.status.last_plan is None or len(self._recent) < EARLY_REPLAN_SAMPLES:
             return None
         if datetime.now(UTC) - self.status.last_plan < EARLY_REPLAN_PAUSE:
             return None
@@ -316,8 +319,8 @@ class ShadowRunner:
             return None
 
         def lasting(value: Callable[[Sample], float | None], limit: float) -> float | None:
-            deviations = [d for s in self._recent if (d := value(s)) is not None]
-            if len(deviations) < RECENT_SAMPLES or not all(abs(d) > limit for d in deviations):
+            deviations = [d for s in list(self._recent)[-EARLY_REPLAN_SAMPLES:] if (d := value(s)) is not None]
+            if len(deviations) < EARLY_REPLAN_SAMPLES or not all(abs(d) > limit for d in deviations):
                 return None
             # The same direction throughout, not a flicker around the plan
             return sum(deviations) / len(deviations) if all(d > 0 for d in deviations) or all(d < 0 for d in deviations) else None
@@ -365,17 +368,21 @@ class ShadowRunner:
             if not self._replan_again:
                 return
 
-    def recent_action(self) -> str | None:
-        """What the battery did over the last minutes (mean of the recent samples).
+    def recent_means(self) -> tuple[float, float] | None:
+        """Mean grid and battery power of the last minutes, None while too few samples.
 
         One sample combines meters read at different moments (e.g. the grid meter every
         few seconds, the inverter every half minute) and catches load steps the inverter
         is still regulating; it often looks like grid charging that is not there.
         """
         pairs = [(s.grid_w, s.battery_w) for s in self._recent if s.grid_w is not None and s.battery_w is not None]
-        if not pairs:
+        if len(pairs) < RECENT_ACTION_MIN_SAMPLES:
             return None
-        return actual_action(sum(g for g, _ in pairs) / len(pairs), sum(b for _, b in pairs) / len(pairs))
+        return sum(g for g, _ in pairs) / len(pairs), sum(b for _, b in pairs) / len(pairs)
+
+    def recent_action(self) -> str | None:
+        """What the battery did over the last minutes."""
+        return actual_action(*means) if (means := self.recent_means()) else None
 
     def relearn(self) -> None:
         """Learn again with the next plan instead of within the hour."""
