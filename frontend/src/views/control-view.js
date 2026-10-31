@@ -85,6 +85,7 @@ class SunflowControl extends LitElement {
     _logDevice: { state: true },
     _logHours: { state: true },
     _logForeign: { state: true },
+    _logErrors: { state: true },
   };
 
   constructor() {
@@ -98,6 +99,7 @@ class SunflowControl extends LitElement {
     this._logDevice = "";
     this._logHours = 24;
     this._logForeign = false;
+    this._logErrors = false;
   }
 
   connectedCallback() {
@@ -217,7 +219,9 @@ class SunflowControl extends LitElement {
   }
 
   _renderLog(log, devices) {
-    const entries = (this._logForeign ? log.filter((e) => e.kind === "extern") : log).slice(0, LOG_ROWS);
+    const entries = log
+      .filter((e) => (!this._logForeign || e.kind === "extern") && (!this._logErrors || e.error))
+      .slice(0, LOG_ROWS);
     const today = new Date().toDateString();
     const when = (iso) => (new Date(iso).toDateString() === today ? time : dayTime).format(new Date(iso));
     return html`
@@ -225,8 +229,9 @@ class SunflowControl extends LitElement {
         <div class="card-head">
           <div>
             <h2>Protokoll</h2>
-            <p class="small muted">Was Sunflow an den gesteuerten Geräten geschrieben hat – und Änderungen, die nicht von
-              Sunflow kamen, mit dem, was Home Assistant über den Auslöser weiß. Geprüft wird jede Minute.</p>
+            <p class="small muted">Was Sunflow an den gesteuerten Geräten geschrieben hat, mit Schreibfehlern (ein Fehler, der
+              jede Minute wiederkommt, steht einmal da) – und Änderungen, die nicht von Sunflow kamen, mit dem, was Home
+              Assistant über den Auslöser weiß. Geprüft wird jede Minute.</p>
           </div>
         </div>
         <div class="log-filters">
@@ -243,6 +248,10 @@ class SunflowControl extends LitElement {
             <input type="checkbox" .checked=${this._logForeign} @change=${(e) => (this._logForeign = e.target.checked)}>
             <span>nur fremde Änderungen</span>
           </label>
+          <label class="switch small">
+            <input type="checkbox" .checked=${this._logErrors} @change=${(e) => (this._logErrors = e.target.checked)}>
+            <span>nur Fehler</span>
+          </label>
         </div>
         ${entries.length
           ? html`<ul class="log">
@@ -258,7 +267,7 @@ class SunflowControl extends LitElement {
                       : nothing}${e.error ? html`<span class="warn-text"> · Fehler: ${e.error}</span>` : nothing}`}</span>
               </li>`)}
             </ul>`
-          : html`<p class="small muted">${this._logForeign ? "Keine fremden Änderungen" : "Keine Einträge"} im gewählten Zeitraum.</p>`}
+          : html`<p class="small muted">${this._logErrors ? "Keine Fehler" : this._logForeign ? "Keine fremden Änderungen" : "Keine Einträge"} im gewählten Zeitraum.</p>`}
       </section>
     `;
   }

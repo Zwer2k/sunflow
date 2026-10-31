@@ -68,6 +68,8 @@ class ControlJournal:
         # Entities Sunflow wrote per device, watched besides the role entities
         self.written: dict[str, set[str]] = {}
         self.own_user: str | None = None
+        # Device -> error logged last; a failure repeated every minute is logged once
+        self._failing: dict[str, str] = {}
         self.users: dict[str, str] = {}
         self._identity_at = datetime.min.replace(tzinfo=UTC)
         self._load()
@@ -121,6 +123,12 @@ class ControlJournal:
         calls: list[PlannedCall], now: datetime, error: str | None = None,
     ) -> None:
         """Sunflow wrote to a device."""
+        if error is not None:
+            if self._failing.get(device_id) == error:
+                return
+            self._failing[device_id] = error
+        else:
+            self._failing.pop(device_id, None)
         for call in calls:
             if call.entity_id and call.status == "done":
                 self._own[call.entity_id] = (expected_state(call), now)
@@ -133,6 +141,10 @@ class ControlJournal:
                 for c in calls if c.status != "skipped"
             ],
         })
+
+    def settled(self, device_id: str) -> None:
+        """The device holds what Sunflow wants: a new failure is logged again."""
+        self._failing.pop(device_id, None)
 
     def note(self, device_id: str, device: str, action: str, reason: str, now: datetime) -> None:
         """A write without single calls to show (e.g. the control mode switched)."""
