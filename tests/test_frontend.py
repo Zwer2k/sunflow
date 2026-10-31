@@ -710,3 +710,20 @@ def test_integration_forecast_kinds(tmp_path: Path) -> None:
     assert client.put("/api/v1/config/integration", json={"forecast_kinds": ["plane"]}).status_code == 200
     assert app.state.store.load().integration.forecast_kinds == ["plane"]
     assert client.put("/api/v1/config/integration", json={"forecast_kinds": ["strings"]}).status_code == 422
+
+
+async def test_display_settings_are_stored(tmp_path: Path) -> None:
+    """Weather shown by default; switching it off per screen size is kept."""
+    from types import SimpleNamespace
+
+    from sunflow.api import live as api
+    from sunflow.config.models import DisplaySettings
+    from sunflow.config.store import ConfigStore
+
+    store = ConfigStore(tmp_path)
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(store=store)))
+    assert await api.get_display(request) == {"weather_mobile": True, "weather_desktop": True}
+
+    await api.set_display(request, DisplaySettings(weather_mobile=False))
+
+    assert ConfigStore(tmp_path).load().display == DisplaySettings(weather_mobile=False, weather_desktop=True)

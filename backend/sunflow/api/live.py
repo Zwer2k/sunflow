@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
-from sunflow.config.models import SunflowConfig
+from sunflow.config.models import DisplaySettings, SunflowConfig
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.site import (
     PV_OUTPUT_ROLES,
@@ -121,8 +121,28 @@ async def get_live(request: Request) -> dict[str, Any]:
         "load_w": load_w,
         "consumers": consumers,
         "displays": displays,
-        "weather": await _live_weather(request, config, snapshot),
+        # Not fetched when no screen shows it
+        "weather": await _live_weather(request, config, snapshot)
+        if config.display.weather_mobile or config.display.weather_desktop
+        else None,
+        "display": config.display.model_dump(),
     }
+
+
+@router.get("/config/display")
+async def get_display(request: Request) -> dict[str, Any]:
+    """What the pages show."""
+    return request.app.state.store.load().display.model_dump()
+
+
+@router.put("/config/display")
+async def set_display(request: Request, body: DisplaySettings) -> dict[str, Any]:
+    """Choose what the pages show."""
+    store = request.app.state.store
+    config = store.load()
+    config.display = body
+    store.save(config)
+    return body.model_dump()
 
 
 WEATHER_CACHE = timedelta(minutes=10)

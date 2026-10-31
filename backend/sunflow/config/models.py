@@ -285,6 +285,13 @@ class IntegrationSettings(BaseModel):
     forecast_kinds: list[ForecastKind] = Field(default_factory=lambda: ["total", "plant", "plane"])
 
 
+class DisplaySettings(BaseModel):
+    """What the App's pages show; phones and wider screens apart."""
+
+    weather_mobile: bool = True
+    weather_desktop: bool = True
+
+
 class ControlSettings(BaseModel):
     """Whether Sunflow carries out its plan on the devices (off: planning only)."""
 
@@ -317,6 +324,7 @@ class SunflowConfig(BaseModel):
     priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
     control: ControlSettings = Field(default_factory=ControlSettings)
     integration: IntegrationSettings = Field(default_factory=IntegrationSettings)
+    display: DisplaySettings = Field(default_factory=DisplaySettings)
     vehicles: list[Vehicle] = Field(default_factory=list)
     # Vehicle at wallbox: card, target, ready by
     charging: list[ChargingProfile] = Field(default_factory=list)

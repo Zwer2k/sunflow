@@ -110,6 +110,7 @@ const STEPS = [
   ["consumers", "Verbraucher"],
   ["sources", "Tarif & Prognose"],
   ["standards", "Planung"],
+  ["display", "Anzeige"],
   ["summary", "Übersicht"],
 ];
 const stepIndex = (step) => (typeof step === "number" ? step : Math.max(STEPS.findIndex(([key]) => key === step), 0));
@@ -214,6 +215,7 @@ class SunflowApp extends LitElement {
     _directProfiles: { state: true },
     _link: { state: true },
     _integrationSettings: { state: true },
+    _display: { state: true },
     _manualEditId: { state: true },
     _tests: { state: true },
     _testConfirm: { state: true },
@@ -260,6 +262,7 @@ class SunflowApp extends LitElement {
     this._directProfiles = null;
     this._link = null;
     this._integrationSettings = null;
+    this._display = null;
     // Sunflow device id -> device test state
     this._tests = {};
     this._testConfirm = new Set();
@@ -1110,6 +1113,8 @@ class SunflowApp extends LitElement {
         return this._renderSources();
       case "standards":
         return html`<sf-standards></sf-standards>`;
+      case "display":
+        return this._renderDisplay();
       default:
         return this._renderSummary();
     }
@@ -1158,6 +1163,40 @@ class SunflowApp extends LitElement {
           </div>`
         : html`<div><button class="secondary" @click=${() => this._showLink()}>Zugangsdaten anzeigen …</button></div>`}
     </section>`;
+  }
+
+  _renderDisplay() {
+    const display = this._display;
+    if (!display) {
+      // Loaded once when the area is first shown; undefined while loading
+      if (display === null) {
+        this._display = undefined;
+        api.display().then((loaded) => (this._display = loaded)).catch(() => (this._display = null));
+      }
+      return html`<h1>Anzeige</h1><p class="muted">Lade …</p>`;
+    }
+    const option = (key, label) => html`<label class="inline">
+      <input type="checkbox" .checked=${display[key]} @change=${(e) => this._setDisplay({ [key]: e.target.checked })}> ${label}</label>`;
+    return html`
+      <div class="heading">
+        <h1>Anzeige</h1>
+        <p class="muted">Was die Seiten zeigen – für Handy und größere Bildschirme getrennt.</p>
+      </div>
+      <section class="device compact">
+        <div class="device-title">Wetter in der Live-Ansicht</div>
+        <span class="inline">${option("weather_mobile", "auf dem Handy")} ${option("weather_desktop", "auf Tablet und Computer")}</span>
+        <p class="small muted">Ausgeblendet bleibt mehr Platz für den Energiefluss. Ist es überall aus, fragt Sunflow die
+          Wettervorhersage für die Live-Ansicht gar nicht erst ab.</p>
+      </section>
+    `;
+  }
+
+  async _setDisplay(changes) {
+    try {
+      this._display = await api.setDisplay({ ...this._display, ...changes });
+    } catch (err) {
+      this._error = `Einstellung nicht gespeichert: ${err.message}`;
+    }
   }
 
   _renderForecastKinds() {

@@ -33,8 +33,16 @@ const COLOR = {
   consumers: ["var(--sf-series-5)", "var(--sf-series-6)", "var(--sf-series-4)", "var(--sf-series-neutral)"],
 };
 
-const NODE = { pv: [300, 72], grid: [100, 222], battery: [300, 372], home: [500, 222] };
+// Grid, PV/battery and house close together: a narrower diagram is taller at the same width (phones)
+const GAP = 160;
+const GRID_X = 90;
+const MID_X = GRID_X + GAP;
+const HOME_X = MID_X + GAP;
+const CONSUMER_X = HOME_X + 170;
+const NODE = { pv: [MID_X, 72], grid: [GRID_X, 222], battery: [MID_X, 372], home: [HOME_X, 222] };
 const R = 46;
+// Edges leave the PV and battery nodes bending this far towards their target
+const BEND = GAP / 2;
 
 const ICONS = {
   pv: "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z",
@@ -190,7 +198,9 @@ class SunflowLive extends LitElement {
         <span class="small muted subtitle"><span>Aktuelle Energieflüsse</span>${live
           ? html`<span class="stand">Stand ${dayFormat.format(new Date(live.time))}</span>`
           : nothing}</span>
-        ${live?.weather ? this._renderWeather(live.weather) : nothing}
+        ${live?.weather && (live.display?.weather_mobile || live.display?.weather_desktop)
+          ? this._renderWeather(live.weather, live.display)
+          : nothing}
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${live === null && !this._error ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
@@ -199,12 +209,14 @@ class SunflowLive extends LitElement {
     `;
   }
 
-  _renderWeather(weather) {
+  _renderWeather(weather, display) {
     const [symbol, name] = WEATHER[weather.condition] ?? ["", weather.condition ?? ""];
     const temp = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)}${weather.temperature_unit ?? "°C"}`);
     const showDays = this._weatherDays && Boolean(weather.days?.length);
     return html`
-      <div class="weather" aria-label="Wetter">
+      <div class="weather ${display?.weather_mobile === false ? "hide-mobile" : ""} ${display?.weather_desktop === false
+        ? "hide-desktop"
+        : ""}" aria-label="Wetter">
         <div class="weather-now">
           <span class="weather-symbol" aria-hidden="true">${symbol}</span>
           <div>
@@ -292,7 +304,7 @@ class SunflowLive extends LitElement {
     const height = Math.max(hasBattery ? 444 : 300, 90 + spread + 90);
     const consumerY = (i) =>
       consumers.length === 1 ? NODE.home[1] : 90 + (i * (spread / Math.max(consumers.length - 1, 1)));
-    const width = consumers.length ? 760 : 600;
+    const width = consumers.length ? CONSUMER_X + 80 : HOME_X + 100;
     // PV strings as a row of small nodes above the PV node, flowing into it
     const strings = live.pv.flatMap((plant) =>
       (plant.strings ?? []).map((string) => ({
@@ -327,15 +339,23 @@ class SunflowLive extends LitElement {
         )}
         ${strings.map((string, i) => this._stringNode(string, stringX(i)))}
         <g transform="translate(0, ${top})">
-        ${hasPv ? this._edge("M300,118 C300,190 400,222 454,222", flows.pvToHome, COLOR.pv) : nothing}
-        ${hasPv && hasGrid ? this._edge("M300,118 C300,190 200,222 146,222", flows.pvToGrid, COLOR.pv) : nothing}
-        ${hasPv && hasBattery ? this._edge("M300,118 L300,326", flows.pvToBattery, COLOR.pv) : nothing}
-        ${hasGrid ? this._edge("M146,222 L454,222", flows.gridToHome, COLOR.grid) : nothing}
-        ${hasGrid && hasBattery ? this._edge("M146,222 C200,222 300,260 300,326", flows.gridToBattery, COLOR.grid) : nothing}
-        ${hasBattery ? this._edge("M300,326 C300,260 400,222 454,222", flows.batteryToHome, COLOR.battery) : nothing}
-        ${hasBattery && hasGrid ? this._edge("M300,326 C300,260 200,222 146,222", flows.batteryToGrid, COLOR.battery) : nothing}
+        ${hasPv ? this._edge(`M${MID_X},118 C${MID_X},190 ${MID_X + BEND},222 ${HOME_X - R},222`, flows.pvToHome, COLOR.pv) : nothing}
+        ${hasPv && hasGrid ? this._edge(`M${MID_X},118 C${MID_X},190 ${MID_X - BEND},222 ${GRID_X + R},222`, flows.pvToGrid, COLOR.pv) : nothing}
+        ${hasPv && hasBattery ? this._edge(`M${MID_X},118 L${MID_X},326`, flows.pvToBattery, COLOR.pv) : nothing}
+        ${hasGrid ? this._edge(`M${GRID_X + R},222 L${HOME_X - R},222`, flows.gridToHome, COLOR.grid) : nothing}
+        ${hasGrid && hasBattery
+          ? this._edge(`M${GRID_X + R},222 C${MID_X - BEND},222 ${MID_X},260 ${MID_X},326`, flows.gridToBattery, COLOR.grid)
+          : nothing}
+        ${hasBattery ? this._edge(`M${MID_X},326 C${MID_X},260 ${MID_X + BEND},222 ${HOME_X - R},222`, flows.batteryToHome, COLOR.battery) : nothing}
+        ${hasBattery && hasGrid
+          ? this._edge(`M${MID_X},326 C${MID_X},260 ${MID_X - BEND},222 ${GRID_X + R},222`, flows.batteryToGrid, COLOR.battery)
+          : nothing}
         ${consumers.map((c, i) =>
-          this._edge(`M546,222 C610,222 600,${consumerY(i)} 636,${consumerY(i)}`, c.power_w, COLOR.consumers[i]),
+          this._edge(
+            `M${HOME_X + R},222 C${HOME_X + R + 64},222 ${HOME_X + R + 54},${consumerY(i)} ${CONSUMER_X - 44},${consumerY(i)}`,
+            c.power_w,
+            COLOR.consumers[i],
+          ),
         )}
 
         ${hasPv
@@ -350,7 +370,7 @@ class SunflowLive extends LitElement {
           : nothing}
         ${this._node("home", NODE.home, COLOR.home, "Haus", formatPower(homeBase, displays.load),
           consumers.length ? `gesamt ${formatPower(flows.house, displays.load)}` : null)}
-        ${consumers.map((c, i) => this._consumerNode(c, [680, consumerY(i)], COLOR.consumers[i]))}
+        ${consumers.map((c, i) => this._consumerNode(c, [CONSUMER_X, consumerY(i)], COLOR.consumers[i]))}
         </g>
       </svg>
       ${battery?.parts?.length
@@ -534,6 +554,9 @@ class SunflowLive extends LitElement {
     }
     .soc-track { fill: none; stroke: var(--sf-border); stroke-width: 4; }
     .weather { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; }
+    /* Hidden per screen size in the settings; same breakpoint as the layout above */
+    @media (max-width: 600px) { .weather.hide-mobile { display: none; } }
+    @media (min-width: 601px) { .heading .weather.hide-desktop { display: none; } }
     .weather-now { display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
     .weather-symbol { font-size: 24px; line-height: 1; }
     .range { display: flex; flex: none; gap: 2px; background: var(--sf-subtle); padding: 2px; border-radius: 8px; }

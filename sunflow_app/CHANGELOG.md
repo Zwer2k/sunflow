@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.51.0
+
+- Einstellungen → Anzeige (neu): Das Wetter in der Live-Ansicht lässt sich für Handy und für Tablet/Computer getrennt ausblenden. Ist es überall aus, wird die Wettervorhersage dafür nicht mehr abgefragt.
+- Live: Netz, PV/Speicher und Haus rücken im Energiefluss enger zusammen. Das Diagramm ist schmaler und wird bei gleicher Breite (Handy) höher und größer dargestellt.
+
 ## 0.50.3
 
 - Einstellungen auf dem Handy: Pfeile am Rand der Bereichszeile zeigen, dass es links bzw. rechts weitere Bereiche gibt. Antippen scrollt weiter.
