@@ -73,6 +73,16 @@ die nächste Viertelstunde genug erwartet; herunter schneller, damit kein Netzst
 Mindestabstand und Tageslimit verhindern Pendeln bei wechselhaftem Wetter. Beim Zurückgeben
 bekommt die Wallbox ihren vorherigen Phasenmodus wieder.
 
+12-V-Batterie schützen (Einstellungen → Fahrzeuge): Manche Autos, z. B. der Fiat 500e, entladen
+ihre 12-V-Bordnetzbatterie, wenn sie lange angesteckt bleiben, ohne zu laden. Mit einem
+Spannungssensor aus der Integration des Autos überwacht Sunflow sie, solange das Auto an der
+Wallbox steckt. Unter der eingestellten Grenze (Vorgabe 12,2 V) lädt die Wallbox für die
+eingestellte Zeit (Vorgabe 5 min) mit dem kleinsten Strom und – wenn sie umschalten kann –
+einphasig; dabei lädt das Auto auch die 12-V-Batterie nach. Danach gilt wieder der Plan. Frühestens
+nach der Pause (Vorgabe 60 min) beginnt es erneut, damit ein selten aktualisierter Sensor nicht
+ständig neu auslöst. Lädt die Wallbox nach Plan ohnehin, bleibt es dabei. Ein evcc-Ladepunkt
+lädt dafür im Modus „Min+PV“. Wirkt nur, solange Sunflow die Wallbox steuert.
+
 ## Eigene Verbraucher
 
 Geräte, die Sunflow nicht von selbst erkennt, legst du in den Einstellungen unter

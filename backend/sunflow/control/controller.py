@@ -25,7 +25,8 @@ from pathlib import Path
 import re
 from typing import Any
 
-from sunflow.config.models import DeviceConfig, SunflowConfig
+from sunflow.config.models import AuxBatteryGuard, DeviceConfig, SunflowConfig, Vehicle
+from sunflow.control.aux_battery import AuxCharge, aux_charge_due, aux_voltage
 from sunflow.control.journal import ControlJournal
 from sunflow.devices.discovery import Snapshot, fetch_snapshot
 from sunflow.devices.executor import (
@@ -45,6 +46,7 @@ from sunflow.devices.resolver import device_entities, preview
 from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
+from sunflow.planning.vehicles import vehicle_at
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -651,6 +653,8 @@ class PlanController:
         # Phase switch mode of chargers before Sunflow switched them, restored on hand back
         self._phase_marker = TakeoverMarker(marker.data_dir, "phase_modes.json")
         self._phases: dict[str, PhaseState] = {}
+        # Top-ups of the 12 V battery per wallbox
+        self._aux: dict[str, AuxCharge] = {}
         self._access_for = access_for
         self._profiles = profiles
         self.statuses: dict[str, DeviceControl] = {}
@@ -808,8 +812,9 @@ class PlanController:
             action, power, reason = "release", None, info.reason
         access = self._access_for(device)
         await take_over(access, self._marker, device)
+        aux = self._aux_due(device, snapshot, now)
         if (
-            action == "charge"
+            (action == "charge" or aux is not None)
             and info is not None
             # Only a sure recognition: "the only vehicle" would also let a foreign car charge
             and info.vehicle_method in ("manual", "sensor")
@@ -820,6 +825,9 @@ class PlanController:
             # Recognized without its card: start the transaction as if the card had been scanned
             transaction = f"card_{profile.card - 1}" if profile.card else "without_card"
             await apply(access, status, "authorize", None, now, {"transaction": transaction}, reason="Fahrzeug erkannt: Laden freigeben")
+        if aux is not None and action != "charge":
+            await self._aux_top_up(device, status, access, aux, now, snapshot)
+            return
         if action == "release" and access.release is None:
             # Nothing of its own to fall back to (evcc): its previous mode until a plan is there again
             if (previous := self._marker.get().get(device.id)) and access.set_mode:
@@ -849,6 +857,9 @@ class PlanController:
                     params = params | {"phases": phases}
                 smallest = min((w for w in steps.values() if w > 0), default=None) if steps else None
                 followed = follow_surplus(power, getattr(slot, "pv_w", 0.0), live, status.action == "charge", params, smallest)
+                if followed is None and aux is not None:
+                    await self._aux_top_up(device, status, access, aux, now, snapshot)
+                    return
                 if followed is None:
                     action, reason = "stop", "zu wenig PV-Überschuss für die kleinste Leistung"
                 else:
@@ -889,16 +900,79 @@ class PlanController:
         status.phases = target
         if target == current:
             return current
+        await self._set_phases(device, profile, current, target, now, snapshot, f"Phasenumschaltung {current} → {target}")
+        return target
+
+    async def _set_phases(
+        self, device: DeviceConfig, profile: dict[str, Any], current: int, target: int, now: datetime,
+        snapshot: Snapshot | None, reason: str,
+    ) -> None:
         if device.id not in self._phase_marker.get() and (remember := profile["phase_switch"].get("remember")):
             self._phase_marker.set(device.id, phase_option(remember["key"], device, snapshot))
         bookkeeping = DeviceControl(device_id=device.id, name=device.name)
         await apply(
-            self._access_for(device), bookkeeping, PHASES_ONE if target == 1 else PHASES_THREE, None, now,
-            reason=f"Phasenumschaltung {current} → {target}",
+            self._access_for(device), bookkeeping, PHASES_ONE if target == 1 else PHASES_THREE, None, now, reason=reason
         )
-        state.switched(now)
+        self._phases.setdefault(device.id, PhaseState()).switched(now)
         _LOGGER.info("%s: %d -> %d phases", device.name, current, target)
-        return target
+
+    def _aux_due(self, device: DeviceConfig, snapshot: Snapshot | None, now: datetime) -> tuple[Vehicle, AuxCharge] | None:
+        """The plugged-in vehicle whose 12 V battery is being topped up now, with the top-up."""
+        state = self._aux.setdefault(device.id, AuxCharge())
+        if snapshot is None or not any(v.aux_battery.voltage_entity for v in self._config.vehicles_at(device.id)):
+            state.until = None
+            return None
+        profile = self._profiles()[device.profile]
+        overrides = {k: o.model_dump() for k, o in device.role_overrides.items()}
+        roles = {r.role: r for r in preview(profile, snapshot, device.ha_device_id, overrides)}
+        connected = "connected" in roles and roles["connected"].raw_state == "on"
+        vehicle = vehicle_at(self._config, device, roles, snapshot.states)[0].vehicle
+        if vehicle is None:
+            aux_charge_due(AuxBatteryGuard(), None, None, connected, state, now)
+            return None
+        voltage = aux_voltage(vehicle, snapshot.states)
+        return (vehicle, state) if aux_charge_due(vehicle.aux_battery, vehicle.id, voltage, connected, state, now) else None
+
+    async def _aux_top_up(
+        self, device: DeviceConfig, status: DeviceControl, access: DeviceAccess, aux: tuple[Vehicle, AuxCharge],
+        now: datetime, snapshot: Snapshot | None,
+    ) -> None:
+        """Charge with the smallest power (one phase if the charger switches) for the 12 V battery."""
+        vehicle, state = aux
+        guard = vehicle.aux_battery
+        profile = self._profiles()[device.profile]
+        defaults = {n: spec["default"] for n, spec in profile.get("parameters", {}).items() if "default" in spec}
+        params = defaults | device.parameters
+        voltage, limit = (f"{v:.1f}".replace(".", ",") for v in (state.voltage or 0.0, guard.min_voltage_v))
+        reason = f"12-V-Batterie von {vehicle.name} bei {voltage} V (unter {limit} V): lädt {guard.charge_min:.0f} min mit kleinster Leistung"
+        if "minimum" in profile["charge_control"]:
+            # The device charges with its minimum itself (evcc "Min+PV")
+            await apply(access, status, "minimum", None, now, {}, reason=reason)
+            status.active, status.action, status.power_w, status.reason = True, "minimum", None, reason
+            return
+        phases = current_phases(profile, device, snapshot, params)
+        phase_state = self._phases.setdefault(device.id, PhaseState())
+        if (
+            guard.one_phase
+            and "phase_switch" in profile
+            and phases != 1
+            and phase_state.switches_on(now) < PhaseSettings.of(params).max_per_day
+        ):
+            await self._set_phases(device, profile, phases, 1, now, snapshot, f"{reason}: 1 Phase")
+            phases = 1
+        status.phases = phases
+        low, high = int(params.get("min_current_a") or 6), int(params.get("max_current_a") or 16)
+        current = min(max(guard.current_a or low, low), high)
+        power = current * VOLTS * phases
+        unchanged = (
+            current == status.current_a
+            and status.last_current_write is not None
+            and now - status.last_current_write < CURRENT_REFRESH
+        )
+        await apply(access, status, "charge", power, now, {"current_a": current}, skip_services=unchanged, reason=reason)
+        if not unchanged:
+            status.current_a, status.last_current_write = current, now
+        status.active, status.action, status.power_w, status.reason = True, "charge", power, reason
 
     async def _hand_back(self, device: DeviceConfig, status: DeviceControl) -> None:
         """The charger's phase mode as before Sunflow, then the device itself."""

@@ -8,7 +8,22 @@ import "../components/picker.js";
 // Live values follow the car's sensors; they change slowly
 const REFRESH_MS = 30000;
 
-const EMPTY = { name: "", capacity_kwh: "", efficiency: "", soc_entity: "", plugged_entity: "" };
+// Defaults of the 12 V battery guard (as in the backend)
+const AUX_DEFAULTS = { min_voltage_v: 12.2, charge_min: 5, pause_min: 60 };
+const EMPTY = { name: "", capacity_kwh: "", efficiency: "", soc_entity: "", plugged_entity: "", aux: auxForm({}) };
+
+/** The 12 V guard as form strings. */
+function auxForm(guard) {
+  const value = (key) => toDisplay(guard[key] ?? AUX_DEFAULTS[key], key === "min_voltage_v" ? "V" : "min");
+  return {
+    voltage_entity: guard.voltage_entity ?? "",
+    min_voltage_v: value("min_voltage_v"),
+    charge_min: value("charge_min"),
+    pause_min: value("pause_min"),
+    one_phase: guard.one_phase ?? true,
+    current_a: guard.current_a ? String(guard.current_a) : "",
+  };
+}
 
 /** Vehicles as they are: battery and the sensors of their own integration (settings area "Fahrzeuge"). */
 class SunflowVehicles extends LitElement {
@@ -67,6 +82,14 @@ class SunflowVehicles extends LitElement {
       if (live.energy_wh !== null) {
         values.push({ label: "Im Akku", value: formatValue(live.energy_wh, "Wh"), hint: `von ${formatValue(vehicle.capacity_wh, "Wh")}` });
       }
+    }
+    if (vehicle.aux_battery?.voltage_entity) {
+      const voltage = live.aux_voltage;
+      values.push({
+        label: "12-V-Batterie",
+        value: voltage === null ? "–" : `${toDisplay(voltage, "V")} V`,
+        hint: voltage !== null && voltage < vehicle.aux_battery.min_voltage_v ? "unter der Grenze" : since(live.aux_updated),
+      });
     }
     if (vehicle.plugged_entity) {
       values.push({
@@ -163,6 +186,7 @@ class SunflowVehicles extends LitElement {
               @change=${(e) => set("plugged_entity", e.detail.value)}></sf-picker>
           </div>
         </div>
+        ${this._renderAux(form, options)}
         <div class="actions">
           <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>Speichern</button>
           <button class="secondary" @click=${() => this._cancel()}>Abbrechen</button>
@@ -170,6 +194,55 @@ class SunflowVehicles extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  _renderAux(form, options) {
+    const aux = form.aux;
+    const set = (field, value) => (this._form = { ...this._form, aux: { ...aux, [field]: value } });
+    const number = (field, label, unit, placeholder) => html`<label class="field">
+      <span class="field-label">${label}</span>
+      <span class="input-unit"><input inputmode="decimal" placeholder=${placeholder} .value=${aux[field]}
+        ?disabled=${!aux.voltage_entity} @input=${(e) => set(field, e.target.value)}><span class="muted">${unit}</span></span>
+    </label>`;
+    return html`<fieldset class="group">
+      <legend>12-V-Batterie schützen</legend>
+      <p class="small muted">Manche Autos (z. B. Fiat 500e) entladen ihre 12-V-Batterie, wenn sie lange angesteckt sind,
+        ohne zu laden. Fällt die Spannung unter die Grenze, lädt die Wallbox für kurze Zeit mit der kleinsten Leistung –
+        dabei lädt das Auto auch die 12-V-Batterie. Wirkt nur, solange Sunflow die Wallbox steuert.</p>
+      <div class="fields">
+        <div class="field">
+          <span class="field-label">Spannung der 12-V-Batterie</span>
+          <sf-picker label="12-V-Batterie" empty-label="nicht überwachen" placeholder="Sensor des Autos …" .value=${aux.voltage_entity}
+            .options=${options(this._candidates?.voltage, (c) => `${c.state ?? "–"} V`)}
+            @change=${(e) => set("voltage_entity", e.detail.value)}></sf-picker>
+        </div>
+        ${number("min_voltage_v", "Laden unter", "V", "12,2")}
+        ${number("charge_min", "Laden für", "min", "5")}
+        ${number("pause_min", "Frühestens wieder nach", "min", "60")}
+        ${number("current_a", "Ladestrom (leer: kleinster der Wallbox)", "A", "6")}
+        <label class="check">
+          <input type="checkbox" .checked=${aux.one_phase} ?disabled=${!aux.voltage_entity}
+            @change=${(e) => set("one_phase", e.target.checked)}>
+          <span>einphasig laden (wenn die Wallbox umschalten kann)</span>
+        </label>
+      </div>
+    </fieldset>`;
+  }
+
+  /** The 12 V guard from the form; null with an invalid value. */
+  _auxFromForm(aux) {
+    const parse = (field, unit) => (aux[field] === "" ? AUX_DEFAULTS[field] : fromDisplay(aux[field], unit));
+    const guard = {
+      voltage_entity: aux.voltage_entity || null,
+      min_voltage_v: parse("min_voltage_v", "V"),
+      charge_min: parse("charge_min", "min"),
+      pause_min: parse("pause_min", "min"),
+      one_phase: aux.one_phase,
+      current_a: aux.current_a === "" ? null : Math.round(fromDisplay(aux.current_a, "A")),
+    };
+    const ok = guard.min_voltage_v >= 10 && guard.min_voltage_v <= 14 && guard.charge_min >= 1 && guard.charge_min <= 120
+      && guard.pause_min >= 5 && guard.pause_min <= 1440 && (guard.current_a === null || (guard.current_a >= 6 && guard.current_a <= 32));
+    return ok ? guard : null;
   }
 
   async _edit(vehicle) {
@@ -188,6 +261,7 @@ class SunflowVehicles extends LitElement {
           efficiency: toDisplay(vehicle.charge_efficiency_pct, "%"),
           soc_entity: vehicle.soc_entity ?? "",
           plugged_entity: vehicle.plugged_entity ?? "",
+          aux: auxForm(vehicle.aux_battery ?? {}),
         }
       : { ...EMPTY };
   }
@@ -205,6 +279,11 @@ class SunflowVehicles extends LitElement {
       this._error = "Bitte Name, Akkukapazität und einen gültigen Wirkungsgrad angeben.";
       return;
     }
+    const aux = this._auxFromForm(form.aux);
+    if (aux === null) {
+      this._error = "12-V-Batterie: Grenze 10–14 V, Ladezeit 1–120 min, Pause 5–1440 min, Strom 6–32 A.";
+      return;
+    }
     const previous = this._data.vehicles.find((v) => v.id === this._editId);
     const vehicle = {
       ...(previous ?? {}),
@@ -213,6 +292,7 @@ class SunflowVehicles extends LitElement {
       charge_efficiency_pct: efficiency,
       soc_entity: form.soc_entity || null,
       plugged_entity: form.plugged_entity || null,
+      aux_battery: aux,
     };
     const vehicles = previous
       ? this._data.vehicles.map((v) => (v.id === previous.id ? vehicle : v))
@@ -267,6 +347,10 @@ class SunflowVehicles extends LitElement {
       flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; font-size: 15px;
       border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
     }
+    .group { border: 1px solid var(--sf-border); border-radius: 8px; padding: 12px 14px; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .group legend { font-weight: 600; font-size: 14px; padding: 0 4px; }
+    .group p { margin: 0; }
+    .check { display: flex; gap: 8px; align-items: center; font-size: 14px; min-height: 44px; }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     .spacer { flex: 1; }
     .primary, .secondary { min-height: 44px; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
