@@ -31,6 +31,7 @@ async def get_optimizers(request: Request) -> dict[str, Any]:
         "units": VALUE_UNITS,
         "tigo_plant": tigo_plant(config, strings, found),
         "tigo_plant_chosen": config.optimizer_settings.tigo_plant,
+        "layouts": {k: v.model_dump() for k, v in config.optimizer_settings.layouts.items()},
     }
 
 

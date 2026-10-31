@@ -20,4 +20,6 @@ Wahl merkt sich der Browser. Hellere Module liefern weniger als das beste des St
   antippen (Handy); auf ein anderes Modul gezogen tauschen beide. Ein ausgewähltes Modul
   lässt sich quer legen („quer legen“ / „hochkant stellen“). „Vorschlag
   wiederherstellen“ setzt String und Plätze auf den Vorschlag zurück.
+- **Trenner:** „+ Trenner“ zwischen zwei Reihen bzw. das schmale „+“ zwischen zwei
+  Plätzen (gilt für alle Reihen) setzt die folgenden Module ab, z. B. ein anderes Dachstück.
 - **Zuordnung:** String und Name je Optimierer; „automatisch“ folgt dem Vorschlag.

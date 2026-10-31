@@ -109,7 +109,9 @@ class SunflowOptimizerView extends LitElement {
                     <input type="checkbox" .checked=${this._visible.includes(k)} @change=${(e) => this._toggle(k, e.target.checked)}>
                     ${OPTIMIZER_VALUES[k].label}</label>`)}
                 </div>
-                <sf-roof .optimizers=${mine} .visible=${this._visible}></sf-roof>
+                <sf-roof .optimizers=${mine} .visible=${this._visible}
+                  .breaks=${this._data.layouts?.[this.string]?.row_breaks ?? []}
+                  .colBreaks=${this._data.layouts?.[this.string]?.col_breaks ?? []}></sf-roof>
                 ${mine.some((o) => o.row === null || o.col === null)
                   ? html`<p class="small muted">Nicht alle Optimierer haben einen Platz auf dem Dach.</p>`
                   : nothing}`
