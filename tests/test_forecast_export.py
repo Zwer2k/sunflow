@@ -218,3 +218,25 @@ async def test_recorded_hours_fill_today_and_a_partial_last_day_is_left_out() ->
     # 30.10. and 31.10. complete; the 1.11. reaches only to 03:00 and is left out
     days = {datetime.fromisoformat(k).astimezone(TZ).date().isoformat() for k in hours}
     assert days == {"2026-10-30", "2026-10-31"}
+
+
+async def test_past_days_come_from_the_recording() -> None:
+    """Days before today are delivered from the recorded forecast, with the plane's correction."""
+    from sunflow.planning.forecast_export import export_forecasts
+
+    config = _config().model_copy(update={"forecast_planes": _config().forecast_planes[:1]})
+    yesterday = MIDNIGHT - timedelta(days=1)
+    recorded = {
+        "solcast:ne": [
+            ForecastPoint(start=yesterday + timedelta(minutes=15 * i), end=yesterday + timedelta(minutes=15 * (i + 1)), power=400.0)
+            for i in range(96)
+        ]
+    }
+
+    async def fetch(plane: ForecastPlane) -> list[ForecastPoint]:
+        return _points(1000.0)
+
+    site = PvCorrection(overall=0.5, by_hour={}, by_hour_cloud={}, days=10, slots=100)
+    (total, *_) = await export_forecasts(config, fetch, site, {}, TZ, recorded)
+    assert total.wh_hours[yesterday.isoformat()] == pytest.approx(200)
+    assert total.wh_hours[MIDNIGHT.isoformat()] == pytest.approx(500)

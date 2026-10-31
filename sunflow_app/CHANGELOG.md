@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.49.2
+
+- PV-Prognose für Home Assistant: Auch die vergangenen 31 Tage werden geliefert – aus der Prognose, die Sunflow damals je Fläche aufgezeichnet hat, mit der gelernten Korrektur (ähnlich wie Solcast seine Vergangenheit liefert). Wochen- und Monatsansicht im Energie-Dashboard zeigen damit Prognose und Ertrag auch für zurückliegende Tage.
+
 ## 0.49.1
 
 - PV-Prognose für Home Assistant: Der letzte Tag, den die Quelle nur anreißt (Solcast reicht bis kurz nach Mitternacht des 7. Tages), wird nicht mehr geliefert – er erschien im Energie-Dashboard als Tag ohne Sonne.
