@@ -552,3 +552,28 @@ async def test_goe_on_one_phase_shows_what_it_can_give(tmp_path: Path) -> None:
 
     assert charger.current == 16
     assert controller.statuses["wb"].power_w == pytest.approx(16 * 230)
+
+
+@pytest.mark.parametrize(
+    ("phases", "expected"),
+    [
+        pytest.param(1, 21, id="one-phase-above-16-a"),
+        # Fiat 500e: 11 kW on three phases, though the wallbox gives 32 A
+        pytest.param(3, 16, id="three-phases-car-limit"),
+    ],
+)
+async def test_current_within_wallbox_and_car(tmp_path: Path, phases: int, expected: int) -> None:
+    """A 22 kW go-e gives up to 32 A; the car's own limit per phase count applies on top."""
+    from sunflow.config.models import Vehicle
+
+    charger = FakeCharger()
+    goe = GOE | {"parameters": GOE["parameters"] | {"phases": {"default": phases}, "max_current_a": {"default": 32}, "max_power": {"default": 22000}}}
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": goe})
+    config = _charger_config("goe")
+    config.vehicles = [Vehicle(id="fiat", name="500e", capacity_wh=37000, max_power_1p_w=7400, max_power_3p_w=11000)]
+    plan = _charge_plan({1: 4800, 3: 22000}[phases], 0, 22000)
+    plan.flex = [SimpleNamespace(device_id="wb", unknown_vehicle=False, vehicle_id="fiat", vehicle_method="single", reason=None)]
+
+    await controller.tick(config, plan, NOW, SNAPSHOT, NOW)
+
+    assert charger.current == expected

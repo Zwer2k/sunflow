@@ -10,7 +10,7 @@ const REFRESH_MS = 30000;
 
 // Defaults of the 12 V battery guard (as in the backend)
 const AUX_DEFAULTS = { min_voltage_v: 12.2, charge_min: 5, pause_min: 60 };
-const EMPTY = { name: "", capacity_kwh: "", efficiency: "", soc_entity: "", plugged_entity: "", aux: auxForm({}) };
+const EMPTY = { name: "", capacity_kwh: "", efficiency: "", max_1p_kw: "", max_3p_kw: "", soc_entity: "", plugged_entity: "", aux: auxForm({}) };
 
 /** The 12 V guard as form strings. */
 function auxForm(guard) {
@@ -173,6 +173,16 @@ class SunflowVehicles extends LitElement {
             <span class="input-unit"><input inputmode="decimal" placeholder="90" .value=${form.efficiency}
               @input=${(e) => set("efficiency", e.target.value)}><span class="muted">%</span></span>
           </label>
+          <label class="field">
+            <span class="field-label">Höchste Ladeleistung einphasig (optional)</span>
+            <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 7,4" .value=${form.max_1p_kw}
+              @input=${(e) => set("max_1p_kw", e.target.value)}><span class="muted">kW</span></span>
+          </label>
+          <label class="field">
+            <span class="field-label">Höchste Ladeleistung dreiphasig (optional)</span>
+            <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 11" .value=${form.max_3p_kw}
+              @input=${(e) => set("max_3p_kw", e.target.value)}><span class="muted">kW</span></span>
+          </label>
           <div class="field">
             <span class="field-label">Ladestand</span>
             <sf-picker label="Ladestand" empty-label="keiner" placeholder="z. B. MQTT-Sensor des Autos …" .value=${form.soc_entity}
@@ -259,6 +269,8 @@ class SunflowVehicles extends LitElement {
           name: vehicle.name,
           capacity_kwh: toDisplay(vehicle.capacity_wh / 1000, "kWh"),
           efficiency: toDisplay(vehicle.charge_efficiency_pct, "%"),
+          max_1p_kw: vehicle.max_power_1p_w ? toDisplay(vehicle.max_power_1p_w / 1000, "kW") : "",
+          max_3p_kw: vehicle.max_power_3p_w ? toDisplay(vehicle.max_power_3p_w / 1000, "kW") : "",
           soc_entity: vehicle.soc_entity ?? "",
           plugged_entity: vehicle.plugged_entity ?? "",
           aux: auxForm(vehicle.aux_battery ?? {}),
@@ -279,6 +291,12 @@ class SunflowVehicles extends LitElement {
       this._error = "Bitte Name, Akkukapazität und einen gültigen Wirkungsgrad angeben.";
       return;
     }
+    const limit = (text) => (text === "" ? null : fromDisplay(text, "kW"));
+    const [max1p, max3p] = [limit(form.max_1p_kw), limit(form.max_3p_kw)];
+    if ([max1p, max3p].some((w) => w !== null && !(w > 0 && w <= 50))) {
+      this._error = "Höchste Ladeleistung: leer lassen oder eine Leistung bis 50 kW angeben.";
+      return;
+    }
     const aux = this._auxFromForm(form.aux);
     if (aux === null) {
       this._error = "12-V-Batterie: Grenze 10–14 V, Ladezeit 1–120 min, Pause 5–1440 min, Strom 6–32 A.";
@@ -290,6 +308,8 @@ class SunflowVehicles extends LitElement {
       name: form.name.trim(),
       capacity_wh: capacity * 1000,
       charge_efficiency_pct: efficiency,
+      max_power_1p_w: max1p === null ? null : Math.round(max1p * 1000),
+      max_power_3p_w: max3p === null ? null : Math.round(max3p * 1000),
       soc_entity: form.soc_entity || null,
       plugged_entity: form.plugged_entity || null,
       aux_battery: aux,

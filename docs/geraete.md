@@ -73,6 +73,11 @@ die nächste Viertelstunde genug erwartet; herunter schneller, damit kein Netzst
 Mindestabstand und Tageslimit verhindern Pendeln bei wechselhaftem Wetter. Beim Zurückgeben
 bekommt die Wallbox ihren vorherigen Phasenmodus wieder.
 
+Ladestrom: Den höchsten Strom der go-e übernimmt Sunflow aus ihrem eingestellten Maximalstrom
+(`ama`, z. B. 32 A bei einer 22-kW-Wallbox), in den Kenndaten überschreibbar. Die höchste
+Ladeleistung des Autos einphasig und dreiphasig (Einstellungen → Fahrzeuge, z. B. Fiat 500e:
+7,4 kW / 11 kW) begrenzt den Strom zusätzlich und geht in die Planung ein.
+
 12-V-Batterie schützen (Einstellungen → Fahrzeuge): Manche Autos, z. B. der Fiat 500e, entladen
 ihre 12-V-Bordnetzbatterie, wenn sie lange angesteckt bleiben, ohne zu laden. Mit einem
 Spannungssensor aus der Integration des Autos überwacht Sunflow sie, solange das Auto an der

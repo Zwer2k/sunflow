@@ -47,7 +47,7 @@ from .sources import (
     solcast_forecast,
     sum_forecasts,
 )
-from .vehicles import recognize, soc_of
+from .vehicles import recognize, soc_of, vehicle_max_power
 
 HORIZON_HOURS = 48
 # Database queries change slowly; every replan (each quarter hour) reusing them keeps
@@ -219,6 +219,9 @@ def flex_loads(
                         info.reason = "Fahrzeug nicht angesteckt"
                     continue
                 info.vehicle_id, info.vehicle, info.vehicle_method = vehicle.id, vehicle.name, recognized.method
+                if (limit := vehicle_max_power(vehicle)) is not None and max_power:
+                    # The car's own charger may take less than the wallbox gives
+                    max_power = info.max_power_w = min(max_power, limit)
                 params = params | {"vehicle_capacity_wh": vehicle.capacity_wh, "charge_efficiency_pct": vehicle.charge_efficiency_pct}
                 current = info.current = soc_of(vehicle, snapshot.states)
                 # How this vehicle charges at this wallbox; a change in the control tab still applies on top

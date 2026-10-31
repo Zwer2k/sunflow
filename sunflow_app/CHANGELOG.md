@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.57.0
+
+- Wallbox: Der höchste Ladestrom der go-e kommt jetzt aus ihrem eingestellten Maximalstrom (`ama`, z. B. 32 A bei 22 kW) statt fest 16 A; damit lädt sie auch einphasig mit mehr als 3,7 kW. Ein in den Kenndaten gespeicherter Wert gilt weiter.
+- Fahrzeuge: höchste Ladeleistung einphasig und dreiphasig (z. B. Fiat 500e: 7,4 kW / 11 kW). Sunflow gibt der Wallbox nicht mehr Strom vor, als das Auto auf den jeweiligen Phasen nimmt, und plant mit der Leistung des Autos statt der Wallbox.
+
 ## 0.56.1
 
 - Wallbox: Laden, das der Plan aus dem Netz vorsieht (z. B. nachts bei günstigem Preis), hält jetzt die geplante Leistung. Bisher wurde es wie PV-Überschussladen behandelt („folgt dem PV-Überschuss“): die Phasen wurden nur nach PV-Regeln umgeschaltet, so blieb die go-e z. B. einphasig bei höchstens 3,7 kW statt der geplanten 4,8 kW; ein evcc-Ladepunkt wartete im PV-Modus. Jetzt wählt Sunflow die Phasen sofort nach der geplanten Leistung.
