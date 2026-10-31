@@ -49,6 +49,26 @@ class FlexSettings(BaseModel):
     alternative_cost_ct: float | None = None
 
 
+class AuxBatteryGuard(BaseModel):
+    """Keeps the 12 V battery of a plugged-in car charged (some cars drain it while waiting).
+
+    Below the voltage the wallbox charges with its smallest power for a while; the
+    car's DC/DC converter recharges the 12 V battery meanwhile.
+    """
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    # Voltage of the 12 V battery from the car's integration; None: not watched
+    voltage_entity: str | None = None
+    min_voltage_v: float = Field(default=12.2, ge=10, le=14)
+    charge_min: float = Field(default=5, ge=1, le=120)
+    # Not again before this long after the last time (the car's sensor may update rarely)
+    pause_min: float = Field(default=60, ge=5, le=1440)
+    one_phase: bool = True
+    # None: the wallbox's minimum current
+    current_a: int | None = Field(default=None, ge=6, le=32)
+
+
 class Vehicle(BaseModel):
     """A car as it is: battery and the sensors of its own integration.
 
@@ -65,6 +85,7 @@ class Vehicle(BaseModel):
     soc_entity: str | None = None
     # "on"/"home"/"connected" while the car is plugged in or at home (optional)
     plugged_entity: str | None = None
+    aux_battery: AuxBatteryGuard = Field(default_factory=AuxBatteryGuard)
 
 
 class ChargingProfile(BaseModel):

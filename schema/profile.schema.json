@@ -166,6 +166,12 @@
           "minItems": 1,
           "items": {"$ref": "#/$defs/step"}
         },
+        "minimum": {
+          "description": "Charges with the device's smallest power (used to top up a car's 12 V battery); without it Sunflow charges with the minimum current.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/step"}
+        },
         "remember": {
           "type": "object",
           "required": ["key"],

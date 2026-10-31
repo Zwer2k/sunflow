@@ -224,6 +224,6 @@ def test_relations_move_out_of_devices_and_vehicles(tmp_path: Path) -> None:
     assert config.feed_in["pv"].rate_ct_per_kwh == 8.2
     assert config.measured_by["pv"].device_id == "wb"
     assert config.battery_modules == {"inv": ["m1"]}
-    assert config.vehicles[0].model_dump().keys() == {"id", "name", "capacity_wh", "charge_efficiency_pct", "soc_entity", "plugged_entity"}
+    assert config.vehicles[0].model_dump().keys() == {"id", "name", "capacity_wh", "charge_efficiency_pct", "soc_entity", "plugged_entity", "aux_battery"}
     (profile,) = config.charging
     assert (profile.vehicle_id, profile.wallbox_id, profile.card, profile.flex.target) == ("fiat", "wb", 1, 80)

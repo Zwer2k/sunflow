@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from sunflow.config.models import ChargingProfile, Vehicle, VehicleDetection
 from sunflow.config.store import ConfigStore
+from sunflow.control.aux_battery import aux_voltage
 from sunflow.devices.site import device_kind
 from sunflow.planning.vehicles import soc_of
 
@@ -49,6 +50,7 @@ def vehicle_live(vehicle: Vehicle, states: dict[str, dict[str, Any]]) -> dict[st
     soc = soc_of(vehicle, states)
     soc_state = states.get(vehicle.soc_entity or "")
     plugged_state = states.get(vehicle.plugged_entity or "", {}).get("state")
+    aux_state = states.get(vehicle.aux_battery.voltage_entity or "")
     plugged = (
         True if plugged_state in PRESENT_STATES else False if plugged_state in ABSENT_STATES else None
     )
@@ -59,6 +61,8 @@ def vehicle_live(vehicle: Vehicle, states: dict[str, dict[str, Any]]) -> dict[st
         "soc_unavailable": vehicle.soc_entity is not None and soc is None,
         "plugged": plugged,
         "plugged_state": plugged_state,
+        "aux_voltage": aux_voltage(vehicle, states),
+        "aux_updated": aux_state.get("last_updated") if aux_state else None,
     }
 
 

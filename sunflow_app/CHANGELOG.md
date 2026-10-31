@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.55.0
+
+- Fahrzeuge: 12-V-Batterie schützen. Mit dem Spannungssensor des Autos (Einstellungen → Fahrzeuge) überwacht Sunflow die Bordnetzbatterie, solange das Auto an der Wallbox steckt. Unter der Grenze (Vorgabe 12,2 V) lädt die Wallbox 5 min mit kleinster Leistung und einphasig, danach frühestens nach 60 min wieder – alles einstellbar. Hilft bei Autos wie dem Fiat 500e, die ihre 12-V-Batterie entladen, wenn sie lange angesteckt sind, ohne zu laden. Die Spannung erscheint bei den Live-Werten des Fahrzeugs, der Grund in Steuerung und Protokoll.
+
 ## 0.54.0
 
 - Optimierer: Trenner zwischen Reihen und zwischen Plätzen deuten an, dass Module abseits liegen (z. B. zwei Reihen auf einem anderen Dachstück). Im Editor „+ Trenner“ zwischen zwei Reihen bzw. das schmale „+“ zwischen zwei Plätzen (gilt für alle Reihen); die Dach- und Live-Ansicht zeigen sie als gestrichelte Linie mit Abstand.

@@ -44,5 +44,8 @@ charge_control:
   # Less than full power planned (PV surplus): evcc follows the surplus itself
   follow:
     - select: {key: mode, option: "pv", write: if_differs}
+  # Smallest power (12 V battery of the car): evcc's minimum current plus PV
+  minimum:
+    - select: {key: mode, option: "minpv", write: if_differs}
   stop:
     - select: {key: mode, option: "off", write: if_differs}

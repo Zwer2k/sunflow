@@ -270,7 +270,7 @@ def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, Rol
 async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]:
     """Entities that can switch a consumer, power sensors to measure it and % sensors (vehicle SoC)."""
     snapshot = await _snapshot(request)
-    switches, power, percent, presence = [], [], [], []
+    switches, power, percent, presence, voltage = [], [], [], [], []
     selects, numbers, temperature, energy = [], [], [], []
     for entity_id, state in sorted(snapshot.states.items()):
         attributes = state.get("attributes", {})
@@ -286,6 +286,9 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
             power.append(item)
         elif entity_id.startswith("sensor.") and attributes.get("unit_of_measurement") == "%":
             percent.append(item)
+        elif entity_id.startswith("sensor.") and attributes.get("unit_of_measurement") == "V":
+            # 12 V battery of a car
+            voltage.append(item)
         if entity_id.startswith(("binary_sensor.", "device_tracker.")):
             # "Plugged in" or "at home" of a car
             presence.append(item)
@@ -304,6 +307,7 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
         "power": power,
         "percent": percent,
         "presence": presence,
+        "voltage": voltage,
         "selects": selects,
         "numbers": numbers,
         "temperature": temperature,
