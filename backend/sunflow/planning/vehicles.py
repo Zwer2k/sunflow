@@ -12,13 +12,20 @@ import re
 from typing import Any
 
 from sunflow.config.models import DeviceConfig, SunflowConfig, Vehicle
+from sunflow.i18n import N_, t
 
 # States of a car's sensor that mean it is plugged in or at home
 PLUGGED = {"on", "true", "home", "connected", "plugged", "plugged_in", "charging"}
 # go-e transaction options: "card_0" is card 1
 CARD_OPTION = re.compile(r"^card_(\d+)$")
 
-METHODS = {"card": "Karte", "manual": "Auswahl", "sensor": "Sensor des Fahrzeugs", "single": "einziges Fahrzeug", "expected": "unterwegs, erwartet"}
+METHODS = {
+    "card": N_("Karte"),
+    "manual": N_("Auswahl"),
+    "sensor": N_("Sensor des Fahrzeugs"),
+    "single": N_("einziges Fahrzeug"),
+    "expected": N_("unterwegs, erwartet"),
+}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -48,7 +55,7 @@ def recognize(
         cards = {c.vehicle_id: c.card for c in config.charging if c.wallbox_id == wallbox.id}
         vehicle = next((v for v in assigned if cards.get(v.id) == card), None)
         if vehicle is None:
-            return Recognized(vehicle=None, method=None, reason=f"Karte {card} gehört zu keinem Fahrzeug dieser Wallbox")
+            return Recognized(vehicle=None, method=None, reason=t("Karte {card} gehört zu keinem Fahrzeug dieser Wallbox", card=card))
         return Recognized(vehicle=vehicle, method="card")
     if detection.manual and (chosen := config.selected_vehicles.get(wallbox.id)):
         if (vehicle := next((v for v in assigned if v.id == chosen), None)) is not None:
@@ -63,7 +70,7 @@ def recognize(
             return Recognized(vehicle=plugged[0], method="sensor")
     if detection.single and len(assigned) == 1:
         return Recognized(vehicle=assigned[0], method="single")
-    return Recognized(vehicle=None, method=None, reason="Fahrzeug nicht erkannt")
+    return Recognized(vehicle=None, method=None, reason=t("Fahrzeug nicht erkannt"))
 
 
 # Volts per phase

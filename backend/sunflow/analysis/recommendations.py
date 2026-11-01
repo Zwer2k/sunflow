@@ -10,7 +10,8 @@ import hashlib
 from typing import Any
 
 from sunflow.config.models import BATTERY_PRIORITY_ID, SunflowConfig
-from sunflow.planning.plan import PlanResult
+from sunflow.i18n import number, t
+from sunflow.planning.plan import NO_DAILY_NEED, PlanResult
 from sunflow.planning.pv_learning import PvCorrection
 
 from .efficiency import EfficiencyEstimate
@@ -44,7 +45,7 @@ def _fingerprint(*values: Any) -> str:
 
 
 def _pct(value: float) -> str:
-    return f"{value:.1f}".replace(".", ",") + " %"
+    return number(value) + " %"
 
 
 def battery_efficiency(
@@ -64,8 +65,11 @@ def battery_efficiency(
         if abs(suggested - current) < EFFICIENCY_GAP:
             continue
         standby = (
-            f" Der Eigenverbrauch der Batterie (etwa {estimate.standby_w:.0f} W) ist darin nicht enthalten – "
-            "er hängt nicht vom Laden ab."
+            " "
+            + t(
+                "Der Eigenverbrauch der Batterie (etwa {watts} W) ist darin nicht enthalten – er hängt nicht vom Laden ab.",
+                watts=f"{estimate.standby_w:.0f}",
+            )
             if estimate.standby_w
             else ""
         )
@@ -73,11 +77,13 @@ def battery_efficiency(
             Recommendation(
                 id=f"battery_efficiency:{device.id}",
                 severity="warn",
-                title=f"{device.name}: Wirkungsgrad {_pct(suggested)} statt {_pct(current)}",
-                text=(
-                    f"Die Energiezähler zeigen für den Speicher {_pct(suggested)} im Zyklus "
-                    f"({estimate.cycles:.0f} Zyklen ausgewertet).{standby} Ein zu niedriger Wert lässt den Speicher "
-                    "schlechter aussehen, als er ist."
+                title=t(
+                    "{name}: Wirkungsgrad {suggested} statt {current}",
+                    name=device.name, suggested=_pct(suggested), current=_pct(current),
+                ),
+                text=t(
+                    "Die Energiezähler zeigen für den Speicher {efficiency} im Zyklus ({cycles} Zyklen ausgewertet).{standby} Ein zu niedriger Wert lässt den Speicher schlechter aussehen, als er ist.",
+                    efficiency=_pct(suggested), cycles=f"{estimate.cycles:.0f}", standby=standby,
                 ),
                 action={"type": "set_parameter", "device_id": device.id, "name": "efficiency_pct", "value": round(suggested, 1)},
                 fingerprint=_fingerprint(round(suggested), round(current)),
@@ -90,14 +96,15 @@ def missing_settings(config: SunflowConfig, latest: PlanResult | None) -> list[R
     """Consumers that cannot be planned for lack of a value."""
     result = []
     for info in latest.flex if latest else []:
-        if info.reason == "Energiebedarf pro Tag fehlt":
+        if info.reason == t(NO_DAILY_NEED):
             result.append(
                 Recommendation(
                     id=f"daily_energy:{info.device_id}",
                     severity="warn",
-                    title=f"{info.name}: Energiebedarf pro Tag fehlt",
-                    text="Ohne Tagesbedarf plant Sunflow den Verbraucher nicht ein. Trage ein, wie viel er an einem "
-                    "typischen Tag braucht (Einstellungen → Geräte).",
+                    title=t("{name}: Energiebedarf pro Tag fehlt", name=info.name),
+                    text=t(
+                        "Ohne Tagesbedarf plant Sunflow den Verbraucher nicht ein. Trage ein, wie viel er an einem typischen Tag braucht (Einstellungen → Geräte)."
+                    ),
                     action={"type": "navigate", "view": "setup", "step": "devices"},
                 )
             )
@@ -107,9 +114,10 @@ def missing_settings(config: SunflowConfig, latest: PlanResult | None) -> list[R
                 Recommendation(
                     id=f"alternative_cost:{device.id}",
                     severity="warn",
-                    title=f"{device.name}: Preis der üblichen Heizung fehlt",
-                    text="Ohne ihn behandelt Sunflow das Warmwasser als Pflicht und heizt im Zweifel mit Netzstrom. "
-                    "Trage den Preis z. B. der Fernwärme in ct/kWh ein (Einstellungen → Verbraucher).",
+                    title=t("{name}: Preis der üblichen Heizung fehlt", name=device.name),
+                    text=t(
+                        "Ohne ihn behandelt Sunflow das Warmwasser als Pflicht und heizt im Zweifel mit Netzstrom. Trage den Preis z. B. der Fernwärme in ct/kWh ein (Einstellungen → Verbraucher)."
+                    ),
                     action={"type": "navigate", "view": "setup", "step": "consumers"},
                 )
             )
@@ -129,10 +137,10 @@ def hot_water_demand(config: SunflowConfig) -> list[Recommendation]:
                 Recommendation(
                     id=f"hot_water_demand:{device.id}",
                     severity="info",
-                    title=f"{device.name}: {daily / 1000:.1f} kWh pro Tag prüfen".replace(".", ","),
-                    text=(
-                        f"Das entspricht einer Abkühlung der {litres:.0f} l um etwa {drop:.0f} K pro Tag. "
-                        "Ist der Verbrauch geringer, plant Sunflow zu viel Warmwasser ein."
+                    title=t("{name}: {energy} kWh pro Tag prüfen", name=device.name, energy=number(daily / 1000)),
+                    text=t(
+                        "Das entspricht einer Abkühlung der {litres} l um etwa {drop} K pro Tag. Ist der Verbrauch geringer, plant Sunflow zu viel Warmwasser ein.",
+                        litres=f"{litres:.0f}", drop=f"{drop:.0f}",
                     ),
                     action={"type": "navigate", "view": "setup", "step": "devices"},
                     fingerprint=_fingerprint(daily, litres),
@@ -162,13 +170,11 @@ def limits_cost_pv(config: SunflowConfig, latest: PlanResult | None) -> list[Rec
             Recommendation(
                 id=f"limit_blocks_pv:{device.id}",
                 severity="info",
-                title=f"{device.name}: Grenze „ab Hausspeicher {limit.min_pct:.0f} %“ kostet PV".replace(".", ","),
-                text=(
-                    f"Im aktuellen Plan deckt die übliche Heizung {planned.unmet_wh / 1000:.1f} kWh, weil "
-                    f"{device.name} erst ab {limit.min_pct:.0f} % Hausspeicher PV bekommt. An Tagen, an denen der "
-                    "Speicher diesen Stand nicht erreicht (Winter), geht so keine PV ins Warmwasser. Eine niedrigere "
-                    "Grenze (z. B. 60 %) nutzt mehr PV direkt."
-                ).replace(".", ",", 1),
+                title=t("{name}: Grenze „ab Hausspeicher {pct} %“ kostet PV", name=device.name, pct=f"{limit.min_pct:.0f}"),
+                text=t(
+                    "Im aktuellen Plan deckt die übliche Heizung {energy} kWh, weil {name} erst ab {pct} % Hausspeicher PV bekommt. An Tagen, an denen der Speicher diesen Stand nicht erreicht (Winter), geht so keine PV ins Warmwasser. Eine niedrigere Grenze (z. B. 60 %) nutzt mehr PV direkt.",
+                    energy=number(planned.unmet_wh / 1000), name=device.name, pct=f"{limit.min_pct:.0f}",
+                ),
                 action={"type": "navigate", "view": "control"},
                 fingerprint=_fingerprint(limit.min_pct, round(planned.unmet_wh / 1000)),
             )
@@ -187,10 +193,9 @@ def plan_worse_than_baseline(latest: PlanResult | None) -> list[Recommendation]:
         Recommendation(
             id="plan_worse",
             severity="info",
-            title=f"Plan ist {abs(savings):.2f} € teurer als reiner Eigenverbrauch".replace(".", ","),
-            text=(
-                "Das liegt meist an Vorgaben: Grenzen in der Priorität, „Nur PV“ ohne Speicher, Ladegrenze oder "
-                "Vollladung. Sunflow hält sich daran, auch wenn es Geld kostet. Prüfe die Grenzen unter Steuerung."
+            title=t("Plan ist {amount} € teurer als reiner Eigenverbrauch", amount=number(abs(savings), 2)),
+            text=t(
+                "Das liegt meist an Vorgaben: Grenzen in der Priorität, „Nur PV“ ohne Speicher, Ladegrenze oder Vollladung. Sunflow hält sich daran, auch wenn es Geld kostet. Prüfe die Grenzen unter Steuerung."
             ),
             action={"type": "navigate", "view": "control"},
             fingerprint=_fingerprint(round(savings, 1)),
@@ -215,13 +220,14 @@ def consumer_usage(config: SunflowConfig, latest: PlanResult | None) -> list[Rec
                 Recommendation(
                     id=f"consumer_daily:{device_id}",
                     severity="info",
-                    title=f"{device.name}: gemessen {usage.daily_wh / 1000:.2f} kWh pro Tag".replace(".", ","),
+                    title=t("{name}: gemessen {energy} kWh pro Tag", name=device.name, energy=number(usage.daily_wh / 1000, 2)),
                     text=(
-                        f"Aus {usage.days} Tagen Leistungsmessung. "
+                        t("Aus {days} Tagen Leistungsmessung.", days=usage.days)
+                        + " "
                         + (
-                            f"Eingestellt sind {daily / 1000:.2f} kWh.".replace(".", ",")
+                            t("Eingestellt sind {energy} kWh.", energy=number(daily / 1000, 2))
                             if daily is not None
-                            else "Eingestellt ist nichts – die Planung nutzt bereits den gemessenen Wert."
+                            else t("Eingestellt ist nichts – die Planung nutzt bereits den gemessenen Wert.")
                         )
                     ),
                     action={"type": "set_parameter", "device_id": device_id, "name": "daily_energy_wh", "value": round(usage.daily_wh)},
@@ -235,8 +241,11 @@ def consumer_usage(config: SunflowConfig, latest: PlanResult | None) -> list[Rec
                 Recommendation(
                     id=f"consumer_power:{device_id}",
                     severity="info",
-                    title=f"{device.name}: läuft mit etwa {usage.running_w:.0f} W statt {power:.0f} W",
-                    text="Die Planung reserviert die eingestellte Leistung; mit der gemessenen passt sie besser in den PV-Überschuss.",
+                    title=t(
+                        "{name}: läuft mit etwa {measured} W statt {power} W",
+                        name=device.name, measured=f"{usage.running_w:.0f}", power=f"{power:.0f}",
+                    ),
+                    text=t("Die Planung reserviert die eingestellte Leistung; mit der gemessenen passt sie besser in den PV-Überschuss."),
                     action={"type": "set_parameter", "device_id": device_id, "name": "max_power", "value": round(usage.running_w)},
                     fingerprint=_fingerprint(round(usage.running_w / 50), power),
                 )
@@ -253,9 +262,10 @@ def pv_forecast(config: SunflowConfig, correction: PvCorrection | None, weather:
                 Recommendation(
                     id="pv_learning_off",
                     severity="warn",
-                    title=f"PV-Prognose liegt bei {correction.overall * 100:.0f} % der Messung",
-                    text="Das Anpassen der PV-Prognose ist ausgeschaltet. Eingeschaltet plant Sunflow mit dem, "
-                    "was deine Anlage tatsächlich liefert.",
+                    title=t("PV-Prognose liegt bei {pct} % der Messung", pct=f"{correction.overall * 100:.0f}"),
+                    text=t(
+                        "Das Anpassen der PV-Prognose ist ausgeschaltet. Eingeschaltet plant Sunflow mit dem, was deine Anlage tatsächlich liefert."
+                    ),
                     action={"type": "set_optimizer", "changes": {"pv_learning": True}},
                     fingerprint=_fingerprint(round(correction.overall * 100)),
                 )
@@ -265,9 +275,10 @@ def pv_forecast(config: SunflowConfig, correction: PvCorrection | None, weather:
             Recommendation(
                 id="weather_without_clouds",
                 severity="info",
-                title="Keine Wetter-Entität mit Bewölkung",
-                text="Mit stündlicher Bewölkung lernt Sunflow, wie stark die PV-Prognose bei Wolken danebenliegt. "
-                "Open-Meteo (in Home Assistant enthalten) liefert sie.",
+                title=t("Keine Wetter-Entität mit Bewölkung"),
+                text=t(
+                    "Mit stündlicher Bewölkung lernt Sunflow, wie stark die PV-Prognose bei Wolken danebenliegt. Open-Meteo (in Home Assistant enthalten) liefert sie."
+                ),
             )
         )
     return result

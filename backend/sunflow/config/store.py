@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from sunflow.i18n import t
+
 from .models import CONFIG_VERSION, FlexSettings, SunflowConfig, VehicleDetection
 
 _LOGGER = logging.getLogger(__name__)
@@ -124,8 +126,10 @@ class ConfigStore:
             return SunflowConfig.model_validate(raw)
         except (ValueError, AttributeError, KeyError) as err:
             raise ConfigError(
-                f"Konfiguration {self._path} ist ungültig ({err.__class__.__name__}); "
-                f"die vorige Fassung liegt in {self._backup.name}"
+                t(
+                    "Konfiguration {path} ist ungültig ({error}); die vorige Fassung liegt in {backup}",
+                    path=self._path, error=err.__class__.__name__, backup=self._backup.name,
+                )
             ) from err
 
     def _migrate(self, raw: dict[str, Any], version: int) -> SunflowConfig:

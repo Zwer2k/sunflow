@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from sunflow.config.models import SunflowConfig
+from sunflow.i18n import t
 
 # Wizard step indices the UI links to
 # Settings areas the UI opens for an issue
@@ -55,7 +56,7 @@ def build_summary(
     names = {d.id: d.name for d in config.devices}
     if not config.devices:
         summary.issues.append(
-            Issue(level="error", step=STEP_DEVICES, message="Es ist noch kein Gerät übernommen.")
+            Issue(level="error", step=STEP_DEVICES, message=t("Es ist noch kein Gerät übernommen."))
         )
 
     pv_plants = []
@@ -63,7 +64,7 @@ def build_summary(
         profile = profiles.get(device.profile)
         if profile is None:
             summary.issues.append(
-                Issue(level="error", step=STEP_DEVICES, message=f"{device.name}: Profil {device.profile} fehlt.")
+                Issue(level="error", step=STEP_DEVICES, message=t("{name}: Profil {profile} fehlt.", name=device.name, profile=device.profile))
             )
             continue
         capabilities = profile["capabilities"]
@@ -86,21 +87,21 @@ def build_summary(
                 Issue(
                     level="warning",
                     step=STEP_PARAMETERS,
-                    message=f"{device.name}: Lade-/Entladeleistung ist nur eine Vorgabe – bitte mit dem Datenblatt abgleichen.",
+                    message=t("{name}: Lade-/Entladeleistung ist nur eine Vorgabe – bitte mit dem Datenblatt abgleichen.", name=device.name),
                 )
             )
         if "pv" in capabilities:
             pv_plants.append(device)
             if (feed_in := config.feed_in.get(device.id)) is None or feed_in.rate_ct_per_kwh is None:
                 summary.issues.append(
-                    Issue(level="warning", step=STEP_SOURCES, message=f"{device.name}: Einspeisevergütung fehlt.")
+                    Issue(level="warning", step=STEP_SOURCES, message=t("{name}: Einspeisevergütung fehlt.", name=device.name))
                 )
         if {"battery_window", "battery_control"} & set(capabilities) and device.test_passed_at is None:
             summary.issues.append(
                 Issue(
                     level="info",
                     step=STEP_DEVICE_TEST,
-                    message=f"{device.name}: Gerätetest steht noch aus – Steuerung ist noch nicht bestätigt.",
+                    message=t("{name}: Gerätetest steht noch aus – Steuerung ist noch nicht bestätigt.", name=device.name),
                 )
             )
 
@@ -114,7 +115,7 @@ def build_summary(
                 Issue(
                     level="warning",
                     step=STEP_SITE,
-                    message=f"{device.name}: Nicht festgelegt, ob ein anderes Gerät diese Anlage als PV extern misst.",
+                    message=t("{name}: Nicht festgelegt, ob ein anderes Gerät diese Anlage als PV extern misst.", name=device.name),
                 )
             )
 
@@ -123,7 +124,7 @@ def build_summary(
             Issue(
                 level="warning",
                 step=STEP_SOURCES,
-                message="Kein Bezugspreis angegeben – Sunflow optimiert dann nur auf Eigenverbrauch.",
+                message=t("Kein Bezugspreis angegeben – Sunflow optimiert dann nur auf Eigenverbrauch."),
             )
         )
 
@@ -138,13 +139,13 @@ def build_summary(
             Issue(
                 level="warning",
                 step=STEP_SOURCES,
-                message="Keine PV-Prognose zugeordnet – die Planung kann PV-Erträge dann nicht vorhersehen.",
+                message=t("Keine PV-Prognose zugeordnet – die Planung kann PV-Erträge dann nicht vorhersehen."),
             )
         )
     else:
         for device in pv_plants:
             if device.id not in assigned:
                 summary.issues.append(
-                    Issue(level="warning", step=STEP_SOURCES, message=f"{device.name}: Keine Prognosefläche zugeordnet.")
+                    Issue(level="warning", step=STEP_SOURCES, message=t("{name}: Keine Prognosefläche zugeordnet.", name=device.name))
                 )
     return summary

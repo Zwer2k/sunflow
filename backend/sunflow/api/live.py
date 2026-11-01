@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from sunflow import i18n
 from sunflow.config.models import DisplaySettings, SunflowConfig
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.optimizers import optimizers as optimizer_list
@@ -156,9 +157,22 @@ async def set_display(request: Request, body: DisplaySettings) -> dict[str, Any]
     """Choose what the pages show."""
     store = request.app.state.store
     config = store.load()
+    language_changed = config.display.language != body.language
     config.display = body
     store.save(config)
+    if language_changed:
+        await i18n.update_language(request.app.state.ha, body.language)
+        # Plan notices are written in the language of their plan
+        if (runner := getattr(request.app.state, "runner", None)) is not None:
+            runner.request_replan()
     return body.model_dump()
+
+
+@router.get("/language")
+async def get_language(request: Request) -> dict[str, Any]:
+    """The language of the App's texts, before the page loads its modules."""
+    setting = request.app.state.store.load().display.language
+    return {"language": await i18n.update_language(request.app.state.ha, setting), "setting": setting}
 
 
 WEATHER_CACHE = timedelta(minutes=10)

@@ -4,6 +4,7 @@ import { poll } from "../lib/poll.js";
 import { formatPower } from "../lib/format.js";
 import { OPTIMIZER_VALUES } from "./roof.js";
 import "./roof.js";
+import { t, tn } from "../lib/i18n.js";
 
 const REFRESH_MS = 10 * 1000;
 // Remembered per browser; storage may be unavailable (private mode, previews)
@@ -92,19 +93,19 @@ class SunflowOptimizerView extends LitElement {
         <div class="box">
           <div class="head">
             <h2 id="title">${this.heading}</h2>
-            <button class="close" aria-label="Schließen" @click=${() => this._close()}>✕</button>
+            <button class="close" aria-label=${t("Schließen")} @click=${() => this._close()}>✕</button>
           </div>
-          ${this._error ? html`<div class="alert">Optimierer nicht abrufbar: ${this._error}</div>` : nothing}
-          ${this._data === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
+          ${this._error ? html`<div class="alert">${t("Optimierer nicht abrufbar: {error}", { error: this._error })}</div>` : nothing}
+          ${this._data === null && !this._error ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
           ${this._data && !mine.length
-            ? html`<p class="muted">Diesem String sind keine Optimierer zugeordnet.</p>`
+            ? html`<p class="muted">${t("Diesem String sind keine Optimierer zugeordnet.")}</p>`
             : nothing}
           ${mine.length
             ? html`
-                <p class="small muted">${mine.length} Optimierer${powers.length
-                  ? ` · zusammen ${formatPower(powers.reduce((a, b) => a + b, 0))} · ${formatPower(Math.min(...powers))} bis ${formatPower(Math.max(...powers))}`
+                <p class="small muted">${tn(mine.length, "{count} Optimierer", { count: mine.length })}${powers.length
+                  ? ` · ${t("zusammen {total}", { total: formatPower(powers.reduce((a, b) => a + b, 0))})} · ${t("{min} bis {max}", { min: formatPower(Math.min(...powers)), max: formatPower(Math.max(...powers)) })}`
                   : ""}</p>
-                <div class="chips" role="group" aria-label="Angezeigte Werte">
+                <div class="chips" role="group" aria-label=${t("Angezeigte Werte")}>
                   ${available.map((k) => html`<label class="chip ${this._visible.includes(k) ? "on" : ""}">
                     <input type="checkbox" .checked=${this._visible.includes(k)} @change=${(e) => this._toggle(k, e.target.checked)}>
                     ${OPTIMIZER_VALUES[k].label}</label>`)}
@@ -113,11 +114,11 @@ class SunflowOptimizerView extends LitElement {
                   .breaks=${this._data.layouts?.[this.string]?.row_breaks ?? []}
                   .colBreaks=${this._data.layouts?.[this.string]?.col_breaks ?? []}></sf-roof>
                 ${mine.some((o) => o.row === null || o.col === null)
-                  ? html`<p class="small muted">Nicht alle Optimierer haben einen Platz auf dem Dach.</p>`
+                  ? html`<p class="small muted">${t("Nicht alle Optimierer haben einen Platz auf dem Dach.")}</p>`
                   : nothing}`
             : nothing}
           <div class="actions">
-            <button class="link" @click=${() => this._edit()}>Zuordnung und Anordnung bearbeiten …</button>
+            <button class="link" @click=${() => this._edit()}>${t("Zuordnung und Anordnung bearbeiten …")}</button>
           </div>
         </div>
       </dialog>

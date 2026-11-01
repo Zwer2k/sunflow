@@ -9,6 +9,8 @@ from typing import Any
 
 import aiohttp
 
+from sunflow.i18n import t
+
 _LOGGER = logging.getLogger(__name__)
 
 # A command without an answer must not block callers forever (e.g. a stalled Core
@@ -144,8 +146,12 @@ class HAClient:
         now = time.monotonic()
         if now < self._recorder_paused_until:
             raise RecorderUnavailable(
-                "recorder_unavailable: Datenbank von Home Assistant antwortet nicht, Abfragen für "
-                f"{int(self._recorder_paused_until - now)} s pausiert (Auslöser: {self._recorder_pause_reason})"
+                "recorder_unavailable: "
+                + t(
+                    "Datenbank von Home Assistant antwortet nicht, Abfragen für {seconds} s pausiert (Auslöser: {reason})",
+                    seconds=int(self._recorder_paused_until - now),
+                    reason=self._recorder_pause_reason,
+                )
             )
         if now - self._recorder_checked < RECORDER_CHECK_SECONDS:
             return
@@ -158,11 +164,15 @@ class HAClient:
         except HATimeout as err:
             # The info waits for the database connection
             self._pause_recorder(f"recorder/info: {err}")
-            raise RecorderUnavailable("recorder_unavailable: Datenbank von Home Assistant antwortet nicht, Abfragen pausiert") from err
+            raise RecorderUnavailable(
+                "recorder_unavailable: " + t("Datenbank von Home Assistant antwortet nicht, Abfragen pausiert")
+            ) from err
         backlog = info.get("backlog") or 0
         if not info.get("thread_running", True) or info.get("migration_in_progress") or backlog > RECORDER_MAX_BACKLOG:
             self._pause_recorder(f"recorder busy (backlog {backlog}, running {info.get('thread_running')})")
-            raise RecorderUnavailable("recorder_unavailable: Datenbank von Home Assistant ist ausgelastet, Abfragen pausiert")
+            raise RecorderUnavailable(
+                "recorder_unavailable: " + t("Datenbank von Home Assistant ist ausgelastet, Abfragen pausiert")
+            )
 
     async def _send(self, msg_type: str, **data: Any) -> Any:
         if self._ws is None:

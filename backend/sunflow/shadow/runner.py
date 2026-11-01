@@ -10,6 +10,7 @@ import logging
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sunflow import i18n
 from sunflow.analysis.history import level_key
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.config.store import ConfigStore
@@ -419,7 +420,7 @@ class ShadowRunner:
             try:
                 await self._replan(slot_start(datetime.now(UTC)))
                 self.status.last_error = None
-            except Exception as err:  # noqa: BLE001 - logged, the next tick retries
+            except Exception as err:
                 _LOGGER.warning("Replan failed: %s", err)
                 self.status.last_error = f"Plan: {err}"
             if not self._replan_again:
@@ -466,6 +467,7 @@ class ShadowRunner:
         return self._correction
 
     async def _replan(self, start: datetime) -> None:
+        await i18n.update_language(self._client, self._store.load().display.language)
         correction = await self.pv_correction()
         result = await current_plan(
             self._client,

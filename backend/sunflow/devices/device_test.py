@@ -16,6 +16,8 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Literal
 
+from sunflow.i18n import t
+
 from .executor import ExecutorError, PlannedCall
 
 _LOGGER = logging.getLogger(__name__)
@@ -87,19 +89,19 @@ def choose_test(baseline_power: float, supported: frozenset[str] | set[str] = AL
     proves control and sign.
     """
     if baseline_power > ACTIVE_THRESHOLD_W and "limit_charge" in supported:
-        return "limit_charge", LIMIT_W, f"Ladeleistung sinkt auf höchstens ~{LIMIT_W} W"
+        return "limit_charge", LIMIT_W, t("Ladeleistung sinkt auf höchstens ~{power} W", power=LIMIT_W)
     if baseline_power < -ACTIVE_THRESHOLD_W:
         if "limit_discharge" in supported:
-            return "limit_discharge", LIMIT_W, f"Entladeleistung sinkt auf höchstens ~{LIMIT_W} W"
+            return "limit_discharge", LIMIT_W, t("Entladeleistung sinkt auf höchstens ~{power} W", power=LIMIT_W)
         if "force_charge" not in supported and "hold" in supported:
-            return "hold", 0.0, "Batterie entlädt nicht mehr"
+            return "hold", 0.0, t("Batterie entlädt nicht mehr")
     if baseline_power > ACTIVE_THRESHOLD_W and "force_discharge" in supported:
-        return "force_discharge", FORCE_CHARGE_W, f"Batterie entlädt mit mindestens ~{FORCE_CHARGE_W} W"
+        return "force_discharge", FORCE_CHARGE_W, t("Batterie entlädt mit mindestens ~{power} W", power=FORCE_CHARGE_W)
     if "force_charge" in supported:
-        return "force_charge", FORCE_CHARGE_W, f"Batterie lädt mit mindestens ~{FORCE_CHARGE_W} W"
+        return "force_charge", FORCE_CHARGE_W, t("Batterie lädt mit mindestens ~{power} W", power=FORCE_CHARGE_W)
     if "force_discharge" in supported:
-        return "force_discharge", FORCE_CHARGE_W, f"Batterie entlädt mit mindestens ~{FORCE_CHARGE_W} W"
-    raise ExecutorError("Das Gerät kann keine prüfbare Aktion – Test nicht möglich")
+        return "force_discharge", FORCE_CHARGE_W, t("Batterie entlädt mit mindestens ~{power} W", power=FORCE_CHARGE_W)
+    raise ExecutorError(t("Das Gerät kann keine prüfbare Aktion – Test nicht möglich"))
 
 
 def evaluate(action: str, power: float, settled: list[float]) -> tuple[bool, bool]:
@@ -175,23 +177,23 @@ async def run_device_test(
 
     async def restore() -> None:
         state.phase = "restore"
-        state.message = "Setze auf Eigenverbrauch zurück …"
+        state.message = t("Setze auf Eigenverbrauch zurück …")
         calls = await run_action("auto", {})
         state.calls += calls
         # A value the device already holds is skipped, which restores as well
         state.restored = all(c.status in ("done", "skipped") for c in calls)
         if mode is not None and state.previous_mode is not None:
-            state.message = f"Schalte zurück in „{state.previous_mode}“ …"
+            state.message = t("Schalte zurück in „{mode}“ …", mode=state.previous_mode)
             await mode.set(state.previous_mode)
             state.previous_mode_restored = True
         if state.restored and mark is not None:
             mark(None)
 
     try:
-        state.message = "Messe Ausgangszustand …"
+        state.message = t("Messe Ausgangszustand …")
         baseline = await sample_for("baseline", timings.baseline)
         if not baseline:
-            raise ExecutorError("Keine Batterieleistung lesbar – Test nicht möglich")
+            raise ExecutorError(t("Keine Batterieleistung lesbar – Test nicht möglich"))
         action, power, expectation = choose_test(median(baseline), supported)
         state.test_action, state.test_power, state.expectation = action, power, expectation
 
@@ -200,10 +202,10 @@ async def run_device_test(
         commanded = True
         remember()
         if mode is not None:
-            state.message = "Prüfe Betriebsmodus …"
+            state.message = t("Prüfe Betriebsmodus …")
             state.previous_mode = await mode.ensure()
             remember()
-        state.message = f"Testbefehl aktiv: {expectation}"
+        state.message = t("Testbefehl aktiv: {expectation}", expectation=expectation)
         state.calls += await run_action(action, {"P": power})
         await sample_for("command", timings.settle)
         settled = await sample_for("command", timings.hold - timings.settle)
@@ -212,13 +214,13 @@ async def run_device_test(
         await restore()
         commanded = False
         # Readings after the restore are shown; self-consumption has no single expected value
-        state.message = "Prüfe Verhalten nach dem Zurücksetzen …"
+        state.message = t("Prüfe Verhalten nach dem Zurücksetzen …")
         await sample_for("verify_restore", timings.verify_restore)
         state.phase = "done"
-        state.message = "Test abgeschlossen"
+        state.message = t("Test abgeschlossen")
     except asyncio.CancelledError:
         state.phase = "aborted"
-        state.message = "Abgebrochen"
+        state.message = t("Abgebrochen")
         if commanded:
             await _restore_safely(state, restore)
         raise
@@ -226,7 +228,7 @@ async def run_device_test(
         _LOGGER.exception("Device test failed")
         state.phase = "failed"
         state.error = str(err)
-        state.message = f"Fehler: {err}"
+        state.message = t("Fehler: {error}", error=err)
         if commanded:
             await _restore_safely(state, restore)
     finally:
@@ -240,7 +242,7 @@ async def _restore_safely(state: DeviceTestState, restore: Callable[[], Awaitabl
     except Exception as err:  # noqa: BLE001
         _LOGGER.exception("Restore after device test failed")
         state.restored = False
-        state.error = f"Zurücksetzen fehlgeschlagen: {err}"
+        state.error = t("Zurücksetzen fehlgeschlagen: {error}", error=err)
     state.phase = phase
 
 

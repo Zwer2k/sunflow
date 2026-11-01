@@ -21,6 +21,7 @@ from sunflow.control.controller import PlanController
 from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_category, device_kind
+from sunflow.i18n import t
 from sunflow.planning.vehicles import METHODS, scanned_card, vehicle_at
 from sunflow.shadow.runner import ShadowRunner
 
@@ -28,6 +29,11 @@ from .common import _configured_device, _library, _replan, _snapshot
 from .plan import _flex_windows
 
 router = APIRouter()
+
+
+def _method(method: str | None) -> str | None:
+    """How the vehicle at a wallbox was recognized, for the UI."""
+    return t(METHODS[method]) if method in METHODS else None
 
 
 def _aux_battery(
@@ -54,7 +60,7 @@ async def get_control(request: Request) -> dict[str, Any]:
     runner: ShadowRunner = request.app.state.runner
     latest = runner.latest
     infos = {f.device_id: f for f in latest.flex} if latest else {}
-    names = {BATTERY_PRIORITY_ID: "Hausspeicher"}
+    names = {BATTERY_PRIORITY_ID: t("Hausspeicher")}
     controller: PlanController | None = getattr(request.app.state, "controller", None)
     devices = []
     for device in config.devices:
@@ -95,9 +101,9 @@ async def get_control(request: Request) -> dict[str, Any]:
                 else None,
                 "target": info.target if info else None,
                 "vehicles": [{"id": v.id, "name": v.name} for v in config.vehicles_at(device.id)],
-                "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": METHODS.get(info.vehicle_method or "")}
+                "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": _method(info.vehicle_method)}
                 if info and info.vehicle_id
-                else {"id": vehicle.id, "name": vehicle.name, "method": METHODS.get(recognized.method or "")}
+                else {"id": vehicle.id, "name": vehicle.name, "method": _method(recognized.method)}
                 if vehicle
                 else None,
                 "selected_vehicle": config.selected_vehicles.get(device.id),

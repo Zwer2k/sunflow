@@ -116,8 +116,11 @@ planen** (save and replan).
 
 ![Display](../images/settings-display.png)
 
-The weather in the Live view can be hidden separately for phones and for tablets/computers. If it
-is off everywhere, Sunflow does not fetch the weather forecast for it.
+- **Weather in the Live view**: can be hidden separately for phones and for tablets/computers. If
+  it is off everywhere, Sunflow does not fetch the weather forecast for it.
+- **Language**: "Like Home Assistant" (default: German if Home Assistant is set to German, English
+  otherwise), "Deutsch" or "English". Applies to the interface and to messages such as plan notices
+  and recommendations. The page reloads afterwards.
 
 ## Summary ("Übersicht")
 

@@ -9,6 +9,7 @@ from sunflow.config.models import ChargingProfile, Vehicle, VehicleDetection
 from sunflow.config.store import ConfigStore
 from sunflow.control.aux_battery import aux_voltage
 from sunflow.devices.site import device_kind
+from sunflow.i18n import t
 from sunflow.planning.vehicles import soc_of
 
 from .common import _library, _replan, _snapshot
@@ -105,7 +106,7 @@ async def set_charging(request: Request, profiles: list[ChargingProfile]) -> dic
     pairs = [(p.wallbox_id, p.vehicle_id) for p in profiles]
     cards = [(p.wallbox_id, p.card) for p in profiles if p.card]
     if len(pairs) != len(set(pairs)) or len(cards) != len(set(cards)):
-        raise HTTPException(status_code=422, detail="Eine Karte ist an einer Wallbox mehreren Fahrzeugen zugeordnet")
+        raise HTTPException(status_code=422, detail=t("Eine Karte ist an einer Wallbox mehreren Fahrzeugen zugeordnet"))
     config.charging = profiles
     store.save(config)
     _replan(request)

@@ -1,4 +1,5 @@
 import { svg, nothing } from "../../vendor/lit-all.min.js";
+import { decimal, lang, locale, t } from "../lib/i18n.js";
 
 // Validated categorical slots (light/dark) are CSS variables in base.css; SVG presentation
 // attributes do not resolve var(), so colors are applied through style
@@ -18,7 +19,7 @@ function fit() {
 
 // Hours between time labels: the smallest step that leaves room for a label
 const HOUR_STEPS = [1, 2, 3, 6, 12, 24, 48, 168, 336, 720];
-const dateFormat = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" });
+const dateFormat = new Intl.DateTimeFormat(locale(), { day: "2-digit", month: "2-digit" });
 const MIN_LABEL_SPACING = 56;
 const PAD = { top: 18, right: 8, bottom: 28 };
 // Value labels sit on their grid lines inside the plot, so no left margin is needed and
@@ -26,8 +27,8 @@ const PAD = { top: 18, right: 8, bottom: 28 };
 const LEFT = 2;
 // Keeps value labels readable where a line passes behind them
 const LABEL_HALO = "paint-order: stroke; stroke: var(--sf-surface); stroke-width: 3px; stroke-linejoin: round";
-const timeFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
-const dayFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
+const timeFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
+const dayFormat = new Intl.DateTimeFormat(locale(), { weekday: "short" });
 
 /**
  * Round axis: the smallest step of 1, 2 or 5 x 10^n that needs at most six intervals,
@@ -48,7 +49,7 @@ function niceScale(value, from = 0) {
 /** Axis label: no decimals from 10 on ("18 kWh", not "18,3 kWh"); small values keep them. */
 function axisLabel(value, formatY) {
   const text = String(formatY(value));
-  const match = text.match(/^(−?-?\d+)(?:,(\d+))?(.*)$/);
+  const match = text.match(lang() === "de" ? /^(−?-?\d+)(?:,(\d+))?(.*)$/ : /^(−?-?\d+)(?:\.(\d+))?(.*)$/);
   if (!match) return text;
   const number = Number(`${match[1].replace("−", "-")}.${match[2] ?? 0}`);
   if (number === 0) return "0";
@@ -76,27 +77,27 @@ function frame(start, end, scale, formatY, { onScale = null, zoomed = false } = 
   const pxPerHour = (W - left - PAD.right) / Math.max((end - start) / 3600_000, 1);
   const every = HOUR_STEPS.find((h) => h * pxPerHour >= MIN_LABEL_SPACING) ?? 720;
   // Whole days since a fixed Monday, so weekly labels fall on Mondays
-  const dayNumber = (t) => Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - new Date(2024, 0, 1)) / 86_400_000);
+  const dayNumber = (tick) => Math.round((new Date(tick.getFullYear(), tick.getMonth(), tick.getDate()) - new Date(2024, 0, 1)) / 86_400_000);
   const hours = [];
   const first = new Date(start);
   first.setMinutes(0, 0, 0);
-  for (let t = new Date(first); t <= end; t = new Date(t.getTime() + 3600_000)) {
-    if (t < start) continue;
+  for (let tick = new Date(first); tick <= end; tick = new Date(tick.getTime() + 3600_000)) {
+    if (tick < start) continue;
     // Steps of a day or more label midnights only (every second one for 48 h)
-    const due = every < 24 ? t.getHours() % every === 0 : t.getHours() === 0 && dayNumber(t) % (every / 24) === 0;
+    const due = every < 24 ? tick.getHours() % every === 0 : tick.getHours() === 0 && dayNumber(tick) % (every / 24) === 0;
     // Labels centred on the tick must not be cut off at the edges
-    if (due && x(t) > 18 && x(t) < W - PAD.right - 18) hours.push(t);
+    if (due && x(tick) > 18 && x(tick) < W - PAD.right - 18) hours.push(tick);
   }
   const labels = svg`
     ${ticks.map((v) => v === 0
       ? nothing
       : svg`<text x=${left + 2} y=${y(v) - 4} text-anchor="start" class=${onScale ? "axis scalable" : "axis"}
           style=${LABEL_HALO} @click=${onScale ? () => onScale(zoomed ? null : v) : null}>${onScale
-            ? svg`<title>${zoomed ? "Ganze Höhe zeigen" : `Bis ${axisLabel(v, formatY)} skalieren`}</title>`
+            ? svg`<title>${zoomed ? t("Ganze Höhe zeigen") : t("Bis {value} skalieren", { value: axisLabel(v, formatY) })}</title>`
             : nothing}${axisLabel(v, formatY)}</text>`)}
     ${onScale && zoomed
       ? svg`<text x=${W - PAD.right - 2} y=${PAD.top - 5} text-anchor="end" class="axis scalable" style=${LABEL_HALO}
-          @click=${() => onScale(null)}>↺ ganze Höhe</text>`
+          @click=${() => onScale(null)}>↺ ${t("ganze Höhe")}</text>`
       : nothing}
   `;
   return {
@@ -109,10 +110,10 @@ function frame(start, end, scale, formatY, { onScale = null, zoomed = false } = 
       ${ticks.map((v) => svg`<line x1=${left} x2=${W - PAD.right} y1=${y(v)} y2=${y(v)} class="grid"></line>`)}
       ${onScale ? nothing : labels}
       ${hours.map(
-        (t) => svg`
-          <line x1=${x(t)} x2=${x(t)} y1=${H - PAD.bottom} y2=${H - PAD.bottom + 4} class="grid"></line>
-          <text x=${x(t)} y=${H - 8} text-anchor="middle" class="axis">
-            ${t.getHours() !== 0 ? timeFormat.format(t) : every >= 168 ? dateFormat.format(t) : dayFormat.format(t)}
+        (tick) => svg`
+          <line x1=${x(tick)} x2=${x(tick)} y1=${H - PAD.bottom} y2=${H - PAD.bottom + 4} class="grid"></line>
+          <text x=${x(tick)} y=${H - 8} text-anchor="middle" class="axis">
+            ${tick.getHours() !== 0 ? timeFormat.format(tick) : every >= 168 ? dateFormat.format(tick) : dayFormat.format(tick)}
           </text>
         `,
       )}
@@ -153,13 +154,13 @@ export function priceChart(points, label, { range = null, now = null } = {}) {
       ${firstEstimate
         ? svg`<path d=${pathOf(true)} fill="none" style="stroke: ${SERIES_COLORS[0]}" stroke-width="2" stroke-dasharray="5 4"
               stroke-linejoin="round"></path>
-            <text x=${x(firstEstimate.start) + 4} y=${PAD.top + 10} text-anchor="start" class="axis">geschätzt</text>`
+            <text x=${x(firstEstimate.start) + 4} y=${PAD.top + 10} text-anchor="start" class="axis">${t("geschätzt")}</text>`
         : nothing}
       ${parsed.map(
         (p) => svg`<rect x=${x(p.start)} y=${PAD.top} width=${Math.max(x(p.end) - x(p.start), 1)}
           height=${H - PAD.top - PAD.bottom} class="hit">
-          <title>${timeFormat.format(p.start)}–${timeFormat.format(p.end)}: ${p.ct.toFixed(1).replace(".", ",")} ct/kWh${p.estimated
-            ? " (geschätzt)"
+          <title>${timeFormat.format(p.start)}–${timeFormat.format(p.end)}: ${decimal(p.ct.toFixed(1))} ct/kWh${p.estimated
+            ? ` (${t("geschätzt")})`
             : ""}</title>
         </rect>`,
       )}
@@ -235,8 +236,8 @@ export function lineChart(
       ${nowX !== null && nowX > left && nowX < W - PAD.right
         ? svg`
             <line x1=${nowX} x2=${nowX} y1=${PAD.top} y2=${H - PAD.bottom} class="now"></line>
-            <text x=${nowX - 4} y=${PAD.top + 10} text-anchor="end" class="axis">gemessen</text>
-            <text x=${nowX + 4} y=${PAD.top + 10} text-anchor="start" class="axis">Prognose</text>
+            <text x=${nowX - 4} y=${PAD.top + 10} text-anchor="end" class="axis">${t("gemessen")}</text>
+            <text x=${nowX + 4} y=${PAD.top + 10} text-anchor="start" class="axis">${t("Prognose")}</text>
           `
         : nothing}
       ${limits.map(
@@ -282,7 +283,7 @@ export function forecastChart(series, label) {
   const start = bars[0].start;
   const end = bars.at(-1).end;
   const scale = niceScale(Math.max(...bars.map((b) => b.parts.reduce((s, p) => s + p.power, 0))) * 1.05);
-  const kw = (v) => `${(v / 1000).toFixed(v >= 10000 || v === 0 ? 0 : 1).replace(".", ",")} kW`;
+  const kw = (v) => `${decimal((v / 1000).toFixed(v >= 10000 || v === 0 ? 0 : 1))} kW`;
   const { x, y, axes } = frame(start, end, scale, kw);
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>

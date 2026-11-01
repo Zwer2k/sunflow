@@ -28,6 +28,7 @@ from sunflow.devices.executor import (
 from sunflow.devices.profiles import battery_actions, controls_battery
 from sunflow.devices.resolver import device_entities, preview
 from sunflow.ha import HAClient
+from sunflow.i18n import t
 
 from .common import _configured_device, _guard, _library
 
@@ -117,9 +118,9 @@ async def restore_after_test(request: Request, confirm: bool = False) -> dict[st
         (d for d in config.devices if controls_battery(_library(request).profiles[d.profile])), None
     )
     if device is None:
-        raise HTTPException(status_code=404, detail="Kein steuerbarer Speicher konfiguriert")
+        raise HTTPException(status_code=404, detail=t("Kein steuerbarer Speicher konfiguriert"))
     if (running := _tests(request).get(device.id)) and running[0].running:
-        raise HTTPException(status_code=409, detail="Der Gerätetest läuft noch und setzt selbst zurück")
+        raise HTTPException(status_code=409, detail=t("Der Gerätetest läuft noch und setzt selbst zurück"))
     profile = _library(request).profiles[device.profile]
     calls: list[PlannedCall] = []
     _, apply_action, mode = _device_control(request, device, profile, calls)
@@ -128,7 +129,7 @@ async def restore_after_test(request: Request, confirm: bool = False) -> dict[st
         if mode is not None and marker.get("previous_mode"):
             await mode.set(marker["previous_mode"])
     except ExecutorError as err:
-        raise HTTPException(status_code=502, detail=f"Zurücksetzen fehlgeschlagen: {err}") from err
+        raise HTTPException(status_code=502, detail=t("Zurücksetzen fehlgeschlagen: {error}", error=err)) from err
     restored = all(c.status in ("done", "skipped") for c in calls)
     if restored:
         marker_store.set(None)

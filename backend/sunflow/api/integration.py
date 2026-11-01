@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from sunflow.config.models import IntegrationSettings, SunflowConfig
 from sunflow.control.controller import PlanController
+from sunflow.i18n import N_, number, t
 from sunflow.planning.one_time import OneTimeLoad, OneTimeLoads
 
 from .common import _replan
@@ -47,33 +48,33 @@ def _windows(slots: list[Any], runs: Any) -> list[tuple[datetime, datetime, list
 def calendar(slots: list[Any], consumers: list[Any], loads: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Planned windows as calendar events: consumers, grid charging, PV limiting, one-time loads."""
     events = []
-    verbs = {"vehicle": "lädt", "heater": "heizt"}
+    summaries = {"vehicle": N_("{name} lädt"), "heater": N_("{name} heizt")}
     for info in consumers:
         for start, end, run in _windows(slots, lambda s, n=info.name: (s.flex_w or {}).get(n, 0.0) >= RUNS_FROM_W):
             energy = sum(s.flex_w[info.name] for s in run) * 0.25 / 1000
             events.append(
                 {
-                    "summary": f"{info.name} {verbs.get(info.kind, 'läuft')}",
+                    "summary": t(summaries.get(info.kind, N_("{name} läuft")), name=info.name),
                     "start": start.isoformat(),
                     "end": end.isoformat(),
-                    "description": f"{energy:.1f} kWh geplant".replace(".", ","),
+                    "description": t("{energy} kWh geplant", energy=number(energy)),
                 }
             )
     for start, end, run in _windows(slots, lambda s: s.action == "force_charge" and s.import_w > RUNS_FROM_W):
         energy = sum(s.import_w for s in run) * 0.25 / 1000
         events.append(
             {
-                "summary": "Speicher lädt aus dem Netz",
+                "summary": t("Speicher lädt aus dem Netz"),
                 "start": start.isoformat(),
                 "end": end.isoformat(),
-                "description": f"{energy:.1f} kWh aus dem Netz".replace(".", ","),
+                "description": t("{energy} kWh aus dem Netz", energy=number(energy)),
             }
         )
     for start, end, _ in _windows(slots, lambda s: (getattr(s, "curtail_w", 0.0) or 0.0) > RUNS_FROM_W):
-        events.append({"summary": "PV wird begrenzt", "start": start.isoformat(), "end": end.isoformat(), "description": ""})
+        events.append({"summary": t("PV wird begrenzt"), "start": start.isoformat(), "end": end.isoformat(), "description": ""})
     for load in loads:
         if load["start"] and load["end"]:
-            events.append({"summary": load["name"], "start": load["start"], "end": load["end"], "description": "Einmalige Last"})
+            events.append({"summary": load["name"], "start": load["start"], "end": load["end"], "description": t("Einmalige Last")})
     return sorted(events, key=lambda e: e["start"])
 
 

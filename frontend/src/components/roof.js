@@ -1,18 +1,19 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import { locale, t } from "../lib/i18n.js";
 
 /** Values an optimizer can report, in display order: short label and decimals. */
 export const OPTIMIZER_VALUES = {
-  power: { label: "Leistung", short: "", unit: "W", digits: 0 },
-  voltage_in: { label: "Spannung Modul", short: "U", unit: "V", digits: 1 },
-  current_in: { label: "Strom Modul", short: "I", unit: "A", digits: 2 },
-  voltage_out: { label: "Spannung Ausgang", short: "U→", unit: "V", digits: 1 },
-  current_out: { label: "Strom Ausgang", short: "I→", unit: "A", digits: 2 },
-  temperature: { label: "Temperatur", short: "", unit: "°C", digits: 0 },
+  power: { label: t("Leistung"), short: "", unit: "W", digits: 0 },
+  voltage_in: { label: t("Spannung Modul"), short: "U", unit: "V", digits: 1 },
+  current_in: { label: t("Strom Modul"), short: "I", unit: "A", digits: 2 },
+  voltage_out: { label: t("Spannung Ausgang"), short: "U→", unit: "V", digits: 1 },
+  current_out: { label: t("Strom Ausgang"), short: "I→", unit: "A", digits: 2 },
+  temperature: { label: t("Temperatur"), short: "", unit: "°C", digits: 0 },
   pwm: { label: "PWM", short: "PWM", unit: "", digits: 0 },
 };
 
 const number = (value, digits) =>
-  value.toLocaleString("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  value.toLocaleString(locale(), { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 export function optimizerValue(key, value) {
   const spec = OPTIMIZER_VALUES[key];
@@ -76,10 +77,10 @@ class SunflowRoof extends LitElement {
     return html`<div class="roof">${lines}</div>
     ${this.editable
       ? html`<p class="caption">${selected
-          ? html`Ausgewählt: <strong>${selected.name}</strong>${selected.name !== selected.label ? ` (${selected.label})` : ""} –
-              jetzt den Platz antippen oder
-              <button class="rotate" @click=${() => this._rotate(selected.id)}>${selected.rotated ? "hochkant stellen" : "quer legen"}</button>`
-          : "Modul antippen, um es auszuwählen"}</p>`
+          ? html`${t("Ausgewählt:")} <strong>${selected.name}</strong>${selected.name !== selected.label ? ` (${selected.label})` : ""} –
+              ${t("jetzt den Platz antippen oder")}
+              <button class="rotate" @click=${() => this._rotate(selected.id)}>${selected.rotated ? t("hochkant stellen") : t("quer legen")}</button>`
+          : t("Modul antippen, um es auszuwählen")}</p>`
       : nothing}`;
   }
 
@@ -110,9 +111,9 @@ class SunflowRoof extends LitElement {
     const on = this.breaks.includes(row);
     if (!this.editable) return on ? html`<div class="break" role="separator"></div>` : nothing;
     return html`<button class="break-toggle ${on ? "on" : ""}" aria-pressed=${on ? "true" : "false"}
-      title=${on ? "Trenner entfernen" : "Trenner einfügen: die Reihen darunter liegen abseits"}
+      title=${on ? t("Trenner entfernen") : t("Trenner einfügen: die Reihen darunter liegen abseits")}
       @click=${() => this.dispatchEvent(new CustomEvent("break", { detail: { row } }))}>
-      <span>${on ? "Trenner ✕" : "+ Trenner"}</span>
+      <span>${on ? t("Trenner ✕") : t("+ Trenner")}</span>
     </button>`;
   }
 
@@ -120,8 +121,8 @@ class SunflowRoof extends LitElement {
     const on = this.colBreaks.includes(col);
     if (!this.editable) return on ? html`<div class="vbreak" role="separator"></div>` : nothing;
     return html`<button class="vbreak-toggle ${on ? "on" : ""}" aria-pressed=${on ? "true" : "false"}
-      aria-label=${on ? `Trenner vor Platz ${col + 1} entfernen` : `Trenner vor Platz ${col + 1} einfügen`}
-      title=${on ? "Trenner entfernen (alle Reihen)" : "Trenner einfügen: die Plätze rechts liegen abseits (alle Reihen)"}
+      aria-label=${on ? t("Trenner vor Platz {place} entfernen", { place: col + 1 }) : t("Trenner vor Platz {place} einfügen", { place: col + 1 })}
+      title=${on ? t("Trenner entfernen (alle Reihen)") : t("Trenner einfügen: die Plätze rechts liegen abseits (alle Reihen)")}
       @click=${() => this.dispatchEvent(new CustomEvent("break", { detail: { col } }))}>${on ? "✕" : "+"}</button>`;
   }
 

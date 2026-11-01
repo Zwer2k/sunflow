@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import { t } from "../lib/i18n.js";
 
 /**
  * Sunflow's own confirmation dialog instead of the browser's confirm().
@@ -19,7 +20,7 @@ class SunflowDialog extends LitElement {
     this.heading = "";
     this.text = "";
     this.confirmLabel = "OK";
-    this.cancelLabel = "Abbrechen";
+    this.cancelLabel = t("Abbrechen");
     this.danger = false;
     this._resolve = null;
   }
@@ -78,7 +79,7 @@ class SunflowDialog extends LitElement {
 
 customElements.define("sf-dialog", SunflowDialog);
 
-export function confirmDialog({ title = "", text, confirm = "OK", cancel = "Abbrechen", danger = false }) {
+export function confirmDialog({ title = "", text, confirm = "OK", cancel = t("Abbrechen"), danger = false }) {
   const dialog = document.createElement("sf-dialog");
   Object.assign(dialog, { heading: title, text, confirmLabel: confirm, cancelLabel: cancel, danger });
   document.body.append(dialog);

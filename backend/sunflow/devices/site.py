@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sunflow.config.models import DeviceConfig, MeasuredBy, SunflowConfig
+from sunflow.i18n import t
 
 from .discovery import Snapshot, entity_has_key
 from .resolver import (
@@ -258,9 +259,7 @@ def site_status(
             for r in status.roles
         )
         if has_pv_ext and (status.device_id, "pv_ext_power") not in measured_roles:
-            site.hints.append(
-                f"{status.name} misst eine externe PV-Anlage, die noch keinem Gerät zugeordnet ist."
-            )
+            site.hints.append(t("{name} misst eine externe PV-Anlage, die noch keinem Gerät zugeordnet ist.", name=status.name))
 
     outputs = [s.pv_output for s in site.devices if s.pv_output is not None]
     site.pv_total = sum(outputs) if outputs else None

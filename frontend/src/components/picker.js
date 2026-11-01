@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import { t } from "../lib/i18n.js";
 
 const MAX_RESULTS = 50;
 
@@ -27,7 +28,7 @@ class SunflowPicker extends LitElement {
     this.options = [];
     this.value = "";
     this.label = "";
-    this.placeholder = "Suchen …";
+    this.placeholder = t("Suchen …");
     this.emptyLabel = null;
     this.inline = false;
     this._open = false;
@@ -147,9 +148,9 @@ class SunflowPicker extends LitElement {
                       </li>
                     `,
                   )
-                : html`<li class="empty">Keine Treffer</li>`}
+                : html`<li class="empty">${t("Keine Treffer")}</li>`}
               ${total > MAX_RESULTS && matches.length === MAX_RESULTS
-                ? html`<li class="empty">Weitere Treffer – Suche verfeinern</li>`
+                ? html`<li class="empty">${t("Weitere Treffer – Suche verfeinern")}</li>`
                 : nothing}
             </ul>
           `

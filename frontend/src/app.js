@@ -30,23 +30,24 @@ import {
   paramLabel,
   toDisplay,
 } from "./lib/format.js";
+import { decimal, locale, t, tn } from "./lib/i18n.js";
 
 /** What the MCP server may read; matches the areas in the backend. */
 const MCP_AREAS = [
-  ["live", "Live, Plan, Preise und Prognosen"],
-  ["history", "Verlauf, Aufzeichnung und Auswertung (mit SQL)"],
-  ["config", "Konfiguration und Geräte"],
-  ["control", "Steuerung und Steuerungsprotokoll"],
-  ["log", "Fehler und Warnungen der App"],
+  ["live", t("Live, Plan, Preise und Prognosen")],
+  ["history", t("Verlauf, Aufzeichnung und Auswertung (mit SQL)")],
+  ["config", t("Konfiguration und Geräte")],
+  ["control", t("Steuerung und Steuerungsprotokoll")],
+  ["log", t("Fehler und Warnungen der App")],
 ];
 
 // Main menu: view, label, icon (24 px line icon)
 const VIEWS = [
-  ["live", "Live", "M3 12h4l3-8 4 16 3-8h4"],
-  ["control", "Steuerung", "M8 6h8a6 6 0 0 1 0 12H8A6 6 0 0 1 8 6zM16 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
-  ["plan", "Planung", "M3 3v18h18M7 15l4-4 3 3 5-6"],
-  ["analysis", "Analyse", "M5 20V11M11 20V5M17 20v-7M3 20h18"],
-  ["setup", "Einstellungen", "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M16 4v4M10 10v4M18 16v4"],
+  ["live", t("Live"), "M3 12h4l3-8 4 16 3-8h4"],
+  ["control", t("Steuerung"), "M8 6h8a6 6 0 0 1 0 12H8A6 6 0 0 1 8 6zM16 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
+  ["plan", t("Planung"), "M3 3v18h18M7 15l4-4 3 3 5-6"],
+  ["analysis", t("Analyse"), "M5 20V11M11 20V5M17 20v-7M3 20h18"],
+  ["setup", t("Einstellungen"), "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M16 4v4M10 10v4M18 16v4"],
 ];
 
 // Inside Home Assistant (Ingress panel) HA's own toolbar already shows name and icon
@@ -111,18 +112,18 @@ function writeSetting(key, value) {
 
 // Settings areas; the first setup walks through them in this order
 const STEPS = [
-  ["integrations", "Integrationen"],
-  ["devices", "Geräte"],
-  ["test", "Gerätetest"],
-  ["site", "Bilanzprüfung"],
-  ["optimizers", "Optimierer"],
-  ["vehicles", "Fahrzeuge"],
-  ["charging", "Laden"],
-  ["consumers", "Verbraucher"],
-  ["sources", "Tarif & Prognose"],
-  ["standards", "Planung"],
-  ["display", "Anzeige"],
-  ["summary", "Übersicht"],
+  ["integrations", t("Integrationen")],
+  ["devices", t("Geräte")],
+  ["test", t("Gerätetest")],
+  ["site", t("Bilanzprüfung")],
+  ["optimizers", t("Optimierer")],
+  ["vehicles", t("Fahrzeuge")],
+  ["charging", t("Laden")],
+  ["consumers", t("Verbraucher")],
+  ["sources", t("Tarif & Prognose")],
+  ["standards", t("Planung")],
+  ["display", t("Anzeige")],
+  ["summary", t("Übersicht")],
 ];
 const stepIndex = (step) => (typeof step === "number" ? step : Math.max(STEPS.findIndex(([key]) => key === step), 0));
 const PREVIEW_INTERVAL_MS = 5000;
@@ -140,7 +141,7 @@ const ISSUE_STYLES = {
 const FIXED_PRICE = "__fixed__";
 // Own consumers: profile per way of control
 const MANUAL_PREFIX = "generic/";
-const MANUAL_TYPES = { switch: "Schalter (ein/aus)", stepped: "Leistungsstufen (Auswahl)", current: "Stromstärke (Zahl)" };
+const MANUAL_TYPES = { switch: t("Schalter (ein/aus)"), stepped: t("Leistungsstufen (Auswahl)"), current: t("Stromstärke (Zahl)") };
 const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
 
 const EMPTY_MANUAL = {
@@ -150,20 +151,20 @@ const EMPTY_MANUAL = {
 const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" };
 
 const PRICE_ADAPTERS = {
-  timeslots: "Zeittarif",
+  timeslots: t("Zeittarif"),
   tibber: "Tibber",
-  nordpool: "Börsenpreis (Nord Pool)",
-  nordpool_core: "Börsenpreis netto (Nord Pool)",
-  epex_spot: "dynamischer Preis (EPEX Spot)",
-  epex_market: "Börsenpreis netto (EPEX Spot)",
-  entsoe: "Börsenpreis (ENTSO-e)",
-  fixed: "nur aktueller Preis",
+  nordpool: t("Börsenpreis (Nord Pool)"),
+  nordpool_core: t("Börsenpreis netto (Nord Pool)"),
+  epex_spot: t("dynamischer Preis (EPEX Spot)"),
+  epex_market: t("Börsenpreis netto (EPEX Spot)"),
+  entsoe: t("Börsenpreis (ENTSO-e)"),
+  fixed: t("nur aktueller Preis"),
 };
-const weekdayTimeFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
-const timeOnlyFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
+const weekdayTimeFormat = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const timeOnlyFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
 
 function formatCt(eurPerKwh) {
-  return `${(eurPerKwh * 100).toFixed(1).replace(".", ",")} ct`;
+  return `${decimal((eurPerKwh * 100).toFixed(1))} ct`;
 }
 
 function weekdayTime(iso) {
@@ -186,8 +187,8 @@ const OPPOSITE_SIGN = {
   export_positive: "import_positive",
 };
 const BALANCE_FORMULAS = {
-  ac: "Netz + WR-Ausgang (AC) + PV extern",
-  dc: "Netz + PV + PV extern − Batterie",
+  ac: t("Netz + WR-Ausgang (AC) + PV extern"),
+  dc: t("Netz + PV + PV extern − Batterie"),
 };
 
 class SunflowApp extends LitElement {
@@ -340,7 +341,7 @@ class SunflowApp extends LitElement {
       this._error = null;
     } catch (err) {
       this._view ??= "live";
-      this._error = `Daten konnten nicht geladen werden: ${err.message}`;
+      this._error = t("Daten konnten nicht geladen werden: {error}", { error: err.message });
       return;
     }
     this._loadPendingRestore();
@@ -363,19 +364,20 @@ class SunflowApp extends LitElement {
 
   async _restoreAfterTest() {
     const pending = this._pendingRestore;
-    const mode = pending?.previous_mode ? ` und den Betriebsmodus „${pending.previous_mode}“` : "";
     if (!(await confirmDialog({
-      title: "Wechselrichter zurücksetzen",
-      text: `Sunflow stellt jetzt am Wechselrichter den Eigenverbrauch${mode} wieder her.`,
-      confirm: "Zurücksetzen",
+      title: t("Wechselrichter zurücksetzen"),
+      text: pending?.previous_mode
+        ? t("Sunflow stellt jetzt am Wechselrichter den Eigenverbrauch und den Betriebsmodus „{mode}“ wieder her.", { mode: pending.previous_mode })
+        : t("Sunflow stellt jetzt am Wechselrichter den Eigenverbrauch wieder her."),
+      confirm: t("Zurücksetzen"),
     }))) return;
     this._restoring = true;
     try {
       const result = await api.restoreAfterTest();
-      this._error = result.restored ? null : "Zurücksetzen nicht vollständig – bitte am Wechselrichter prüfen.";
+      this._error = result.restored ? null : t("Zurücksetzen nicht vollständig – bitte am Wechselrichter prüfen.");
       await this._loadPendingRestore();
     } catch (err) {
-      this._error = `Zurücksetzen fehlgeschlagen: ${err.message}`;
+      this._error = t("Zurücksetzen fehlgeschlagen: {error}", { error: err.message });
     } finally {
       this._restoring = false;
     }
@@ -384,16 +386,19 @@ class SunflowApp extends LitElement {
   _renderPendingRestore() {
     const pending = this._pendingRestore;
     if (!pending) return nothing;
-    const since = pending.started ? ` (seit ${new Date(pending.started).toLocaleString("de-DE")})` : "";
+    const device = pending.device_name ?? t("Der Wechselrichter");
     return html`
       <div class="restore-banner" role="alert">
         <div>
-          <strong>Gerätetest wurde unterbrochen${since}.</strong>
-          ${pending.device_name ?? "Der Wechselrichter"} steht möglicherweise noch im Testzustand
-          (z. B. Laden aus dem Netz oder begrenzte Ladung)${pending.previous_mode ? `, Betriebsmodus vorher „${pending.previous_mode}“` : ""}.
+          <strong>${pending.started
+            ? t("Gerätetest wurde unterbrochen (seit {time}).", { time: new Date(pending.started).toLocaleString(locale()) })
+            : t("Gerätetest wurde unterbrochen.")}</strong>
+          ${pending.previous_mode
+            ? t("{device} steht möglicherweise noch im Testzustand (z. B. Laden aus dem Netz oder begrenzte Ladung), Betriebsmodus vorher „{mode}“.", { device, mode: pending.previous_mode })
+            : t("{device} steht möglicherweise noch im Testzustand (z. B. Laden aus dem Netz oder begrenzte Ladung).", { device })}
         </div>
         <button class="primary" ?disabled=${this._restoring} @click=${() => this._restoreAfterTest()}>
-          ${this._restoring ? "Stelle wieder her …" : "Selbstverbrauch wiederherstellen"}
+          ${this._restoring ? t("Stelle wieder her …") : t("Selbstverbrauch wiederherstellen")}
         </button>
       </div>
     `;
@@ -410,7 +415,7 @@ class SunflowApp extends LitElement {
           .map((i) => i.entry_id),
       );
     } catch (err) {
-      this._discoveryError = `Home Assistant nicht erreichbar: ${err.message}`;
+      this._discoveryError = t("Home Assistant nicht erreichbar: {error}", { error: err.message });
     }
   }
 
@@ -547,7 +552,7 @@ class SunflowApp extends LitElement {
       this._testConfirm = this._without(this._testConfirm, device.id);
       this._error = null;
     } catch (err) {
-      this._error = `Test konnte nicht gestartet werden: ${err.message}`;
+      this._error = t("Test konnte nicht gestartet werden: {error}", { error: err.message });
     }
   }
 
@@ -555,7 +560,7 @@ class SunflowApp extends LitElement {
     try {
       this._tests = { ...this._tests, [device.id]: await api.abortTest(device.id) };
     } catch (err) {
-      this._error = `Abbruch fehlgeschlagen: ${err.message}`;
+      this._error = t("Abbruch fehlgeschlagen: {error}", { error: err.message });
     }
   }
 
@@ -564,7 +569,7 @@ class SunflowApp extends LitElement {
       this._summary = await api.summary();
       this._error = null;
     } catch (err) {
-      this._error = `Zusammenfassung konnte nicht geladen werden: ${err.message}`;
+      this._error = t("Zusammenfassung konnte nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -573,7 +578,7 @@ class SunflowApp extends LitElement {
       this._summary = await api.completeSetup();
       this._error = null;
     } catch (err) {
-      this._error = `Einrichtung konnte nicht abgeschlossen werden: ${err.message}`;
+      this._error = t("Einrichtung konnte nicht abgeschlossen werden: {error}", { error: err.message });
     }
   }
 
@@ -582,7 +587,7 @@ class SunflowApp extends LitElement {
       this._sources = await api.sources();
       this._error = null;
     } catch (err) {
-      this._error = `Quellen konnten nicht geladen werden: ${err.message}`;
+      this._error = t("Quellen konnten nicht geladen werden: {error}", { error: err.message });
       return;
     }
     await Promise.all([this._loadPriceSeries(), this._loadForecastSeries()]);
@@ -597,7 +602,7 @@ class SunflowApp extends LitElement {
     try {
       this._priceSeries = await api.tariffSeries(tariff.import_entity_id);
     } catch (err) {
-      this._error = `Preisverlauf konnte nicht geladen werden: ${err.message}`;
+      this._error = t("Preisverlauf konnte nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -605,7 +610,7 @@ class SunflowApp extends LitElement {
     try {
       this._forecastSeries = await api.forecastSeries();
     } catch (err) {
-      this._error = `PV-Prognose konnte nicht geladen werden: ${err.message}`;
+      this._error = t("PV-Prognose konnte nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -621,7 +626,7 @@ class SunflowApp extends LitElement {
   async _saveFixedPrice() {
     const value = fromDisplay(this._fixedPriceEdit ?? "", "ct");
     if (value === undefined || value === null || value < 0) {
-      this._error = "Bitte einen gültigen Preis in ct/kWh eingeben.";
+      this._error = t("Bitte einen gültigen Preis in ct/kWh eingeben.");
       return;
     }
     // Keep the typed price when saving fails, so it is neither lost nor skipped by "Weiter"
@@ -634,7 +639,7 @@ class SunflowApp extends LitElement {
     const surcharge = value("exchange_surcharge_ct", "ct");
     const vat = value("exchange_vat_pct", "%");
     if (surcharge === undefined || vat === undefined || (vat !== null && (vat < 0 || vat > 50))) {
-      this._error = "Bitte Aufschlag in ct/kWh und Mehrwertsteuer in % (0–50) eingeben.";
+      this._error = t("Bitte Aufschlag in ct/kWh und Mehrwertsteuer in % (0–50) eingeben.");
       return;
     }
     if (await this._saveTariff({ ...this._sources.tariff, exchange_surcharge_ct: surcharge, exchange_vat_pct: vat })) {
@@ -650,7 +655,7 @@ class SunflowApp extends LitElement {
       await this._loadPriceSeries();
       return true;
     } catch (err) {
-      this._error = `Preisquelle konnte nicht gespeichert werden: ${err.message}`;
+      this._error = t("Preisquelle konnte nicht gespeichert werden: {error}", { error: err.message });
       this.requestUpdate();
       return false;
     }
@@ -672,12 +677,12 @@ class SunflowApp extends LitElement {
       this._savePlanes(plane, { strings: [...next] });
     };
     return html`<div class="small plane-strings">
-      <span class="muted">Gemessen von:</span>
+      <span class="muted">${t("Gemessen von:")}</span>
       ${own.map(
         (s) => html`<label class="inline"><input type="checkbox" .checked=${chosen.has(s.id)}
           @change=${(e) => toggle(s.id, e.target.checked)}> ${s.name}</label>`,
       )}
-      <span class="muted">– dann lernt Sunflow diese Fläche einzeln (z. B. Verschattung).</span>
+      <span class="muted">${t("– dann lernt Sunflow diese Fläche einzeln (z. B. Verschattung).")}</span>
     </div>`;
   }
 
@@ -712,7 +717,7 @@ class SunflowApp extends LitElement {
       );
       await this._loadForecastSeries();
     } catch (err) {
-      this._error = `Prognoseflächen konnten nicht gespeichert werden: ${err.message}`;
+      this._error = t("Prognoseflächen konnten nicht gespeichert werden: {error}", { error: err.message });
     }
   }
 
@@ -726,7 +731,7 @@ class SunflowApp extends LitElement {
     try {
       this._measurements = await api.measurements();
     } catch (err) {
-      this._error = `Messquellen konnten nicht geladen werden: ${err.message}`;
+      this._error = t("Messquellen konnten nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -735,7 +740,7 @@ class SunflowApp extends LitElement {
       this._measurements = await api.setMeasurements({ [quantity]: deviceId || null });
       this._error = null;
     } catch (err) {
-      this._error = `Messquelle konnte nicht gespeichert werden: ${err.message}`;
+      this._error = t("Messquelle konnte nicht gespeichert werden: {error}", { error: err.message });
     }
   }
 
@@ -744,16 +749,17 @@ class SunflowApp extends LitElement {
     if (!entries.length) return nothing;
     return html`
       <section class="device">
-        <div class="device-title">Messquellen</div>
-        <p class="small muted">Welches Gerät liefert Leistung und Zählerstände? Gilt für Live, Verlauf, Energiebilanz und
-          Schattenbetrieb. „Automatisch“ nimmt einen eigenen Zähler (z. B. am Stromzähler) vor dem Wechselrichter.</p>
+        <div class="device-title">${t("Messquellen")}</div>
+        <p class="small muted">${t("Welches Gerät liefert Leistung und Zählerstände? Gilt für Live, Verlauf, Energiebilanz und Schattenbetrieb. „Automatisch“ nimmt einen eigenen Zähler (z. B. am Stromzähler) vor dem Wechselrichter.")}</p>
         ${entries.map(([quantity, m]) => {
-          const auto = m.effective && !m.selected ? ` (${byId[m.effective]?.name ?? m.options.find((o) => o.id === m.effective)?.name})` : "";
+          const auto = m.effective && !m.selected
+            ? t("Automatisch ({name})", { name: byId[m.effective]?.name ?? m.options.find((o) => o.id === m.effective)?.name })
+            : t("Automatisch");
           return html`
             <div class="field wide">
               <span class="field-label">${m.label}</span>
               <select aria-label=${m.label} @change=${(e) => this._setMeasurement(quantity, e.target.value)}>
-                <option value="" ?selected=${!m.selected}>Automatisch${auto}</option>
+                <option value="" ?selected=${!m.selected}>${auto}</option>
                 ${m.options.map((o) => html`<option value=${o.id} ?selected=${m.selected === o.id}>${o.name}</option>`)}
               </select>
             </div>
@@ -767,7 +773,7 @@ class SunflowApp extends LitElement {
     try {
       this._site = await api.site();
     } catch (err) {
-      this._error = `Anlagenstatus konnte nicht geladen werden: ${err.message}`;
+      this._error = t("Anlagenstatus konnte nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -799,7 +805,7 @@ class SunflowApp extends LitElement {
       this._paramEdits = {};
       this._feedEdits = {};
     } catch (err) {
-      this._error = `Kenndaten konnten nicht geladen werden: ${err.message}`;
+      this._error = t("Kenndaten konnten nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -813,10 +819,9 @@ class SunflowApp extends LitElement {
 
   async _removeDevice(device) {
     if (!(await confirmDialog({
-      title: `„${device.name}“ entfernen?`,
-      text: "Planung, Live und Steuerung berücksichtigen es dann nicht mehr. In Home Assistant bleibt das Gerät unverändert. " +
-        "Zum vorübergehenden Abschalten genügt „aktiv“ – dann bleiben die Einstellungen erhalten.",
-      confirm: "Entfernen",
+      title: t("„{name}“ entfernen?", { name: device.name }),
+      text: t("Planung, Live und Steuerung berücksichtigen es dann nicht mehr. In Home Assistant bleibt das Gerät unverändert. Zum vorübergehenden Abschalten genügt „aktiv“ – dann bleiben die Einstellungen erhalten."),
+      confirm: t("Entfernen"),
       danger: true,
     }))) {
       return;
@@ -828,7 +833,7 @@ class SunflowApp extends LitElement {
       this._configDevices = remaining;
       this._error = null;
     } catch (err) {
-      this._error = `Gerät konnte nicht entfernt werden: ${err.message}`;
+      this._error = t("Gerät konnte nicht entfernt werden: {error}", { error: err.message });
     }
   }
 
@@ -840,12 +845,16 @@ class SunflowApp extends LitElement {
       const unit = param?.unit;
       const value = fromDisplay(text, unit);
       if (value === undefined) {
-        this._error = `Ungültige Zahl bei „${paramLabel(name)}“.`;
+        this._error = t("Ungültige Zahl bei „{name}“.", { name: paramLabel(name) });
         return false;
       }
       const shown = (v) => `${toDisplay(v, unit)}${unit ? ` ${displayUnit(unit)}` : ""}`;
       if (value !== null && ((param?.min != null && value < param.min) || (param?.max != null && value > param.max))) {
-        this._error = `„${paramLabel(name)}“: erlaubt sind ${param.min != null ? shown(param.min) : "…"} bis ${param.max != null ? shown(param.max) : "…"}.`;
+        this._error = t("„{name}“: erlaubt sind {min} bis {max}.", {
+          name: paramLabel(name),
+          min: param.min != null ? shown(param.min) : "…",
+          max: param.max != null ? shown(param.max) : "…",
+        });
         return false;
       }
       parameters[name] = value;
@@ -855,7 +864,7 @@ class SunflowApp extends LitElement {
     if (this._flexEdits[device.id] !== undefined) {
       const flex = { ...device.flex, ...this._flexEdits[device.id] };
       if (flex.target === undefined || flex.alternative_cost_ct === undefined) {
-        this._error = "Bitte gültige Zahlen bei der Planung eingeben.";
+        this._error = t("Bitte gültige Zahlen bei der Planung eingeben.");
         return false;
       }
       changes.flex = flex;
@@ -864,7 +873,7 @@ class SunflowApp extends LitElement {
     if (feedEdit) {
       const rate = fromDisplay(feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct"), "ct");
       if (rate === undefined) {
-        this._error = "Ungültige Zahl bei der Vergütung.";
+        this._error = t("Ungültige Zahl bei der Vergütung.");
         return false;
       }
       changes.feed_in = { model: feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed", rate_ct_per_kwh: rate };
@@ -883,7 +892,7 @@ class SunflowApp extends LitElement {
       this._error = null;
       return true;
     } catch (err) {
-      this._error = `Kenndaten konnten nicht gespeichert werden: ${err.message}`;
+      this._error = t("Kenndaten konnten nicht gespeichert werden: {error}", { error: err.message });
       return false;
     } finally {
       this._busy = this._without(this._busy, device.id);
@@ -898,7 +907,7 @@ class SunflowApp extends LitElement {
       this._loadCategories();
       await this._refreshSite();
     } catch (err) {
-      this._error = `Zuordnung konnte nicht gespeichert werden: ${err.message}`;
+      this._error = t("Zuordnung konnte nicht gespeichert werden: {error}", { error: err.message });
     }
   }
 
@@ -956,7 +965,7 @@ class SunflowApp extends LitElement {
       this._dirty = this._without(this._dirty, id);
       this._error = null;
     } catch (err) {
-      this._error = `Gerät konnte nicht gespeichert werden: ${err.message}`;
+      this._error = t("Gerät konnte nicht gespeichert werden: {error}", { error: err.message });
     } finally {
       this._busy = this._without(this._busy, id);
     }
@@ -979,7 +988,7 @@ class SunflowApp extends LitElement {
       try {
         this._entities = { ...this._entities, [id]: await api.entities(id) };
       } catch (err) {
-        this._error = `Entitäten konnten nicht geladen werden: ${err.message}`;
+        this._error = t("Entitäten konnten nicht geladen werden: {error}", { error: err.message });
       }
     }
   }
@@ -1027,24 +1036,24 @@ class SunflowApp extends LitElement {
           </svg>
           <div>
             <div class="title">Sunflow</div>
-            <div class="subtitle">${{ live: "Live", control: "Steuerung", plan: "Planung", analysis: "Analyse" }[this._view] ?? "Einstellungen"}${this._haConnected === false ? " · keine Verbindung zu Home Assistant" : ""}</div>
+            <div class="subtitle">${{ live: t("Live"), control: t("Steuerung"), plan: t("Planung"), analysis: t("Analyse") }[this._view] ?? t("Einstellungen")}${this._haConnected === false ? ` · ${t("keine Verbindung zu Home Assistant")}` : ""}</div>
           </div>
         </div>`}
-        <nav class="tabs" aria-label="Hauptmenü">
+        <nav class="tabs" aria-label=${t("Hauptmenü")}>
           ${VIEWS.map(
             ([view, label, icon]) => html`<button class="tab ${this._view === view ? "active" : ""}" title=${label}
               aria-label=${label} aria-current=${this._view === view ? "page" : "false"} @click=${() => this._setView(view)}>
               <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon}></path></svg>
               <span class="tab-label">${label}</span>
               ${view === "analysis" && this._recommendationCount
-                ? html`<span class="badge" aria-label="${this._recommendationCount} Empfehlungen">${this._recommendationCount}</span>`
+                ? html`<span class="badge" aria-label=${t("{count} Empfehlungen", { count: this._recommendationCount })}>${this._recommendationCount}</span>`
                 : nothing}
             </button>`,
           )}
         </nav>
       </header>
       ${EMBEDDED && this._haConnected === false
-        ? html`<div class="restore-banner" role="alert">Keine Verbindung zu Home Assistant – Werte sind evtl. veraltet.</div>`
+        ? html`<div class="restore-banner" role="alert">${t("Keine Verbindung zu Home Assistant – Werte sind evtl. veraltet.")}</div>`
         : nothing}
       ${this._renderPendingRestore()}
       ${{
@@ -1088,9 +1097,9 @@ class SunflowApp extends LitElement {
         <aside class="sidebar">
         <div class="nav-wrap">
         ${this._navMore.left
-          ? html`<button class="nav-more left" aria-label="Weitere Bereiche links" @click=${() => this._scrollNav(-1)}>‹</button>`
+          ? html`<button class="nav-more left" aria-label=${t("Weitere Bereiche links")} @click=${() => this._scrollNav(-1)}>‹</button>`
           : nothing}
-        <nav aria-label="Schritte" @scroll=${() => this._updateNavMore()}>
+        <nav aria-label=${t("Schritte")} @scroll=${() => this._updateNavMore()}>
           ${STEPS.map(
             ([, label], i) => html`
               <button class="step ${i === this._step ? "active" : ""}" aria-current=${i === this._step ? "step" : "false"}
@@ -1104,12 +1113,12 @@ class SunflowApp extends LitElement {
           )}
         </nav>
         ${this._navMore.right
-          ? html`<button class="nav-more right" aria-label="Weitere Bereiche rechts" @click=${() => this._scrollNav(1)}>›</button>`
+          ? html`<button class="nav-more right" aria-label=${t("Weitere Bereiche rechts")} @click=${() => this._scrollNav(1)}>›</button>`
           : nothing}
         </div>
         <button class="switch" aria-pressed=${this._advanced} @click=${() => this._setAdvanced(!this._advanced)}>
           <span class="track ${this._advanced ? "on" : ""}"><span class="knob"></span></span>
-          Expertenmodus
+          ${t("Expertenmodus")}
         </button>
         </aside>
         <main>
@@ -1118,10 +1127,10 @@ class SunflowApp extends LitElement {
           ${this._setupCompleted
             ? nothing
             : html`<div class="footer">
-                ${this._step > 0 ? html`<button class="secondary" @click=${() => this._goTo(this._step - 1)}>Zurück</button>` : nothing}
+                ${this._step > 0 ? html`<button class="secondary" @click=${() => this._goTo(this._step - 1)}>${t("Zurück")}</button>` : nothing}
                 <span class="spacer"></span>
                 ${this._step < STEPS.length - 1
-                  ? html`<button class="primary" @click=${() => this._goTo(this._step + 1)}>Weiter</button>`
+                  ? html`<button class="primary" @click=${() => this._goTo(this._step + 1)}>${t("Weiter")}</button>`
                   : nothing}
               </div>`}
         </main>
@@ -1160,19 +1169,19 @@ class SunflowApp extends LitElement {
 
   _renderIntegrations() {
     if (this._integrations === null) {
-      return html`<h1>Gefundene Integrationen</h1>
+      return html`<h1>${t("Gefundene Integrationen")}</h1>
         ${this._discoveryError
           ? html`<div class="alert error" role="alert">${this._discoveryError}</div>
-              <button class="secondary" @click=${() => this._loadDiscovery()}>Erneut versuchen</button>`
-          : html`<p class="muted">Suche in Home Assistant …</p>`}`;
+              <button class="secondary" @click=${() => this._loadDiscovery()}>${t("Erneut versuchen")}</button>`
+          : html`<p class="muted">${t("Suche in Home Assistant …")}</p>`}`;
     }
     return html`
       <div class="heading">
-        <h1>Gefundene Integrationen</h1>
-        <p class="muted">In deinem Home Assistant laufen diese Integrationen. Wähle aus, was Sunflow nutzen soll.</p>
+        <h1>${t("Gefundene Integrationen")}</h1>
+        <p class="muted">${t("In deinem Home Assistant laufen diese Integrationen. Wähle aus, was Sunflow nutzen soll.")}</p>
       </div>
       ${this._integrations.length === 0
-        ? html`<p class="muted">Keine unterstützte Integration gefunden.</p>`
+        ? html`<p class="muted">${t("Keine unterstützte Integration gefunden.")}</p>`
         : html`
             <div class="cards">
               ${this._integrations.map((i) => this._renderIntegration(i))}
@@ -1188,19 +1197,17 @@ class SunflowApp extends LitElement {
   _renderIntegrationLink() {
     const link = this._link;
     return html`<section class="device compact">
-      <div class="device-title">Sunflow-Integration in Home Assistant</div>
-      <p class="small muted">Sie bringt die gelernte PV-Prognose ins Energie-Dashboard (je Fläche, Anlage und gesamt), Zähler je
-        PV-String und Sensoren für eigene Automationen. Home Assistant bietet sie unter „Einstellungen → Geräte &amp; Dienste“
-        als gefunden an; sonst von Hand mit Adresse und Schlüssel einrichten.</p>
+      <div class="device-title">${t("Sunflow-Integration in Home Assistant")}</div>
+      <p class="small muted">${t("Sie bringt die gelernte PV-Prognose ins Energie-Dashboard (je Fläche, Anlage und gesamt), Zähler je PV-String und Sensoren für eigene Automationen. Home Assistant bietet sie unter „Einstellungen → Geräte & Dienste“ als gefunden an; sonst von Hand mit Adresse und Schlüssel einrichten.")}</p>
       ${this._renderForecastKinds()}
       ${link
         ? html`<div class="fields">
-            <label class="field"><span class="field-label">Adresse</span>
+            <label class="field"><span class="field-label">${t("Adresse")}</span>
               <span class="input-unit"><input readonly .value=${link.url}></span></label>
-            <label class="field"><span class="field-label">Schlüssel</span>
+            <label class="field"><span class="field-label">${t("Schlüssel")}</span>
               <span class="input-unit"><input readonly .value=${link.token}></span></label>
           </div>`
-        : html`<div><button class="secondary" @click=${() => this._showLink()}>Zugangsdaten anzeigen …</button></div>`}
+        : html`<div><button class="secondary" @click=${() => this._showLink()}>${t("Zugangsdaten anzeigen …")}</button></div>`}
     </section>`;
   }
 
@@ -1212,20 +1219,28 @@ class SunflowApp extends LitElement {
         this._display = undefined;
         api.display().then((loaded) => (this._display = loaded)).catch(() => (this._display = null));
       }
-      return html`<h1>Anzeige</h1><p class="muted">Lade …</p>`;
+      return html`<h1>${t("Anzeige")}</h1><p class="muted">${t("Lade …")}</p>`;
     }
     const option = (key, label) => html`<label class="inline">
       <input type="checkbox" .checked=${display[key]} @change=${(e) => this._setDisplay({ [key]: e.target.checked })}> ${label}</label>`;
     return html`
       <div class="heading">
-        <h1>Anzeige</h1>
-        <p class="muted">Was die Seiten zeigen – für Handy und größere Bildschirme getrennt.</p>
+        <h1>${t("Anzeige")}</h1>
+        <p class="muted">${t("Was die Seiten zeigen – für Handy und größere Bildschirme getrennt.")}</p>
       </div>
       <section class="device compact">
-        <div class="device-title">Wetter in der Live-Ansicht</div>
-        <span class="choices">${option("weather_mobile", "auf dem Handy")} ${option("weather_desktop", "auf Tablet und Computer")}</span>
-        <p class="small muted">Ausgeblendet bleibt mehr Platz für den Energiefluss. Ist es überall aus, fragt Sunflow die
-          Wettervorhersage für die Live-Ansicht gar nicht erst ab.</p>
+        <div class="device-title">${t("Wetter in der Live-Ansicht")}</div>
+        <span class="choices">${option("weather_mobile", t("auf dem Handy"))} ${option("weather_desktop", t("auf Tablet und Computer"))}</span>
+        <p class="small muted">${t("Ausgeblendet bleibt mehr Platz für den Energiefluss. Ist es überall aus, fragt Sunflow die Wettervorhersage für die Live-Ansicht gar nicht erst ab.")}</p>
+      </section>
+      <section class="device compact">
+        <div class="device-title">${t("Sprache")}</div>
+        <select aria-label=${t("Sprache")} @change=${(e) => this._setLanguage(e.target.value)}>
+          ${[["auto", t("Wie Home Assistant")], ["de", "Deutsch"], ["en", "English"]].map(
+            ([value, label]) => html`<option value=${value} ?selected=${(display.language ?? "auto") === value}>${label}</option>`,
+          )}
+        </select>
+        <p class="small muted">${t("Gilt für die Oberfläche und für Meldungen wie Planhinweise und Empfehlungen. Die Seite lädt danach neu.")}</p>
       </section>
     `;
   }
@@ -1233,9 +1248,16 @@ class SunflowApp extends LitElement {
   async _setDisplay(changes) {
     try {
       this._display = await api.setDisplay({ ...this._display, ...changes });
+      return true;
     } catch (err) {
-      this._error = `Einstellung nicht gespeichert: ${err.message}`;
+      this._error = t("Einstellung nicht gespeichert: {error}", { error: err.message });
+      return false;
     }
+  }
+
+  async _setLanguage(language) {
+    // Texts and formats are fixed when the modules load
+    if (await this._setDisplay({ language })) window.location.reload();
   }
 
   _renderForecastKinds() {
@@ -1249,17 +1271,16 @@ class SunflowApp extends LitElement {
       return nothing;
     }
     const kinds = [
-      ["total", "Gesamt"],
-      ["plant", "je Wechselrichter"],
-      ["plane", "je Fläche / String"],
+      ["total", t("Gesamt")],
+      ["plant", t("je Wechselrichter")],
+      ["plane", t("je Fläche / String")],
     ];
     return html`<div class="field">
-      <span class="field-label">PV-Prognosen fürs Energie-Dashboard</span>
+      <span class="field-label">${t("PV-Prognosen fürs Energie-Dashboard")}</span>
       <span class="choices">${kinds.map(([kind, label]) => html`<label class="inline">
         <input type="checkbox" .checked=${settings.forecast_kinds.includes(kind)}
           @change=${(e) => this._setForecastKind(kind, e.target.checked)}> ${label}</label>`)}</span>
-      <span class="small muted">Jede gewählte Prognose wird ein eigenes Gerät in Home Assistant. Abgewählte verschwinden
-        dort beim nächsten Abgleich (bis zu 15 Minuten).</span>
+      <span class="small muted">${t("Jede gewählte Prognose wird ein eigenes Gerät in Home Assistant. Abgewählte verschwinden dort beim nächsten Abgleich (bis zu 15 Minuten).")}</span>
     </div>`;
   }
 
@@ -1269,7 +1290,7 @@ class SunflowApp extends LitElement {
     try {
       this._integrationSettings = await api.setIntegrationSettings({ ...this._integrationSettings, forecast_kinds });
     } catch (err) {
-      this._error = `Einstellung nicht gespeichert: ${err.message}`;
+      this._error = t("Einstellung nicht gespeichert: {error}", { error: err.message });
     }
   }
 
@@ -1283,37 +1304,34 @@ class SunflowApp extends LitElement {
     }
     // The App's mapped port is on the Home Assistant host; the browser's address may be the external one
     const url = mcp?.port ? `http://${mcp.host ?? location.hostname}:${mcp.port}${mcp.path}` : null;
-    const created = mcp?.key_created ? new Date(mcp.key_created).toLocaleString("de-DE") : null;
+    const created = mcp?.key_created ? new Date(mcp.key_created).toLocaleString(locale()) : null;
     return html`<section class="device compact">
-      <div class="device-title">MCP-Server für KI-Assistenten</div>
-      <p class="small muted">Damit kann ein KI-Assistent (z. B. Claude Code) Plan, Verlauf, Aufzeichnung, Steuerungsprotokoll und
-        Konfiguration lesen, um Fragen zu beantworten oder Fehler zu finden. Er kann nichts ändern oder steuern. Von außen
-        erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist und ein Schlüssel erzeugt wurde.</p>
+      <div class="device-title">${t("MCP-Server für KI-Assistenten")}</div>
+      <p class="small muted">${t("Damit kann ein KI-Assistent (z. B. Claude Code) Plan, Verlauf, Aufzeichnung, Steuerungsprotokoll und Konfiguration lesen, um Fragen zu beantworten oder Fehler zu finden. Er kann nichts ändern oder steuern. Von außen erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist und ein Schlüssel erzeugt wurde.")}</p>
       ${mcp
         ? html`<div class="fields">
-              <label class="field"><span class="field-label">Adresse</span>
-                <span class="input-unit"><input readonly .value=${url ?? "kein Port freigegeben"}></span></label>
-              <div class="field"><span class="field-label">Schlüssel</span>
+              <label class="field"><span class="field-label">${t("Adresse")}</span>
+                <span class="input-unit"><input readonly .value=${url ?? t("kein Port freigegeben")}></span></label>
+              <div class="field"><span class="field-label">${t("Schlüssel")}</span>
                 <span class="input-unit">
-                  <input readonly aria-label="Schlüssel"
-                    .value=${mcp.key ?? (created ? `erzeugt am ${created}` : "keiner – Server geschlossen")}>
-                  <button class="secondary" @click=${() => this._createMcpKey()}>${created ? "Neu …" : "Erzeugen"}</button>
-                  ${created ? html`<button class="secondary" @click=${() => this._revokeMcpKey()}>Zurückziehen …</button>` : nothing}
+                  <input readonly aria-label=${t("Schlüssel")}
+                    .value=${mcp.key ?? (created ? t("erzeugt am {time}", { time: created }) : t("keiner – Server geschlossen"))}>
+                  <button class="secondary" @click=${() => this._createMcpKey()}>${created ? t("Neu …") : t("Erzeugen")}</button>
+                  ${created ? html`<button class="secondary" @click=${() => this._revokeMcpKey()}>${t("Zurückziehen …")}</button>` : nothing}
                 </span></div>
             </div>
-            <div class="field"><span class="field-label">Darf lesen</span>
+            <div class="field"><span class="field-label">${t("Darf lesen")}</span>
               <span class="choices">${MCP_AREAS.map(([area, label]) => html`<label class="inline">
                 <input type="checkbox" .checked=${mcp.areas.includes(area)} @change=${(e) => this._setMcpArea(area, e.target.checked)}>
                 ${label}</label>`)}</span>
-              <span class="small muted">Version und Verbindung sind immer lesbar. Nicht freigegebene Bereiche fehlen in der
-                Werkzeugliste des Assistenten.</span></div>
+              <span class="small muted">${t("Version und Verbindung sind immer lesbar. Nicht freigegebene Bereiche fehlen in der Werkzeugliste des Assistenten.")}</span></div>
             ${mcp.key
-              ? html`<p class="small">Der Schlüssel wird nur jetzt angezeigt. Sunflow speichert ihn nicht, nur eine Prüfsumme.</p>
-                  <label class="field"><span class="field-label">Einrichten in Claude Code</span>
+              ? html`<p class="small">${t("Der Schlüssel wird nur jetzt angezeigt. Sunflow speichert ihn nicht, nur eine Prüfsumme.")}</p>
+                  <label class="field"><span class="field-label">${t("Einrichten in Claude Code")}</span>
                     <span class="input-unit"><input readonly
-                      .value=${`claude mcp add --transport http sunflow ${url ?? "http://<Adresse>:<Port>/mcp"} --header "Authorization: Bearer ${mcp.key}"`}></span></label>`
+                      .value=${`claude mcp add --transport http sunflow ${url ?? t("http://<Adresse>:<Port>/mcp")} --header "Authorization: Bearer ${mcp.key}"`}></span></label>`
               : nothing}`
-        : html`<p class="muted">${mcp === false ? "Nicht verfügbar." : "Lade …"}</p>`}
+        : html`<p class="muted">${mcp === false ? t("Nicht verfügbar.") : t("Lade …")}</p>`}
     </section>`;
   }
 
@@ -1322,25 +1340,25 @@ class SunflowApp extends LitElement {
     try {
       this._mcp = { ...this._mcp, ...(await api.setMcpSettings({ areas })) };
     } catch (err) {
-      this._error = `Einstellung nicht gespeichert: ${err.message}`;
+      this._error = t("Einstellung nicht gespeichert: {error}", { error: err.message });
     }
   }
 
   async _createMcpKey() {
-    if (this._mcp.key_created && !confirm("Der bisherige Schlüssel wird sofort ungültig. Neuen erzeugen?")) return;
+    if (this._mcp.key_created && !confirm(t("Der bisherige Schlüssel wird sofort ungültig. Neuen erzeugen?"))) return;
     try {
       this._mcp = { ...this._mcp, ...(await api.createMcpKey()) };
     } catch (err) {
-      this._error = `Schlüssel nicht erzeugt: ${err.message}`;
+      this._error = t("Schlüssel nicht erzeugt: {error}", { error: err.message });
     }
   }
 
   async _revokeMcpKey() {
-    if (!confirm("Schlüssel zurückziehen? Der MCP-Server ist danach geschlossen.")) return;
+    if (!confirm(t("Schlüssel zurückziehen? Der MCP-Server ist danach geschlossen."))) return;
     try {
       this._mcp = { ...this._mcp, ...(await api.revokeMcpKey()), key: undefined };
     } catch (err) {
-      this._error = `Schlüssel nicht zurückgezogen: ${err.message}`;
+      this._error = t("Schlüssel nicht zurückgezogen: {error}", { error: err.message });
     }
   }
 
@@ -1348,7 +1366,7 @@ class SunflowApp extends LitElement {
     try {
       this._link = await api.integrationLink();
     } catch (err) {
-      this._error = `Zugangsdaten nicht verfügbar: ${err.message}`;
+      this._error = t("Zugangsdaten nicht verfügbar: {error}", { error: err.message });
     }
   }
 
@@ -1357,10 +1375,9 @@ class SunflowApp extends LitElement {
     const form = this._direct;
     if (form === null) {
       return html`<section class="device compact">
-        <div class="device-title">Ohne Home-Assistant-Integration</div>
-        <p class="small muted">Manche Wechselrichter liest und steuert Sunflow selbst über das Netzwerk (Modbus TCP), z. B. Victron
-          über das GX-Gerät.</p>
-        <div><button class="secondary" @click=${() => this._openDirect()}>Gerät direkt anbinden …</button></div>
+        <div class="device-title">${t("Ohne Home-Assistant-Integration")}</div>
+        <p class="small muted">${t("Manche Wechselrichter liest und steuert Sunflow selbst über das Netzwerk (Modbus TCP), z. B. Victron über das GX-Gerät.")}</p>
+        <div><button class="secondary" @click=${() => this._openDirect()}>${t("Gerät direkt anbinden …")}</button></div>
       </section>`;
     }
     const set = (field, value) => (this._direct = { ...this._direct, [field]: value });
@@ -1368,44 +1385,43 @@ class SunflowApp extends LitElement {
     const chosen = profiles.find((p) => p.profile === form.profile);
     return html`
       <section class="device">
-        <div class="device-title">Gerät direkt anbinden</div>
+        <div class="device-title">${t("Gerät direkt anbinden")}</div>
         <div class="fields">
           <label class="field">
-            <span class="field-label">Gerät</span>
+            <span class="field-label">${t("Gerät")}</span>
             <select @change=${(e) => set("profile", e.target.value)}>
-              <option value="" ?selected=${!form.profile}>bitte wählen …</option>
+              <option value="" ?selected=${!form.profile}>${t("bitte wählen …")}</option>
               ${profiles.map((p) => html`<option value=${p.profile} ?selected=${form.profile === p.profile}>
                 ${[p.manufacturer, p.model].filter(Boolean).join(" ") || p.profile}</option>`)}
             </select>
           </label>
           <label class="field">
-            <span class="field-label">Name</span>
-            <span class="input-unit"><input placeholder=${chosen?.model ?? "z. B. Victron"} .value=${form.name}
+            <span class="field-label">${t("Name")}</span>
+            <span class="input-unit"><input placeholder=${chosen?.model ?? t("z. B. Victron")} .value=${form.name}
               @input=${(e) => set("name", e.target.value)}></span>
           </label>
           <label class="field">
-            <span class="field-label">Adresse (IP oder Hostname)</span>
+            <span class="field-label">${t("Adresse (IP oder Hostname)")}</span>
             <span class="input-unit"><input placeholder="192.168.1.50" .value=${form.host} @input=${(e) => set("host", e.target.value)}></span>
           </label>
           <label class="field">
-            <span class="field-label">Port</span>
+            <span class="field-label">${t("Port")}</span>
             <span class="input-unit"><input inputmode="numeric" placeholder=${chosen?.port ?? 502} .value=${form.port}
               @input=${(e) => set("port", e.target.value)}></span>
           </label>
           ${chosen?.type === "modbus_tcp"
             ? html`<label class="field">
-                <span class="field-label">Modbus-Unit-ID</span>
+                <span class="field-label">${t("Modbus-Unit-ID")}</span>
                 <span class="input-unit"><input inputmode="numeric" placeholder=${chosen?.unit_id ?? 1} .value=${form.unit_id}
                   @input=${(e) => set("unit_id", e.target.value)}></span>
               </label>`
             : nothing}
         </div>
-        <p class="small muted">Sunflow liest das Gerät sofort einmal; danach erscheint es unter „Geräte“ mit seinen Live-Werten.
-          Gesteuert wird es erst, wenn du es unter „Steuerung“ freigibst.</p>
+        <p class="small muted">${t("Sunflow liest das Gerät sofort einmal; danach erscheint es unter „Geräte“ mit seinen Live-Werten. Gesteuert wird es erst, wenn du es unter „Steuerung“ freigibst.")}</p>
         <div class="actions">
           <button class="primary" ?disabled=${!form.profile || !form.host.trim() || this._busy.has("direct")}
-            @click=${() => this._addDirect()}>Anbinden</button>
-          <button class="secondary" @click=${() => (this._direct = null)}>Abbrechen</button>
+            @click=${() => this._addDirect()}>${t("Anbinden")}</button>
+          <button class="secondary" @click=${() => (this._direct = null)}>${t("Abbrechen")}</button>
         </div>
       </section>
     `;
@@ -1417,7 +1433,7 @@ class SunflowApp extends LitElement {
       try {
         this._directProfiles = await api.directProfiles();
       } catch (err) {
-        this._error = `Profile konnten nicht geladen werden: ${err.message}`;
+        this._error = t("Profile konnten nicht geladen werden: {error}", { error: err.message });
       }
     }
   }
@@ -1435,7 +1451,7 @@ class SunflowApp extends LitElement {
       this._direct = null;
       this._error = null;
     } catch (err) {
-      this._error = `Gerät konnte nicht angebunden werden: ${err.message}`;
+      this._error = t("Gerät konnte nicht angebunden werden: {error}", { error: err.message });
     } finally {
       this._busy = this._without(this._busy, "direct");
     }
@@ -1446,11 +1462,11 @@ class SunflowApp extends LitElement {
     const matched = integration.devices.filter((d) => d.profile);
     const capabilities = matched.flatMap((d) => d.capabilities ?? []);
     let chip;
-    if (!integration.supported) chip = html`<span class="chip warn">Nicht unterstützt – Schalter oder Steckdosen unten als eigene Verbraucher hinzufügen</span>`;
-    else if (matched.length === 0 && integration.optimizers) chip = html`<span class="chip ok">Unterstützt · Optimierer</span>`;
-    else if (matched.length === 0) chip = html`<span class="chip warn">Kein passendes Profil</span>`;
-    else if (isControllable(capabilities)) chip = html`<span class="chip ok">Unterstützt · steuerbar</span>`;
-    else chip = html`<span class="chip neutral">Unterstützt · nur lesen</span>`;
+    if (!integration.supported) chip = html`<span class="chip warn">${t("Nicht unterstützt – Schalter oder Steckdosen unten als eigene Verbraucher hinzufügen")}</span>`;
+    else if (matched.length === 0 && integration.optimizers) chip = html`<span class="chip ok">${t("Unterstützt · Optimierer")}</span>`;
+    else if (matched.length === 0) chip = html`<span class="chip warn">${t("Kein passendes Profil")}</span>`;
+    else if (isControllable(capabilities)) chip = html`<span class="chip ok">${t("Unterstützt · steuerbar")}</span>`;
+    else chip = html`<span class="chip neutral">${t("Unterstützt · nur lesen")}</span>`;
     return html`
       <button class="card ${selected ? "selected" : ""}" aria-pressed=${selected}
         ?disabled=${!integration.supported} @click=${() => this._toggle(integration)}>
@@ -1464,11 +1480,11 @@ class SunflowApp extends LitElement {
           </span>`,
         )}
         ${integration.optimizers
-          ? html`<span class="model"><strong>Optimierer</strong> · ${integration.optimizers} Module</span>`
+          ? html`<span class="model"><strong>${t("Optimierer")}</strong> · ${tn(integration.optimizers, "{count} Module", { count: integration.optimizers })}</span>`
           : nothing}
         <span class="muted small">${[
-          integration.title !== integration.name ? `Eintrag „${integration.title}“` : null,
-          integration.in_energy_dashboard ? "im Energie-Dashboard" : null,
+          integration.title !== integration.name ? t("Eintrag „{title}“", { title: integration.title }) : null,
+          integration.in_energy_dashboard ? t("im Energie-Dashboard") : null,
         ].filter(Boolean).join(" · ")}</span>
         ${chip}
       </button>
@@ -1479,10 +1495,10 @@ class SunflowApp extends LitElement {
     const devices = this._devices;
     return html`
       <div class="heading">
-        <h1>Geräte</h1>
-        <p class="muted">Profile wurden automatisch erkannt. Prüfe die Live-Werte – passen sie zu dem, was deine Anlage gerade tut?</p>
+        <h1>${t("Geräte")}</h1>
+        <p class="muted">${t("Profile wurden automatisch erkannt. Prüfe die Live-Werte – passen sie zu dem, was deine Anlage gerade tut?")}</p>
       </div>
-      ${devices.length === 0 ? html`<p class="muted">Keine Geräte mit passendem Profil ausgewählt.</p>` : nothing}
+      ${devices.length === 0 ? html`<p class="muted">${t("Keine Geräte mit passendem Profil ausgewählt.")}</p>` : nothing}
       ${CATEGORIES.map(([key, title]) => {
         const members = devices.filter((d) => this._categoryOf(d) === key);
         const hasBattery = devices.some((d) => (d.capabilities ?? []).includes("battery"));
@@ -1504,16 +1520,16 @@ class SunflowApp extends LitElement {
   _renderOptimizerSource(integration) {
     const used = integration.optimizers_used;
     return html`<section class="device compact">
-      <div class="device-title">Optimierer · ${integration.name ?? integration.title}</div>
-      <span class="small muted">${integration.optimizers} Module${integration.title !== integration.name ? ` · Eintrag „${integration.title}“` : ""}</span>
+      <div class="device-title">${t("Optimierer")} · ${integration.name ?? integration.title}</div>
+      <span class="small muted">${tn(integration.optimizers, "{count} Module", { count: integration.optimizers })}${integration.title !== integration.name ? ` · ${t("Eintrag „{title}“", { title: integration.title })}` : ""}</span>
       <label class="inline">
         <input type="checkbox" .checked=${used} ?disabled=${this._busy.has(integration.entry_id)}
           @change=${(e) => this._useOptimizers(integration, e.target.checked)}>
-        von Sunflow nutzen
+        ${t("von Sunflow nutzen")}
       </label>
       <p class="small muted">${used
-        ? "Strings und Anordnung auf dem Dach legst du unter „Optimierer“ fest; die Werte zeigt die Live-Ansicht je Modul."
-        : "Nicht genutzt: Sunflow zeigt die Module weder auf dem Dach noch in der Live-Ansicht. Zugeordnete Plätze bleiben gespeichert."}</p>
+        ? t("Strings und Anordnung auf dem Dach legst du unter „Optimierer“ fest; die Werte zeigt die Live-Ansicht je Modul.")
+        : t("Nicht genutzt: Sunflow zeigt die Module weder auf dem Dach noch in der Live-Ansicht. Zugeordnete Plätze bleiben gespeichert.")}</p>
     </section>`;
   }
 
@@ -1523,7 +1539,7 @@ class SunflowApp extends LitElement {
       await api.useOptimizers(integration.entry_id, used);
       this._integrations = this._integrations.map((i) => (i.entry_id === integration.entry_id ? { ...i, optimizers_used: used } : i));
     } catch (err) {
-      this._error = `Optimierer nicht gespeichert: ${err.message}`;
+      this._error = t("Optimierer nicht gespeichert: {error}", { error: err.message });
     } finally {
       this._busy = this._without(this._busy, integration.entry_id);
     }
@@ -1540,89 +1556,87 @@ class SunflowApp extends LitElement {
     const selected = (candidates?.selects ?? []).find((c) => c.entity_id === form.level_entity);
     return html`
       <section class="device">
-        <div class="device-title">Eigene Verbraucher</div>
-        <p class="small muted">Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in
-          Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs-
-          und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant.</p>
+        <div class="device-title">${t("Eigene Verbraucher")}</div>
+        <p class="small muted">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant.")}</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
               (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
-                <div class="small muted">${MANUAL_TYPES[d.profile.slice(MANUAL_PREFIX.length)] ?? ""}${d.kind === "heater" ? " · Wärme" : ""}
+                <div class="small muted">${MANUAL_TYPES[d.profile.slice(MANUAL_PREFIX.length)] ?? ""}${d.kind === "heater" ? ` · ${t("Wärme")}` : ""}
                   · ${Object.values(d.role_overrides).map((o) => o.entity_id).filter(Boolean).join(", ")}</div>
                 ${this._usages?.[d.id]
-                  ? html`<div class="small">gemessen: ${formatValue(this._usages[d.id].daily_wh, "Wh")} pro Tag${this._usages[d.id].running_w
-                      ? html` · läuft mit ${formatValue(this._usages[d.id].running_w, "W")}`
+                  ? html`<div class="small">${t("gemessen: {energy} pro Tag", { energy: formatValue(this._usages[d.id].daily_wh, "Wh") })}${this._usages[d.id].running_w
+                      ? html` · ${t("läuft mit {power}", { power: formatValue(this._usages[d.id].running_w, "W") })}`
                       : nothing}</div>`
                   : nothing}</div>
                 <span class="item-actions">
-                  <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>Bearbeiten</button>
-                  <button class="secondary danger" @click=${() => this._removeDevice(d)}>Entfernen</button>
+                  <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>${t("Bearbeiten")}</button>
+                  <button class="secondary danger" @click=${() => this._removeDevice(d)}>${t("Entfernen")}</button>
                 </span></li>`,
             )}</ul>`
           : nothing}
         ${candidates === null
-          ? html`<button class="secondary" @click=${() => this._loadCandidates()}>Verbraucher hinzufügen …</button>`
+          ? html`<button class="secondary" @click=${() => this._loadCandidates()}>${t("Verbraucher hinzufügen …")}</button>`
           : html`
               ${this._manualEditId
-                ? html`<div class="field-label">„${Object.values(this._configDevices).find((d) => d.id === this._manualEditId)?.name ?? ""}“ bearbeiten</div>`
+                ? html`<div class="field-label">${t("„{name}“ bearbeiten", { name: Object.values(this._configDevices).find((d) => d.id === this._manualEditId)?.name ?? "" })}</div>`
                 : nothing}
               <div class="fields">
                 <label class="field">
-                  <span class="field-label">Name</span>
-                  <span class="input-unit"><input placeholder="z. B. E-Bike" .value=${form.name} @input=${(e) => set("name", e.target.value)}></span>
+                  <span class="field-label">${t("Name")}</span>
+                  <span class="input-unit"><input placeholder=${t("z. B. E-Bike")} .value=${form.name} @input=${(e) => set("name", e.target.value)}></span>
                 </label>
                 <label class="field">
-                  <span class="field-label">Gesteuert über</span>
+                  <span class="field-label">${t("Gesteuert über")}</span>
                   <select @change=${(e) => set("type", e.target.value)}>
                     ${Object.entries(MANUAL_TYPES).map(([value, label]) => html`<option value=${value} ?selected=${form.type === value}>${label}</option>`)}
                   </select>
                 </label>
                 <label class="field">
-                  <span class="field-label">Art</span>
+                  <span class="field-label">${t("Art")}</span>
                   <select @change=${(e) => set("kind", e.target.value)}>
-                    <option value="load" ?selected=${form.kind === "load"}>Verbraucher (Energie pro Tag)</option>
-                    <option value="heater" ?selected=${form.kind === "heater"}>Wärme (Speicher mit Temperatur)</option>
+                    <option value="load" ?selected=${form.kind === "load"}>${t("Verbraucher (Energie pro Tag)")}</option>
+                    <option value="heater" ?selected=${form.kind === "heater"}>${t("Wärme (Speicher mit Temperatur)")}</option>
                   </select>
                 </label>
                 ${form.type === "switch" || form.type === "current"
                   ? html`<div class="field">
-                      <span class="field-label">Schalter${form.type === "current" ? " (optional)" : ""}</span>
-                      <sf-picker label="Schalter" empty-label=${form.type === "current" ? "keiner" : nothing} placeholder="Name oder Entität suchen …"
+                      <span class="field-label">${form.type === "current" ? t("Schalter (optional)") : t("Schalter")}</span>
+                      <sf-picker label=${t("Schalter")} empty-label=${form.type === "current" ? t("keiner") : nothing} placeholder=${t("Name oder Entität suchen …")}
                         .value=${form.switch_entity} .options=${entity(candidates.switches, (c) => c.state)}
                         @change=${(e) => set("switch_entity", e.detail.value)}></sf-picker>
                     </div>`
                   : nothing}
                 ${form.type === "stepped"
                   ? html`<div class="field">
-                      <span class="field-label">Leistungsstufe (Auswahl)</span>
-                      <sf-picker label="Leistungsstufe" placeholder="z. B. Heizstab Heizleistung …"
+                      <span class="field-label">${t("Leistungsstufe (Auswahl)")}</span>
+                      <sf-picker label=${t("Leistungsstufe")} placeholder=${t("z. B. Heizstab Heizleistung …")}
                         .value=${form.level_entity} .options=${entity(candidates.selects, (c) => c.state)}
                         @change=${(e) => this._setStepEntity(e.detail.value)}></sf-picker>
                     </div>`
                   : nothing}
                 ${form.type === "current"
                   ? html`<div class="field">
-                      <span class="field-label">Ziel-Stromstärke (Zahl)</span>
-                      <sf-picker label="Stromstärke" placeholder="number-Entität in A …"
+                      <span class="field-label">${t("Ziel-Stromstärke (Zahl)")}</span>
+                      <sf-picker label=${t("Stromstärke")} placeholder=${t("number-Entität in A …")}
                         .value=${form.current_entity} .options=${entity(candidates.numbers, unitDetail)}
                         @change=${(e) => set("current_entity", e.detail.value)}></sf-picker>
                     </div>`
                   : nothing}
                 <div class="field">
-                  <span class="field-label">Leistungsmessung (optional)</span>
-                  <sf-picker label="Leistungsmessung" empty-label="keine" placeholder="Name oder Entität suchen …"
+                  <span class="field-label">${t("Leistungsmessung (optional)")}</span>
+                  <sf-picker label=${t("Leistungsmessung")} empty-label=${t("keine")} placeholder=${t("Name oder Entität suchen …")}
                     .value=${form.power_entity} .options=${entity(candidates.power, unitDetail)}
                     @change=${(e) => set("power_entity", e.detail.value)}></sf-picker>
                 </div>
                 <div class="field">
-                  <span class="field-label">Verbrauchsmessung (optional)</span>
-                  <sf-picker label="Verbrauchsmessung" empty-label="keine" placeholder="Energiezähler (kWh) …"
+                  <span class="field-label">${t("Verbrauchsmessung (optional)")}</span>
+                  <sf-picker label=${t("Verbrauchsmessung")} empty-label=${t("keine")} placeholder=${t("Energiezähler (kWh) …")}
                     .value=${form.energy_entity} .options=${entity(candidates.energy, unitDetail)}
                     @change=${(e) => set("energy_entity", e.detail.value)}></sf-picker>
                 </div>
                 ${form.type !== "stepped"
                   ? html`<label class="field">
-                      <span class="field-label">Leistung</span>
+                      <span class="field-label">${t("Leistung")}</span>
                       <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
                         @input=${(e) => set("max_power", e.target.value)}><span class="muted">W</span></span>
                     </label>`
@@ -1630,25 +1644,25 @@ class SunflowApp extends LitElement {
                 ${form.kind === "heater"
                   ? html`
                       <div class="field">
-                        <span class="field-label">Temperatur im Speicher</span>
-                        <sf-picker label="Temperatur" placeholder="z. B. Speicher Temperatur oben …"
+                        <span class="field-label">${t("Temperatur im Speicher")}</span>
+                        <sf-picker label=${t("Temperatur")} placeholder=${t("z. B. Speicher Temperatur oben …")}
                           .value=${form.temperature_entity} .options=${entity(candidates.temperature, unitDetail)}
                           @change=${(e) => set("temperature_entity", e.detail.value)}></sf-picker>
                       </div>
                       <label class="field">
-                        <span class="field-label">Speichervolumen</span>
+                        <span class="field-label">${t("Speichervolumen")}</span>
                         <span class="input-unit"><input inputmode="decimal" placeholder="300" .value=${form.tank_l}
                           @input=${(e) => set("tank_l", e.target.value)}><span class="muted">l</span></span>
                       </label>`
                   : html`<label class="field">
-                      <span class="field-label">Energiebedarf pro Tag</span>
-                      <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 0,5" .value=${form.daily_energy}
+                      <span class="field-label">${t("Energiebedarf pro Tag")}</span>
+                      <span class="input-unit"><input inputmode="decimal" placeholder=${t("z. B. 0,5")} .value=${form.daily_energy}
                         @input=${(e) => set("daily_energy", e.target.value)}><span class="muted">kWh</span></span>
                     </label>`}
               </div>
               ${form.type === "stepped" && Object.keys(form.steps).length
                 ? html`<div class="field">
-                    <span class="field-label">Leistung je Stufe${selected ? ` (${selected.name})` : ""}</span>
+                    <span class="field-label">${selected ? t("Leistung je Stufe ({name})", { name: selected.name }) : t("Leistung je Stufe")}</span>
                     <div class="steps">
                       ${Object.entries(form.steps).map(([option, watts]) => html`<label class="step-power">
                         <span>${option}</span>
@@ -1656,14 +1670,14 @@ class SunflowApp extends LitElement {
                           @input=${(e) => set("steps", { ...form.steps, [option]: fromDisplay(e.target.value, "W") })}><span class="muted">W</span></span>
                       </label>`)}
                     </div>
-                    <span class="small muted">Aus den Namen der Optionen gelesen; 0 W ist „aus“. Sunflow wählt die größte Stufe, die in die geplante Leistung passt.</span>
+                    <span class="small muted">${t("Aus den Namen der Optionen gelesen; 0 W ist „aus“. Sunflow wählt die größte Stufe, die in die geplante Leistung passt.")}</span>
                   </div>`
                 : nothing}
               <div class="actions">
                 <button class="ok" ?disabled=${!control || !form.name.trim()} @click=${() => this._addManual()}>
-                  ${this._manualEditId ? "Speichern" : "Hinzufügen"}
+                  ${this._manualEditId ? t("Speichern") : t("Hinzufügen")}
                 </button>
-                <button class="secondary" @click=${() => this._closeManualForm()}>Abbrechen</button>
+                <button class="secondary" @click=${() => this._closeManualForm()}>${t("Abbrechen")}</button>
               </div>
             `}
       </section>
@@ -1686,7 +1700,7 @@ class SunflowApp extends LitElement {
     try {
       this._candidates = await api.candidates();
     } catch (err) {
-      this._error = `Entitäten konnten nicht geladen werden: ${err.message}`;
+      this._error = t("Entitäten konnten nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -1724,7 +1738,7 @@ class SunflowApp extends LitElement {
     const daily = fromDisplay(form.daily_energy, "kWh");
     const tank = form.tank_l === "" ? null : fromDisplay(form.tank_l, "");
     if (power === undefined || daily === undefined || tank === undefined || Object.values(form.steps).some((w) => w === undefined)) {
-      this._error = "Bitte gültige Zahlen eingeben.";
+      this._error = t("Bitte gültige Zahlen eingeben.");
       return;
     }
     const body = {
@@ -1749,7 +1763,7 @@ class SunflowApp extends LitElement {
       this._closeManualForm();
       this._error = null;
     } catch (err) {
-      this._error = `Verbraucher konnte nicht gespeichert werden: ${err.message}`;
+      this._error = t("Verbraucher konnte nicht gespeichert werden: {error}", { error: err.message });
     }
   }
 
@@ -1775,23 +1789,23 @@ class SunflowApp extends LitElement {
           <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
           <span>
             <span class="device-title">${device.name}</span>
-            <span class="muted small device-sub">${[device.manufacturer, device.model].filter(Boolean).join(" ")} · über ${device.integration}${open
-              ? ` · Profil ${device.profile}`
+            <span class="muted small device-sub">${[device.manufacturer, device.model].filter(Boolean).join(" ")} · ${t("über {integration}", { integration: device.integration })}${open
+              ? ` · ${t("Profil {profile}", { profile: device.profile })}`
               : ""}</span>
           </span>
         </button>
         <span class="device-chips">
           ${disabled
-            ? html`<span class="chip neutral">deaktiviert</span>`
+            ? html`<span class="chip neutral">${t("deaktiviert")}</span>`
             : !configured || dirty
-              ? html`<span class="chip warn">noch nicht übernommen</span>`
+              ? html`<span class="chip warn">${t("noch nicht übernommen")}</span>`
               : missing
-                ? html`<span class="chip warn">Angabe fehlt</span>`
-                : html`<span class="chip ok">✓ übernommen</span>`}
+                ? html`<span class="chip warn">${t("Angabe fehlt")}</span>`
+                : html`<span class="chip ok">✓ ${t("übernommen")}</span>`}
           ${configured
-            ? html`<label class="inline enable" title=${disabled ? "Gerät wieder verwenden" : "Gerät mit allen Einstellungen behalten, aber nicht verwenden"}>
+            ? html`<label class="inline enable" title=${disabled ? t("Gerät wieder verwenden") : t("Gerät mit allen Einstellungen behalten, aber nicht verwenden")}>
                 <input type="checkbox" .checked=${!disabled} ?disabled=${this._busy.has(id)}
-                  @change=${(e) => this._setEnabled(device, e.target.checked, e.target)}>aktiv</label>`
+                  @change=${(e) => this._setEnabled(device, e.target.checked, e.target)}>${t("aktiv")}</label>`
             : nothing}
         </span>
       </div>`;
@@ -1807,9 +1821,9 @@ class SunflowApp extends LitElement {
       <section class="device ${disabled ? "off" : ""}">
         ${head}
         ${device.components.length
-          ? html`<span class="chip neutral">${device.components.length} Komponenten</span>`
+          ? html`<span class="chip neutral">${t("{count} Komponenten", { count: device.components.length })}</span>`
           : nothing}
-        ${preview === undefined ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
+        ${preview === undefined ? html`<p class="muted">${t("Lade Live-Werte …")}</p>` : nothing}
         ${preview?.error ? html`<div class="alert error">${preview.error}</div>` : nothing}
         ${preview?.roles ? this._renderTiles(preview) : nothing}
         ${preview?.roles ? this._renderVehicleSoc(device, preview) : nothing}
@@ -1819,16 +1833,16 @@ class SunflowApp extends LitElement {
         ${this._advanced && device.components.length ? this._renderComponents(device) : nothing}
         <div class="actions">
           ${disabled
-            ? html`<span class="small muted">Deaktiviert – zum Bearbeiten wieder auf „aktiv“ stellen.</span>`
+            ? html`<span class="small muted">${t("Deaktiviert – zum Bearbeiten wieder auf „aktiv“ stellen.")}</span>`
             : configured && !dirty
-            ? html`<span class="chip ok">✓ Übernommen</span>`
+            ? html`<span class="chip ok">✓ ${t("Übernommen")}</span>`
             : html`<button class="ok" ?disabled=${this._busy.has(id) || !preview?.complete}
                 @click=${() => this._accept(device)}>
-                ${configured ? "Anpassungen speichern" : dirty ? "Mit Anpassungen übernehmen" : "Werte passen"}
+                ${configured ? t("Anpassungen speichern") : dirty ? t("Mit Anpassungen übernehmen") : t("Werte passen")}
               </button>`}
           ${this._advanced || editing || dirty || !preview?.complete
             ? html`<button class="secondary" aria-expanded=${editing} @click=${() => this._toggleEdit(device)}>
-                ${editing ? "Zuordnung schließen" : "Entitäten zuordnen"}
+                ${editing ? t("Zuordnung schließen") : t("Entitäten zuordnen")}
               </button>`
             : nothing}
         </div>
@@ -1849,13 +1863,12 @@ class SunflowApp extends LitElement {
     }
     return html`
       <div class="field vehicle-soc">
-        <span class="field-label">Ladestand des Fahrzeugs</span>
-        <sf-picker label="Ladestand des Fahrzeugs" empty-label="keiner" placeholder="z. B. MQTT-Sensor des Autos suchen …"
+        <span class="field-label">${t("Ladestand des Fahrzeugs")}</span>
+        <sf-picker label=${t("Ladestand des Fahrzeugs")} empty-label=${t("keiner")} placeholder=${t("z. B. MQTT-Sensor des Autos suchen …")}
           .value=${chosen}
           .options=${(this._candidates?.percent ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} %` }))}
           @change=${(e) => this._setOverride(device.device_id, "vehicle_soc", "entity_id", e.detail.value)}></sf-picker>
-        <span class="small muted">Die Wallbox kennt den Ladestand nicht. Ohne ihn plant Sunflow das Laden nicht ein; danach
-          „Anpassungen speichern“.</span>
+        <span class="small muted">${t("Die Wallbox kennt den Ladestand nicht. Ohne ihn plant Sunflow das Laden nicht ein; danach „Anpassungen speichern“.")}</span>
       </div>
     `;
   }
@@ -1866,7 +1879,7 @@ class SunflowApp extends LitElement {
       this._configDevices = { ...this._configDevices, [device.ha_device_id]: { ...device, kind } };
       await Promise.all([this._loadCategories(), this._loadParameters()]);
     } catch (err) {
-      this._error = `Art nicht gespeichert: ${err.message}`;
+      this._error = t("Art nicht gespeichert: {error}", { error: err.message });
     }
   }
 
@@ -1880,9 +1893,9 @@ class SunflowApp extends LitElement {
   async _setEnabled(device, enabled, input) {
     const stored = this._configDevices[device.device_id];
     if (!enabled && !(await confirmDialog({
-      title: `„${device.name}“ deaktivieren?`,
-      text: "Die Einstellungen bleiben erhalten; Sunflow plant, misst und steuert das Gerät nicht mehr, bis es wieder aktiv ist.",
-      confirm: "Deaktivieren",
+      title: t("„{name}“ deaktivieren?", { name: device.name }),
+      text: t("Die Einstellungen bleiben erhalten; Sunflow plant, misst und steuert das Gerät nicht mehr, bis es wieder aktiv ist."),
+      confirm: t("Deaktivieren"),
     }))) {
       input.checked = true;
       return;
@@ -1894,7 +1907,7 @@ class SunflowApp extends LitElement {
       this._loadCategories();
       this._error = null;
     } catch (err) {
-      this._error = `Gerät nicht umgeschaltet: ${err.message}`;
+      this._error = t("Gerät nicht umgeschaltet: {error}", { error: err.message });
       input.checked = !enabled;
     } finally {
       const busy = new Set(this._busy);
@@ -1915,7 +1928,7 @@ class SunflowApp extends LitElement {
                 <div class="value ${isText(r) ? "text" : ""}">
                   ${isText(r) ? r.raw_state : SIGNED_ROLES.has(r.role) ? formatSigned(r.value, r.unit) : formatValue(r.value, r.unit)}
                 </div>
-                <div class="small muted">${r.missing ? "nicht gefunden" : roleHint(r.role, r.value)}</div>
+                <div class="small muted">${r.missing ? t("nicht gefunden") : roleHint(r.role, r.value)}</div>
               </div>
             `,
           )}
@@ -1930,22 +1943,25 @@ class SunflowApp extends LitElement {
     let state, text;
     if (history.length < BALANCE_MIN_SAMPLES) {
       state = "neutral";
-      text = `Bilanz wird geprüft … (${history.length}/${BALANCE_MIN_SAMPLES} Messungen)`;
+      text = t("Bilanz wird geprüft … ({count}/{total} Messungen)", { count: history.length, total: BALANCE_MIN_SAMPLES });
     } else if (passed * 2 > history.length) {
       state = "ok";
-      text = `✓ Bilanz plausibel (${passed} von ${history.length} Messungen)`;
+      text = `✓ ${t("Bilanz plausibel ({passed} von {count} Messungen)", { passed, count: history.length })}`;
     } else {
       state = "warn";
-      text = `⚠ Bilanz unplausibel (${passed} von ${history.length} Messungen)`;
+      text = `⚠ ${t("Bilanz unplausibel ({passed} von {count} Messungen)", { passed, count: history.length })}`;
     }
     return html`
       <div class="alert ${state}">
         <div>${text}</div>
         ${latest
           ? html`<div class="small">
-          Letzte Messung: ${BALANCE_FORMULAS[latest.method]} = ${formatValue(latest.computed_load, "W")},
-          Hausverbrauch laut Gerät ${formatValue(latest.reported_load, "W")}
-          (Abweichung ${formatValue(Math.abs(latest.deviation), "W")})
+          ${t("Letzte Messung: {formula} = {computed}, Hausverbrauch laut Gerät {reported} (Abweichung {deviation})", {
+            formula: BALANCE_FORMULAS[latest.method],
+            computed: formatValue(latest.computed_load, "W"),
+            reported: formatValue(latest.reported_load, "W"),
+            deviation: formatValue(Math.abs(latest.deviation), "W"),
+          })}
         </div>`
           : nothing}
       </div>
@@ -1957,7 +1973,7 @@ class SunflowApp extends LitElement {
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Rolle</th><th>Entität</th><th>Rohwert</th><th>Normalisiert</th></tr>
+            <tr><th>${t("Rolle")}</th><th>${t("Entität")}</th><th>${t("Rohwert")}</th><th>${t("Normalisiert")}</th></tr>
           </thead>
           <tbody>
             ${preview.roles.map(
@@ -1985,18 +2001,18 @@ class SunflowApp extends LitElement {
       <div class="editor">
         <div class="editor-head">
           <div>
-            <div class="editor-title">Zuordnung anpassen</div>
-            <div class="small muted">Wähle eine andere Entität oder kehre das Vorzeichen um. Die Vorschau aktualisiert sich sofort.</div>
+            <div class="editor-title">${t("Zuordnung anpassen")}</div>
+            <div class="small muted">${t("Wähle eine andere Entität oder kehre das Vorzeichen um. Die Vorschau aktualisiert sich sofort.")}</div>
           </div>
           <button class="secondary" ?disabled=${!Object.keys(overrides).length} @click=${() => this._resetOverrides(id)}>
-            Auf Profil zurücksetzen
+            ${t("Auf Profil zurücksetzen")}
           </button>
         </div>
-        ${entities === undefined ? html`<p class="muted small">Lade Entitäten …</p>` : nothing}
+        ${entities === undefined ? html`<p class="muted small">${t("Lade Entitäten …")}</p>` : nothing}
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Rolle</th><th>Entität</th><th>Vorzeichen</th><th>Wert</th></tr>
+              <tr><th>${t("Rolle")}</th><th>${t("Entität")}</th><th>${t("Vorzeichen")}</th><th>${t("Wert")}</th></tr>
             </thead>
             <tbody>
               ${preview.roles.map((r) => {
@@ -2006,11 +2022,11 @@ class SunflowApp extends LitElement {
                   <tr class=${Object.keys(override).length ? "overridden" : ""}>
                     <td>
                       ${roleLabel(r.role)}
-                      ${Object.keys(override).length ? html`<span class="chip warn">angepasst</span>` : nothing}
+                      ${Object.keys(override).length ? html`<span class="chip warn">${t("angepasst")}</span>` : nothing}
                     </td>
                     <td>
-                      <sf-picker inline label="Entität für ${roleLabel(r.role)}"
-                        empty-label="Profil: ${r.profile_entity_id ?? "nicht gefunden"}"
+                      <sf-picker inline label=${t("Entität für {role}", { role: roleLabel(r.role) })}
+                        empty-label=${t("Profil: {entity}", { entity: r.profile_entity_id ?? t("nicht gefunden") })}
                         .value=${override.entity_id ?? ""}
                         .options=${sensors.map((e) => ({ value: e.entity_id, label: e.name, detail: `${e.state ?? "–"} ${e.unit ?? ""}` }))}
                         @change=${(e) => this._setOverride(id, r.role, "entity_id", e.detail.value)}></sf-picker>
@@ -2021,7 +2037,7 @@ class SunflowApp extends LitElement {
                             <input type="checkbox" .checked=${inverted}
                               @change=${(e) =>
                                 this._setOverride(id, r.role, "sign", e.target.checked ? OPPOSITE_SIGN[r.profile_sign] : null)}>
-                            umkehren
+                            ${t("umkehren")}
                           </label>`
                         : html`<span class="muted small">–</span>`}
                     </td>
@@ -2048,10 +2064,10 @@ class SunflowApp extends LitElement {
     const changed = Object.keys(edits).length > 0 || nameEdit !== undefined;
     return html`
       <div class="facts">
-        <div class="field-label">Kenndaten</div>
+        <div class="field-label">${t("Kenndaten")}</div>
         <div class="fields">
           <label class="field">
-            <span class="field-label">Bezeichnung</span>
+            <span class="field-label">${t("Bezeichnung")}</span>
             <span class="input-unit">
               <input .value=${nameEdit ?? device.name}
                 @input=${(e) => (this._nameEdits = { ...this._nameEdits, [device.id]: e.target.value })}>
@@ -2059,24 +2075,24 @@ class SunflowApp extends LitElement {
           </label>
           ${capabilities.includes("loadpoint") && device.profile.startsWith("evcc_intg/")
             ? html`<label class="field">
-                <span class="field-label">Art des Ladepunkts</span>
+                <span class="field-label">${t("Art des Ladepunkts")}</span>
                 <select @change=${(e) => this._setKind(device, e.target.value || null)}>
-                  <option value="" ?selected=${!device.kind}>automatisch (aus der Einheit des Ladestands)</option>
-                  <option value="vehicle" ?selected=${device.kind === "vehicle"}>Wallbox (Fahrzeug)</option>
-                  <option value="heater" ?selected=${device.kind === "heater"}>Wärme (z. B. Heizstab im Warmwasserspeicher)</option>
+                  <option value="" ?selected=${!device.kind}>${t("automatisch (aus der Einheit des Ladestands)")}</option>
+                  <option value="vehicle" ?selected=${device.kind === "vehicle"}>${t("Wallbox (Fahrzeug)")}</option>
+                  <option value="heater" ?selected=${device.kind === "heater"}>${t("Wärme (z. B. Heizstab im Warmwasserspeicher)")}</option>
                 </select>
               </label>`
             : nothing}
           ${params.map((p) => this._renderParameterField(device, p, edits))}
         </div>
-        ${this._params[device.id] === undefined ? html`<p class="muted small">Lade Kenndaten …</p>` : nothing}
+        ${this._params[device.id] === undefined ? html`<p class="muted small">${t("Lade Kenndaten …")}</p>` : nothing}
         <div class="actions">
           <button class="ok" ?disabled=${!changed || this._busy.has(device.id)} @click=${() => this._saveDevice(device)}>
-            Kenndaten speichern
+            ${t("Kenndaten speichern")}
           </button>
           <span class="spacer"></span>
           <button class="secondary danger" ?disabled=${this._busy.has(device.id)} @click=${() => this._removeDevice(device)}>
-            Entfernen
+            ${t("Entfernen")}
           </button>
         </div>
       </div>
@@ -2091,22 +2107,21 @@ class SunflowApp extends LitElement {
     });
     return html`
       <div class="heading">
-        <h1>Verbraucher</h1>
-        <p class="muted">Wie Sunflow Warmwasser, eigene Verbraucher und Wallboxen einplant. Fahrzeuge an Wallboxen haben ihre
-          eigenen Vorgaben unter „Laden“; die hier gelten für eine Wallbox ohne zugeordnete Fahrzeuge.</p>
+        <h1>${t("Verbraucher")}</h1>
+        <p class="muted">${t("Wie Sunflow Warmwasser, eigene Verbraucher und Wallboxen einplant. Fahrzeuge an Wallboxen haben ihre eigenen Vorgaben unter „Laden“; die hier gelten für eine Wallbox ohne zugeordnete Fahrzeuge.")}</p>
       </div>
-      ${consumers.length === 0 ? html`<p class="muted">Keine steuerbaren Verbraucher eingerichtet.</p>` : nothing}
+      ${consumers.length === 0 ? html`<p class="muted">${t("Keine steuerbaren Verbraucher eingerichtet.")}</p>` : nothing}
       ${CATEGORIES.map(([key, title]) => {
         const members = consumers.filter((d) => this._configuredCategory(d) === key);
         return members.length
           ? html`<h2 class="category">${title}</h2>${members.map((d) => html`
               <section class="device">
                 <div class="device-head"><div class="device-title">${d.name}</div>
-                  ${this._flexEdits[d.id] !== undefined ? html`<span class="chip warn">nicht gespeichert</span>` : nothing}</div>
+                  ${this._flexEdits[d.id] !== undefined ? html`<span class="chip warn">${t("nicht gespeichert")}</span>` : nothing}</div>
                 ${this._renderFlexSettings(d, this._params[d.id] ?? [])}
                 <div class="actions">
                   <button class="ok" ?disabled=${this._flexEdits[d.id] === undefined || this._busy.has(d.id)}
-                    @click=${() => this._saveDevice(d)}>Speichern</button>
+                    @click=${() => this._saveDevice(d)}>${t("Speichern")}</button>
                 </div>
               </section>`)}`
           : nothing;
@@ -2120,14 +2135,14 @@ class SunflowApp extends LitElement {
     if (!plants.length) return nothing;
     return html`
       <section class="device">
-        <div class="device-title">Einspeisevergütung</div>
+        <div class="device-title">${t("Einspeisevergütung")}</div>
         ${plants.map((device) => {
           const feedEdit = this._feedEdits[device.id] ?? {};
           return html`
             <div class="fields">
               <div class="field">
                 <span class="field-label">${device.name}</span>
-                <select aria-label="Vergütung ${device.name}" @change=${(e) => this._editFeedIn(device.id, "model", e.target.value)}>
+                <select aria-label=${t("Vergütung {name}", { name: device.name })} @change=${(e) => this._editFeedIn(device.id, "model", e.target.value)}>
                   ${Object.entries(FEED_IN_MODELS).map(
                     ([value, label]) => html`<option value=${value}
                       ?selected=${(feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed") === value}>${label}</option>`,
@@ -2135,9 +2150,9 @@ class SunflowApp extends LitElement {
                 </select>
               </div>
               <label class="field">
-                <span class="field-label">Vergütung</span>
+                <span class="field-label">${t("Vergütung")}</span>
                 <span class="input-unit">
-                  <input inputmode="decimal" placeholder="z. B. 8,2"
+                  <input inputmode="decimal" placeholder=${t("z. B. 8,2")}
                     .value=${feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct")}
                     @input=${(e) => this._editFeedIn(device.id, "rate", e.target.value)}>
                   <span class="muted">ct/kWh</span>
@@ -2146,7 +2161,7 @@ class SunflowApp extends LitElement {
               <div class="field">
                 <span class="field-label">&nbsp;</span>
                 <button class="ok" ?disabled=${this._feedEdits[device.id] === undefined || this._busy.has(device.id)}
-                  @click=${() => this._saveDevice(device)}>Speichern</button>
+                  @click=${() => this._saveDevice(device)}>${t("Speichern")}</button>
               </div>
             </div>`;
         })}
@@ -2161,13 +2176,13 @@ class SunflowApp extends LitElement {
     const set = (field, value) =>
       (this._flexEdits = { ...this._flexEdits, [device.id]: { ...(this._flexEdits[device.id] ?? {}), [field]: value } });
     const strategies = {
-      cost: ["Kostenoptimal", "PV-Überschuss oder günstige Zeiten"],
-      pv_only: ["Nur PV-Überschuss", "nie aus dem Netz oder dem Hausspeicher"],
-      fast: ["Schnellstmöglich", "sofort mit voller Leistung"],
+      cost: [t("Kostenoptimal"), t("PV-Überschuss oder günstige Zeiten")],
+      pv_only: [t("Nur PV-Überschuss"), t("nie aus dem Netz oder dem Hausspeicher")],
+      fast: [t("Schnellstmöglich"), t("sofort mit voller Leistung")],
     };
     return html`
       <fieldset class="flex-settings">
-        <legend class="field-label">Planung</legend>
+        <legend class="field-label">${t("Planung")}</legend>
         <div class="strategy-options">
           ${Object.entries(strategies).map(
             ([value, [label, hint]]) => html`
@@ -2182,42 +2197,43 @@ class SunflowApp extends LitElement {
         <div class="fields">
           ${kind !== "load"
             ? html`<label class="field">
-                <span class="field-label">${kind === "heater" ? "Zieltemperatur" : "Ziel-Ladestand"}</span>
+                <span class="field-label">${kind === "heater" ? t("Zieltemperatur") : t("Ziel-Ladestand")}</span>
                 <span class="input-unit">
-                  <input inputmode="decimal" placeholder="aus evcc" .value=${flex.target === null || flex.target === undefined ? "" : toDisplay(flex.target, "")}
+                  <input inputmode="decimal" placeholder=${t("aus evcc")} .value=${flex.target === null || flex.target === undefined ? "" : toDisplay(flex.target, "")}
                     @input=${(e) => set("target", fromDisplay(e.target.value, ""))}>
                   <span class="muted">${kind === "heater" ? "°C" : "%"}</span>
                 </span>
-                <span class="small muted">Leer = Wert aus evcc. Ein aktiver evcc-Ladeplan hat Vorrang.</span>
+                <span class="small muted">${t("Leer = Wert aus evcc. Ein aktiver evcc-Ladeplan hat Vorrang.")}</span>
               </label>`
             : nothing}
           <label class="field">
-            <span class="field-label">Fertig bis (täglich)</span>
+            <span class="field-label">${t("Fertig bis (täglich)")}</span>
             <span class="input-unit">
               <input type="time" .value=${flex.ready_by ?? ""} @change=${(e) => set("ready_by", e.target.value || null)}>
             </span>
-            <span class="small muted">${kind === "vehicle" ? "Leer = bis zum Ende des Planungszeitraums." : "Leer = innerhalb von 24 h."}</span>
+            <span class="small muted">${kind === "vehicle" ? t("Leer = bis zum Ende des Planungszeitraums.") : t("Leer = innerhalb von 24 h.")}</span>
           </label>
           ${kind === "heater"
             ? html`<label class="field">
-                <span class="field-label">Alternative Wärmequelle (Fernwärme, Gas …)</span>
+                <span class="field-label">${t("Alternative Wärmequelle (Fernwärme, Gas …)")}</span>
                 <span class="input-unit">
-                  <input inputmode="decimal" placeholder="keine"
+                  <input inputmode="decimal" placeholder=${t("keine")}
                     .value=${flex.alternative_cost_ct === null || flex.alternative_cost_ct === undefined ? "" : toDisplay(flex.alternative_cost_ct, "ct")}
                     @input=${(e) => set("alternative_cost_ct", fromDisplay(e.target.value, "ct"))}>
-                  <span class="muted">ct/kWh Wärme</span>
+                  <span class="muted">${t("ct/kWh Wärme")}</span>
                 </span>
-                <span class="small muted">Elektrisch geheizt wird nur, wenn es günstiger ist; den Rest übernimmt die Alternative.</span>
+                <span class="small muted">${t("Elektrisch geheizt wird nur, wenn es günstiger ist; den Rest übernimmt die Alternative.")}</span>
               </label>`
             : nothing}
           <label class="field">
-            <span class="field-label">Strom aus dem Hausspeicher</span>
+            <span class="field-label">${t("Strom aus dem Hausspeicher")}</span>
             <span class="inline wrap">
               <input type="checkbox" .checked=${flex.uses_battery} @change=${(e) => set("uses_battery", e.target.checked)}>
-              Hausspeicher darf in diesen Verbraucher entladen
+              ${t("Hausspeicher darf in diesen Verbraucher entladen")}
             </span>
-            <span class="small muted">Aus: der Speicher versorgt nur das Haus; ${kind === "heater" ? "geheizt" : "geladen"} wird
-              dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.</span>
+            <span class="small muted">${kind === "heater"
+              ? t("Aus: der Speicher versorgt nur das Haus; geheizt wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")
+              : t("Aus: der Speicher versorgt nur das Haus; geladen wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")}</span>
           </label>
         </div>
       </fieldset>
@@ -2230,11 +2246,11 @@ class SunflowApp extends LitElement {
     const value = edited ?? toDisplay(param.stored, param.unit);
     const placeholder = toDisplay(param.effective, param.unit);
     let source;
-    if (param.stored !== null && edited === undefined) source = html`<span class="muted">eigener Wert</span>`;
+    if (param.stored !== null && edited === undefined) source = html`<span class="muted">${t("eigener Wert")}</span>`;
     else if (param.derived !== null)
-      source = html`<span class="ok-text">aus Sensoren: ${toDisplay(param.derived, param.unit)} ${displayUnit(param.unit)}</span>`;
+      source = html`<span class="ok-text">${t("aus Sensoren: {value}", { value: `${toDisplay(param.derived, param.unit)} ${displayUnit(param.unit)}` })}</span>`;
     else if (param.default !== null)
-      source = html`<span class="muted">Vorgabe: ${toDisplay(param.default, param.unit)} ${displayUnit(param.unit)}</span>`;
+      source = html`<span class="muted">${t("Vorgabe: {value}", { value: `${toDisplay(param.default, param.unit)} ${displayUnit(param.unit)}` })}</span>`;
     return html`
       <label class="field">
         <span class="field-label">${paramLabel(param.name)}</span>
@@ -2248,7 +2264,7 @@ class SunflowApp extends LitElement {
         <span class="small">
           ${source}
           ${param.stored !== null
-            ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, "")}>zurücksetzen</button>`
+            ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, "")}>${t("zurücksetzen")}</button>`
             : nothing}
         </span>
       </label>
@@ -2262,12 +2278,11 @@ class SunflowApp extends LitElement {
       <label class="field">
         <span class="field-label">${paramLabel(param.name)}</span>
         <select @change=${(e) => this._editParam(device.id, param.name, e.target.value)}>
-          <option value="0" ?selected=${value === 0}>automatisch (Sunflow schaltet 1 ↔ 3 Phasen)</option>
-          <option value="3" ?selected=${value === 3}>immer 3 Phasen</option>
-          <option value="1" ?selected=${value === 1}>immer 1 Phase</option>
+          <option value="0" ?selected=${value === 0}>${t("automatisch (Sunflow schaltet 1 ↔ 3 Phasen)")}</option>
+          <option value="3" ?selected=${value === 3}>${t("immer 3 Phasen")}</option>
+          <option value="1" ?selected=${value === 1}>${t("immer 1 Phase")}</option>
         </select>
-        <span class="small muted">Automatisch lädt das Auto schon bei wenig PV-Überschuss (1 Phase ab ≈ 1,4 kW) und schaltet
-          bei genug Sonne auf 3 Phasen.</span>
+        <span class="small muted">${t("Automatisch lädt das Auto schon bei wenig PV-Überschuss (1 Phase ab ≈ 1,4 kW) und schaltet bei genug Sonne auf 3 Phasen.")}</span>
       </label>
     `;
   }
@@ -2275,8 +2290,8 @@ class SunflowApp extends LitElement {
   _renderEfficiencyHint(device, param) {
     const estimate = this._efficiency[device.id];
     if (estimate === undefined) return nothing;
-    if (estimate === null) return html`<span class="small muted">Noch keine Historie für eine Schätzung.</span>`;
-    const pct = (v) => `${(v * 100).toFixed(1).replace(".", ",")} %`;
+    if (estimate === null) return html`<span class="small muted">${t("Noch keine Historie für eine Schätzung.")}</span>`;
+    const pct = (v) => `${decimal((v * 100).toFixed(1))} %`;
     // The parameter is the round trip of the conversion; a constant standby draw does not
     // depend on how much is cycled and is left out when the history allows the split
     const split = estimate.conversion_round_trip !== null && estimate.conversion_round_trip !== undefined;
@@ -2284,25 +2299,29 @@ class SunflowApp extends LitElement {
     return html`
       ${split
         ? html`<span class="small">
-            Aufgeteilt: Umwandlung <strong>${pct(estimate.conversion_round_trip)}</strong> Zyklus und Eigenverbrauch der
-            Batterie etwa <strong>${formatValue(estimate.standby_w, "W")}</strong> (unabhängig vom Laden) –
-            für die Planung zählt die Umwandlung. Die Wandlung im Wechselrichter ist ein eigener Wert.
+            ${t("Aufgeteilt: Umwandlung {conversion} Zyklus und Eigenverbrauch der Batterie etwa {standby} (unabhängig vom Laden) – für die Planung zählt die Umwandlung. Die Wandlung im Wechselrichter ist ein eigener Wert.", {
+              conversion: pct(estimate.conversion_round_trip),
+              standby: formatValue(estimate.standby_w, "W"),
+            })}
           </span>`
         : nothing}
       <span class="small">
-        ${estimate.source === "counters" ? "aus Energiezählern" : "aus Historie"}: <strong>${pct(estimate.round_trip)}</strong> Zyklus (je Richtung ${pct(estimate.efficiency)}),
-        ${estimate.cycles.toFixed(1).replace(".", ",")} Zyklen in ${Math.round(estimate.hours)} h
+        ${estimate.source === "counters" ? t("aus Energiezählern") : t("aus Historie")}: <strong>${pct(estimate.round_trip)}</strong>
+        ${t("Zyklus (je Richtung {efficiency}), {cycles} Zyklen in {hours} h", {
+          efficiency: pct(estimate.efficiency),
+          cycles: decimal(estimate.cycles.toFixed(1)),
+          hours: Math.round(estimate.hours),
+        })}
         ${estimate.plausible
-          ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, String(value).replace(".", ","))}>
-              ${estimate.reliable ? "übernehmen" : "vorläufig übernehmen"}</button>`
+          ? html` · <button class="link" @click=${() => this._editParam(device.id, param.name, decimal(value))}>
+              ${estimate.reliable ? t("übernehmen") : t("vorläufig übernehmen")}</button>`
           : nothing}
       </span>
       ${!estimate.plausible
-        ? html`<span class="small warn-text">Unplausibel – vermutlich Messfehler der Batterieleistung oder falsche Kapazität.
-            Wird nicht angeboten.</span>`
+        ? html`<span class="small warn-text">${t("Unplausibel – vermutlich Messfehler der Batterieleistung oder falsche Kapazität. Wird nicht angeboten.")}</span>`
         : !estimate.reliable
-          ? html`<span class="small muted">Vorläufig – belastbar erst ab ${estimate.min_cycles} vollen Zyklen. Enthält auch den Eigenverbrauch des Speichers.</span>`
-          : html`<span class="small muted">Enthält auch den Eigenverbrauch des Speichers (z. B. DC/DC-Wandler der Module).</span>`}
+          ? html`<span class="small muted">${t("Vorläufig – belastbar erst ab {cycles} vollen Zyklen. Enthält auch den Eigenverbrauch des Speichers.", { cycles: estimate.min_cycles })}</span>`
+          : html`<span class="small muted">${t("Enthält auch den Eigenverbrauch des Speichers (z. B. DC/DC-Wandler der Module).")}</span>`}
     `;
   }
 
@@ -2318,22 +2337,22 @@ class SunflowApp extends LitElement {
     });
     return html`
       <div class="heading">
-        <h1>Bilanzprüfung</h1>
-        <p class="muted">Wie hängen deine Geräte zusammen? Sunflow prüft damit die Messwerte gegeneinander und zählt keine PV-Leistung doppelt.</p>
+        <h1>${t("Bilanzprüfung")}</h1>
+        <p class="muted">${t("Wie hängen deine Geräte zusammen? Sunflow prüft damit die Messwerte gegeneinander und zählt keine PV-Leistung doppelt.")}</p>
       </div>
       ${pvOnly.length && measuring.length
         ? html`
             <section class="device">
-              <div class="device-title">Zusammenhang der Anlagen</div>
+              <div class="device-title">${t("Zusammenhang der Anlagen")}</div>
               ${pvOnly.map(
                 (d) => html`
                   <div class="field wide">
-                    <span class="field-label">${d.name} wird zusätzlich gemessen von</span>
-                    <select aria-label="${d.name} wird zusätzlich gemessen von" @change=${(e) => this._setMeasuredBy(d, e.target.value)}>
-                      <option value="" ?selected=${!d.measured_by}>niemandem (eigene Einspeisung)</option>
+                    <span class="field-label">${t("{name} wird zusätzlich gemessen von", { name: d.name })}</span>
+                    <select aria-label=${t("{name} wird zusätzlich gemessen von", { name: d.name })} @change=${(e) => this._setMeasuredBy(d, e.target.value)}>
+                      <option value="" ?selected=${!d.measured_by}>${t("niemandem (eigene Einspeisung)")}</option>
                       ${measuring.map(
                         (m) => html`<option value=${m.id} ?selected=${d.measured_by?.device_id === m.id}>
-                          ${m.name} als „PV extern“
+                          ${t("{name} als „PV extern“", { name: m.name })}
                         </option>`,
                       )}
                     </select>
@@ -2344,7 +2363,7 @@ class SunflowApp extends LitElement {
           `
         : nothing}
       ${this._renderMeasurements(byId)}
-      ${site === null ? html`<p class="muted">Lade Anlagenstatus …</p>` : this._renderSiteStatus(site, byId)}
+      ${site === null ? html`<p class="muted">${t("Lade Anlagenstatus …")}</p>` : this._renderSiteStatus(site, byId)}
     `;
   }
 
@@ -2357,9 +2376,9 @@ class SunflowApp extends LitElement {
         const state = c.plausible === null ? "neutral" : c.plausible ? "ok" : "warn";
         return html`
           <div class="alert ${state}">
-            <div>${c.plausible === null ? "Gegenprobe nicht möglich" : c.plausible ? "✓ Gegenprobe passt" : "⚠ Gegenprobe weicht ab"}:
-              ${own} ${formatValue(c.own_value, "W")} · gemessen von ${other} ${formatValue(c.measured_value, "W")}</div>
-            ${c.deviation !== null ? html`<div class="small">Abweichung ${formatValue(Math.abs(c.deviation), "W")}</div>` : nothing}
+            <div>${c.plausible === null ? t("Gegenprobe nicht möglich") : c.plausible ? `✓ ${t("Gegenprobe passt")}` : `⚠ ${t("Gegenprobe weicht ab")}`}:
+              ${own} ${formatValue(c.own_value, "W")} · ${t("gemessen von {name}", { name: other })} ${formatValue(c.measured_value, "W")}</div>
+            ${c.deviation !== null ? html`<div class="small">${t("Abweichung {value}", { value: formatValue(Math.abs(c.deviation), "W") })}</div>` : nothing}
           </div>
         `;
       })}
@@ -2370,15 +2389,15 @@ class SunflowApp extends LitElement {
               <div class="small muted">${d.name}</div>
               <div class="value">${d.pv_output === null ? "–" : formatValue(d.pv_output, "W")}</div>
               <div class="small muted">
-                ${d.balance ? (d.balance.plausible ? "✓ Gerätebilanz plausibel" : "⚠ Gerätebilanz unplausibel") : "PV-Leistung"}
+                ${d.balance ? (d.balance.plausible ? `✓ ${t("Gerätebilanz plausibel")}` : `⚠ ${t("Gerätebilanz unplausibel")}`) : t("PV-Leistung")}
               </div>
             </div>
           `,
         )}
         <div class="tile total">
-          <div class="small muted">PV gesamt</div>
+          <div class="small muted">${t("PV gesamt")}</div>
           <div class="value">${formatValue(site.pv_total, "W")}</div>
-          <div class="small muted">ohne Doppelzählung</div>
+          <div class="small muted">${t("ohne Doppelzählung")}</div>
         </div>
       </div>
     `;
@@ -2390,11 +2409,11 @@ class SunflowApp extends LitElement {
 
   _renderSourcesBody() {
     const sources = this._sources;
-    if (sources === null) return html`<h1>Tarif und Prognose</h1><p class="muted">Suche Quellen …</p>`;
+    if (sources === null) return html`<h1>${t("Tarif und Prognose")}</h1><p class="muted">${t("Suche Quellen …")}</p>`;
     return html`
       <div class="heading">
-        <h1>Tarif und Prognose</h1>
-        <p class="muted">Strompreis und PV-Prognose kommen aus deinen vorhandenen Integrationen.</p>
+        <h1>${t("Tarif und Prognose")}</h1>
+        <p class="muted">${t("Strompreis und PV-Prognose kommen aus deinen vorhandenen Integrationen.")}</p>
       </div>
       ${this._renderPriceSource(sources)}
       ${this._renderForecastSource(sources)}
@@ -2407,16 +2426,16 @@ class SunflowApp extends LitElement {
     const points = this._priceSeries?.points ?? [];
     return html`
       <section class="device">
-        <div class="device-title">Bezugspreis</div>
+        <div class="device-title">${t("Bezugspreis")}</div>
         ${sources.prices.length === 0
-          ? html`<p class="small muted">Keine Preis-Entität gefunden (Einheit €/kWh oder ct/kWh) – du kannst einen festen Preis angeben.</p>`
+          ? html`<p class="small muted">${t("Keine Preis-Entität gefunden (Einheit €/kWh oder ct/kWh) – du kannst einen festen Preis angeben.")}</p>`
           : nothing}
         ${html`
               <div class="field wide">
-                <span class="field-label">Quelle</span>
-                <select aria-label="Quelle Bezugspreis" @change=${(e) => this._setTariff(e.target.value)}>
-                  <option value="" ?selected=${!selected}>– keine (nur Eigenverbrauch) –</option>
-                  <option value=${FIXED_PRICE} ?selected=${selected === FIXED_PRICE}>Fester Preis …</option>
+                <span class="field-label">${t("Quelle")}</span>
+                <select aria-label=${t("Quelle Bezugspreis")} @change=${(e) => this._setTariff(e.target.value)}>
+                  <option value="" ?selected=${!selected}>${t("– keine (nur Eigenverbrauch) –")}</option>
+                  <option value=${FIXED_PRICE} ?selected=${selected === FIXED_PRICE}>${t("Fester Preis …")}</option>
                   ${sources.prices.map(
                     (p) => html`<option value=${p.entity_id} ?selected=${selected === p.entity_id}>
                       ${p.name} · ${PRICE_ADAPTERS[p.adapter] ?? p.adapter}
@@ -2430,9 +2449,9 @@ class SunflowApp extends LitElement {
           ? html`
               <div class="fields">
                 <label class="field">
-                  <span class="field-label">Arbeitspreis brutto</span>
+                  <span class="field-label">${t("Arbeitspreis brutto")}</span>
                   <span class="input-unit">
-                    <input inputmode="decimal" placeholder="z. B. 32,5"
+                    <input inputmode="decimal" placeholder=${t("z. B. 32,5")}
                       .value=${this._fixedPriceEdit ?? toDisplay(sources.tariff.fixed_price_ct, "ct")}
                       @input=${(e) => (this._fixedPriceEdit = e.target.value)}>
                     <span class="muted">ct/kWh</span>
@@ -2441,7 +2460,7 @@ class SunflowApp extends LitElement {
               </div>
               <div class="actions">
                 <button class="ok" ?disabled=${this._fixedPriceEdit === undefined} @click=${() => this._saveFixedPrice()}>
-                  Preis speichern
+                  ${t("Preis speichern")}
                 </button>
               </div>
             `
@@ -2450,12 +2469,12 @@ class SunflowApp extends LitElement {
         ${points.length && !fixed ? this._renderPriceSummary(points) : nothing}
         ${points.length && !fixed
           ? html`<figure>
-              <figcaption class="small muted">Bezugspreis nächste ${Math.round(points.length / 4)} h in ct/kWh</figcaption>
-              ${priceChart(points, "Bezugspreis-Verlauf")}
+              <figcaption class="small muted">${t("Bezugspreis nächste {hours} h in ct/kWh", { hours: Math.round(points.length / 4) })}</figcaption>
+              ${priceChart(points, t("Bezugspreis-Verlauf"))}
             </figure>`
           : nothing}
         ${this._priceSeries?.adapter === "fixed" && !fixed
-          ? html`<div class="alert warn">⚠ Diese Quelle liefert nur den aktuellen Preis, keinen Verlauf. Die Planung nimmt ihn als konstant an.</div>`
+          ? html`<div class="alert warn">⚠ ${t("Diese Quelle liefert nur den aktuellen Preis, keinen Verlauf. Die Planung nimmt ihn als konstant an.")}</div>`
           : nothing}
       </section>
     `;
@@ -2466,21 +2485,19 @@ class SunflowApp extends LitElement {
     const edit = this._surchargeEdit ?? {};
     const set = (key, value) => (this._surchargeEdit = { ...edit, [key]: value });
     return html`
-      <p class="small muted">Diese Quelle liefert den reinen Börsenpreis. Für die Planung zählt, was du zahlst: Börsenpreis
-        plus Netzentgelt, Umlagen und Gebühr des Anbieters, darauf die Mehrwertsteuer. Die Werte stehen auf deiner
-        Rechnung bzw. im Preisblatt des Anbieters.</p>
+      <p class="small muted">${t("Diese Quelle liefert den reinen Börsenpreis. Für die Planung zählt, was du zahlst: Börsenpreis plus Netzentgelt, Umlagen und Gebühr des Anbieters, darauf die Mehrwertsteuer. Die Werte stehen auf deiner Rechnung bzw. im Preisblatt des Anbieters.")}</p>
       <div class="fields">
         <label class="field">
-          <span class="field-label">Aufschlag netto</span>
+          <span class="field-label">${t("Aufschlag netto")}</span>
           <span class="input-unit">
-            <input inputmode="decimal" placeholder="z. B. 17,5"
+            <input inputmode="decimal" placeholder=${t("z. B. 17,5")}
               .value=${edit.exchange_surcharge_ct ?? toDisplay(tariff.exchange_surcharge_ct, "ct")}
               @input=${(e) => set("exchange_surcharge_ct", e.target.value)}>
             <span class="muted">ct/kWh</span>
           </span>
         </label>
         <label class="field">
-          <span class="field-label">Mehrwertsteuer</span>
+          <span class="field-label">${t("Mehrwertsteuer")}</span>
           <span class="input-unit">
             <input inputmode="decimal" placeholder="19"
               .value=${edit.exchange_vat_pct ?? toDisplay(tariff.exchange_vat_pct, "%")}
@@ -2491,12 +2508,11 @@ class SunflowApp extends LitElement {
       </div>
       <div class="actions">
         <button class="ok" ?disabled=${this._surchargeEdit === undefined} @click=${() => this._saveSurcharges()}>
-          Aufschläge speichern
+          ${t("Aufschläge speichern")}
         </button>
       </div>
       ${tariff.exchange_surcharge_ct == null
-        ? html`<div class="alert warn">⚠ Ohne Aufschläge plant Sunflow mit dem Börsenpreis allein – Netzbezug erscheint viel zu
-            günstig.</div>`
+        ? html`<div class="alert warn">⚠ ${t("Ohne Aufschläge plant Sunflow mit dem Börsenpreis allein – Netzbezug erscheint viel zu günstig.")}</div>`
         : nothing}
     `;
   }
@@ -2510,10 +2526,10 @@ class SunflowApp extends LitElement {
     const window = `${weekdayTime(points[firstMin].start)}–${timeOnly(points[lastMin].end)}`;
     return html`
       <div class="tiles">
-        <div class="tile"><div class="small muted">Jetzt</div><div class="value">${formatCt(now.price)}</div></div>
-        <div class="tile"><div class="small muted">Günstigster Preis</div><div class="value">${formatCt(min)}</div>
+        <div class="tile"><div class="small muted">${t("Jetzt")}</div><div class="value">${formatCt(now.price)}</div></div>
+        <div class="tile"><div class="small muted">${t("Günstigster Preis")}</div><div class="value">${formatCt(min)}</div>
           <div class="small muted">${window}</div></div>
-        <div class="tile"><div class="small muted">Höchster Preis</div>
+        <div class="tile"><div class="small muted">${t("Höchster Preis")}</div>
           <div class="value">${formatCt(Math.max(...points.map((p) => p.price)))}</div></div>
       </div>
     `;
@@ -2536,24 +2552,23 @@ class SunflowApp extends LitElement {
     }));
     return html`
       <section class="device">
-        <div class="device-title">PV-Prognose</div>
+        <div class="device-title">${t("PV-Prognose")}</div>
         ${sources.forecast_planes.length === 0
-          ? html`<p class="muted">Keine Prognose gefunden. Unterstützt werden Solcast und Forecast.Solar.</p>`
+          ? html`<p class="muted">${t("Keine Prognose gefunden. Unterstützt werden Solcast und Forecast.Solar.")}</p>`
           : html`
-              <p class="small muted">Ordne jede Prognosefläche der Anlage zu, deren Module dort liegen.
-                Gibt es eine Dachfläche bei mehreren Anbietern, verwende sie nur einmal – sonst wird sie doppelt gezählt.</p>
+              <p class="small muted">${t("Ordne jede Prognosefläche der Anlage zu, deren Module dort liegen. Gibt es eine Dachfläche bei mehreren Anbietern, verwende sie nur einmal – sonst wird sie doppelt gezählt.")}</p>
               <div class="fields">
                 ${sources.forecast_planes.map(
                   (plane) => html`
                     <div class="field">
                       <span class="field-label">${FORECAST_SOURCES[plane.source] ?? plane.source} · ${plane.name}${plane.capacity_kw ? ` (${formatValue(plane.capacity_kw * 1000, "W")})` : ""}</span>
-                      <span class="small muted">${plane.today_kwh !== null ? `heute ${toDisplay(Math.round(plane.today_kwh * 10) / 10, "kWh")} kWh` : "keine Tagesprognose lesbar"}</span>
+                      <span class="small muted">${plane.today_kwh !== null ? t("heute {energy} kWh", { energy: toDisplay(Math.round(plane.today_kwh * 10) / 10, "kWh") }) : t("keine Tagesprognose lesbar")}</span>
                       <span class="input-unit">
-                        <input aria-label="Name der Fläche" placeholder=${plane.detected_name} .value=${plane.custom_name ?? ""}
+                        <input aria-label=${t("Name der Fläche")} placeholder=${plane.detected_name} .value=${plane.custom_name ?? ""}
                           @change=${(e) => this._renamePlane(plane, e.target.value)}>
                       </span>
-                      <select aria-label="Anlage für ${plane.name}" @change=${(e) => this._assignPlane(plane, e.target.value)}>
-                        <option value="" ?selected=${!plane.device_id}>nicht verwenden</option>
+                      <select aria-label=${t("Anlage für {name}", { name: plane.name })} @change=${(e) => this._assignPlane(plane, e.target.value)}>
+                        <option value="" ?selected=${!plane.device_id}>${t("nicht verwenden")}</option>
                         ${plants.map(
                           (p) => html`<option value=${p.id} ?selected=${plane.device_id === p.id}>${p.name}</option>`,
                         )}
@@ -2567,14 +2582,14 @@ class SunflowApp extends LitElement {
         ${series.length
           ? html`
               <figure>
-                <figcaption class="small muted">PV-Prognose nächste 48 h je Fläche (gestapelt)</figcaption>
+                <figcaption class="small muted">${t("PV-Prognose nächste 48 h je Fläche (gestapelt)")}</figcaption>
                 <div class="legend">
                   ${series.map(
                     (s) => html`<span class="legend-item"><span class="swatch" style="background:${s.color}"></span>
-                      ${s.name} → ${s.plant} · ${s.kwh.toFixed(1).replace(".", ",")} kWh</span>`,
+                      ${s.name} → ${s.plant} · ${decimal(s.kwh.toFixed(1))} kWh</span>`,
                   )}
                 </div>
-                ${forecastChart(series, "PV-Prognose je Fläche")}
+                ${forecastChart(series, t("PV-Prognose je Fläche"))}
               </figure>
             `
           : nothing}
@@ -2586,12 +2601,11 @@ class SunflowApp extends LitElement {
     const devices = this._testableDevices;
     return html`
       <div class="heading">
-        <h1>Gerätetest</h1>
-        <p class="muted">Ein kurzer Test prüft, ob die Steuerung beim Wechselrichter ankommt und die Vorzeichen stimmen.
-          Danach geht der Speicher zurück auf Eigenverbrauch.</p>
+        <h1>${t("Gerätetest")}</h1>
+        <p class="muted">${t("Ein kurzer Test prüft, ob die Steuerung beim Wechselrichter ankommt und die Vorzeichen stimmen. Danach geht der Speicher zurück auf Eigenverbrauch.")}</p>
       </div>
       ${devices.length === 0
-        ? html`<p class="muted">Kein steuerbares Gerät übernommen – für reine PV-Wechselrichter ist kein Test nötig.</p>`
+        ? html`<p class="muted">${t("Kein steuerbares Gerät übernommen – für reine PV-Wechselrichter ist kein Test nötig.")}</p>`
         : devices.map((d) => this._renderDeviceTestCard(d))}
     `;
   }
@@ -2606,9 +2620,9 @@ class SunflowApp extends LitElement {
         <div class="device-head">
           <div>
             <div class="device-title">${device.name}</div>
-            <div class="muted small">Profil ${device.profile}</div>
+            <div class="muted small">${t("Profil {profile}", { profile: device.profile })}</div>
           </div>
-          ${passedAt ? html`<span class="chip ok">✓ Bestanden ${weekdayTime(passedAt.toISOString())}</span>` : nothing}
+          ${passedAt ? html`<span class="chip ok">✓ ${t("Bestanden {time}", { time: weekdayTime(passedAt.toISOString()) })}</span>` : nothing}
         </div>
         ${running ? nothing : this._renderTestPlan(device, confirmed)}
         ${test ? this._renderTestProgress(device, test) : nothing}
@@ -2619,14 +2633,11 @@ class SunflowApp extends LitElement {
   _renderTestPlan(device, confirmed) {
     return html`
       <ol class="plan small">
-        <li>Ausgangszustand 20 s messen (nur lesen).</li>
-        <li>Falls der Wechselrichter nicht im passiven Modus ist: dorthin umschalten
-          (einmaliger EEPROM-Schreibzugriff).</li>
-        <li>Je nach Zustand: Laden bzw. Entladen auf 300 W begrenzen oder 500 W aus dem Netz laden – 60 s lang.
-          Dafür werden nur die Werte des passiven Modus geschrieben (RAM).</li>
-        <li>Prüfen, ob die Batterie dem Befehl in der erwarteten Richtung folgt.</li>
-        <li>Zurück auf Eigenverbrauch, ggf. zurück in den vorherigen Modus, 30 s beobachten.
-          Bei Abbruch oder Fehler wird sofort zurückgesetzt.</li>
+        <li>${t("Ausgangszustand 20 s messen (nur lesen).")}</li>
+        <li>${t("Falls der Wechselrichter nicht im passiven Modus ist: dorthin umschalten (einmaliger EEPROM-Schreibzugriff).")}</li>
+        <li>${t("Je nach Zustand: Laden bzw. Entladen auf 300 W begrenzen oder 500 W aus dem Netz laden – 60 s lang. Dafür werden nur die Werte des passiven Modus geschrieben (RAM).")}</li>
+        <li>${t("Prüfen, ob die Batterie dem Befehl in der erwarteten Richtung folgt.")}</li>
+        <li>${t("Zurück auf Eigenverbrauch, ggf. zurück in den vorherigen Modus, 30 s beobachten. Bei Abbruch oder Fehler wird sofort zurückgesetzt.")}</li>
       </ol>
       <label class="inline confirm">
         <input type="checkbox" .checked=${confirmed}
@@ -2634,11 +2645,11 @@ class SunflowApp extends LitElement {
             (this._testConfirm = e.target.checked
               ? new Set([...this._testConfirm, device.id])
               : this._without(this._testConfirm, device.id))}>
-        Automationen anderer Systeme, die den passiven Modus schreiben, sind pausiert.
+        ${t("Automationen anderer Systeme, die den passiven Modus schreiben, sind pausiert.")}
       </label>
       <div class="actions">
         <button class="primary" ?disabled=${!confirmed} @click=${() => this._startTest(device)}>
-          Test starten (schreibt in den Wechselrichter)
+          ${t("Test starten (schreibt in den Wechselrichter)")}
         </button>
       </div>
     `;
@@ -2654,35 +2665,35 @@ class SunflowApp extends LitElement {
     return html`
       <div class="alert ${test.phase === "done" ? "ok" : test.running ? "neutral" : "warn"}" role="status">
         <div><strong>${test.message}</strong></div>
-        ${test.expectation ? html`<div class="small">Erwartung: ${test.expectation}</div>` : nothing}
+        ${test.expectation ? html`<div class="small">${t("Erwartung: {expectation}", { expectation: test.expectation })}</div>` : nothing}
       </div>
       ${test.running
         ? html`
             <ol class="phases small">
-              ${["Ausgangszustand", "Testbefehl", "Zurücksetzen", "Beobachten"].map(
+              ${[t("Ausgangszustand"), t("Testbefehl"), t("Zurücksetzen"), t("Beobachten")].map(
                 (label, i) => html`<li class=${i < current ? "done" : i === current ? "active" : ""}>${label}</li>`,
               )}
             </ol>
             <div class="actions">
-              <button class="secondary" @click=${() => this._abortTest(device)}>Abbrechen und zurücksetzen</button>
+              <button class="secondary" @click=${() => this._abortTest(device)}>${t("Abbrechen und zurücksetzen")}</button>
             </div>
           `
         : nothing}
       ${lastSamples.length
-        ? html`<div class="small muted">Batterie zuletzt:
+        ? html`<div class="small muted">${t("Batterie zuletzt:")}
             ${lastSamples.map((s) => (s.battery_power === null ? "–" : formatSigned(s.battery_power, "W"))).join(" · ")}
           </div>`
         : nothing}
       ${finished
         ? html`<ul class="results">
-            ${result(test.control_works, "Steuerung wirkt", "Batterie folgt dem Befehl nicht")}
-            ${result(test.sign_correct, "Vorzeichen korrekt (+ = Laden)", "Vorzeichen falsch – in Schritt 2 „umkehren“ setzen")}
-            ${result(test.restored, "Zurück auf Eigenverbrauch", "Zurücksetzen fehlgeschlagen – bitte in HA prüfen!")}
+            ${result(test.control_works, t("Steuerung wirkt"), t("Batterie folgt dem Befehl nicht"))}
+            ${result(test.sign_correct, t("Vorzeichen korrekt (+ = Laden)"), t("Vorzeichen falsch – in Schritt 2 „umkehren“ setzen"))}
+            ${result(test.restored, t("Zurück auf Eigenverbrauch"), t("Zurücksetzen fehlgeschlagen – bitte in HA prüfen!"))}
             ${test.previous_mode
               ? result(
                   test.previous_mode_restored === true,
-                  `Modus zurück auf „${test.previous_mode}“`,
-                  `Modus nicht zurückgesetzt – bitte in HA auf „${test.previous_mode}“ stellen!`,
+                  t("Modus zurück auf „{mode}“", { mode: test.previous_mode }),
+                  t("Modus nicht zurückgesetzt – bitte in HA auf „{mode}“ stellen!", { mode: test.previous_mode }),
                 )
               : nothing}
           </ul>`
@@ -2690,7 +2701,7 @@ class SunflowApp extends LitElement {
       ${test.error ? html`<div class="alert error">${test.error}</div>` : nothing}
       ${this._advanced && test.calls.length
         ? html`<div class="table-wrap"><table>
-            <thead><tr><th>Aktion</th><th>Entität</th><th>Daten</th><th>Status</th></tr></thead>
+            <thead><tr><th>${t("Aktion")}</th><th>${t("Entität")}</th><th>${t("Daten")}</th><th>${t("Status")}</th></tr></thead>
             <tbody>${test.calls.map(
               (c) => html`<tr><td class="mono">${c.service}</td><td class="mono">${c.entity_id}</td>
                 <td class="mono">${JSON.stringify(c.data)}</td><td>${c.status}</td></tr>`,
@@ -2702,23 +2713,23 @@ class SunflowApp extends LitElement {
 
   _renderSummary() {
     const summary = this._summary;
-    if (summary === null) return html`<h1>Fertig</h1><p class="muted">Lade Zusammenfassung …</p>`;
+    if (summary === null) return html`<h1>${t("Fertig")}</h1><p class="muted">${t("Lade Zusammenfassung …")}</p>`;
     const counts = { error: 0, warning: 0, info: 0 };
     for (const issue of summary.issues) counts[issue.level] += 1;
     const priceName = summary.tariff
       ? (this._sources?.prices.find((p) => p.entity_id === summary.tariff)?.name ?? summary.tariff)
       : summary.fixed_price_ct != null
-        ? `Fester Preis ${toDisplay(summary.fixed_price_ct, "ct")} ct/kWh`
-        : "keiner – nur Eigenverbrauch";
+        ? t("Fester Preis {price} ct/kWh", { price: toDisplay(summary.fixed_price_ct, "ct") })
+        : t("keiner – nur Eigenverbrauch");
     return html`
       <div class="heading">
-        <h1>${summary.completed ? "Einrichtung abgeschlossen" : "Fast fertig"}</h1>
+        <h1>${summary.completed ? t("Einrichtung abgeschlossen") : t("Fast fertig")}</h1>
         <p class="muted">
           ${summary.completed
-            ? "Sunflow ist eingerichtet und plant im Hintergrund. Ergebnisse siehst du unter Live, Steuerung und Planung."
+            ? t("Sunflow ist eingerichtet und plant im Hintergrund. Ergebnisse siehst du unter Live, Steuerung und Planung.")
             : counts.error
-              ? "Bitte behebe die markierten Punkte, dann kannst du die Einrichtung abschließen."
-              : "Prüfe die Übersicht und schließe die Einrichtung ab."}
+              ? t("Bitte behebe die markierten Punkte, dann kannst du die Einrichtung abschließen.")
+              : t("Prüfe die Übersicht und schließe die Einrichtung ab.")}
         </p>
       </div>
       ${summary.issues.length
@@ -2728,13 +2739,13 @@ class SunflowApp extends LitElement {
                 (i) => html`
                   <li class="alert ${ISSUE_STYLES[i.level].css}">
                     <span>${ISSUE_STYLES[i.level].icon} ${i.message}</span>
-                    <button class="link" @click=${() => this._goTo(i.step)}>zu „${STEPS[stepIndex(i.step)][1]}“</button>
+                    <button class="link" @click=${() => this._goTo(i.step)}>${t("zu „{area}“", { area: STEPS[stepIndex(i.step)][1] })}</button>
                   </li>
                 `,
               )}
             </ul>
           `
-        : html`<div class="alert ok">✓ Alles eingerichtet.</div>`}
+        : html`<div class="alert ok">✓ ${t("Alles eingerichtet.")}</div>`}
       <ul class="summary-list">
         ${summary.devices.map(
           (d) => html`
@@ -2745,25 +2756,25 @@ class SunflowApp extends LitElement {
           `,
         )}
         <li>
-          <strong>Bezugspreis</strong>
+          <strong>${t("Bezugspreis")}</strong>
           <div class="small muted">${priceName}</div>
         </li>
         <li>
-          <strong>PV-Prognose</strong>
+          <strong>${t("PV-Prognose")}</strong>
           <div class="small muted">
             ${summary.forecast_planes.length
-              ? summary.forecast_planes.map((p) => `${p.name} → ${p.plant ?? "nicht zugeordnet"}`).join(" · ")
-              : "keine"}
+              ? summary.forecast_planes.map((p) => `${p.name} → ${p.plant ?? t("nicht zugeordnet")}`).join(" · ")
+              : t("keine")}
           </div>
         </li>
       </ul>
       ${summary.completed
-        ? html`<span class="chip ok">✓ Abgeschlossen</span>`
+        ? html`<span class="chip ok">✓ ${t("Abgeschlossen")}</span>`
         : html`<div class="actions">
             <button class="ok" ?disabled=${!summary.can_complete} @click=${() => this._completeSetup()}>
-              Einrichtung abschließen
+              ${t("Einrichtung abschließen")}
             </button>
-            ${counts.warning ? html`<span class="small muted">${counts.warning} Hinweise kannst du auch später erledigen.</span>` : nothing}
+            ${counts.warning ? html`<span class="small muted">${t("{count} Hinweise kannst du auch später erledigen.", { count: counts.warning })}</span>` : nothing}
           </div>`}
     `;
   }
@@ -2772,23 +2783,23 @@ class SunflowApp extends LitElement {
     const details = [];
     const p = device.parameters;
     if (p.capacity_wh) details.push(`${toDisplay(p.capacity_wh, "Wh")} kWh`);
-    if (p.min_soc !== undefined) details.push(`min. ${formatValue(p.min_soc, "%")}`);
-    if (p.max_charge) details.push(`Laden ≤ ${formatValue(p.max_charge, "W")}`);
-    if (p.max_discharge) details.push(`Entladen ≤ ${formatValue(p.max_discharge, "W")}`);
+    if (p.min_soc !== undefined) details.push(t("min. {value}", { value: formatValue(p.min_soc, "%") }));
+    if (p.max_charge) details.push(t("Laden ≤ {value}", { value: formatValue(p.max_charge, "W") }));
+    if (p.max_discharge) details.push(t("Entladen ≤ {value}", { value: formatValue(p.max_discharge, "W") }));
     if (device.feed_in) {
       const rate = device.feed_in.rate_ct_per_kwh;
       details.push(`${FEED_IN_MODELS[device.feed_in.model]}${rate !== null ? ` ${toDisplay(rate, "ct")} ct/kWh` : ""}`);
     }
-    if (device.measured_by) details.push(`gemessen von ${device.measured_by} (PV extern)`);
-    if (device.overrides.length) details.push(`${device.overrides.length} angepasste Rollen`);
-    details.push(`Profil ${device.profile}`);
+    if (device.measured_by) details.push(t("gemessen von {name} (PV extern)", { name: device.measured_by }));
+    if (device.overrides.length) details.push(t("{count} angepasste Rollen", { count: device.overrides.length }));
+    details.push(t("Profil {profile}", { profile: device.profile }));
     return details;
   }
 
   _renderComponents(device) {
     return html`
       <div class="small muted">
-        Komponenten: ${device.components.map((c) => `${c.name} (${c.model ?? "?"})`).join(", ")}
+        ${t("Komponenten: {list}", { list: device.components.map((c) => `${c.name} (${c.model ?? "?"})`).join(", ") })}
       </div>
     `;
   }
