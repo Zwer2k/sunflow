@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.64.0
+
+- Sensoren ohne Statistik (ohne `state_class`, z. B. der Ladestand-Sensor eines Autos per MQTT): Sunflow nimmt ihre gespeicherten Zustände aus dem Verlauf von Home Assistant (so lange, wie der Recorder sie behält) und bildet daraus zeitgewichtete Mittel je Stunde bzw. Viertelstunde. Das gilt für das Lernen (Autoverbrauch, Warmwasser, Abzug steuerbarer Verbraucher vom Hausverbrauch) und für die gemessenen Linien im Plan-Diagramm. Damit lernt Sunflow sofort aus der vorhandenen Historie, statt erst Wochen zu sammeln. Stunden, in denen der Sensor weniger als die Hälfte der Zeit einen Wert hatte, zählen nicht.
+
 ## 0.63.1
 
 - Plan-Diagramm: Gemessene PV-Erzeugung fehlte seit 0.61.1 (nur die letzte Anlage wurde abgefragt), und der Wallbox-Verbrauch war nur stückweise zu sehen (das Auto zählte beim Auffüllen aus Sunflows eigenen Werten als weiterer Verbraucher). Beides ist behoben.

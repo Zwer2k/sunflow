@@ -11,7 +11,8 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import CANONICAL_SIGNS, preview
 from sunflow.devices.site import PV_OUTPUT_ROLES, device_parameters, measurement_device
-from sunflow.ha import HAClient
+from sunflow.devices.state_history import state_means
+from sunflow.ha import HAClient, HAError
 
 # Short-term statistics are kept 10 days by default; above that use hourly
 FIVE_MINUTE_LIMIT = timedelta(days=10)
@@ -75,9 +76,9 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             role = next((r for r in PV_OUTPUT_ROLES if r in roles and roles[r].entity_id), None)
             if role:
                 add("pv_w", role)
-    for vehicle in config.vehicles:
-        if vehicle.soc_entity:
-            series.append(Series(key="level", statistic_id=vehicle.soc_entity, factor=1.0, device_id=level_key(vehicle.id)))
+    series.extend(
+        Series(key="level", statistic_id=v.soc_entity, factor=1.0, device_id=level_key(v.id)) for v in config.vehicles if v.soc_entity
+    )
     return series
 
 
@@ -97,6 +98,13 @@ async def fetch_history(
         types=["mean"],
         units={"power": "W"},
     )
+    for statistic_id in sorted({s.statistic_id for s in series} - {k for k, rows in result.items() if rows}):
+        # A sensor without statistics (no state_class): means from its recorded states
+        try:
+            means = await state_means(client, statistic_id, start, end, bucket)
+        except HAError:
+            continue
+        result[statistic_id] = [{"start": moment.timestamp() * 1000, "mean": value} for moment, value in means]
     # bucket start -> key -> statistic -> values
     buckets: dict[datetime, dict[str, dict[str, list[float]]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     consumers: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))

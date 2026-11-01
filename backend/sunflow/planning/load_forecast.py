@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta, tzinfo
 from statistics import fmean
 from typing import Any
 
+from sunflow.devices.state_history import state_means
 from sunflow.ha import HAClient
 
 HISTORY_DAYS = 28
@@ -46,7 +47,7 @@ class LoadForecast:
 async def fetch_hourly_means(
     client: HAClient, statistic_id: str, now: datetime, days: int = HISTORY_DAYS
 ) -> list[tuple[datetime, float]]:
-    """Return (hour start, mean W) from the recorder's hourly statistics."""
+    """Return (hour start, mean W) from the recorder's hourly statistics, else from the recorded states."""
     result = await client.command(
         "recorder/statistics_during_period",
         start_time=(now - timedelta(days=days)).isoformat(),
@@ -60,7 +61,11 @@ async def fetch_hourly_means(
         if row.get("mean") is None:
             continue
         rows.append((datetime.fromtimestamp(row["start"] / 1000, UTC), float(row["mean"])))
-    return rows
+    if rows:
+        return rows
+    # A sensor without statistics (no state_class): its states are kept for the purge period
+    start = (now - timedelta(days=days)).replace(minute=0, second=0, microsecond=0)
+    return await state_means(client, statistic_id, start, now, timedelta(hours=1))
 
 
 def subtract_loads(
