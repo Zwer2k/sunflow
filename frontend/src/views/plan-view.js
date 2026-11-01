@@ -704,6 +704,9 @@ class SunflowPlan extends LitElement {
           </div>`
         : nothing}
       ${lineChart(series, { label: "Ladestand gemessen und erwartet", now, range: this._range, ...options })}
+      ${flex.filter((f) => f.kind === "heater" && f.level_range).map((f) => html`<p class="small muted">${f.name}: ${f.usage_days
+        ? `Verbrauch je Stunde aus ${f.usage_days} Tagen gelernt – geheizt wird vor der gewohnten Hauptzeit.`
+        : "Verbrauch noch nicht gelernt (braucht eine Woche Temperatur und Heizleistung) – gleichmäßig über den Tag angenommen."}</p>`)}
     </section>`;
   }
 
