@@ -44,8 +44,9 @@ from .pv_learning import PvCorrection, cloud_class
 from .sources import (
     ForecastPoint,
     PricePoint,
+    fetch_prices,
     forecast_solar_forecast,
-    price_series,
+    is_exchange,
     resample,
     solcast_forecast,
     sum_forecasts,
@@ -1135,7 +1136,19 @@ async def compute_plan(
     price_source = "none"
     prices: list[PricePoint] = []
     if config.tariff.import_entity_id and (state := snapshot.states.get(config.tariff.import_entity_id)):
-        prices = price_series(state, start, HORIZON_HOURS, tz)
+        tariff = config.tariff
+        entry = next((e for e in snapshot.entities if e["entity_id"] == tariff.import_entity_id), None)
+        try:
+            prices = await fetch_prices(
+                client, state, entry, start, HORIZON_HOURS, tz, tariff.exchange_surcharge_ct, tariff.exchange_vat_pct
+            )
+        except HAError as err:
+            warnings.append(f"Strompreise nicht abrufbar ({err}) – geplant wird nur auf Eigenverbrauch.")
+        if is_exchange(state, entry) and tariff.exchange_surcharge_ct is None:
+            warnings.append(
+                "Der Strompreis ist ein reiner Börsenpreis – Netzentgelt, Umlagen und Steuern fehlen. "
+                "Aufschlag und Mehrwertsteuer unter Einstellungen → Tarif & Prognose eintragen."
+            )
         price_source = "entity"
     elif config.tariff.fixed_price_ct is not None:
         prices = [PricePoint(start=start, end=start + timedelta(hours=HORIZON_HOURS), price=config.tariff.fixed_price_ct / 100)]

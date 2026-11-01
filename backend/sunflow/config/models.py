@@ -163,6 +163,9 @@ class TariffConfig(BaseModel):
 
     import_entity_id: str | None = None
     fixed_price_ct: float | None = None
+    # Added to a pure exchange price (Nord Pool, EPEX market price): grid fee, levies, provider fee
+    exchange_surcharge_ct: float | None = Field(default=None, ge=-50, le=100)
+    exchange_vat_pct: float | None = Field(default=None, ge=0, le=50)
 
 
 class ForecastPlane(BaseModel):

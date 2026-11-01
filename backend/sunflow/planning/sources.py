@@ -5,10 +5,15 @@ from datetime import UTC, datetime, time, timedelta, tzinfo
 import itertools
 from typing import Any
 
-from sunflow.ha import HAClient
+from sunflow.ha import HAClient, HACommandError
 
 SLOT = timedelta(minutes=15)
 PRICE_UNITS = {"€/kWh": 1.0, "EUR/kWh": 1.0, "ct/kWh": 0.01, "Cent/kWh": 0.01}
+# Pure exchange prices: grid fee, levies, the provider's fee and VAT still come on top
+EXCHANGE_ADAPTERS = {"nordpool_core", "epex_market"}
+# Prices fetched with an action are asked for again after this long
+PRICE_CACHE = timedelta(minutes=15)
+_cache: dict[tuple[str, str], tuple[datetime, list[PricePoint]]] = {}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -39,6 +44,8 @@ class PriceSource:
     name: str
     adapter: str
     current: float | None
+    # A pure exchange price: the tariff's surcharges and VAT are added
+    exchange: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -59,19 +66,27 @@ def price_factor(unit: str | None) -> float | None:
     return PRICE_UNITS.get(unit or "")
 
 
-def detect_price_adapter(attributes: dict[str, Any]) -> str:
-    """Pick how to read the price schedule from a sensor's attributes."""
+def detect_price_adapter(attributes: dict[str, Any], platform: str | None = None) -> str:
+    """Pick how to read the price schedule: from a sensor's attributes or its integration's action."""
+    if platform == "tibber":
+        return "tibber"
     if isinstance(attributes.get("timeslots"), list) and attributes["timeslots"]:
         return "timeslots"
+    # The Nord Pool custom integration lists the prices; the core one answers an action
     if isinstance(attributes.get("raw_today"), list):
         return "nordpool"
+    if platform == "nordpool":
+        return "nordpool_core"
     if isinstance(attributes.get("data"), list) and attributes["data"] and "start_time" in attributes["data"][0]:
-        return "epex_spot"
+        # EPEX Spot: "Market Price" is the net exchange price, "Total Price" includes surcharges and tax
+        return "epex_market" if "market_price_per_kwh" in attributes else "epex_spot"
+    if isinstance(attributes.get("prices"), list) and attributes["prices"] and "time" in attributes["prices"][0]:
+        return "entsoe"
     return "fixed"
 
 
-def price_sources(states: list[dict[str, Any]]) -> list[PriceSource]:
-    """Return all entities that look like an electricity price."""
+def price_sources(states: list[dict[str, Any]], registry: dict[str, dict[str, Any]] | None = None) -> list[PriceSource]:
+    """Return all entities that look like an electricity price; registry: entity id -> registry entry."""
     result = []
     for state in states:
         attributes = state.get("attributes", {})
@@ -82,12 +97,14 @@ def price_sources(states: list[dict[str, Any]]) -> list[PriceSource]:
             current = float(state["state"]) * factor
         except TypeError, ValueError:
             current = None
+        adapter = detect_price_adapter(attributes, (registry or {}).get(state["entity_id"], {}).get("platform"))
         result.append(
             PriceSource(
                 entity_id=state["entity_id"],
                 name=attributes.get("friendly_name", state["entity_id"]),
-                adapter=detect_price_adapter(attributes),
+                adapter=adapter,
                 current=current,
+                exchange=adapter in EXCHANGE_ADAPTERS,
             )
         )
     return result
@@ -163,6 +180,113 @@ def epex_spot_prices(attributes: dict[str, Any]) -> list[PricePoint]:
     ]
 
 
+def with_ends(starts: list[tuple[datetime, float]]) -> list[PricePoint]:
+    """Prices given by start only: each lasts until the next, the last as long as the one before (else an hour)."""
+    starts = sorted(starts)
+    points = []
+    for index, (start, price) in enumerate(starts):
+        if index + 1 < len(starts):
+            end = starts[index + 1][0]
+        else:
+            end = start + (start - starts[index - 1][0] if index else timedelta(hours=1))
+        points.append(PricePoint(start=start, end=end, price=price))
+    return points
+
+
+def entsoe_prices(attributes: dict[str, Any], factor: float) -> list[PricePoint]:
+    """Read the ENTSO-e integration's prices list ({time, price})."""
+    return with_ends(
+        [(datetime.fromisoformat(str(item["time"])), float(item["price"]) * factor) for item in attributes["prices"] if item.get("price") is not None]
+    )
+
+
+def tibber_points(response: dict[str, Any], home: str | None) -> list[PricePoint]:
+    """Prices of one home from the answer of tibber.get_prices (the first home if it is not named)."""
+    homes = response.get("prices") or {}
+    items = homes.get(home) if home in homes else next(iter(homes.values()), [])
+    return with_ends([(datetime.fromisoformat(str(i["start_time"])), float(i["price"])) for i in items if i.get("price") is not None])
+
+
+def nordpool_points(response: dict[str, Any], area: str | None) -> list[PricePoint]:
+    """Prices of one area from the answer of nordpool.get_prices_for_date (€/MWh to €/kWh)."""
+    items = response.get(area) if area in response else next(iter(response.values()), [])
+    return [
+        PricePoint(start=datetime.fromisoformat(i["start"]), end=datetime.fromisoformat(i["end"]), price=float(i["price"]) / 1000)
+        for i in items or []
+        if i.get("price") is not None
+    ]
+
+
+def is_exchange(state: dict[str, Any], entry: dict[str, Any] | None) -> bool:
+    """Whether the entity gives a pure exchange price (surcharges and VAT still to be added)."""
+    return detect_price_adapter(state.get("attributes", {}), (entry or {}).get("platform")) in EXCHANGE_ADAPTERS
+
+
+def with_surcharges(points: list[PricePoint], surcharge_ct: float | None, vat_pct: float | None) -> list[PricePoint]:
+    """An exchange price as paid: (price + surcharges) x (1 + VAT)."""
+    add, vat = (surcharge_ct or 0.0) / 100, 1 + (vat_pct or 0.0) / 100
+    return [PricePoint(start=p.start, end=p.end, price=(p.price + add) * vat) for p in points]
+
+
+async def _cached_prices(key: tuple[str, str], fetch: Any) -> list[PricePoint]:
+    now = datetime.now(UTC)
+    if (hit := _cache.get(key)) is not None and now - hit[0] < PRICE_CACHE:
+        return hit[1]
+    points = await fetch()
+    _cache[key] = (now, points)
+    return points
+
+
+async def fetch_prices(
+    client: HAClient, state: dict[str, Any], entry: dict[str, Any] | None, start: datetime, hours: int, tz: tzinfo,
+    surcharge_ct: float | None = None, vat_pct: float | None = None,
+) -> list[PricePoint]:
+    """The import price schedule of a price entity from start on, also from its integration's action.
+
+    entry: the entity's registry entry (platform, config entry, unique id). Exchange prices get
+    the surcharges and VAT.
+    """
+    entry = entry or {}
+    attributes = state.get("attributes", {})
+    adapter = detect_price_adapter(attributes, entry.get("platform"))
+    end = start + timedelta(hours=hours)
+    match adapter:
+        case "tibber":
+
+            async def tibber() -> list[PricePoint]:
+                response = await client.call_service(
+                    "tibber", "get_prices", {"start": start.isoformat(), "end": end.isoformat()}, return_response=True
+                )
+                return tibber_points(response["response"], attributes.get("app_nickname"))
+
+            points = await _cached_prices((state["entity_id"], start.isoformat()), tibber)
+        case "nordpool_core":
+            # The unique id is "<area>-current_price"
+            area = (entry.get("unique_id") or "").split("-")[0] or None
+
+            async def nordpool() -> list[PricePoint]:
+                first, last = start.astimezone(tz).date(), (end - timedelta(seconds=1)).astimezone(tz).date()
+                days = [first + timedelta(days=d) for d in range((last - first).days + 1)]
+                points = []
+                for day in days[:2]:
+                    try:
+                        response = await client.call_service(
+                            "nordpool", "get_prices_for_date",
+                            {"config_entry": entry.get("config_entry_id"), "date": day.isoformat()}, return_response=True,
+                        )
+                    except HACommandError:
+                        # Tomorrow's prices are published around noon
+                        continue
+                    points += nordpool_points(response["response"], area)
+                return points
+
+            points = await _cached_prices((state["entity_id"], start.isoformat()), nordpool)
+        case _:
+            points = price_series(state, start, hours, tz)
+    points = [p for p in points if p.end > start and p.start < end]
+    return with_surcharges(points, surcharge_ct, vat_pct) if adapter in EXCHANGE_ADAPTERS else points
+
+
 def price_series(
     state: dict[str, Any], start: datetime, hours: int, tz: tzinfo
 ) -> list[PricePoint]:
@@ -175,8 +299,10 @@ def price_series(
             return timeslot_prices(attributes, start, hours, tz)
         case "nordpool":
             points = nordpool_prices(attributes, factor)
-        case "epex_spot":
+        case "epex_spot" | "epex_market":
             points = epex_spot_prices(attributes)
+        case "entsoe":
+            points = entsoe_prices(attributes, factor)
         case _:
             try:
                 price = float(state["state"]) * factor

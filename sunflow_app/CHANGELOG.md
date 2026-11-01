@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.65.0
+
+- Strompreise: Tibber (Core-Integration, über die Aktion `tibber.get_prices`), Nord Pool (Core-Integration, über `nordpool.get_prices_for_date`) und ENTSO-e (HACS) werden mit ihrem Preisverlauf gelesen. EPEX Spot (HACS) deckt aWATTar, smartENERGY, Energy-Charts, SMARD u. a. ab; dessen Sensor „Market Price“ wird als Börsenpreis erkannt.
+- Für reine Börsenpreise gibt es unter Tarif & Prognose einen Aufschlag (ct/kWh) und die Mehrwertsteuer; ohne Aufschlag warnt der Plan. Übersicht in `docs/strompreise.md`.
+
 ## 0.64.1
 
 - Ladestand-Diagramm: Die %-Achse endet bei 100 %. Nur wenn ein Wert darüber liegt (z. B. Warmwasser heißer als sein Ziel), reicht sie weiter, und 100 % ist als Linie eingezeichnet.
