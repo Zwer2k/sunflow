@@ -130,6 +130,7 @@ export const api = {
   display: () => request("GET", "/config/display"),
   optimizers: () => request("GET", "/optimizers"),
   setOptimizers: (body) => request("PUT", "/config/optimizers", body),
+  useOptimizers: (entryId, used) => request("PUT", `/config/optimizers/entries/${encodeURIComponent(entryId)}`, { used }),
   setDisplay: (body) => request("PUT", "/config/display", body),
   setIntegrationSettings: (body) => request("PUT", "/config/integration", body),
   directStatus: () => request("GET", "/direct/status"),

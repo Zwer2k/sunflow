@@ -357,6 +357,9 @@ class OptimizerSettings(BaseModel):
     placements: list[OptimizerPlacement] = Field(default_factory=list)
     # Per string key "<device id>:<string>"
     layouts: dict[str, StringLayout] = Field(default_factory=dict)
+    # Config entries whose optimizers Sunflow uses (taken over under "Geräte"); None: those with
+    # placed optimizers, as before the choice existed
+    entries: list[str] | None = None
 
 
 class DisplaySettings(BaseModel):

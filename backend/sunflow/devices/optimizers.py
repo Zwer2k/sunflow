@@ -1,5 +1,7 @@
 """PV module optimizers: found in Home Assistant, assigned to strings and placed on the roof.
 
+Only optimizers of integrations taken over under "Geräte" count.
+
 Huawei optimizers are sub-devices of their inverter (huawei_solar). The string they
 hang on is not exposed by the integration: with one string in use it is that one.
 Tigo optimizers (tigo_rs485) carry the label given in that integration; by Tigo's
@@ -86,6 +88,8 @@ class Optimizer:
     label: str
     parent: str | None
     entities: dict[str, str]
+    # Config entries of the integration that provides the device
+    entry_ids: list[str] = field(default_factory=list)
     string: str | None = None
     string_auto: bool = False
     row: int | None = None
@@ -126,6 +130,7 @@ def discover(snapshot: Snapshot) -> list[Optimizer]:
                     Optimizer(
                         id=device["id"], source=source.key, name=label, label=label,
                         parent=device.get("via_device_id"), entities=entities,
+                        entry_ids=list(device.get("config_entries", [])),
                     )
                 )
     return sorted(found, key=lambda o: (o.source, _natural(o.label)))
@@ -190,10 +195,20 @@ def _auto_place(optimizer: Optimizer, strings: list[dict[str, Any]], tigo: str |
     optimizer.row, optimizer.col = 0, index
 
 
+def used_entries(config: SunflowConfig, found: list[Optimizer]) -> set[str]:
+    """Config entries whose optimizers are taken over; before that choice existed, those with placed optimizers."""
+    if config.optimizer_settings.entries is not None:
+        return set(config.optimizer_settings.entries)
+    placed = {p.ha_device_id for p in config.optimizer_settings.placements}
+    return {entry for o in found if o.id in placed for entry in o.entry_ids}
+
+
 def optimizers(config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot) -> tuple[list[Optimizer], list[dict[str, Any]]]:
-    """All optimizers with string, roof position (set or proposed) and current values; and the strings."""
+    """The taken-over optimizers with string, roof position (set or proposed) and current values; and the strings."""
     strings = plant_strings(config, profiles, snapshot)
     found = discover(snapshot)
+    entries = used_entries(config, found)
+    found = [o for o in found if entries & set(o.entry_ids)]
     tigo = tigo_plant(config, strings, found)
     placements = {p.ha_device_id: p for p in config.optimizer_settings.placements}
     counters: dict[str | None, int] = {}

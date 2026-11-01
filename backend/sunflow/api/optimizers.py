@@ -4,9 +4,17 @@ from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Request
+from pydantic import BaseModel
 
 from sunflow.config.models import OptimizerSettings
-from sunflow.devices.optimizers import SOURCES, VALUE_UNITS, optimizers, tigo_plant
+from sunflow.devices.optimizers import (
+    SOURCES,
+    VALUE_UNITS,
+    discover,
+    optimizers,
+    tigo_plant,
+    used_entries,
+)
 
 from .common import _library, _snapshot
 
@@ -43,6 +51,26 @@ async def set_optimizers(request: Request, body: OptimizerSettings) -> dict[str,
     body.placements = [
         p for p in body.placements if p.string is not None or p.row is not None or p.col is not None or p.name or p.rotated
     ]
+    # Which integrations are taken over is chosen under "Geräte"
+    body.entries = config.optimizer_settings.entries
     config.optimizer_settings = body
     store.save(config)
     return body.model_dump()
+
+
+class OptimizerEntry(BaseModel):
+    """Whether Sunflow uses the optimizers of one integration."""
+
+    used: bool
+
+
+@router.put("/config/optimizers/entries/{entry_id}")
+async def use_optimizer_entry(request: Request, entry_id: str, body: OptimizerEntry) -> dict[str, Any]:
+    """Take over the optimizers of an integration, or drop them (their placements stay)."""
+    store = request.app.state.store
+    config = store.load()
+    entries = used_entries(config, discover(await _snapshot(request)))
+    entries = entries | {entry_id} if body.used else entries - {entry_id}
+    config.optimizer_settings.entries = sorted(entries)
+    store.save(config)
+    return {"entries": config.optimizer_settings.entries}

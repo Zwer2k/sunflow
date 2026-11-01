@@ -18,6 +18,7 @@ from sunflow import API_VERSION, __version__
 from sunflow.config.models import McpSettings
 from sunflow.control.journal import JOURNAL_FILE
 from sunflow.devices.discovery import discover
+from sunflow.devices.optimizers import discover as discover_optimizers, used_entries
 from sunflow.ha import HAClient, HAError
 from sunflow.integration_link import app_host, host_port
 from sunflow.mcp_key import McpKey
@@ -115,7 +116,18 @@ async def discovery(request: Request) -> list[dict[str, Any]]:
     """Return integrations and devices found in Home Assistant."""
     # Newly installed integrations must show up right away
     snapshot = await _snapshot(request, fresh=True)
-    return [asdict(i) for i in discover(snapshot, _library(request))]
+    found = discover_optimizers(snapshot)
+    used = used_entries(request.app.state.store.load(), found)
+    # An integration with optimizers only (e.g. Tigo) can be chosen for them
+    with_optimizers = frozenset(entry for o in found for entry in o.entry_ids)
+    return [
+        asdict(integration)
+        | {
+            "optimizers": sum(integration.entry_id in o.entry_ids for o in found),
+            "optimizers_used": integration.entry_id in used,
+        }
+        for integration in discover(snapshot, _library(request), with_optimizers)
+    ]
 
 
 @router.get("/export")
