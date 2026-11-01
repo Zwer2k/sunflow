@@ -443,6 +443,8 @@ class DeviceAccess:
     # The device limits its PV: the limit is lifted when handing back as well
     pv_limit: bool = False
     journal: ControlJournal | None = None
+    # The remembered value is a setting Sunflow overwrites (e.g. a current), restored on every release
+    remember_value: bool = False
 
 
 async def apply(
@@ -506,12 +508,15 @@ async def apply(
 
 async def take_over(access: DeviceAccess, marker: TakeoverMarker, device: DeviceConfig) -> None:
     """Switch into the control mode once and remember the previous one."""
-    if device.id in marker.get():
+    taken = marker.get()
+    # Taken over before the value was remembered (older version): remember it now
+    if device.id in taken and not (access.remember_value and taken[device.id] is None):
         return
     previous = await access.ensure_mode() if access.ensure_mode else None
     marker.set(device.id, previous)
     if previous is not None and access.journal is not None:
-        access.journal.note(device.id, device.name, "take_over", f"Steuermodus eingeschaltet (vorher „{previous}“)", datetime.now(UTC))
+        text = f"eingestellten Wert „{previous}“ gemerkt" if access.remember_value else f"Steuermodus eingeschaltet (vorher „{previous}“)"
+        access.journal.note(device.id, device.name, "take_over", text, datetime.now(UTC))
 
 
 async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str, status: DeviceControl) -> None:
@@ -610,9 +615,11 @@ def device_access(
         if not (remember := charging.get("remember")):
             return DeviceAccess(plan=plan, run=run, release=release, matches=matches)
 
+        domain = remember.get("domain", "select")
+
         async def remembered_entity() -> tuple[str | None, dict[str, dict[str, Any]]]:
             snapshot = await fetch_snapshot(client, hub)
-            return find_entity(device_entities(snapshot, device.ha_device_id), "select", remember["key"]), snapshot.states
+            return find_entity(device_entities(snapshot, device.ha_device_id), domain, remember["key"]), snapshot.states
 
         async def current_option() -> str | None:
             # Only remembered here; charge and stop switch it
@@ -621,14 +628,21 @@ def device_access(
 
         async def restore(option: str) -> None:
             entity_id, states = await remembered_entity()
-            call = PlannedCall(
-                domain="select", service="select_option", data={"option": option}, entity_id=entity_id,
-                storage="volatile", write="if_differs",
-            )
+            if domain == "number":
+                call = PlannedCall(
+                    domain="number", service="set_value", data={"value": float(option)}, entity_id=entity_id,
+                    storage="volatile", write="if_differs",
+                )
+            else:
+                call = PlannedCall(
+                    domain="select", service="select_option", data={"option": option}, entity_id=entity_id,
+                    storage="volatile", write="if_differs",
+                )
             await execute(client, [call], states, guard, dry_run=False)
 
         return DeviceAccess(
-            plan=plan, run=run, ensure_mode=current_option, set_mode=restore, release=release, matches=matches
+            plan=plan, run=run, ensure_mode=current_option, set_mode=restore, release=release, matches=matches,
+            remember_value=domain == "number",
         )
 
     limits = "pv_limit" in profile
@@ -908,6 +922,15 @@ class PlanController:
             if (car_max := vehicle_max_current(vehicle, int(params.get("phases") or 3))) is not None:
                 params = params | {"max_current_a": min(params.get("max_current_a") or 16, max(car_max, params.get("min_current_a") or 6))}
             runtime: dict[str, Any] = {"current_a": charge_current(power, params)} if action == "charge" else {}
+            if (
+                action == "charge"
+                and (interval := params.get("current_interval_min"))
+                and status.current_a is not None
+                and status.last_current_write is not None
+                and now - status.last_current_write < timedelta(minutes=interval)
+            ):
+                # A current the charger keeps: not rewritten every minute
+                runtime["current_a"] = status.current_a
             if action == "charge" and "phases" in params:
                 # What the current on these phases gives (e.g. one phase: at most 3.7 kW at 16 A)
                 power = min(power, (params.get("max_current_a") or 16) * VOLTS * params["phases"])
@@ -931,6 +954,11 @@ class PlanController:
             )
             if action == "charge" and not unchanged:
                 status.current_a, status.last_current_write = runtime["current_a"], now
+            if action == "release" and access.remember_value and access.set_mode:
+                # The charger regulates itself with the user's current again
+                if previous := self._marker.get().get(device.id):
+                    await access.set_mode(previous)
+                status.current_a = None
             self._check_current(device, status, profile, action, now, snapshot)
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
 

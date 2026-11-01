@@ -392,8 +392,8 @@ def test_follow_surplus(planned: float, pv: float, grid: float, charging: bool, 
     assert follow_surplus(planned, 6000 - 1000, live, charging, PARAMS) == expected
 
 
-def test_amx_through_the_integration() -> None:
-    """The temporary current goes through the go-e integration's action for this device; role values are available too."""
+def test_goe_current_is_the_requested_current() -> None:
+    """Firmware 56.x ignores the temporary amx: the current is the requested current (amp), like evcc does for API v2."""
     from pathlib import Path
 
     from sunflow.control.controller import device_variables
@@ -417,10 +417,11 @@ def test_amx_through_the_integration() -> None:
     charge = plan_charge(profile, "charge", {}, variables | {"current_a": 7}, entities)
     release = plan_charge(profile, "release", {}, variables, entities)
 
-    assert (charge[0].domain, charge[0].service) == ("goecharger_mqtt", "set_config_key")
-    assert charge[0].data == {"device_id": "d", "key": "amx", "value": 7}
+    assert (charge[0].domain, charge[0].service, charge[0].entity_id) == ("number", "set_value", "number.goe_amp")
+    assert charge[0].data == {"value": 7}
     # Handing back sets the temporary current to the stored one again
-    assert release[0].data["value"] == 16
+    # The user's current comes back through the remembered value, not a release step
+    assert [c.entity_id for c in release] == ["select.goe_frc"]
 
 
 async def test_disabled_device_is_handed_back(tmp_path: Path) -> None:
@@ -602,3 +603,49 @@ async def test_warns_when_the_current_does_not_arrive(tmp_path: Path, monkeypatc
 
     assert (controller.statuses["wb"].warning is not None) == warned
     assert len([e for e in journal.entries(NOW - timedelta(hours=1)) if e["action"] == "warning"]) == int(warned)
+
+
+class RememberingCharger(FakeCharger):
+    """go-e whose requested current Sunflow overwrites: the user's value is remembered and restored."""
+
+    def __init__(self) -> None:
+        """The user set 8 A."""
+        super().__init__()
+        self.current = 8.0
+        self.restored: list[str] = []
+
+    def access(self) -> DeviceAccess:
+        """Like device_access with a remembered number."""
+        base = super().access()
+
+        async def current_value() -> str | None:
+            return str(int(self.current))
+
+        async def restore(value: str) -> None:
+            self.current = float(value)
+            self.restored.append(value)
+
+        return DeviceAccess(
+            plan=base.plan, run=base.run, ensure_mode=current_value, set_mode=restore, release="release", remember_value=True
+        )
+
+
+async def test_requested_current_changes_calmly_and_comes_back(tmp_path: Path) -> None:
+    """The current changes at most every 3 minutes; released, the charger gets the user's 8 A again."""
+    charger = RememberingCharger()
+    goe = GOE | {"parameters": GOE["parameters"] | {"current_interval_min": {"default": 3}}}
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": goe})
+    # An older version took the charger over without remembering the current
+    TakeoverMarker(tmp_path).set("wb", None)
+
+    await controller.tick(_charger_config("goe"), _charge_plan(11000, 0, 11000), NOW, SNAPSHOT, NOW)
+    assert charger.current == 16
+    await controller.tick(_charger_config("goe"), _charge_plan(6900, 0, 6900), NOW, SNAPSHOT, NOW + timedelta(minutes=1))
+    assert charger.current == 16
+    await controller.tick(_charger_config("goe"), _charge_plan(6900, 0, 6900), NOW, SNAPSHOT, NOW + timedelta(minutes=3))
+    assert charger.current == 10
+
+    # No current plan: the charger regulates itself with the user's current
+    await controller.tick(_charger_config("goe"), _charge_plan(0), NOW - timedelta(hours=1), SNAPSHOT, NOW + timedelta(minutes=4))
+    assert (charger.option, charger.current) == ("neutral", 8.0)
+    assert TakeoverMarker(tmp_path).get() == {"wb": "8"}
