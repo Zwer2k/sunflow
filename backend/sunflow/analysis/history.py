@@ -71,13 +71,13 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
         if ("loadpoint" in profile["capabilities"] or "load" in profile["capabilities"]) and not config.vehicles_at(device.id):
             add("level", "vehicle_soc", device_id=device.id)
             add("level", "temperature", device_id=device.id)
-    for vehicle in config.vehicles:
-        if vehicle.soc_entity:
-            series.append(Series(key="level", statistic_id=vehicle.soc_entity, factor=1.0, device_id=level_key(vehicle.id)))
         if "pv" in profile["capabilities"]:
             role = next((r for r in PV_OUTPUT_ROLES if r in roles and roles[r].entity_id), None)
             if role:
                 add("pv_w", role)
+    for vehicle in config.vehicles:
+        if vehicle.soc_entity:
+            series.append(Series(key="level", statistic_id=vehicle.soc_entity, factor=1.0, device_id=level_key(vehicle.id)))
     return series
 
 

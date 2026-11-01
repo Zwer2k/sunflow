@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.63.1
+
+- Plan-Diagramm: Gemessene PV-Erzeugung fehlte seit 0.61.1 (nur die letzte Anlage wurde abgefragt), und der Wallbox-Verbrauch war nur stückweise zu sehen (das Auto zählte beim Auffüllen aus Sunflows eigenen Werten als weiterer Verbraucher). Beides ist behoben.
+
 ## 0.63.0
 
 - Autos: Sunflow lernt je Auto, wie viel Ladestand es je Stunde verbraucht (getrennt nach Werktag und Wochenende), aus dem Verlauf seines Ladestand-Sensors der letzten vier Wochen – aus der Statistik von Home Assistant, sonst aus Sunflows eigenen Messwerten. Damit nichts verfälscht wird, zählen nur Tage, an denen der Sensor mindestens 20 Stunden Werte hat; gelernt wird erst ab 14 solchen Tagen, ein eigenes Wochenend-Profil erst ab 4 Wochenendtagen, und Sprünge über 25 % in einer Stunde gelten als Messfehler.
