@@ -73,6 +73,16 @@ function consumerColors(flex) {
   return new Map((flex ?? []).map((f, i) => [f.device_id, SERIES_COLORS[i + 2] ?? UNASSIGNED_COLOR]));
 }
 
+/** % axis up to 100; above it (e.g. a tank hotter than its target) it grows and 100 % is drawn as line. */
+function percentAxis(highest) {
+  const over = highest > 100;
+  return {
+    formatY: (v) => formatValue(v, "%"),
+    yMax: over ? highest : 100,
+    limits: over ? [{ value: 100, label: "100 %" }] : [],
+  };
+}
+
 /** Group consecutive slots with the same action. */
 /** Reference lines for the SoC chart: full, backup reserve (if active) and discharge limit. */
 function socLimits(battery) {
@@ -684,11 +694,7 @@ class SunflowPlan extends LitElement {
     });
     const options = focus
       ? { formatY: focus.format, yMin: focus.scale.yMin ?? 0, yMax: focus.scale.yMax, limits: focus.scale.limits }
-      : {
-          formatY: (v) => formatValue(v, "%"),
-          // A tank above its target shows above 100 %
-          yMax: Math.max(105, ...series.flatMap((x) => x.points.map((p) => p.value ?? 0))),
-        };
+      : percentAxis(Math.max(...series.flatMap((x) => x.points.map((p) => p.value ?? 0))));
     return html`<section>
       <h3>Ladestand</h3>
       ${levels.length > 1
