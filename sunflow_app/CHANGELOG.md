@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.60.0
+
+- Neues Profil für ältere go-e Charger mit der lokalen HTTP-API v1 (Integration „goecharger“ aus HACS): Laden erlauben/sperren und Ladestrom als temporärer Strom (`amx`, ohne Flash-Schreiben, wie evcc bei API v1) über die Aktion `goecharger.set_max_current`; den Höchststrom übernimmt Sunflow aus der Wallbox. Diese Wallboxen schalten keine Phasen – die Phasen des Anschlusses stehen in den Kenndaten.
+- Profile: Textzustände (z. B. „charging“) können als an/aus gelesen werden (`on_states`).
+
 ## 0.59.0
 
 - go-e: Sunflow setzt den Ladestrom jetzt als „Requested current“ (`amp`), wie evcc es bei aktuellen go-e tut. Den temporären Strom `amx` übernimmt die Firmware 56.x nicht – darum blieb die Wallbox bisher beim eingestellten Strom (z. B. 6 A), egal was der Plan wollte. Weil die go-e den Wert behält, ändert Sunflow ihn höchstens alle 3 Minuten (Kenndaten, „current_interval_min“) und stellt den vorher eingestellten Strom wieder her, sobald die Wallbox selbst regelt oder zurückgegeben wird.

@@ -1,0 +1,47 @@
+# go-e Charger with the local HTTP API v1 (HOME, older firmware) via the goecharger
+# custom integration (HACS, cathiele). Newer chargers (API v2) use goecharger_mqtt.
+# Unique ids look like "<charger name>_p_all"; the device identifier is the charger
+# name, which the integration's actions take. The current is set as "amx" with the
+# action set_max_current: a temporary current not stored in flash (like evcc does for
+# API v1), so it may follow the PV surplus every minute. Charging is allowed and
+# stopped with the allow_charging switch.
+profile: goecharger/charger
+version: 1
+match:
+  integration: goecharger
+  requires: [p_all, car_status]
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: p_all, unit: kW}
+  # 2 charging, 3 waiting for the car, 4 finished: the car is plugged in
+  connected:
+    key: car_status
+    on_states: ["charging", "Waiting for vehicle", "charging finished, vehicle still connected"]
+  charged_energy: {key: current_session_charged_energy, unit: kWh, optional: true}
+  # Current stored in flash; it applies again when Sunflow hands the charger back
+  stored_current: {key: charger_max_current, unit: A, optional: true}
+  # The charger does not know the vehicle's SoC: bind a sensor of the car's integration
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  # From the charger's absolute maximum current on three phases
+  max_power: {unit: W, default: 11000, min: 0, derive: {sum_key: charger_absolute_max_current, factor: 690}}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  # API v1 cannot switch phases: those of the connection
+  phases: {unit: "", default: 3, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32, derive: {sum_key: charger_absolute_max_current}}
+
+charge_control:
+  charge:
+    - service: {action: goecharger.set_max_current, data: {charger_name: "{{ device_serial }}", max_current: "{{ current_a }}"}, storage: volatile}
+    - switch: {key: allow_charging, state: "on", write: if_differs}
+  stop:
+    - switch: {key: allow_charging, state: "off", write: if_differs}
+  # The charger's own logic again: its stored current, charging allowed
+  release:
+    - service: {action: goecharger.set_max_current, data: {charger_name: "{{ device_serial }}", max_current: "{{ role_stored_current }}"}, storage: volatile}
+    - switch: {key: allow_charging, state: "on", write: if_differs}

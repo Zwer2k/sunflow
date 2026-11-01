@@ -198,6 +198,9 @@ def preview(
         sign = override.get("sign", spec.get("sign"))
         state = snapshot.states.get(entity_id) if entity_id else None
         raw_state = state["state"] if state else None
+        if spec.get("on_states") and raw_state is not None and raw_state not in UNAVAILABLE_STATES:
+            # A text status read as on/off (e.g. the car status of an older wallbox)
+            raw_state = "on" if raw_state in spec["on_states"] else "off"
         raw_unit = override.get("unit") or (
             state["attributes"].get("unit_of_measurement") if state else None
         ) or spec.get("unit")
