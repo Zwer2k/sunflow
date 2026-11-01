@@ -137,6 +137,19 @@ def test_consumers_without_statistics_come_from_own_samples() -> None:
     assert "wb" not in points[2]["consumers"]
 
 
+def test_own_samples_win_over_a_stale_recorded_state() -> None:
+    """A wallbox excluded from the recorder after a last state of 0 W: the history says 0 for hours, the own samples know better."""
+    from sunflow.analysis.history import fill_from_shadow
+
+    points = [_point(0, 0.0, {"wb": 0.0, "bike": 0.2})]
+    rows = [_row(0, 3300.0, {"wb": 3300.0})]
+
+    fill_from_shadow(points, rows, {"wb", "bike"})
+
+    assert points[0]["loadpoint_w"] == 3300.0
+    assert points[0]["consumers"] == {"wb": 3300.0, "bike": 0.2}
+
+
 def test_unmeasured_consumers_leave_the_house_load() -> None:
     """Hours the own samples saw more consumer power than the statistics are separated."""
     from sunflow.planning.load_forecast import subtract_loads, unmeasured_consumers

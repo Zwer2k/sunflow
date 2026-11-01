@@ -144,11 +144,12 @@ def level_key(vehicle_id: str) -> str:
 
 
 def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], consumers: set[str]) -> None:
-    """Consumer power and levels from Sunflow's own minute samples where Home Assistant keeps no statistics.
+    """Consumer power from Sunflow's own minute samples, ahead of Home Assistant's history; levels where it has none.
 
-    A sensor excluded from the recorder (e.g. a chatty wallbox) has no history; its power
-    would count as house consumption. Older slots only hold the sum of all consumers: it
-    goes to the one consumer without statistics.
+    A sensor excluded from the recorder (e.g. a chatty wallbox) has no history, or only its
+    last recorded state, which then holds for hours (e.g. 0 W while the car charges). The
+    own samples read the same sensors every minute. Older slots only hold the sum of all
+    consumers: it goes to the one consumer without any value.
     """
     all_rows = [(datetime.fromisoformat(r["start"]), r) for r in rows]
     starts = [(start, r) for start, r in all_rows if r.get("actual_loadpoint_w") is not None]
@@ -160,12 +161,11 @@ def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], c
         total = fmean(r["actual_loadpoint_w"] for r in inside)
         point["loadpoint_w"] = max(point.get("loadpoint_w") or 0.0, total)
         known = point.setdefault("consumers", {})
-        missing = consumers - known.keys()
-        for device_id in list(missing):
+        for device_id in consumers:
             values = [r["actual_consumers"][device_id] for r in inside if device_id in (r.get("actual_consumers") or {})]
             if values:
                 known[device_id] = fmean(values)
-                missing.discard(device_id)
+        missing = consumers - known.keys()
         if len(missing) == 1:
             known[missing.pop()] = max(total - sum(known.values()), 0.0)
     for point in points:
