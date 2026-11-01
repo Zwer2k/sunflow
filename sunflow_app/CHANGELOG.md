@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.72.2
+
+- Geräte: Rollen und Kenndaten ohne deutsche Bezeichnung erscheinen nicht mehr mit ihrem internen Namen, z. B. bei der go-e „Eingestellter Ladestrom“, „Ladekarte“, „Karte nötig“, „Phasenmodus“ und „Ladestrom ändern höchstens alle“, bei Wechselrichtern „Max. AC-Leistung“; die neuen Kenndaten haben eine kurze Erklärung.
+
 ## 0.72.1
 
 - Dokumentation: vollständig auf Deutsch (`docs/`) und Englisch (`docs/en/`) mit Screenshots – Installation und Einrichtung, Bedienung, Steuerung übernehmen, Einstellungen, So plant Sunflow, Fehlersuche; die bisherigen Seiten (Geräte, Strompreise, Optimierer, Integration, MCP) auch auf Englisch. Die README zeigt Funktionen, Screenshots und die Dokumentation in beiden Sprachen.

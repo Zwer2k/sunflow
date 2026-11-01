@@ -81,11 +81,11 @@ def test_flex_loads_plan_the_recognized_vehicle(library, plugged: str, energies:
     from sunflow.planning.plan import flex_loads
 
     entities = [
-        {"entity_id": "binary_sensor.goe_car", "unique_id": "216505-binary_sensor-car-1", "device_id": "goe"},
-        {"entity_id": "sensor.goe_power", "unique_id": "216505-sensor-nrg-11", "device_id": "goe"},
-        {"entity_id": "select.goe_frc", "unique_id": "216505-select-frc-frc", "device_id": "goe"},
-        {"entity_id": "number.goe_amp", "unique_id": "216505-number-amp-0", "device_id": "goe"},
-        {"entity_id": "number.goe_ama", "unique_id": "216505-number-ama-0", "device_id": "goe"},
+        {"entity_id": "binary_sensor.goe_car", "unique_id": "123456-binary_sensor-car-1", "device_id": "goe"},
+        {"entity_id": "sensor.goe_power", "unique_id": "123456-sensor-nrg-11", "device_id": "goe"},
+        {"entity_id": "select.goe_frc", "unique_id": "123456-select-frc-frc", "device_id": "goe"},
+        {"entity_id": "number.goe_amp", "unique_id": "123456-number-amp-0", "device_id": "goe"},
+        {"entity_id": "number.goe_ama", "unique_id": "123456-number-ama-0", "device_id": "goe"},
     ]
     states = {
         "binary_sensor.goe_car": {"state": plugged, "attributes": {}},
@@ -224,7 +224,7 @@ def test_every_car_has_its_own_level(library) -> None:
     from sunflow.devices.discovery import Snapshot
     from sunflow.shadow.runner import consumer_levels
 
-    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "216505-binary_sensor-car-1", "device_id": "goe"}]
+    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "123456-binary_sensor-car-1", "device_id": "goe"}]
     states = {"sensor.fiat_soc": {"state": "40", "attributes": {}}, "sensor.tesla_soc": {"state": "75", "attributes": {}}}
     snapshot = Snapshot(entries=[], devices=[{"id": "goe"}], entities=entities, states=states, energy_prefs=None)
     wallbox = DeviceConfig(id="wb", ha_device_id="goe", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")

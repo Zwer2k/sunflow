@@ -95,7 +95,7 @@ class PhaseCharger:
         """Its phase mode select as Home Assistant shows it."""
         from types import SimpleNamespace
 
-        entity = {"entity_id": "select.psm", "unique_id": "216505-select-psm-psm", "device_id": "d"}
+        entity = {"entity_id": "select.psm", "unique_id": "123456-select-psm-psm", "device_id": "d"}
         return SimpleNamespace(devices=[], entities=[entity], states={"select.psm": {"state": self.option}})
 
     def access(self) -> Any:

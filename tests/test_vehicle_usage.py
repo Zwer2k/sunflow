@@ -75,7 +75,7 @@ def test_car_on_the_way_is_planned_from_its_arrival(library) -> None:
     from sunflow.planning.habits import Departure
     from sunflow.planning.plan import expected_levels, flex_loads
 
-    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "216505-binary_sensor-car-1", "device_id": "goe"}]
+    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "123456-binary_sensor-car-1", "device_id": "goe"}]
     states = {"binary_sensor.goe_car": {"state": "off", "attributes": {}}, "sensor.fiat_soc": {"state": "60", "attributes": {}}}
     snapshot = Snapshot(entries=[], devices=[{"id": "goe"}], entities=entities, states=states, energy_prefs=None)
     wallbox = DeviceConfig(id="wb", ha_device_id="goe", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
@@ -112,7 +112,7 @@ def test_several_cars_are_not_guessed(library) -> None:
     from sunflow.planning.habits import Departure
     from sunflow.planning.plan import flex_loads
 
-    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "216505-binary_sensor-car-1", "device_id": "goe"}]
+    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "123456-binary_sensor-car-1", "device_id": "goe"}]
     snapshot = Snapshot(entries=[], devices=[{"id": "goe"}], entities=entities,
                         states={"binary_sensor.goe_car": {"state": "off", "attributes": {}}}, energy_prefs=None)
     wallbox = DeviceConfig(id="wb", ha_device_id="goe", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
@@ -158,7 +158,7 @@ def test_expected_car_is_no_must(expected: bool, charged_wh: float) -> None:
 def _away_setup(presence_state: str) -> tuple[SunflowConfig, object, list[datetime]]:
     from sunflow.devices.discovery import Snapshot
 
-    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "216505-binary_sensor-car-1", "device_id": "goe"}]
+    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "123456-binary_sensor-car-1", "device_id": "goe"}]
     states = {
         "binary_sensor.goe_car": {"state": "off", "attributes": {}},
         "sensor.fiat_soc": {"state": "60", "attributes": {}},

@@ -178,7 +178,7 @@ def entity_has_key(entity: dict[str, Any], key: str) -> bool:
     unique_id = entity.get("unique_id") or ""
     if any(c in key for c in "*?["):
         return fnmatch(unique_id, key) or fnmatch(unique_id, f"*_{key}") or fnmatch(unique_id, f"*-{key}")
-    # Integrations join with "_" (solax_modbus, evcc) or "-" (go-e: "216505-select-frc-frc")
+    # Integrations join with "_" (solax_modbus, evcc) or "-" (go-e: "123456-select-frc-frc")
     return unique_id == key or unique_id.endswith((f"_{key}", f"-{key}"))
 
 
