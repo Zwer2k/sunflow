@@ -403,11 +403,11 @@ def test_goe_current_is_the_requested_current() -> None:
     repo = Path(__file__).resolve().parents[1]
     profile = load_profiles(repo / "profiles", load_schema(repo / "schema")).profiles["goecharger_mqtt/charger"]
     entities = [
-        {"entity_id": "select.goe_frc", "unique_id": "216505-select-frc-frc", "device_id": "d"},
-        {"entity_id": "number.goe_amp", "unique_id": "216505-number-amp-0", "device_id": "d"},
+        {"entity_id": "select.goe_frc", "unique_id": "123456-select-frc-frc", "device_id": "d"},
+        {"entity_id": "number.goe_amp", "unique_id": "123456-number-amp-0", "device_id": "d"},
     ]
     snapshot = SimpleNamespace(
-        devices=[{"id": "d", "identifiers": [["goecharger_mqtt", "216505"]]}],
+        devices=[{"id": "d", "identifiers": [["goecharger_mqtt", "123456"]]}],
         entities=entities,
         states={"number.goe_amp": {"state": "16", "attributes": {"unit_of_measurement": "A"}}, "select.goe_frc": {"state": "neutral"}},
     )

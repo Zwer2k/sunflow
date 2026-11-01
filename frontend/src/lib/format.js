@@ -32,6 +32,16 @@ const ROLE_LABELS = {
   battery_discharge_energy: "Speicher entladen (Zähler)",
   switch: "Schalter",
   power: "Leistung",
+  charged_energy: "Geladen (Ladevorgang)",
+  stored_current: "Eingestellter Ladestrom",
+  allowed_current: "Erlaubter Ladestrom",
+  transaction: "Ladekarte",
+  card_required: "Karte nötig",
+  phase_mode: "Phasenmodus",
+  level: "Leistungsstufe",
+  current: "Stromstärke",
+  energy: "Energie (Zähler)",
+  temperature: "Temperatur",
 };
 
 const number1 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
@@ -112,6 +122,9 @@ const PARAM_LABELS = {
   phase_down_delay_min: "Herunterschalten nach",
   phase_min_interval_min: "Mindestabstand zwischen Umschaltungen",
   phase_max_switches_day: "Höchstens Umschaltungen pro Tag",
+  current_interval_min: "Ladestrom ändern höchstens alle",
+  max_ac_power: "Max. AC-Leistung",
+  autorepeat_s: "Befehl wiederholen für",
 };
 
 // Short explanation below a parameter
@@ -123,6 +136,9 @@ const PARAM_HINTS = {
   phase_up_delay_min: "So lange muss der Überschuss im Mittel reichen – kurze Sonnenlücken schalten nicht.",
   phase_down_delay_min: "Kürzer als beim Hochschalten: sonst bezieht das Auto Netzstrom.",
   phase_min_interval_min: "Jede Umschaltung unterbricht das Laden kurz.",
+  current_interval_min: "Die Wallbox speichert den Ladestrom dauerhaft; seltener ändern schont ihren Speicher.",
+  max_ac_power: "Höchste Ausgangsleistung des Wechselrichters; gilt wieder, wenn Sunflow das Abregeln beendet.",
+  autorepeat_s: "So lange wiederholt die Integration einen Befehl ohne neuen von Sunflow.",
   grid_offset:
     "Puffer gegen Lastsprünge, während Sunflow steuert. Negativ (z. B. −200 W) gilt nur, wenn der Plan ohnehin einspeist " +
     "(PV-Überschuss) – sonst regelt der Wechselrichter auf 0, damit kein gespeicherter Strom ins Netz geht. Positiv = " +

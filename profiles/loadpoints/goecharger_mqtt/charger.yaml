@@ -1,6 +1,6 @@
 # go-e Charger (Gemini, HOME) via the goecharger_mqtt custom integration (HACS).
 # Sunflow controls the charger directly; evcc must not control the same charger then.
-# Unique ids look like "216505-select-frc-frc", so keys include the platform.
+# Unique ids look like "123456-select-frc-frc", so keys include the platform.
 # The current is set as the requested current (amp): the temporary current amx is
 # not taken by firmware 56.x. amp is kept by the charger, so it changes at most every
 # current_interval_min and the user's value is restored when Sunflow lets go.
