@@ -22,6 +22,8 @@ const LOAD_QUALITY = {
 // Chart window limits: statistics go back about a month, Solcast looks a week ahead
 const MAX_BACK_DAYS = 31;
 const MAX_AHEAD_DAYS = 7;
+// Movement before a press on a chart counts as dragging, not as a click
+const DRAG_THRESHOLD_PX = 5;
 // The plan never reaches further than this; beyond it only the PV forecast is shown
 const MAX_PLAN_HOURS = 48;
 // The plan is kept by the background runner; reloading only fetches it and the statistics
@@ -164,6 +166,64 @@ class SunflowPlan extends LitElement {
     this._stopPolling = poll(() => this._load(), REFRESH_MS);
   }
 
+  firstUpdated() {
+    // One listener for all charts: dragging any of them moves the shared time window
+    this.renderRoot.addEventListener("pointerdown", (e) => this._dragStart(e));
+    // A drag ends with a click on the chart (e.g. on a legend or axis label): it must not count
+    this.renderRoot.addEventListener("click", (e) => {
+      if (this._dragged) {
+        e.stopPropagation();
+        e.preventDefault();
+        this._dragged = false;
+      }
+    }, true);
+  }
+
+  _dragStart(e) {
+    const chart = e.composedPath().find((el) => el instanceof SVGSVGElement && el.classList.contains("chart"));
+    if (!chart || e.button !== 0) return;
+    const width = chart.getBoundingClientRect().width;
+    if (!width) return;
+    const startX = e.clientX;
+    const startShift = this._shift;
+    const hoursPerPx = this._historyHours / width;
+    let dragging = false;
+    this._dragged = false;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      if (!dragging && Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+      if (!dragging) {
+        dragging = true;
+        this.toggleAttribute("dragging", true);
+      }
+      // Dragging to the right shows earlier hours, like moving a sheet of paper
+      this._shift = this._clampShift(startShift - dx * hoursPerPx);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      if (!dragging) return;
+      this._dragged = true;
+      this.toggleAttribute("dragging", false);
+      // Whole quarter hours: the slots and the history's buckets
+      this._shift = this._clampShift(Math.round(this._shift * 4) / 4);
+      Promise.all([this._loadHistory(), this._loadPvAhead(), this._loadRawPast()]);
+    };
+    // On the window: the pointer may leave the chart before the drag starts
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  }
+
+  /** The shift kept within what history and forecasts cover. */
+  _clampShift(shift) {
+    const past = this._historyHours / 3;
+    const earliest = -MAX_BACK_DAYS * 24 + past;
+    const latest = MAX_AHEAD_DAYS * 24 + past - this._historyHours;
+    return Math.min(Math.max(shift, earliest), latest);
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopPolling();
@@ -290,7 +350,7 @@ class SunflowPlan extends LitElement {
         </div>
         <p class="small muted window-label">${dayTime.format(this._range.start)} – ${dayTime.format(this._range.end)}${this._range.end > new Date(slots.at(-1).end)
           ? " · nach dem Planende nur die PV-Prognose"
-          : ""}</p>
+          : ""} · zum Verschieben ein Diagramm seitlich ziehen</p>
         ${this._historyError
           ? html`<div class="alert warn">⚠ Gemessener Verlauf nicht abrufbar (${this._historyError})${this._history
               ? " – angezeigt wird der zuletzt geladene."
@@ -771,15 +831,11 @@ class SunflowPlan extends LitElement {
   }
 
   _canShift(direction) {
-    const step = this._historyHours / 2;
-    const range = this._range;
-    const hour = 3600_000;
-    if (direction < 0) return range.start.getTime() - step * hour >= Date.now() - MAX_BACK_DAYS * 24 * hour;
-    return range.end.getTime() + step * hour <= Date.now() + MAX_AHEAD_DAYS * 24 * hour;
+    return this._clampShift(this._shift + direction * (this._historyHours / 2)) !== this._shift;
   }
 
   async _shiftWindow(direction) {
-    this._shift = direction === 0 ? 0 : this._shift + direction * (this._historyHours / 2);
+    this._shift = direction === 0 ? 0 : this._clampShift(this._shift + direction * (this._historyHours / 2));
     await Promise.all([this._loadHistory(), this._loadPvAhead(), this._loadRawPast()]);
   }
 
@@ -869,7 +925,8 @@ class SunflowPlan extends LitElement {
     .seg .when { font-variant-numeric: tabular-nums; font-size: 14px; }
     .seg .what { font-weight: 600; }
     @media (max-width: 560px) { .seg { grid-template-columns: 1fr; } }
-    .chart { width: 100%; height: auto; display: block; }
+    .chart { width: 100%; height: auto; display: block; cursor: grab; touch-action: pan-y; user-select: none; }
+    :host([dragging]) .chart { cursor: grabbing; }
     .chart .grid { stroke: var(--sf-border); stroke-width: 1; }
     .chart .axis { fill: var(--sf-muted); font-size: 11px; }
     .chart .scalable { cursor: pointer; }

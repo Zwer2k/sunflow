@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.71.0
+
+- Planung: Die Diagramme lassen sich mit der Maus (oder dem Finger) seitlich ziehen; alle verschieben sich gemeinsam. Losgelassen lädt Sunflow den gemessenen Verlauf des neuen Fensters nach. Die Knöpfe ‹ Jetzt › bleiben; „Jetzt“ springt zurück. Auf dem Handy scrollt senkrechtes Wischen weiter die Seite.
+
 ## 0.70.3
 
 - Plan: Der Hinweis zu ausgeklammerten Großverbrauchern war veraltet („z. B. Wallbox … plant Sunflow noch nicht ein“). Wallbox, Heizstab und andere Verbraucher rechnet Sunflow längst aus dem Hausverbrauch heraus und plant sie selbst. Ausgeklammert werden nur noch seltene Spitzen wie Backofen oder Sauna – darauf weist der Plan erst hin, wenn es viele Stunden sind (mehr als 5 und mehr als 2 % des Verlaufs), mit dem Tipp, einen regelmäßigen Großverbraucher als Verbraucher anzulegen.
