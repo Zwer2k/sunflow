@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta, tzinfo
 import math
+from statistics import median
 import time
 from typing import Any
 
@@ -392,6 +393,7 @@ def flex_loads(
                 # 0.1 ct/kWh per rank: decides only when loads compete for the same energy
                 priority_bonus=PRIORITY_STEP * (len(flex_ids) - rank),
                 below_battery=order.index(device.id) > battery_rank if device.id in order else True,
+                expected=info.vehicle_method == "expected",
             )
         )
         loads.append(load)
@@ -1359,6 +1361,9 @@ async def compute_plan(
     settings = restrict_to_device(settings, battery_actions(profile), warnings)
     shares = curtailable_shares(config, profiles, used_planes, plane_slots, len(inputs))
     inputs = [replace(slot, curtailable_w=slot.pv_w * share) for slot, share in zip(inputs, shares, strict=True)]
+    # A car only expected back may come later or not at all: charged where cheaper than the median price
+    worth = median(slot.price for slot in inputs) if inputs else MUST_HAVE_COST
+    loads = [replace(load, unmet_cost=worth) if load.expected else load for load in loads]
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
     device_actions(plan, profile)
