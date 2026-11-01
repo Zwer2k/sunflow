@@ -161,6 +161,8 @@ def integration_state(
         },
         "devices": devices,
         "consumers": consumers,
+        # Cars worth plugging in now (at home, energy planned soon)
+        "plug_in": list(getattr(result, "plug_in_hints", None) or []),
     }
 
 

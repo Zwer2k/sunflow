@@ -81,6 +81,24 @@ Je Prognose gibt es zusätzlich die Sensoren „Prognose heute“, „Prognose R
 | `sunflow_ems_plan_updated` | ein neuer Plan liegt vor |
 | `sunflow_ems_consumer_start` | ein Verbraucher ist ab jetzt eingeplant |
 | `sunflow_ems_load_start` | eine einmalige Last soll jetzt starten |
+| `sunflow_ems_plug_in_suggested` | ein Auto ist zu Hause, aber nicht angesteckt, und bekommt bald Energie (PV-Überschuss oder günstiger Strom): Einstecken lohnt sich. Daten: `vehicle`, `wallbox`, `start`, `energy_kwh`, `pv_kwh` |
+
+### Beispiel: Erinnerung zum Einstecken
+
+```yaml
+- alias: Auto einstecken
+  triggers:
+    - trigger: event
+      event_type: sunflow_ems_plug_in_suggested
+  actions:
+    - action: notify.mobile_app_handy
+      data:
+        title: "{{ trigger.event.data.vehicle }} einstecken"
+        message: >-
+          Ab {{ as_timestamp(trigger.event.data.start) | timestamp_custom('%H:%M') }} sind
+          {{ trigger.event.data.energy_kwh }} kWh eingeplant,
+          davon {{ trigger.event.data.pv_kwh }} kWh PV-Überschuss.
+```
 
 ### Beispiel: Waschmaschine zum günstigsten Zeitpunkt
 

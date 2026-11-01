@@ -153,3 +153,58 @@ def test_expected_car_is_no_must(expected: bool, charged_wh: float) -> None:
     plan = optimize(inputs, battery, flex=[car])
 
     assert sum(s.flex_w["Fiat"] for s in plan.slots) * 0.25 == pytest.approx(charged_wh, rel=0.01)
+
+
+def _away_setup(presence_state: str) -> tuple[SunflowConfig, object, list[datetime]]:
+    from sunflow.devices.discovery import Snapshot
+
+    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "216505-binary_sensor-car-1", "device_id": "goe"}]
+    states = {
+        "binary_sensor.goe_car": {"state": "off", "attributes": {}},
+        "sensor.fiat_soc": {"state": "60", "attributes": {}},
+        "device_tracker.fiat": {"state": presence_state, "attributes": {}},
+    }
+    snapshot = Snapshot(entries=[], devices=[{"id": "goe"}], entities=entities, states=states, energy_prefs=None)
+    wallbox = DeviceConfig(id="wb", ha_device_id="goe", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
+    config = SunflowConfig(
+        devices=[wallbox],
+        vehicles=[Vehicle(id="fiat", name="Fiat", capacity_wh=37500, soc_entity="sensor.fiat_soc", plugged_entity="device_tracker.fiat")],
+        charging=[ChargingProfile(vehicle_id="fiat", wallbox_id="wb")],
+        vehicle_detection={"wb": VehicleDetection(single=False, sensor=False)},
+    )
+    start = START + timedelta(days=15, hours=12)
+    return config, snapshot, [start + timedelta(minutes=15 * i) for i in range(96)]
+
+
+def test_car_at_home_can_be_plugged_in_now(library) -> None:
+    """Its presence sensor says home, the wallbox sees no car: planned from now, optional, and hinted."""
+    from types import SimpleNamespace
+
+    from sunflow.planning.habits import Departure
+    from sunflow.planning.plan import flex_loads, plug_in_hints
+
+    config, snapshot, slots = _away_setup("home")
+    presence = Departure(workday=time(7), weekend=None, sessions=10, arrival_workday=time(17, 30), entity_id="device_tracker.fiat")
+
+    loads, (info,), _, _ = flex_loads(config, library.profiles, snapshot, slots, UTC, presences={"fiat": presence})
+
+    assert (info.at_home, info.expected_arrival) == (True, slots[0])
+    assert loads[0].expected and loads[0].available[0]
+    planned = [SimpleNamespace(start=s, flex_w={"Wallbox": 4000.0 if i < 8 else 0.0}, pv_w=3000.0, load_w=500.0) for i, s in enumerate(slots)]
+    (hint,) = plug_in_hints([info], planned, slots[0])
+    assert (hint["vehicle"], hint["energy_wh"], hint["pv_wh"]) == ("Fiat", 8000, 5000)
+
+
+def test_presence_habit_wins_over_the_wallbox(library) -> None:
+    """Away: the car's own arrival home counts, not the plug-in time at the wallbox."""
+    from sunflow.planning.habits import Departure
+    from sunflow.planning.plan import flex_loads
+
+    config, snapshot, slots = _away_setup("not_home")
+    presence = Departure(workday=time(7), weekend=None, sessions=10, arrival_workday=time(16), entity_id="device_tracker.fiat")
+    wallbox = Departure(workday=time(7), weekend=None, sessions=10, arrival_workday=time(21))
+
+    _, (info,), _, _ = flex_loads(config, library.profiles, snapshot, slots, UTC, departures={"wb": wallbox},
+                                  vehicle_usages={"fiat": usage_from(_socs(15), UTC)}, presences={"fiat": presence})
+
+    assert (info.at_home, info.expected_arrival.hour) == (False, 16)

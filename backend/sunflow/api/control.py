@@ -125,6 +125,7 @@ async def get_control(request: Request) -> dict[str, Any]:
             if d["kind"] in ("vehicle", "heater")
         ],
         "plan_computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
+        "plug_in_hints": latest.plug_in_hints if latest else [],
     }
 
 

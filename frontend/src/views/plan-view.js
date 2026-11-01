@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { poll } from "../lib/poll.js";
 import { lineChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "../components/charts.js";
 import { formatValue, toDisplay } from "../lib/format.js";
+import { plugInHints } from "../lib/plug-in.js";
 
 const ACTIONS = {
   auto: { label: "Eigenverbrauch", hint: "Speicher lädt aus PV-Überschuss und deckt den Bedarf" },
@@ -224,6 +225,7 @@ class SunflowPlan extends LitElement {
     const consumers = (plan.flex ?? []).map((f) => ({ key: f.device_id, name: f.name, color: colors.get(f.device_id) }));
     return html`
       ${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
+      ${plugInHints(plan.plug_in_hints)}
       <div class="tiles">
         <div class="tile now">
           <div class="small muted">Geplante Steuerung jetzt (bis ${time.format(new Date(now.end))})</div>
@@ -848,6 +850,7 @@ class SunflowPlan extends LitElement {
     .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
     .alert { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
     .alert.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }
+    .alert.info { background: var(--sf-primary-bg); color: var(--sf-primary-text); }
     .alert.error { background: var(--sf-error-bg); color: var(--sf-error-text); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; }

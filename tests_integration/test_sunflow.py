@@ -179,3 +179,22 @@ async def test_forecasts_follow_the_app(hass: HomeAssistant, aioclient_mock: Aio
     coordinator.async_set_updated_data(FORECAST)
     await hass.async_block_till_done()
     assert len(hass.config_entries.async_entries("sunflow_ems")) == 3
+
+
+async def test_plug_in_suggestion_fires_once(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    """A car at home that gets energy soon fires sunflow_ems_plug_in_suggested once, not on every update."""
+    from pytest_homeassistant.common import async_capture_events
+
+    hint = {"vehicle_id": "fiat", "vehicle": "Fiat 500e", "wallbox_id": "wb", "wallbox": "Wallbox",
+            "start": "2026-10-30T13:00:00+00:00", "energy_wh": 8200, "pv_wh": 6100}
+    await _setup(hass, aioclient_mock, STATE)
+    events = async_capture_events(hass, "sunflow_ems_plug_in_suggested")
+    app = next(e for e in hass.config_entries.async_entries("sunflow_ems") if e.title == "Sunflow")
+
+    for _ in range(2):
+        app.runtime_data.state.async_set_updated_data({**STATE, "plug_in": [hint]})
+        await hass.async_block_till_done()
+
+    assert [e.data for e in events] == [
+        {"vehicle": "Fiat 500e", "wallbox": "Wallbox", "start": hint["start"], "energy_kwh": 8.2, "pv_kwh": 6.1}
+    ]

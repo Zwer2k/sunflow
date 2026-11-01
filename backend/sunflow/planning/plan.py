@@ -56,7 +56,7 @@ from .sources import (
     with_surcharges,
 )
 from .vehicle_usage import VehicleUsage, usage_from as vehicle_usage_from
-from .vehicles import Recognized, recognize, soc_of, vehicle_max_power
+from .vehicles import PLUGGED, Recognized, recognize, soc_of, vehicle_max_power
 
 # The plan looks this far ahead; beyond the published prices with estimated ones
 HORIZON_HOURS = 96
@@ -98,6 +98,11 @@ WATER_WH_PER_LITRE_KELVIN = 1.163
 # Target of a heating own consumer when none is set (evcc loadpoints report their own)
 DEFAULT_HOT_WATER_C = 60.0
 HEATER_DEADLINE = timedelta(hours=24)
+# A car at home but not plugged in: hinted when the plan gives it this much within this time
+PLUG_IN_HINT_AHEAD = timedelta(hours=6)
+PLUG_IN_HINT_MIN_WH = 1000.0
+MIN_CHARGE_W = 100.0
+SLOT_HOURS = 0.25
 # A car without a departure (set or learned) is charged within this time
 VEHICLE_DEADLINE = timedelta(hours=48)
 # The learned main usage counts as deadline only this long ahead, so there is time to heat
@@ -146,6 +151,35 @@ class FlexInfo:
     # A car on the way: when it usually comes back (planned from then on), with which SoC
     expected_arrival: datetime | None = None
     arrival_soc: float | None = None
+    # At home (its presence sensor) but not plugged in: worth plugging in when energy is planned
+    at_home: bool = False
+
+
+def plug_in_hints(infos: list[FlexInfo], slots: list[Any], now: datetime) -> list[dict[str, Any]]:
+    """Cars at home but not plugged in that the plan gives energy soon: worth plugging in."""
+    hints = []
+    for info in infos:
+        if not info.at_home:
+            continue
+        soon = [s for s in slots if s.start < now + PLUG_IN_HINT_AHEAD and (s.flex_w or {}).get(info.name, 0.0) >= MIN_CHARGE_W]
+        energy = sum(s.flex_w[info.name] for s in soon) * SLOT_HOURS
+        if energy < PLUG_IN_HINT_MIN_WH:
+            continue
+        # The share the PV surplus covers (what the house does not use)
+        pv = sum(min(s.flex_w[info.name], max(s.pv_w - s.load_w, 0.0)) for s in soon) * SLOT_HOURS
+        hints.append(
+            {
+                "vehicle_id": info.vehicle_id, "vehicle": info.vehicle, "wallbox_id": info.device_id, "wallbox": info.name,
+                "start": soon[0].start.isoformat(), "energy_wh": round(energy), "pv_wh": round(pv),
+            }
+        )
+    return hints
+
+
+def is_home(vehicle_id: str, presences: dict[str, Departure] | None, states: dict[str, dict[str, Any]] | None) -> bool:
+    """Whether the car's presence sensor says it is at home now."""
+    entity = (presences or {})[vehicle_id].entity_id if vehicle_id in (presences or {}) else None
+    return str((states or {}).get(entity or "", {}).get("state", "")).lower() in PLUGGED
 
 
 def coming_back(recognized: Recognized, assigned: list[Vehicle], connected: bool) -> tuple[Vehicle | None, str | None]:
@@ -157,12 +191,23 @@ def coming_back(recognized: Recognized, assigned: list[Vehicle], connected: bool
 
 def on_the_way(
     info: FlexInfo, connected: bool, usages: dict[str, VehicleUsage] | None, habits: dict[str, Departure] | None,
-    slot_starts: list[datetime], tz: tzinfo,
+    slot_starts: list[datetime], tz: tzinfo, presences: dict[str, Departure] | None = None,
+    states: dict[str, dict[str, Any]] | None = None,
 ) -> list[float] | None:
-    """SoC a car on the way uses per slot until its usual arrival (none while plugged in); None without enough learned data or its SoC."""
+    """SoC a car on the way uses per slot until its usual arrival (none while plugged in); None without enough learned data or its SoC.
+
+    A car at home but not plugged in may be plugged in any time; a car's own presence
+    habit (when it comes home) wins over the plug-in times at the wallbox.
+    """
     if connected:
         return []
-    usage, habit = (usages or {}).get(info.vehicle_id or ""), (habits or {}).get(info.device_id)
+    vehicle = info.vehicle_id or ""
+    if vehicle in (presences or {}) and is_home(vehicle, presences, states) and info.current is not None:
+        info.expected_arrival, info.at_home = slot_starts[0], True
+        return [0.0] * len(slot_starts)
+    usage = (usages or {}).get(vehicle)
+    presence = (presences or {}).get(vehicle)
+    habit = presence if presence is not None and presence.arrival_workday is not None else (habits or {}).get(info.device_id)
     arrival = habit.next_arrival(slot_starts[0], tz) if habit is not None and usage is not None else None
     if usage is None or arrival is None or arrival >= slot_starts[-1] + SLOT or info.current is None:
         return None
@@ -216,6 +261,7 @@ def flex_loads(
     usages: dict[str, ConsumerUsage] | None = None,
     hot_water: dict[str, HotWaterUsage] | None = None,
     vehicle_usages: dict[str, VehicleUsage] | None = None,
+    presences: dict[str, Departure] | None = None,
 ) -> tuple[list[FlexLoad], list[FlexInfo], list[str], tuple[tuple[str, float], ...]]:
     """Derive the energy need of every flexible consumer from live values and its settings.
 
@@ -326,7 +372,7 @@ def flex_loads(
                 ready_by = next_time(settings.ready_by, slot_starts[0], tz) if settings.ready_by else None
                 target = info.target = settings.target if settings.target is not None else target
             # On the way: planned from its usual arrival with the SoC it usually comes back with
-            used = on_the_way(info, connected, vehicle_usages, departures, slot_starts, tz)
+            used = on_the_way(info, connected, vehicle_usages, departures, slot_starts, tz, presences, snapshot.states)
             if used is None:
                 info.reason = "Fahrzeug nicht angesteckt"
                 continue
@@ -393,7 +439,7 @@ def flex_loads(
                 # 0.1 ct/kWh per rank: decides only when loads compete for the same energy
                 priority_bonus=PRIORITY_STEP * (len(flex_ids) - rank),
                 below_battery=order.index(device.id) > battery_rank if device.id in order else True,
-                expected=info.vehicle_method == "expected",
+                expected=info.expected_arrival is not None,
             )
         )
         loads.append(load)
@@ -493,6 +539,7 @@ class PlanResult:
     load_model: LoadModel | None = None
     usages: dict[str, ConsumerUsage] = field(default_factory=dict)
     vehicle_usages: dict[str, VehicleUsage] = field(default_factory=dict)
+    plug_in_hints: list[dict[str, Any]] = field(default_factory=list)
     pv_correction: PvCorrection | None = None
 
 
@@ -574,6 +621,21 @@ async def learned_vehicle_usages(
         # A sensor without statistics: the samples Sunflow kept itself
         if (usage := vehicle_usage_from(socs or (own or {}).get(vehicle.id, []), tz)) is not None:
             result[vehicle.id] = usage
+    return result
+
+
+async def vehicle_presences(client: HAClient, config: SunflowConfig, tz: tzinfo) -> dict[str, Departure]:
+    """When each car with a presence sensor usually comes home and leaves."""
+    result = {}
+    for vehicle in config.vehicles:
+        if not vehicle.plugged_entity:
+            continue
+        try:
+            result[vehicle.id] = await cached(
+                ("presence", vehicle.plugged_entity), HABITS_TTL, lambda e=vehicle.plugged_entity: learn_departure(client, e, tz)
+            )
+        except HAError:
+            continue
     return result
 
 
@@ -1338,6 +1400,7 @@ async def compute_plan(
     usages = await consumer_usages(client, config, profiles, snapshot)
     hot_water = await hot_water_usages(client, config, profiles, snapshot, start, tz)
     vehicle_usages = await learned_vehicle_usages(client, config, start, tz, vehicle_hours)
+    presences = await vehicle_presences(client, config, tz)
     loads, flex_infos, flex_warnings, battery_gate = flex_loads(
         config,
         profiles,
@@ -1349,6 +1412,7 @@ async def compute_plan(
         usages=usages,
         hot_water=hot_water,
         vehicle_usages=vehicle_usages,
+        presences=presences,
     )
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings
@@ -1376,6 +1440,7 @@ async def compute_plan(
         load_model=load_model if load_model is not None and load_model.useful else None,
         usages=usages,
         vehicle_usages=vehicle_usages,
+        plug_in_hints=plug_in_hints(flex_infos, plan.slots, start),
         pv_correction=pv_correction if config.optimizer.pv_learning else None,
         care=care,
         plan=plan,

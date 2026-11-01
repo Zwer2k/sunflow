@@ -121,26 +121,27 @@ def _sync_forecasts(hass: HomeAssistant, entry: SunflowConfigEntry) -> None:
 
 
 class StateEvents:
-    """Events for automations when the App's state changes: plan, consumers, one-time loads."""
+    """Events for automations when the App's state changes: plan, consumers, one-time loads, cars to plug in."""
 
     def __init__(self, hass: HomeAssistant, data: SunflowData) -> None:
         """Start from the current state, so a restart fires nothing."""
         self._hass = hass
         self._data = data
-        self._plan, self._running, self._started = self._seen()
+        self._plan, self._running, self._started, self._plug_in = self._seen()
 
-    def _seen(self) -> tuple[str | None, set[str], set[str]]:
+    def _seen(self) -> tuple[str | None, set[str], set[str], set[str]]:
         state = self._data.state.data or {}
         return (
             state.get("plan", {}).get("updated"),
             {c["id"] for c in state.get("consumers", []) if c.get("running")},
             {load["id"] for load in state.get("loads", []) if load.get("started")},
+            {hint["vehicle_id"] for hint in state.get("plug_in", [])},
         )
 
     @callback
     def __call__(self) -> None:
         """Fire for what changed since the last update."""
-        plan, running, started = self._seen()
+        plan, running, started, plug_in = self._seen()
         state = self._data.state.data or {}
         if plan is not None and plan != self._plan:
             self._hass.bus.async_fire(f"{DOMAIN}_plan_updated", {"updated": plan})
@@ -156,7 +157,19 @@ class StateEvents:
                     f"{DOMAIN}_load_start",
                     {k: load[k] for k in ("id", "name", "start", "end")},
                 )
-        self._plan, self._running, self._started = plan, running, started
+        for hint in state.get("plug_in", []):
+            if hint["vehicle_id"] in plug_in - self._plug_in:
+                self._hass.bus.async_fire(
+                    f"{DOMAIN}_plug_in_suggested",
+                    {
+                        "vehicle": hint["vehicle"],
+                        "wallbox": hint["wallbox"],
+                        "start": hint["start"],
+                        "energy_kwh": round(hint["energy_wh"] / 1000, 1),
+                        "pv_kwh": round(hint["pv_wh"] / 1000, 1),
+                    },
+                )
+        self._plan, self._running, self._started, self._plug_in = plan, running, started, plug_in
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SunflowConfigEntry) -> bool:
