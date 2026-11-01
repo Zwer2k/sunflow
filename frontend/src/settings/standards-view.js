@@ -1,18 +1,8 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
+import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 
-const STRATEGIES = {
-  balanced: { label: "Ausgewogen", hint: "Geringste Stromkosten über den Planungszeitraum." },
-  pv_absorption: {
-    label: "Möglichst viel PV aufnehmen",
-    hint: "Hält Platz für Solarstrom frei und lädt vor sonnigen Tagen nicht aus dem Netz – sinnvoll bei Einspeisebegrenzung.",
-  },
-  autarky: {
-    label: "Möglichst autark",
-    hint: "So wenig Netzbezug wie möglich: kein Netzladen, der Speicher deckt jeden Bedarf sofort. Kann mit Zeittarifen etwas mehr kosten.",
-  },
-};
 
 /** Default planning settings (settings area "Planung"). */
 class SunflowStandards extends LitElement {
@@ -298,11 +288,14 @@ class SunflowStandards extends LitElement {
           <legend class="field-label">Strategie des Hausspeichers (Standard)</legend>
           ${Object.entries(STRATEGIES).map(
             ([value, { label, hint }]) => html`
-              <label class="option ${settings.strategy === value ? "selected" : ""}">
-                <input type="radio" name="strategy" .checked=${settings.strategy === value} ?disabled=${this._saving}
-                  @change=${() => this._saveSettings({ strategy: value })}>
-                <span><strong>${label}</strong><br><span class="small muted">${hint}</span></span>
-              </label>
+              <div class="option ${settings.strategy === value ? "selected" : ""}">
+                <label class="option-choice">
+                  <input type="radio" name="strategy" .checked=${settings.strategy === value} ?disabled=${this._saving}
+                    @change=${() => this._saveSettings({ strategy: value })}>
+                  <span><strong>${label}</strong><br><span class="small muted">${hint}</span></span>
+                </label>
+                ${strategyDetails(value)}
+              </div>
             `,
           )}
         </fieldset>
@@ -586,6 +579,11 @@ class SunflowStandards extends LitElement {
     }
     .option.selected { border-color: var(--sf-primary); background: var(--sf-primary-bg); }
     .option input { margin-top: 3px; width: 18px; height: 18px; }
+    .option { flex-direction: column; gap: 4px; cursor: default; }
+    .option-choice { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+    .strategy-details { padding-left: 28px; }
+    .strategy-details summary { cursor: pointer; color: var(--sf-primary-text); }
+    .strategy-details ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
     .link { border: 0; background: none; padding: 0; color: var(--sf-primary-text); text-decoration: underline; cursor: pointer; font: inherit; }
     select {
