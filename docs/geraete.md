@@ -64,7 +64,8 @@ Hinweise:
 | Gerät | Anbindung | Profil | Steuerung | Phasenumschaltung | Fahrzeug-Freigabe | Messen geprüft | Steuern geprüft |
 |---|---|---|---|---|---|---|---|
 | evcc-Ladepunkt (Wallbox oder Heizstab) | evcc_intg | `evcc_intg/loadpoint` | Modus „Sofort“, „PV“, „Aus“; evcc folgt dem PV-Überschuss selbst | durch evcc selbst (im PV-Modus) | – | ✅ | – (noch nicht bestätigt) |
-| go-e Charger (Gemini, HOME) | goecharger_mqtt | `goecharger_mqtt/charger` | Laden/Stopp, Ladestrom minütlich nach PV-Überschuss (amx, ohne Flash-Schreiben) | 1 ↔ 3 Phasen durch Sunflow (Schwellen, Verzögerungen, Mindestabstand, Tageslimit in den Kenndaten) | Ladekarte des erkannten Fahrzeugs | ✅ | 🧪 (Phasen), sonst – (noch nicht bestätigt) |
+| go-e Charger mit API v2 (Gemini, HOME+, HOMEfix) | goecharger_mqtt | `goecharger_mqtt/charger` | Laden/Stopp, Ladestrom nach PV-Überschuss (amp, höchstens alle 3 min) | 1 ↔ 3 Phasen durch Sunflow (Schwellen, Verzögerungen, Mindestabstand, Tageslimit in den Kenndaten) | Ladekarte des erkannten Fahrzeugs | ✅ | 🧪 (Phasen), sonst – (noch nicht bestätigt) |
+| go-e Charger mit API v1 (HOME, ältere Firmware) | goecharger (HTTP) | `goecharger/charger` | Laden erlauben/sperren, Ladestrom minütlich nach PV-Überschuss (amx, ohne Flash-Schreiben) | – (feste Phasen in den Kenndaten) | – | – (noch nicht bestätigt) | – (noch nicht bestätigt) |
 
 Phasenumschaltung (go-e, Kenndaten der Wallbox): Bei geplanter fester Leistung (z. B. aus dem
 Netz) wählt Sunflow die Phasen sofort. Beim PV-Überschuss entscheidet das Mittel der letzten

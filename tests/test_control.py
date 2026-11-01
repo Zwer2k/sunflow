@@ -649,3 +649,50 @@ async def test_requested_current_changes_calmly_and_comes_back(tmp_path: Path) -
     await controller.tick(_charger_config("goe"), _charge_plan(0), NOW - timedelta(hours=1), SNAPSHOT, NOW + timedelta(minutes=4))
     assert (charger.option, charger.current) == ("neutral", 8.0)
     assert TakeoverMarker(tmp_path).get() == {"wb": "8"}
+
+
+@pytest.mark.parametrize(
+    ("car", "connected"),
+    [
+        pytest.param("Waiting for vehicle", "on", id="waiting"),
+        pytest.param("charging finished, vehicle still connected", "on", id="finished"),
+        pytest.param("Charger ready, no vehicle", "off", id="no-car"),
+    ],
+)
+def test_goe_api_v1_profile(car: str, connected: str) -> None:
+    """An older go-e (API v1): temporary current through the integration's action by charger name, car status as plugged in."""
+    from pathlib import Path
+
+    from sunflow.control.controller import device_variables
+    from sunflow.devices.executor import plan_charge
+    from sunflow.devices.profiles import load_profiles, load_schema
+    from sunflow.devices.resolver import preview
+
+    repo = Path(__file__).resolve().parents[1]
+    profile = load_profiles(repo / "profiles", load_schema(repo / "schema")).profiles["goecharger/charger"]
+    entities = [
+        {"entity_id": "sensor.goecharger_garage_p_all", "unique_id": "garage_p_all", "device_id": "d"},
+        {"entity_id": "sensor.goecharger_garage_car_status", "unique_id": "garage_car_status", "device_id": "d"},
+        {"entity_id": "sensor.goecharger_garage_charger_max_current", "unique_id": "garage_charger_max_current", "device_id": "d"},
+        {"entity_id": "switch.goecharger_garage_allow_charging", "unique_id": "garage_allow_charging", "device_id": "d"},
+    ]
+    snapshot = SimpleNamespace(
+        devices=[{"id": "d", "identifiers": [["goecharger", "garage"]]}],
+        entities=entities,
+        states={
+            "sensor.goecharger_garage_car_status": {"state": car, "attributes": {}},
+            "sensor.goecharger_garage_charger_max_current": {"state": "10", "attributes": {"unit_of_measurement": "A"}},
+            "switch.goecharger_garage_allow_charging": {"state": "off", "attributes": {}},
+        },
+    )
+    device = DeviceConfig(id="wb", ha_device_id="d", profile="goecharger/charger", profile_version=1, name="Wallbox")
+
+    roles = {r.role: r for r in preview(profile, snapshot, "d")}
+    variables = device_variables(profile, device, snapshot)
+    charge = plan_charge(profile, "charge", {}, variables | {"current_a": 7}, entities)
+    release = plan_charge(profile, "release", {}, variables, entities)
+
+    assert roles["connected"].raw_state == connected
+    assert (charge[0].domain, charge[0].service, charge[0].data) == ("goecharger", "set_max_current", {"charger_name": "garage", "max_current": 7})
+    assert (charge[1].entity_id, charge[1].service) == ("switch.goecharger_garage_allow_charging", "turn_on")
+    assert release[0].data["max_current"] == 10

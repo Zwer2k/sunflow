@@ -11,12 +11,12 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
     assert library.errors == []
     assert set(library.profiles) == {
         "solax_modbus/sofar", "huawei_solar/pv_only", "evcc_intg/loadpoint", "generic/switch", "tibber_local/pulse",
-        "goecharger_mqtt/charger", "generic/stepped", "generic/current", "solax_modbus/solax_gen4_5",
+        "goecharger_mqtt/charger", "goecharger/charger", "generic/stepped", "generic/current", "solax_modbus/solax_gen4_5",
         "huawei_solar/sun2000_luna2000", "modbus/victron_gx",
         "solaredge_modbus/storedge", "fronius/gen24", "goodwe/hybrid", "kostal_plenticore/plenticore",
     }
     assert library.integrations == {
-        "solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "goecharger_mqtt", "solaredge_modbus",
+        "solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "goecharger_mqtt", "goecharger", "solaredge_modbus",
         "fronius", "goodwe", "kostal_plenticore",
     }
 

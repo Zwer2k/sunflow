@@ -251,6 +251,12 @@
         "unit": {"type": "string"},
         "sign": {"enum": ["charge_positive", "discharge_positive", "import_positive", "export_positive"]},
         "optional": {"type": "boolean", "default": false},
+        "on_states": {
+          "description": "States of a text sensor that mean on (e.g. a car status \"charging\" for connected); others are off.",
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        },
         "fine_keys": {
           "description": "Entities with a finer resolution (e.g. per battery input) whose sum replaces the live value when any is readable; the key's entity stays for statistics.",
           "type": "array",
