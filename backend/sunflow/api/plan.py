@@ -11,6 +11,7 @@ from sunflow.analysis.history import fetch_history, fill_from_shadow, history_se
 from sunflow.config.models import SunflowConfig
 from sunflow.control.controller import PlanController
 from sunflow.ha import HAError
+from sunflow.planning.plan import expected_levels
 from sunflow.shadow.runner import ShadowRunner, current_plan
 
 from .common import _library, _local_tz, _slot_start, _snapshot
@@ -63,6 +64,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
                 ({"planned_wh": r.planned_wh, "unmet_wh": r.unmet_wh} for r in plan.flex if r.name == info.name),
                 {"planned_wh": 0.0, "unmet_wh": 0.0},
             )
+            | {"levels": expected_levels(info, plan.slots)}
             for info in result.flex
         ],
         "slots": [asdict(slot) for slot in plan.slots],

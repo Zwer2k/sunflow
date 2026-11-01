@@ -115,6 +115,7 @@ class SunflowPlan extends LitElement {
     _shift: { state: true },
     _pvAhead: { state: true },
     _focus: { state: true },
+    _levelFocus: { state: true },
     _showTotal: { state: true },
     _showRawPv: { state: true },
     _rawPast: { state: true },
@@ -290,23 +291,7 @@ class SunflowPlan extends LitElement {
         </div>
       </section>
 
-      <section>
-        <h3>Ladestand</h3>
-        ${lineChart(
-          [
-            { name: "Gemessen", color: SERIES_COLORS[0], points: this._past("soc_wh") },
-            { name: "Erwartet", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "soc_wh") },
-          ],
-          {
-            label: "Ladestand gemessen und erwartet",
-            formatY: (v) => formatValue(v, "Wh"),
-            yMax: capacity * 1.05,
-            now: nowDate,
-            range: this._range,
-            limits: socLimits(plan.battery),
-          },
-        )}
-      </section>
+      ${this._renderLevels(plan, slots, capacity, nowDate)}
 
       <section>
         <h3>PV-Erzeugung und Hausverbrauch</h3>
@@ -627,6 +612,86 @@ class SunflowPlan extends LitElement {
   }
 
   /** Legend entry that highlights its lines in the chart; a second click shows all again. */
+  /** Storage levels: battery, vehicles and tanks in % on one axis; a legend click shows one in kWh or °C. */
+  _renderLevels(plan, slots, capacity, now) {
+    const colors = consumerColors(plan.flex);
+    const history = this._history?.points ?? [];
+    const levels = [
+      {
+        key: "battery",
+        name: "Hausspeicher",
+        color: SERIES_COLORS[0],
+        past: this._past("soc_wh"),
+        future: this._future(slots, "soc_wh"),
+        pct: (wh) => (wh / capacity) * 100,
+        native: (wh) => wh,
+        format: (wh) => formatValue(wh, "Wh"),
+        scale: { yMax: capacity * 1.05, limits: socLimits(plan.battery) },
+        limits: plan.battery ? socLimits(plan.battery) : [],
+      },
+      ...(plan.flex ?? []).filter((f) => f.level_range).map((f) => {
+        const [low, high] = f.level_range;
+        const heater = f.kind === "heater";
+        const past = history.map((p) => ({ start: p.start, end: p.end, value: p.levels?.[f.device_id] ?? null }));
+        const future = (f.levels ?? []).map((value, i) => ({ start: slots[i].start, end: slots[i].end, value }));
+        const values = [...past, ...future].map((p) => p.value).filter((v) => v !== null && v !== undefined);
+        // Vehicles shown as energy in their battery, tanks in °C
+        const kwh = !heater && f.capacity_wh;
+        return {
+          key: f.device_id,
+          name: f.vehicle ? `${f.name} · ${f.vehicle}` : f.name,
+          color: colors.get(f.device_id),
+          past,
+          future,
+          pct: (v) => Math.max(((v - low) / (high - low)) * 100, 0),
+          native: kwh ? (v) => (v / 100) * f.capacity_wh : (v) => v,
+          format: heater ? (v) => formatValue(v, "°C") : kwh ? (v) => formatValue(v, "Wh") : (v) => formatValue(v, "%"),
+          scale: heater
+            ? { yMin: Math.floor(Math.min(low, ...values) / 5) * 5, yMax: Math.max(high, ...values) + 2,
+                limits: [{ value: high, label: `Ziel ${formatValue(high, "°C")}` }] }
+            : { yMax: (kwh ? f.capacity_wh : 100) * 1.05,
+                limits: f.target ? [{ value: kwh ? (f.target / 100) * f.capacity_wh : f.target, label: `Ziel ${formatValue(f.target, "%")}` }] : [] },
+        };
+      }),
+    ].filter((l) => [...l.past, ...l.future].some((p) => p.value !== null && p.value !== undefined));
+    const focus = levels.find((l) => l.key === this._levelFocus);
+    const shown = focus ? [focus] : levels;
+    const convert = (points, f) => points.map((p) => ({ ...p, value: p.value === null || p.value === undefined ? null : f(p.value) }));
+    const series = shown.flatMap((l) => {
+      const f = focus ? l.native : l.pct;
+      return [
+        { name: `${l.name} gemessen`, color: l.color, points: convert(l.past, f) },
+        { name: `${l.name} erwartet`, color: l.color, dashed: true, points: convert(l.future, f) },
+      ];
+    });
+    const battery = levels.find((l) => l.key === "battery");
+    const options = focus
+      ? { formatY: focus.format, yMin: focus.scale.yMin ?? 0, yMax: focus.scale.yMax, limits: focus.scale.limits }
+      : {
+          formatY: (v) => formatValue(v, "%"),
+          // A tank above its target shows above 100 %
+          yMax: Math.max(105, ...series.flatMap((x) => x.points.map((p) => p.value ?? 0))),
+          // The battery's limits in % (the others have their own targets)
+          limits: battery && plan.battery ? battery.limits.map((l) => ({ ...l, value: battery.pct(l.value) })) : [],
+        };
+    return html`<section>
+      <h3>Ladestand</h3>
+      ${levels.length > 1
+        ? html`<div class="legend">
+            ${levels.map((l) => {
+              const active = this._levelFocus === l.key;
+              return html`<button type="button" class="legend-item legend-button ${active ? "active" : ""}" aria-pressed=${active}
+                title=${active ? "Alle in % zeigen" : "Nur diesen in seiner Einheit zeigen"}
+                @click=${() => (this._levelFocus = active ? null : l.key)}>
+                <span class="swatch" style="background:${l.color}"></span>${l.name}</button>`;
+            })}
+            <span class="legend-item muted">${focus ? "Klick zeigt wieder alle in %" : "alle in % · Klick zeigt einen in kWh bzw. °C"}</span>
+          </div>`
+        : nothing}
+      ${lineChart(series, { label: "Ladestand gemessen und erwartet", now, range: this._range, ...options })}
+    </section>`;
+  }
+
   _legendButton(key, color, label) {
     const active = this._focus === key;
     return html`<button type="button" class="legend-item legend-button ${active ? "active" : ""}" aria-pressed=${active}

@@ -89,6 +89,8 @@ DEFAULT_HOT_WATER_C = 60.0
 HEATER_DEADLINE = timedelta(hours=24)
 # Without a configured daily need the tank is assumed to cool down by this much per day
 HEATER_DAILY_DROP_K = 10
+# A hot water tank at this temperature counts as empty (0 %)
+COLD_WATER_C = 15.0
 
 
 @dataclass(kw_only=True)
@@ -115,6 +117,31 @@ class FlexInfo:
     vehicle_method: str | None = None
     # A car is connected but not one of the assigned: the wallbox regulates itself
     unknown_vehicle: bool = False
+    # Level over time (vehicle %, tank °C): its sensor, energy per unit (from the grid),
+    # what the storage loses per day, and the range shown as 0..100 %
+    level_entity: str | None = None
+    wh_per_unit: float | None = None
+    loss_wh_per_day: float = 0.0
+    level_range: tuple[float, float] | None = None
+    # Vehicles: battery capacity, to show the level as energy
+    capacity_wh: float | None = None
+
+
+def expected_levels(info: FlexInfo, slots: list[Any]) -> list[float]:
+    """Level at the end of every slot (vehicle %, tank °C) from the planned power and the losses."""
+    if info.current is None or not info.wh_per_unit:
+        return []
+    level, result = info.current, []
+    for slot in slots:
+        hours = (slot.end - slot.start).total_seconds() / 3600
+        energy = (slot.flex_w or {}).get(info.name, 0.0) * hours - info.loss_wh_per_day * hours / 24
+        level += energy / info.wh_per_unit
+        if info.level_range is not None:
+            low, high = info.level_range
+            # A car stops at full; a tank does not cool below cold water
+            level = min(max(level, low), high) if info.kind == "vehicle" else max(level, low)
+        result.append(round(level, 2))
+    return result
 
 
 def flex_loads(
@@ -180,6 +207,7 @@ def flex_loads(
             max_power_w=max_power,
         )
         infos.append(info)
+        info.level_entity = level.entity_id if level is not None else None
 
         if kind == "heater":
             litres = params.get("tank_l")
@@ -194,6 +222,9 @@ def flex_loads(
             info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
             info.daily_wh = params.get("daily_energy_wh") or HEATER_DAILY_DROP_K * litres * WATER_WH_PER_LITRE_KELVIN
             storages[device.id] = (current, target, litres * WATER_WH_PER_LITRE_KELVIN)
+            info.wh_per_unit, info.loss_wh_per_day = litres * WATER_WH_PER_LITRE_KELVIN, info.daily_wh
+            # Shown as share between cold water and the target
+            info.level_range = (COLD_WATER_C, max(target, COLD_WATER_C + 1))
             if settings.alternative_cost_ct is None:
                 warnings.append(
                     f"{device.name}: Kosten der üblichen Heizung (z. B. Fernwärme) fehlen – Sunflow heizt im "
@@ -225,6 +256,8 @@ def flex_loads(
                     max_power = info.max_power_w = min(max_power, limit)
                 params = params | {"vehicle_capacity_wh": vehicle.capacity_wh, "charge_efficiency_pct": vehicle.charge_efficiency_pct}
                 current = info.current = soc_of(vehicle, snapshot.states)
+                info.level_entity = vehicle.soc_entity or info.level_entity
+                info.capacity_wh, info.level_range = vehicle.capacity_wh, (0.0, 100.0)
                 # How this vehicle charges at this wallbox; a change in the control tab still applies on top
                 profile_at = config.charging_profile(vehicle.id, device.id)
                 settings, paused = config.effective_flex(device, slot_starts[0], profile_at.flex if profile_at else None)
@@ -262,6 +295,8 @@ def flex_loads(
                     pass
             efficiency = (params.get("charge_efficiency_pct") or 90) / 100
             info.need_wh = max((target or 100) - current, 0) / 100 * capacity / efficiency
+            info.wh_per_unit, info.level_range = capacity / 100 / efficiency, (0.0, 100.0)
+            info.capacity_wh = capacity
             storages[device.id] = (current, target or 100, capacity / efficiency / 100)
 
         later_needs = daily_needs(slot_starts, info.deadline, info.daily_wh) if info.daily_wh else []

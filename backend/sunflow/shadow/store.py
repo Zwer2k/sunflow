@@ -45,14 +45,16 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
     1: ["ALTER TABLE slots ADD COLUMN actual_consumers TEXT"],
+    # Level per controllable consumer (vehicle %, tank °C)
+    2: ["ALTER TABLE slots ADD COLUMN actual_levels TEXT"],
 }
 # Stored as JSON objects (key -> W)
-JSON_COLUMNS = ("plane_forecasts", "actual_strings", "actual_consumers")
+JSON_COLUMNS = ("plane_forecasts", "actual_strings", "actual_consumers", "actual_levels")
 
 
 def slot_start(moment: datetime) -> datetime:
@@ -74,6 +76,8 @@ class Sample:
     loadpoint_w: float | None = None
     # The same per consumer (device id)
     consumers: dict[str, float] = field(default_factory=dict)
+    # Their level (vehicle %, tank °C) by device id
+    levels: dict[str, float] = field(default_factory=dict)
     # DC power per PV string ("<device id>:<string>")
     strings: dict[str, float] = field(default_factory=dict)
 
@@ -110,6 +114,12 @@ class SlotRecorder:
                 {
                     key: fmean(s.consumers[key] for s in self.samples if key in s.consumers)
                     for key in {k for s in self.samples for k in s.consumers}
+                }
+            ),
+            "actual_levels": json.dumps(
+                {
+                    key: fmean(s.levels[key] for s in self.samples if key in s.levels)
+                    for key in {k for s in self.samples for k in s.levels}
                 }
             ),
             "samples": len(self.samples),
