@@ -15,6 +15,7 @@ import zipfile
 from fastapi import APIRouter, HTTPException, Query, Request, Response, UploadFile
 
 from sunflow import API_VERSION, __version__
+from sunflow.config.models import McpSettings
 from sunflow.control.journal import JOURNAL_FILE
 from sunflow.devices.discovery import discover
 from sunflow.ha import HAClient, HAError
@@ -57,7 +58,23 @@ async def mcp_link(request: Request) -> dict[str, Any]:
     """Port of the MCP server and whether it has a key (only through Ingress); without a mapped port it is not reachable."""
     settings = request.app.state.settings
     port = await host_port(settings.supervisor_token, settings.port) if settings.supervisor_token else settings.port
-    return {"host": await internal_host(request), "port": port, "path": "/mcp", "key_created": request.app.state.mcp_key.created}
+    return {
+        "host": await internal_host(request),
+        "port": port,
+        "path": "/mcp",
+        "key_created": request.app.state.mcp_key.created,
+        "areas": request.app.state.store.load().mcp.areas,
+    }
+
+
+@router.put("/config/mcp")
+async def set_mcp_settings(request: Request, body: McpSettings) -> dict[str, Any]:
+    """Choose what the MCP server may read; applies to the next tool call."""
+    store = request.app.state.store
+    config = store.load()
+    config.mcp = body
+    store.save(config)
+    return body.model_dump()
 
 
 async def internal_host(request: Request) -> str | None:

@@ -1,13 +1,16 @@
 """A read-only MCP server (Model Context Protocol), so an AI assistant can analyse what Sunflow sees and plans.
 
 Streamable HTTP without sessions: every JSON-RPC request is one POST to /mcp, answered as
-JSON. The tools only read: they call the GET endpoints of the API inside the process, and
-the SQL tool opens the shadow database read only. Nothing can be configured or controlled.
+JSON. The tools only read: they call the GET endpoints of the API inside the process, the
+SQL tool opens the shadow database read only, and the log tool reads the App's recent log.
+Nothing can be configured or controlled. Which areas are readable is set in the settings.
 """
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 import json
+import logging
 from pathlib import Path
 import sqlite3
 from typing import Any
@@ -17,12 +20,15 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
 from sunflow import __version__
+from sunflow.log_buffer import LOG_BUFFER
 
 router = APIRouter()
 
 PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 SQL_MAX_ROWS = 2000
 SQL_TIMEOUT_S = 10
+LOG_MAX_ENTRIES = 500
+LOG_LEVELS = {"error": logging.ERROR, "warning": logging.WARNING, "info": logging.INFO}
 
 HOURS = {"type": "integer", "minimum": 1, "description": "Stunden zurück"}
 DAYS = {"type": "integer", "minimum": 1, "description": "Tage zurück"}
@@ -36,6 +42,8 @@ class Tool:
     name: str
     description: str
     path: str
+    # Readable when this area is allowed in the settings; None: always
+    area: str | None
     params: dict[str, Any] = field(default_factory=dict)
     required: tuple[str, ...] = ()
 
@@ -50,70 +58,70 @@ class Tool:
 
 
 TOOLS = [
-    Tool(name="get_status", description="Version und Verbindung zu Home Assistant.", path="/health"),
-    Tool(name="get_live", description="Aktuelle Leistungen: PV, Speicher, Netz, Haus, Verbraucher.", path="/live"),
+    Tool(name="get_status", area=None, description="Version und Verbindung zu Home Assistant.", path="/health"),
+    Tool(name="get_live", area="live", description="Aktuelle Leistungen: PV, Speicher, Netz, Haus, Verbraucher.", path="/live"),
     Tool(
-        name="get_plan",
+        name="get_plan", area="live",
         description="Aktueller Plan (15-Minuten-Slots, bis 96 h): Aktion, Speicher, Preise, Prognosen, Verbraucher, Warnungen.",
         path="/plan/latest",
     ),
-    Tool(name="get_control", description="Steuerung: Strategien, Übersteuerungen, Prioritäten, nächste Fenster.", path="/control"),
+    Tool(name="get_control", area="control", description="Steuerung: Strategien, Übersteuerungen, Prioritäten, nächste Fenster.", path="/control"),
     Tool(
-        name="get_control_log",
+        name="get_control_log", area="control",
         description="Was Sunflow an Geräte geschrieben hat, Fehler dabei und Änderungen durch andere (bis 14 Tage).",
         path="/control/log",
         params={"hours": HOURS, "device_id": DEVICE},
     ),
     Tool(
-        name="get_history",
+        name="get_history", area="history",
         description="Gemessene Werte (SoC, PV, Last, Netz, Verbraucher, Ladestände) aus HA-Statistiken, bis 7 Tage am Stück.",
         path="/history",
         params={"hours": HOURS, "end": {"type": "string", "description": "Ende (ISO 8601), Standard: jetzt"}},
     ),
     Tool(
-        name="get_shadow",
+        name="get_shadow", area="history",
         description="Aufgezeichnete Slots: geplant gegen tatsächlich, mit Auswertung.",
         path="/shadow",
         params={"hours": HOURS},
     ),
     Tool(
-        name="get_energy",
+        name="get_energy", area="history",
         description="Energiebilanz eines Zeitraums.",
         path="/energy",
         params={"period": {"type": "string", "enum": ["today", "7d", "30d"]}},
     ),
-    Tool(name="get_costs", description="Kosten und Ersparnis je Tag.", path="/costs/history", params={"days": DAYS}),
-    Tool(name="get_efficiency", description="Wirkungsgrad-Verlauf je Tag.", path="/efficiency/history", params={"days": DAYS}),
-    Tool(name="get_recommendations", description="Empfehlungen von Sunflow.", path="/recommendations"),
-    Tool(name="get_config", description="Konfiguration: Geräte, Tarif, Prognose, Fahrzeuge, Steuerung.", path="/config"),
-    Tool(name="get_sources", description="Preis- und Prognosequellen mit ihrem Zustand.", path="/sources"),
+    Tool(name="get_costs", area="history", description="Kosten und Ersparnis je Tag.", path="/costs/history", params={"days": DAYS}),
+    Tool(name="get_efficiency", area="history", description="Wirkungsgrad-Verlauf je Tag.", path="/efficiency/history", params={"days": DAYS}),
+    Tool(name="get_recommendations", area="live", description="Empfehlungen von Sunflow.", path="/recommendations"),
+    Tool(name="get_config", area="config", description="Konfiguration: Geräte, Tarif, Prognose, Fahrzeuge, Steuerung.", path="/config"),
+    Tool(name="get_sources", area="live", description="Preis- und Prognosequellen mit ihrem Zustand.", path="/sources"),
     Tool(
-        name="get_tariff_series",
+        name="get_tariff_series", area="live",
         description="Strompreise der nächsten Stunden (auch geschätzte).",
         path="/tariff/series",
         params={"hours": HOURS | {"description": "Stunden voraus"}},
     ),
     Tool(
-        name="get_forecast_series",
+        name="get_forecast_series", area="live",
         description="PV-Prognose der nächsten Stunden, roh und gelernt korrigiert.",
         path="/forecast/series",
         params={"hours": HOURS | {"description": "Stunden voraus"}},
     ),
-    Tool(name="get_pv_learning", description="Stand des PV-Lernens je Fläche.", path="/pv-learning"),
-    Tool(name="get_vehicles", description="Fahrzeuge und Ladeeinstellungen.", path="/config/vehicles"),
-    Tool(name="get_batteries", description="Speicher mit Kapazität und Modulen.", path="/config/batteries"),
-    Tool(name="get_site", description="Standort und Anlage.", path="/site"),
-    Tool(name="get_integration_state", description="Was die HA-Integration bekommt (Sensoren, Kalender).", path="/integration/state"),
-    Tool(name="get_direct_status", description="Zustand direkt angebundener Geräte (Modbus TCP, HTTP).", path="/direct/status"),
+    Tool(name="get_pv_learning", area="live", description="Stand des PV-Lernens je Fläche.", path="/pv-learning"),
+    Tool(name="get_vehicles", area="config", description="Fahrzeuge und Ladeeinstellungen.", path="/config/vehicles"),
+    Tool(name="get_batteries", area="config", description="Speicher mit Kapazität und Modulen.", path="/config/batteries"),
+    Tool(name="get_site", area="config", description="Standort und Anlage.", path="/site"),
+    Tool(name="get_integration_state", area="live", description="Was die HA-Integration bekommt (Sensoren, Kalender).", path="/integration/state"),
+    Tool(name="get_direct_status", area="config", description="Zustand direkt angebundener Geräte (Modbus TCP, HTTP).", path="/direct/status"),
     Tool(
-        name="get_device_parameters",
+        name="get_device_parameters", area="config",
         description="Parameter eines Geräts mit aktuellen Werten.",
         path="/config/devices/{device_id}/parameters",
         params={"device_id": DEVICE},
         required=("device_id",),
     ),
     Tool(
-        name="get_device_efficiency",
+        name="get_device_efficiency", area="config",
         description="Gemessener Wirkungsgrad eines Speichers.",
         path="/config/devices/{device_id}/efficiency",
         params={"device_id": DEVICE, "days": DAYS},
@@ -131,6 +139,24 @@ SQL_TOOL = {
     "inputSchema": {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]},
     "annotations": {"readOnlyHint": True, "openWorldHint": False},
 }
+LOG_TOOL = {
+    "name": "get_log",
+    "description": (
+        "Fehler, Warnungen und Hinweise aus dem Log der App (seit dem letzten Start, im Speicher), "
+        "mit Traceback bei Ausnahmen; älteste zuerst."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "level": {"type": "string", "enum": ["error", "warning", "info"], "description": "Mindeststufe, Standard warning"},
+            "hours": HOURS,
+            "limit": {"type": "integer", "minimum": 1, "maximum": LOG_MAX_ENTRIES, "description": "Höchstens so viele, die neuesten"},
+        },
+        "required": [],
+    },
+    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+}
+LOCAL_TOOLS = {SQL_TOOL["name"]: (SQL_TOOL, "history"), LOG_TOOL["name"]: (LOG_TOOL, "log")}
 TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
 
 
@@ -203,14 +229,47 @@ def query_shadow(path: Path, sql: str) -> dict[str, Any]:
     return {"columns": columns, "rows": rows[:SQL_MAX_ROWS], "truncated": len(rows) > SQL_MAX_ROWS}
 
 
+def allowed_areas(request: Request) -> set[str]:
+    """Areas the MCP server may read, as set in the settings."""
+    return set(request.app.state.store.load().mcp.areas)
+
+
+def tool_list(areas: set[str]) -> list[dict[str, Any]]:
+    """The tools of the allowed areas."""
+    return [
+        *(t.schema() for t in TOOLS if t.area is None or t.area in areas),
+        *(schema for schema, area in LOCAL_TOOLS.values() if area in areas),
+    ]
+
+
+def read_log(arguments: dict[str, Any]) -> str:
+    """Recent log records from a level up."""
+    level = LOG_LEVELS.get(str(arguments.get("level") or "warning"))
+    if level is None:
+        raise ToolError("level muss error, warning oder info sein")
+    try:
+        hours = max(int(arguments.get("hours") or 24), 1)
+        limit = min(max(int(arguments.get("limit") or 100), 1), LOG_MAX_ENTRIES)
+    except TypeError, ValueError:
+        raise ToolError("hours und limit müssen Zahlen sein") from None
+    entries = LOG_BUFFER.entries(level, datetime.now(UTC) - timedelta(hours=hours), limit)
+    return json.dumps({"entries": entries}, separators=(",", ":"))
+
+
 async def call_tool(request: Request, name: str, arguments: dict[str, Any]) -> str:
     """The result of a tool as text (JSON)."""
+    area = LOCAL_TOOLS[name][1] if name in LOCAL_TOOLS else getattr(TOOLS_BY_NAME.get(name), "area", "")
+    if name not in LOCAL_TOOLS and name not in TOOLS_BY_NAME:
+        raise ToolError(f"Unbekanntes Werkzeug: {name}")
+    if area is not None and area not in allowed_areas(request):
+        raise ToolError(f"{name} ist in Sunflow nicht freigegeben (Einstellungen → Geräte → MCP-Server)")
     if name == SQL_TOOL["name"]:
         data_dir: Path = request.app.state.settings.data_dir
         result = await asyncio.to_thread(query_shadow, data_dir / "shadow.db", str(arguments.get("sql", "")))
         return json.dumps(result, default=str, separators=(",", ":"))
-    if (tool := TOOLS_BY_NAME.get(name)) is None:
-        raise ToolError(f"Unbekanntes Werkzeug: {name}")
+    if name == LOG_TOOL["name"]:
+        return read_log(arguments)
+    tool = TOOLS_BY_NAME[name]
     query = {k: v for k, v in arguments.items() if k in tool.params}
     path = tool.path
     for key in tool.required:
@@ -258,7 +317,7 @@ async def handle(request: Request, message: Any) -> dict[str, Any] | None:
     if method == "ping":
         return _result(message_id, {})
     if method == "tools/list":
-        return _result(message_id, {"tools": [*(t.schema() for t in TOOLS), SQL_TOOL]})
+        return _result(message_id, {"tools": tool_list(allowed_areas(request))})
     if method == "tools/call":
         arguments = params.get("arguments") or {}
         try:

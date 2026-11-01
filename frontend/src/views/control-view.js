@@ -83,6 +83,7 @@ class SunflowControl extends LitElement {
     _busy: { state: true },
     _editing: { state: true },
     _takeover: { state: true },
+    _takeoverOpen: { state: true },
     _log: { state: true },
     _logDevice: { state: true },
     _logHours: { state: true },
@@ -97,6 +98,7 @@ class SunflowControl extends LitElement {
     this._duration = "midnight";
     this._busy = false;
     this._editing = null;
+    this._takeoverOpen = false;
     this._log = null;
     this._logDevice = "";
     this._logHours = 24;
@@ -276,15 +278,25 @@ class SunflowControl extends LitElement {
   }
 
   _renderTakeover(t) {
-    const time = (iso) => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    const open = this._takeoverOpen;
+    const controlled = t.enabled ? t.devices.filter((d) => d.enabled && !d.blocked).length : 0;
+    const summary = t.enabled ? `${controlled} von ${t.devices.length} Geräten gesteuert` : "Aus: Sunflow plant nur";
+    const problems = t.devices.filter((d) => d.status?.error || d.status?.warning).length;
     return html`
       <section class="card takeover ${t.enabled ? "on" : ""}">
         <div class="card-head">
           <div>
-            <h2>Sunflow steuert</h2>
-            <p class="small muted">${t.enabled
-              ? "Sunflow setzt den Plan an den Geräten um. Ausschalten gibt sie zurück: Speicher in Eigenverbrauch und vorherigen Modus, Ladepunkte an ihre eigene Logik."
-              : "Aus: Sunflow plant nur, die Geräte arbeiten wie bisher."}</p>
+            <button class="device-toggle" aria-expanded=${open} @click=${() => (this._takeoverOpen = !open)}>
+              <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
+              <h2>Sunflow steuert</h2>
+            </button>
+            ${open
+              ? html`<p class="small muted">${t.enabled
+                  ? "Sunflow setzt den Plan an den Geräten um. Ausschalten gibt sie zurück: Speicher in Eigenverbrauch und vorherigen Modus, Ladepunkte an ihre eigene Logik."
+                  : "Aus: Sunflow plant nur, die Geräte arbeiten wie bisher."}</p>`
+              : html`<p class="small muted">${summary}${problems
+                  ? html` · <span class="warn-text">${problems === 1 ? "1 Gerät mit Fehler oder Warnung" : `${problems} Geräte mit Fehler oder Warnung`}</span>`
+                  : nothing}</p>`}
           </div>
           <label class="switch">
             <input type="checkbox" .checked=${t.enabled} ?disabled=${this._busy}
@@ -293,6 +305,14 @@ class SunflowControl extends LitElement {
           </label>
         </div>
         ${t.paused ? html`<div class="alert warn">⚠ ${t.paused}</div>` : nothing}
+        ${open ? this._renderTakeoverDevices(t) : nothing}
+      </section>
+    `;
+  }
+
+  _renderTakeoverDevices(t) {
+    const time = (iso) => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    return html`
         <ul class="takeover-devices">
           ${t.devices.map((d) => {
             const s = d.status;
@@ -326,7 +346,6 @@ class SunflowControl extends LitElement {
             </li>`;
           })}
         </ul>
-      </section>
     `;
   }
 
@@ -394,6 +413,9 @@ class SunflowControl extends LitElement {
   /** Wallbox with several vehicles: which one is plugged in, and the choice by hand. */
   _renderVehicle(device) {
     const v = device.vehicle;
+    // The scanned card in the brackets, also when it belongs to no vehicle
+    const card = device.card !== null && device.card !== undefined ? `Karte ${device.card}` : null;
+    const how = v?.method === "Karte" && card ? card : [v?.method, card].filter(Boolean).join(", ");
     return html`
       <div class="row">
         <span class="small muted">Fahrzeug</span>
@@ -404,8 +426,9 @@ class SunflowControl extends LitElement {
               ${device.vehicles.map((o) => html`<option value=${o.id} ?selected=${device.selected_vehicle === o.id}>${o.name}</option>`)}
             </select>`
           : nothing}
-        <span class="small">${v ? html`<strong>${v.name}</strong> <span class="muted">(${v.method})</span>` : html`<span class="muted">nicht erkannt</span>`}</span>
-        ${device.card !== null && device.card !== undefined ? html`<span class="small muted">· Karte ${device.card}</span>` : nothing}
+        <span class="small">${v ? html`<strong>${v.name}</strong>` : html`<span class="muted">nicht erkannt</span>`}${how
+          ? html` <span class="muted">(${how})</span>`
+          : nothing}</span>
         ${device.aux_battery ? this._renderAuxBattery(device.aux_battery) : nothing}
       </div>
     `;
@@ -586,6 +609,8 @@ class SunflowControl extends LitElement {
       display: flex; flex-direction: column; gap: 12px;
     }
     .takeover.on { border-color: var(--sf-primary); }
+    .device-toggle { display: flex; gap: 8px; align-items: baseline; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+    .caret { width: 14px; color: var(--sf-muted); }
     .takeover-devices { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
     .takeover-devices li { display: flex; flex-direction: column; gap: 2px; }
     .takeover-devices .status { padding-left: 26px; }

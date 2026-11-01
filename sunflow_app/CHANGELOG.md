@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.70.0
+
+- MCP-Server: Neues Werkzeug `get_log` liest Fehler, Warnungen und Hinweise aus dem Log der App seit dem letzten Start, bei Ausnahmen mit Traceback.
+- MCP-Server: Berechtigungen je Bereich unter Einstellungen → Geräte → MCP-Server („Darf lesen“): Live/Plan/Preise, Verlauf/Aufzeichnung (mit SQL), Konfiguration, Steuerung, Fehlerlog. Nicht freigegebene Bereiche fehlen in der Werkzeugliste und werden abgewiesen. Standardmäßig ist alles freigegeben, Schreiben gibt es weiterhin nicht.
+- Steuerung: Beim Auto steht die gescannte Karte direkt in der Klammer, z. B. „Fiat 500e (Karte 1)“.
+- Steuerung: Der Abschnitt „Sunflow steuert“ ist standardmäßig zugeklappt. Zugeklappt zeigt er, wie viele Geräte gesteuert werden und ob eines einen Fehler oder eine Warnung hat; der Hauptschalter bleibt sichtbar.
+
 ## 0.69.1
 
 - Steuerung → Verbraucher: Beim Auto steht die an der Wallbox gewählte Karte (auch wenn sie keinem Fahrzeug zugeordnet ist) und – wenn eingerichtet – die Spannung der 12-V-Batterie, rot unter der eingestellten Schwelle, mit dem Ende einer laufenden Nachladung.
