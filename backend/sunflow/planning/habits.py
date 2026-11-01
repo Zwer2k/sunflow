@@ -6,12 +6,14 @@ unplug) are found. The typical departure is the median unplug time per day type
 typical arrival the median plug-in time of those stays.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from statistics import median
 from typing import Any
 
 from sunflow.ha import HAClient
+
+from .vehicles import PLUGGED
 
 MIN_SESSIONS = 3
 # An expected arrival plans charging for a car that is not there yet: more evidence
@@ -31,6 +33,8 @@ class Departure:
     # Typical plug-in time of a stay (local); None without enough of them
     arrival_workday: time | None = None
     arrival_weekend: time | None = None
+    # The sensor it was learned from
+    entity_id: str | None = None
 
     def next_arrival(self, moment: datetime, tz: tzinfo) -> datetime | None:
         """The next typical arrival after moment."""
@@ -55,15 +59,16 @@ def _next_typical(moment: datetime, tz: tzinfo, workday: time | None, weekend: t
 
 
 def departures_from(states: list[dict[str, Any]], tz: tzinfo) -> Departure:
-    """Learn from minimal history states ({"s": "on"/"off", "lu": timestamp})."""
+    """Learn from minimal history states ({"s": "on"/"home"/..., "lu": timestamp})."""
     unplug: dict[str, list[int]] = {"workday": [], "weekend": []}
     plug_in: dict[str, list[int]] = {"workday": [], "weekend": []}
     plugged_at: datetime | None = None
     for row in states:
         moment = datetime.fromtimestamp(row.get("lu") or row.get("lc") or 0, UTC).astimezone(tz)
-        if row.get("s") == "on":
+        state = str(row.get("s", "")).lower()
+        if state in PLUGGED:
             plugged_at = plugged_at or moment
-        elif row.get("s") == "off" and plugged_at is not None:
+        elif state not in ("unknown", "unavailable", "") and plugged_at is not None:
             if moment - plugged_at >= MIN_STAY:
                 kind = "weekend" if moment.weekday() >= 5 else "workday"
                 unplug[kind].append(moment.hour * 60 + moment.minute)
@@ -97,7 +102,7 @@ async def learn_departure(client: HAClient, entity_id: str, tz: tzinfo) -> Depar
         minimal_response=True,
         no_attributes=True,
     )
-    return departures_from(result.get(entity_id, []), tz)
+    return replace(departures_from(result.get(entity_id, []), tz), entity_id=entity_id)
 
 
 # A consumer counts as running above this power (standby of smart plugs stays below)

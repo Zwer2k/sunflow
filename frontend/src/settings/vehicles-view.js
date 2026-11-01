@@ -194,6 +194,8 @@ class SunflowVehicles extends LitElement {
             <sf-picker label="Angesteckt" empty-label="keiner" placeholder="Sensor des Autos …" .value=${form.plugged_entity}
               .options=${options(this._candidates?.presence, (c) => c.state ?? "–")}
               @change=${(e) => set("plugged_entity", e.detail.value)}></sf-picker>
+            <span class="small muted">Am besten die Anwesenheit (z. B. ein device_tracker des Autos): Sunflow lernt daraus,
+              wann es nach Hause kommt, und meldet, wenn sich das Einstecken lohnt.</span>
           </div>
         </div>
         ${this._renderAux(form, options)}

@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
 import { poll } from "../lib/poll.js";
 import { CATEGORY_LABELS, formatPower, formatValue } from "../lib/format.js";
+import { plugInHints } from "../lib/plug-in.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -204,6 +205,7 @@ class SunflowControl extends LitElement {
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${data === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
+      ${plugInHints(data?.plug_in_hints)}
       ${this._takeover?.devices.length ? this._renderTakeover(this._takeover) : nothing}
       ${data ? html`
           ${data.strategy.available ? this._renderBattery(data.strategy) : nothing}
@@ -576,6 +578,7 @@ class SunflowControl extends LitElement {
     .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
     .switch input { width: 18px; height: 18px; margin: 0; }
     .alert.warn { padding: 10px 14px; border-radius: 8px; background: var(--sf-warn-bg); color: var(--sf-warn-text); margin-top: 8px; }
+    .alert.info { padding: 10px 14px; border-radius: 8px; background: var(--sf-primary-bg); color: var(--sf-primary-text); }
     .warn-text { color: var(--sf-warn-text); }
     .log-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 480px; overflow-y: auto; }

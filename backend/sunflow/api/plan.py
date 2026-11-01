@@ -72,6 +72,8 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
             | {"levels": expected_levels(info, plan.slots)}
             for info in result.flex
         ],
+        # Cars at home but not plugged in that get energy soon
+        "plug_in_hints": result.plug_in_hints,
         # Cars have their own level line, also while away
         "vehicles": [
             {

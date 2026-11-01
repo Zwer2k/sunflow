@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.67.0
+
+- Autos: Mit einem Anwesenheitssensor (Einstellungen → Fahrzeuge, „Angesteckt / zuhause“, z. B. ein device_tracker) lernt Sunflow je Auto, wann es nach Hause kommt und wegfährt – das gilt dann statt der Steckzeiten an der Wallbox. Ist das Auto zu Hause, aber nicht angesteckt, plant Sunflow es ab sofort ein (ohne Pflicht, nur mit PV-Überschuss oder günstigem Strom).
+- Hinweis „Einstecken lohnt sich“: Bekommt ein Auto, das zu Hause, aber nicht angesteckt ist, in den nächsten sechs Stunden mindestens 1 kWh, zeigen Plan und Steuerung einen Hinweis mit Startzeit und Anteil PV-Überschuss. Die Integration (0.4.0) löst dazu einmal das Ereignis `sunflow_ems_plug_in_suggested` aus – Beispiel für eine Push-Nachricht in `docs/integration.md`.
+
 ## 0.66.1
 
 - Autos unterwegs: Der Bedarf eines Autos, das nur erwartet wird, ist keine Pflicht mehr. Sunflow plant es in Viertelstunden ein, die günstiger als der mittlere Preis im Plan sind, oder mit PV-Überschuss – erzwingt aber kein teures Netzladen. Bisher konnte eine kurze gelernte Standzeit (z. B. Ankunft 13:33, Abfahrt 15:48) volle 11 kW aus dem Netz einplanen. Steckt das Auto an, gilt wieder der volle Bedarf bis zur Abfahrt.
