@@ -1,0 +1,119 @@
+# Einstellungen
+
+**Deutsch** · [English](en/settings.md)
+
+Die Einstellungen sind in Bereiche gegliedert; beim ersten Start führt Sunflow der Reihe nach
+durch sie (siehe [Installation und Einrichtung](installation.md)). Ungespeicherte Änderungen
+eines Bereichs bleiben erhalten, wenn du zu einem anderen wechselst.
+
+**Expertenmodus** (Schalter unter der Liste) zeigt zusätzlich je Rolle Entität, Einheit, Faktor,
+Vorzeichen, Nachkommastellen, Abfrageintervall und RAM/Flash. Diese Werte werden als
+Abweichung vom Profil gespeichert. Der Browser merkt sich den Schalter.
+
+## Integrationen, Geräte, Gerätetest, Bilanzprüfung
+
+Beschrieben unter [Installation und Einrichtung](installation.md).
+
+## Optimierer
+
+![Optimierer](images/settings-optimizers.png)
+
+Quellen, Anordnung auf dem Dach und Zuordnung der Modul-Optimierer: siehe [Optimierer](optimierer.md).
+
+## Fahrzeuge
+
+![Fahrzeuge](images/settings-vehicles.png)
+
+Was das Auto ist, unabhängig von der Wallbox:
+
+- **Name**, **Akkukapazität (nutzbar)** und **Ladewirkungsgrad**.
+- **Ladestand**: der Sensor aus der Integration des Autos.
+- **Angesteckt / zuhause** (optional, z. B. ein `device_tracker`): Damit lernt Sunflow, wann das
+  Auto üblicherweise heimkommt und wegfährt, und plant es ein, sobald es zu Hause ist. Ohne
+  Sensor gelten die Steckzeiten an der Wallbox.
+- **Höchste Ladeleistung** einphasig und dreiphasig (z. B. Fiat 500e: 7,4 kW / 11 kW). Sunflow
+  gibt der Wallbox nicht mehr Strom vor, als das Auto nimmt, und plant mit dieser Leistung.
+- **12-V-Batterie schützen**: Mit dem Spannungssensor des Autos lädt die Wallbox kurz mit
+  kleinstem Strom, wenn die Bordnetzbatterie unter die Grenze fällt (Vorgabe 12,2 V, 5 min
+  laden, danach mindestens 60 min Pause). Einzelheiten unter [Unterstützte Geräte](geraete.md).
+
+Sunflow lernt aus dem Ladestand-Verlauf der letzten vier Wochen, wie viel das Auto je Stunde
+verbraucht (Werktag und Wochenende getrennt, ab 14 Tagen mit Daten).
+
+## Laden
+
+![Laden](images/settings-charging.png)
+
+Je Wallbox:
+
+- **Welche Fahrzeuge** hier laden dürfen.
+- **Karte an dieser Wallbox**: Die RFID-Karte, mit der das Fahrzeug erkannt wird.
+- **Ziel-Ladestand** und **Fertig bis (täglich)**.
+- **Laden**: Kostenoptimal, Nur PV-Überschuss oder Schnellstmöglich.
+- **Hausspeicher darf ins Auto entladen**: Aus heißt, das Auto lädt nur aus PV-Überschuss oder dem Netz.
+- **Erkennung des Fahrzeugs**: in welcher Reihenfolge Sunflow das angesteckte Auto erkennt
+  (Karte an der Wallbox, Auswahl in der Steuerung, Sensor des Fahrzeugs) und ob die Wallbox
+  ohne Karte freigibt.
+
+## Verbraucher
+
+![Verbraucher](images/settings-consumers.png)
+
+Standard-Vorgaben für Wallboxen ohne zugeordnete Fahrzeuge, Warmwasser und eigene Verbraucher:
+
+- **Planung**: Kostenoptimal (PV-Überschuss oder günstige Zeiten), Nur PV-Überschuss (nie aus
+  dem Netz oder dem Hausspeicher) oder Schnellstmöglich (sofort mit voller Leistung).
+- **Ziel**: Ladestand oder Temperatur; leer übernimmt Sunflow den Wert aus evcc. Ein aktiver
+  evcc-Ladeplan hat Vorrang.
+- **Fertig bis (täglich)**: leer heißt bis zum Ende des Plans bzw. innerhalb von 24 h.
+- **Strom aus dem Hausspeicher**: ob der Speicher in diesen Verbraucher entladen darf.
+- **Alternative Wärmequelle** (Warmwasser): Preis je kWh Wärme aus Fernwärme, Gas o. Ä.
+  Elektrisch geheizt wird nur, wenn es günstiger ist.
+
+Sunflow lernt, wann und wie viel Warmwasser verbraucht wird (je Stunde, Werktag und Wochenende
+getrennt, ab einer Woche Daten), und heizt ohne eingestellte Bereitzeit bis zur gewohnten
+Hauptverbrauchszeit.
+
+## Tarif & Prognose
+
+![Tarif und Prognose](images/settings-sources.png)
+
+Bezugspreis, PV-Prognose je Fläche und Einspeisevergütung je Wechselrichter. Siehe
+[Installation und Einrichtung](installation.md#6-tarif--prognose) und [Strompreise](strompreise.md).
+
+## Planung
+
+![Planung](images/settings-standards.png)
+
+Wie Sunflow den Hausspeicher plant. Hintergründe stehen unter [So plant Sunflow](planung.md).
+
+| Einstellung | Bedeutung |
+|---|---|
+| Strategie | Ausgewogen, Möglichst viel PV aufnehmen oder Möglichst autark. „Was macht …?“ klappt die Erklärung auf. |
+| Ladegrenze im Alltag | Höher lädt Sunflow nur für eine fällige Vollladung. 100 % = keine Grenze. |
+| Voll laden alle … Tage | Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt. |
+| Spätestens nach … aus dem Netz | War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll. |
+| Alterung bei hohem Ladestand | Jede kWh über der Schwelle (Vorgabe 80 %) kostet je Stunde einen kleinen Betrag (Vorgabe 0,1 ct). Sunflow lädt dann möglichst kurz vor dem Bedarf. Abschaltbar. |
+| Notstrom-Reserve | Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand. |
+| Hausverbrauch pro Tag | Startwert, solange weniger als 7 Tage Verlauf vorliegen. |
+| Großverbraucher ausklammern ab | Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose. Steuerbare Verbraucher rechnet Sunflow ohnehin heraus. |
+| Verschleißkosten Speicher | Direkt in ct/kWh oder aus Anschaffungspreis, Zyklen, Entladetiefe und Restkapazität berechnet. Verhindert Zyklen für Kleinstbeträge. |
+| Laden aus dem Netz | Erlaubt, wenn es sich rechnet. |
+| PV-Prognose anpassen | Lernt aus Messwerten je Stunde und Bewölkung, Details unter Analyse. |
+| Netzdienlich | Einspeise- und Bezugsspitzen über den eingestellten Grenzen vermeiden, wo es wenig kostet. Ein weiches Ziel, keine harte Grenze. |
+| Unsichere PV-Prognose | Vorsichtig plant mehr mit dem schlechten Fall der Prognose (Solcast p10). |
+| Wetter für die Bewölkung | Wetter-Entität für das Lernen je Bewölkung. |
+
+Strategie und Netzladen gelten sofort. Zahlenwerte übernimmt **Speichern und neu planen**.
+
+## Anzeige
+
+![Anzeige](images/settings-display.png)
+
+Das Wetter in der Live-Ansicht lässt sich für Handy und für Tablet/Computer getrennt ausblenden.
+Ist es überall aus, fragt Sunflow die Wettervorhersage dafür nicht ab.
+
+## Übersicht
+
+Fasst Geräte, Tarif und Prognose zusammen und markiert, was noch fehlt (siehe
+[Installation und Einrichtung](installation.md#8-übersicht)).

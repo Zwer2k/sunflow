@@ -1,7 +1,86 @@
 # Sunflow
 
-Predictive energy management for Home Assistant – plans battery, EV and heat
-pump around PV forecasts and dynamic prices.
+Predictive energy management for Home Assistant. Sunflow plans the home battery,
+EV charging, hot water and other loads around the PV forecast and the electricity
+price, and can carry out the plan itself – using the integrations you already have.
+
+*Vorausschauendes Energiemanagement für Home Assistant: Sunflow plant Speicher,
+Wallbox, Warmwasser und weitere Verbraucher nach PV-Prognose und Strompreis und setzt
+den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
+
+![Live view](docs/images/live.png)
+
+## Features
+
+- **Plans 96 hours ahead** in quarter hours with a mixed-integer optimizer: prices,
+  feed-in tariff, PV and load forecast, battery losses, wear and calendar ageing.
+- **Three battery strategies**: balanced (lowest cost), absorb as much PV as possible,
+  or as self-sufficient as possible; backup reserve, charge limit and periodic full
+  charges.
+- **EV charging**: vehicle detection by RFID card or selection, targets and deadlines,
+  PV surplus charging with 1 ↔ 3 phase switching (go-e), learned arrival and
+  consumption, 12 V battery protection, "worth plugging in" hint.
+- **Hot water and own loads**: heating rods, switches, power levels and target
+  currents; learned hot water demand; one-off loads such as a washing machine at the
+  cheapest time.
+- **Learns** the PV forecast per roof plane and cloud cover, house consumption, car
+  and hot water usage.
+- **Dynamic tariffs**: Tibber, Nord Pool, EPEX Spot (aWATTar, smartENERGY,
+  Energy-Charts …), ENTSO-E, Octopus; price estimate beyond the published prices.
+- **Shadow mode first**: Sunflow records what it would do before you hand over
+  control; afterwards it controls inverters, wallboxes and loads with safeguards
+  (watchdog, fallback to self-consumption, control log).
+- **Home Assistant integration**: learned PV forecast for the Energy dashboard,
+  entities, actions and events for your automations.
+- **Read-only MCP server** so AI assistants such as Claude Code can explain plan,
+  history and errors.
+
+| Planning | Control | Analysis |
+|---|---|---|
+| ![Planning](docs/images/plan.png) | ![Control](docs/images/control.png) | ![Analysis](docs/images/analysis.png) |
+
+## Documentation
+
+| | Deutsch | English |
+|---|---|---|
+| Overview | [Dokumentation](docs/README.md) | [Documentation](docs/en/README.md) |
+| Installation and setup | [Installation und Einrichtung](docs/installation.md) | [Installation and setup](docs/en/installation.md) |
+| User interface | [Bedienung](docs/bedienung.md) | [User interface](docs/en/user-interface.md) |
+| Handing over control | [Steuerung übernehmen](docs/steuerung.md) | [Handing over control](docs/en/control.md) |
+| Settings | [Einstellungen](docs/einstellungen.md) | [Settings](docs/en/settings.md) |
+| How Sunflow plans | [So plant Sunflow](docs/planung.md) | [How Sunflow plans](docs/en/planning.md) |
+| Supported devices | [Unterstützte Geräte](docs/geraete.md) | [Supported devices](docs/en/devices.md) |
+| Electricity prices | [Strompreise](docs/strompreise.md) | [Electricity prices](docs/en/prices.md) |
+| Optimizers | [Optimierer](docs/optimierer.md) | [Optimizers](docs/en/optimizers.md) |
+| Home Assistant integration | [Sunflow-Integration](docs/integration.md) | [Sunflow integration](docs/en/integration.md) |
+| MCP server | [MCP-Server](docs/mcp.md) | [MCP server](docs/en/mcp.md) |
+| Troubleshooting | [Fehlersuche](docs/fehlersuche.md) | [Troubleshooting](docs/en/troubleshooting.md) |
+
+The user interface is currently in German.
+
+## Supported devices (overview)
+
+Inverters and batteries: Sofar HYD-KTL, SolaX Gen4/5, Huawei SUN2000 (with and
+without LUNA2000), SolarEdge StorEdge, Fronius GEN24 Plus, GoodWe ET/EH/BT, Kostal
+Plenticore, Victron ESS (Modbus TCP). Meters: Tibber Pulse. Wallboxes: evcc
+loadpoints, go-e Charger (API v1 and v2). Optimizers: Huawei, Tigo. Plus generic
+switches, power levels and target currents. Test status per device in
+[Supported devices](docs/en/devices.md).
+
+## Installation as Home Assistant App
+
+1. Settings → Apps → App store → ⋮ → Repositories → add `https://github.com/Zwer2k/sunflow`
+2. Install "Sunflow" (the Supervisor builds it on the device; this takes a few minutes)
+3. Start it and open the Sunflow panel; set up devices in the wizard
+
+Step-by-step guide: [Installation and setup](docs/en/installation.md).
+
+Updates: the image fetches `main` at build time. A new version number in
+`sunflow_app/config.yaml` triggers the update and a fresh clone; "Rebuild"
+without a version change may reuse the cached clone.
+
+Shadow mode data can be downloaded in the overview ("Daten exportieren") and
+merged into another instance ("Export importieren").
 
 ## Repository layout
 
@@ -14,7 +93,7 @@ pump around PV forecasts and dynamic prices.
 | `profiles/` | Manufacturer profiles mapping roles/actions to HA entities |
 | `schema/` | JSON schemas for profiles and configuration |
 | `tests/` | Tests |
-| `docs/` | User documentation (German), e.g. the list of supported devices |
+| `docs/` | User documentation in German (`docs/`) and English (`docs/en/`), screenshots in `docs/images/` |
 
 The same repository is added both to the App store (`repository.yaml`) and to
 HACS (`hacs.json`).
@@ -45,19 +124,6 @@ HACS (`hacs.json`).
 Profiles are grouped by kind of device (`profiles/inverters/`, `meters/`,
 `loadpoints/`, `loads/`); a profile is identified by its `profile` field, not
 its path.
-
-## Installation as Home Assistant App
-
-1. Settings → Apps → App store → ⋮ → Repositories → add `https://github.com/Zwer2k/sunflow`
-2. Install "Sunflow" (the Supervisor builds it on the device; this takes a few minutes)
-3. Start it and open the Sunflow panel; set up devices in the wizard
-
-Updates: the image fetches `main` at build time. A new version number in
-`sunflow_app/config.yaml` triggers the update and a fresh clone; "Rebuild"
-without a version change may reuse the cached clone.
-
-Shadow mode data can be downloaded in the overview ("Daten exportieren") and
-merged into another instance ("Export importieren").
 
 ## Development
 

@@ -1,5 +1,7 @@
 # Sunflow-Integration in Home Assistant
 
+**Deutsch** · [English](en/integration.md)
+
 Die Integration verbindet Home Assistant mit der Sunflow-App. Sie bringt die gelernte
 PV-Prognose ins Energie-Dashboard, zeigt Plan und Steuerung als Entitäten und lässt
 Sunflow aus Automationen bedienen. Gerechnet und gesteuert wird weiter in der App.

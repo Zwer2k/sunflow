@@ -1,5 +1,7 @@
 # Unterstützte Geräte
 
+**Deutsch** · [English](en/devices.md)
+
 Sunflow arbeitet mit Profilen (`profiles/`): Ein Profil sagt, welche Entitäten einer
 Home-Assistant-Integration welche Werte liefern und wie ein Gerät gesteuert wird. Geräte
 ohne Integration bindet Sunflow direkt per Modbus TCP an.
