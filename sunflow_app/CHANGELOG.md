@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.68.0
+
+- MCP-Server: Ein KI-Assistent (z. B. Claude Code) kann über `/mcp` Plan, Verlauf, Aufzeichnung, Steuerungsprotokoll, Preise, Prognosen und Konfiguration lesen – nur lesend, mit eigenem Schlüssel, der für nichts anderes gilt. Von außen erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist. Zugangsdaten und Einrichtungsbefehl stehen unter Einstellungen → Geräte. Anleitung in `docs/mcp.md`.
+
 ## 0.67.0
 
 - Autos: Mit einem Anwesenheitssensor (Einstellungen → Fahrzeuge, „Angesteckt / zuhause“, z. B. ein device_tracker) lernt Sunflow je Auto, wann es nach Hause kommt und wegfährt – das gilt dann statt der Steckzeiten an der Wallbox. Ist das Auto zu Hause, aber nicht angesteckt, plant Sunflow es ab sofort ein (ohne Pflicht, nur mit PV-Überschuss oder günstigem Strom).

@@ -1,5 +1,5 @@
 name: Sunflow
-version: "0.67.0"
+version: "0.68.0"
 slug: sunflow
 description: Predictive energy management with PV forecasts and dynamic prices
 url: https://github.com/Zwer2k/sunflow
@@ -10,6 +10,11 @@ init: false
 homeassistant_api: true
 ingress: true
 ingress_port: 8099
+# Only for the MCP server (/mcp, own token); the rest stays Ingress only. Off until a host port is set
+ports:
+  8099/tcp: null
+ports_description:
+  8099/tcp: MCP-Server für KI-Assistenten (nur lesend)
 # The App announces itself to the Sunflow integration (host, port, token)
 discovery:
   - sunflow_ems
