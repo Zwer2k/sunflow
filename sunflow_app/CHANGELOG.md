@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.68.1
+
+- MCP-Server: Der Schlüssel entsteht erst auf Knopfdruck (Einstellungen → Geräte → „Schlüssel erzeugen“) und wird nur einmal angezeigt; Sunflow speichert nur eine Prüfsumme. Er lässt sich zurückziehen (Server geschlossen) oder durch einen neuen ersetzen. Der Schlüssel aus 0.68.0 wird gelöscht.
+
 ## 0.68.0
 
 - MCP-Server: Ein KI-Assistent (z. B. Claude Code) kann über `/mcp` Plan, Verlauf, Aufzeichnung, Steuerungsprotokoll, Preise, Prognosen und Konfiguration lesen – nur lesend, mit eigenem Schlüssel, der für nichts anderes gilt. Von außen erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist. Zugangsdaten und Einrichtungsbefehl stehen unter Einstellungen → Geräte. Anleitung in `docs/mcp.md`.

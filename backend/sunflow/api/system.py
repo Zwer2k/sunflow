@@ -18,6 +18,7 @@ from sunflow.control.journal import JOURNAL_FILE
 from sunflow.devices.discovery import discover
 from sunflow.ha import HAClient
 from sunflow.integration_link import app_host, host_port
+from sunflow.mcp_key import McpKey
 from sunflow.shadow.runner import ShadowRunner
 from sunflow.shadow.store import evaluate as evaluate_shadow
 
@@ -52,10 +53,24 @@ async def integration_link(request: Request) -> dict[str, Any]:
 
 @router.get("/mcp/link")
 async def mcp_link(request: Request) -> dict[str, Any]:
-    """Port and token of the MCP server (only through Ingress); without a mapped port it is not reachable from outside."""
+    """Port of the MCP server and whether it has a key (only through Ingress); without a mapped port it is not reachable."""
     settings = request.app.state.settings
     port = await host_port(settings.supervisor_token, settings.port) if settings.supervisor_token else settings.port
-    return {"port": port, "path": "/mcp", "token": request.app.state.mcp_token}
+    return {"port": port, "path": "/mcp", "key_created": request.app.state.mcp_key.created}
+
+
+@router.post("/mcp/key")
+async def create_mcp_key(request: Request) -> dict[str, Any]:
+    """A new key for the MCP server; the old one stops working. It is shown this once only."""
+    key: McpKey = request.app.state.mcp_key
+    return {"key": key.create(), "key_created": key.created}
+
+
+@router.delete("/mcp/key")
+async def revoke_mcp_key(request: Request) -> dict[str, Any]:
+    """Close the MCP server until a new key is created."""
+    request.app.state.mcp_key.revoke()
+    return {"key_created": None}
 
 
 @router.get("/profiles")

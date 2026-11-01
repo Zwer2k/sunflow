@@ -30,6 +30,7 @@ from sunflow.devices.profiles import load_profiles, load_schema
 from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient, HAError
 from sunflow.integration_link import announce, integration_token
+from sunflow.mcp_key import McpKey
 from sunflow.planning.one_time import OneTimeLoads
 from sunflow.settings import Settings
 from sunflow.shadow.counters import EnergyCounters
@@ -87,7 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
         app.state.settings = settings
         app.state.integration_token = integration_token(settings.data_dir)
-        app.state.mcp_token = integration_token(settings.data_dir, "mcp_token")
+        app.state.mcp_key = McpKey(settings.data_dir)
         if settings.supervisor_token:
             await announce(settings.supervisor_token, settings.port, app.state.integration_token)
         app.state.store = ConfigStore(settings.data_dir)
@@ -149,8 +150,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.middleware("http")
     async def mcp_token_only(request: Request, call_next: Any) -> Any:
         # The MCP server only reads, but what it reads is private: always its own token, and that token nowhere else
-        token = getattr(app.state, "mcp_token", None)
-        authorized = token is not None and secrets.compare_digest(request.headers.get("authorization", ""), f"Bearer {token}")
+        key: McpKey | None = getattr(app.state, "mcp_key", None)
+        authorized = key is not None and key.matches(request.headers.get("authorization", ""))
         if (request.url.path == "/mcp") != authorized:
             if request.url.path == "/mcp":
                 return JSONResponse({"detail": "MCP token required"}, status_code=401)

@@ -269,6 +269,7 @@ class SunflowApp extends LitElement {
     this._direct = null;
     this._directProfiles = null;
     this._link = null;
+    // Undefined while loading, null until first shown
     this._mcp = null;
     this._integrationSettings = null;
     this._display = null;
@@ -1264,34 +1265,55 @@ class SunflowApp extends LitElement {
   /** The read-only MCP server, so an AI assistant can analyse Sunflow's data. */
   _renderMcp() {
     const mcp = this._mcp;
+    if (mcp === null) {
+      // Loaded once when the area is first shown; undefined while loading
+      this._mcp = undefined;
+      api.mcpLink().then((loaded) => (this._mcp = loaded)).catch(() => (this._mcp = false));
+    }
     // The page is served by Home Assistant, whose host also carries the App's mapped port
     const url = mcp?.port ? `http://${location.hostname}:${mcp.port}${mcp.path}` : null;
+    const created = mcp?.key_created ? new Date(mcp.key_created).toLocaleString("de-DE") : null;
     return html`<section class="device compact">
       <div class="device-title">MCP-Server für KI-Assistenten</div>
       <p class="small muted">Damit kann ein KI-Assistent (z. B. Claude Code) Plan, Verlauf, Aufzeichnung, Steuerungsprotokoll und
         Konfiguration lesen, um Fragen zu beantworten oder Fehler zu finden. Er kann nichts ändern oder steuern. Von außen
-        erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist.</p>
+        erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist und ein Schlüssel erzeugt wurde.</p>
       ${mcp
         ? html`<div class="fields">
               <label class="field"><span class="field-label">Adresse</span>
                 <span class="input-unit"><input readonly .value=${url ?? "kein Port freigegeben"}></span></label>
               <label class="field"><span class="field-label">Schlüssel</span>
-                <span class="input-unit"><input readonly .value=${mcp.token}></span></label>
+                <span class="input-unit"><input readonly .value=${mcp.key ?? (created ? `erzeugt am ${created}` : "keiner – Server geschlossen")}></span></label>
             </div>
-            ${url
-              ? html`<label class="field"><span class="field-label">Einrichten in Claude Code</span>
-                  <span class="input-unit"><input readonly
-                    .value=${`claude mcp add --transport http sunflow ${url} --header "Authorization: Bearer ${mcp.token}"`}></span></label>`
-              : nothing}`
-        : html`<div><button class="secondary" @click=${() => this._showMcp()}>Zugangsdaten anzeigen …</button></div>`}
+            ${mcp.key
+              ? html`<p class="small">Der Schlüssel wird nur jetzt angezeigt. Sunflow speichert ihn nicht, nur eine Prüfsumme.</p>
+                  <label class="field"><span class="field-label">Einrichten in Claude Code</span>
+                    <span class="input-unit"><input readonly
+                      .value=${`claude mcp add --transport http sunflow ${url ?? "http://<Adresse>:<Port>/mcp"} --header "Authorization: Bearer ${mcp.key}"`}></span></label>`
+              : nothing}
+            <div class="actions">
+              <button class="secondary" @click=${() => this._createMcpKey()}>${created ? "Neuen Schlüssel erzeugen …" : "Schlüssel erzeugen"}</button>
+              ${created ? html`<button class="secondary" @click=${() => this._revokeMcpKey()}>Zurückziehen …</button>` : nothing}
+            </div>`
+        : html`<p class="muted">${mcp === false ? "Nicht verfügbar." : "Lade …"}</p>`}
     </section>`;
   }
 
-  async _showMcp() {
+  async _createMcpKey() {
+    if (this._mcp.key_created && !confirm("Der bisherige Schlüssel wird sofort ungültig. Neuen erzeugen?")) return;
     try {
-      this._mcp = await api.mcpLink();
+      this._mcp = { ...this._mcp, ...(await api.createMcpKey()) };
     } catch (err) {
-      this._error = `Zugangsdaten nicht verfügbar: ${err.message}`;
+      this._error = `Schlüssel nicht erzeugt: ${err.message}`;
+    }
+  }
+
+  async _revokeMcpKey() {
+    if (!confirm("Schlüssel zurückziehen? Der MCP-Server ist danach geschlossen.")) return;
+    try {
+      this._mcp = { ...this._mcp, ...(await api.revokeMcpKey()), key: undefined };
+    } catch (err) {
+      this._error = `Schlüssel nicht zurückgezogen: ${err.message}`;
     }
   }
 

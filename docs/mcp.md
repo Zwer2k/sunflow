@@ -15,7 +15,8 @@ nur lesende Anweisungen zu.
    Port für „MCP-Server für KI-Assistenten“ eintragen (z. B. `8099`) und die App neu starten.
    Ohne Port ist der Server von außen nicht erreichbar.
 2. In Sunflow unter **Einstellungen → Geräte**, Abschnitt „MCP-Server für KI-Assistenten“,
-   auf „Zugangsdaten anzeigen …“ klicken. Dort stehen Adresse, Schlüssel und der fertige Befehl.
+   auf **Schlüssel erzeugen** klicken. Schlüssel und fertiger Befehl werden **nur dieses eine Mal**
+   angezeigt; Sunflow speichert nur eine Prüfsumme davon.
 3. Den Befehl dort ausführen, wo der Assistent läuft, z. B.:
 
    ```bash
@@ -23,9 +24,9 @@ nur lesende Anweisungen zu.
      --header "Authorization: Bearer <Schlüssel>"
    ```
 
-Der Schlüssel gilt nur für `/mcp`, nicht für die übrige Oberfläche von Sunflow. Er steht in
-der Datei `mcp_token` im Datenordner der App; wer ihn löschen lässt (App neu installieren),
-bekommt einen neuen.
+Ohne Schlüssel ist der Server geschlossen. **Zurückziehen** macht den Schlüssel sofort ungültig;
+**Neuen Schlüssel erzeugen** ersetzt ihn (z. B. wenn er verloren ging). Der Schlüssel gilt nur für
+`/mcp`, nicht für die übrige Oberfläche von Sunflow, und steht nicht im Datenexport.
 
 Der Port ist im Heimnetz ohne Verschlüsselung (HTTP) erreichbar. Gib ihn nicht ins Internet frei.
 

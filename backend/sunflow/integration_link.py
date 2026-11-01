@@ -12,9 +12,9 @@ _LOGGER = logging.getLogger(__name__)
 DISCOVERY_SERVICE = "sunflow_ems"
 
 
-def integration_token(data_dir: Path, name: str = "integration_token") -> str:
-    """Token the integration (or the MCP client) authenticates with; created once and kept in the data directory."""
-    path = data_dir / name
+def integration_token(data_dir: Path) -> str:
+    """Token the integration authenticates with; created once and kept in the data directory."""
+    path = data_dir / "integration_token"
     try:
         if token := path.read_text().strip():
             return token
