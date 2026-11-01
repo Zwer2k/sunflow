@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.72.0
+
+- Optimierer werden wie andere Geräte eingebunden: Integration unter Einstellungen → Integrationen auswählen (die Karte zeigt die Zahl der Optimierer; Tigo RS485 erscheint jetzt als „Unterstützt · Optimierer“), dann unter Geräte → Wechselrichter bei „Optimierer“ „von Sunflow nutzen“ anhaken. Vorher erscheinen sie weder auf dem Dach noch in der Live-Ansicht. Bereits angeordnete Optimierer bleiben genutzt.
+
 ## 0.71.0
 
 - Planung: Die Diagramme lassen sich mit der Maus (oder dem Finger) seitlich ziehen; alle verschieben sich gemeinsam. Losgelassen lädt Sunflow den gemessenen Verlauf des neuen Fensters nach. Die Knöpfe ‹ Jetzt › bleiben; „Jetzt“ springt zurück. Auf dem Handy scrollt senkrechtes Wischen weiter die Seite.

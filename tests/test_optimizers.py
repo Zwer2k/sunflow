@@ -15,16 +15,18 @@ from sunflow.devices.discovery import Snapshot
 
 HUAWEI_KEYS = ("output_power", "input_voltage", "input_current", "output_voltage", "output_current", "temperature")
 TIGO_KEYS = ("power", "voltage_in", "current", "voltage_out", "temperature", "pwm")
+HUAWEI = "huawei-entry"
+TIGO = "tigo-entry"
 
 
 def _snapshot() -> Snapshot:
     devices = [
-        {"id": "inv", "name": "Inverter", "identifiers": [["huawei_solar", "HV1"]]},
-        {"id": "o2", "name": "JV22B2", "identifiers": [["huawei_solar", "JV22B2"]], "via_device_id": "inv"},
-        {"id": "o1", "name": "JV22B1", "identifiers": [["huawei_solar", "JV22B1"]], "via_device_id": "inv"},
-        {"id": "a2", "name": "Tigo Optimizer A2", "identifiers": [["tigo_rs485", "e_A2"]]},
-        {"id": "b1", "name": "Tigo Optimizer B1", "identifiers": [["tigo_rs485", "e_B1"]]},
-        {"id": "x", "name": "Tigo Optimizer Garage", "identifiers": [["tigo_rs485", "e_Garage"]]},
+        {"id": "inv", "name": "Inverter", "identifiers": [["huawei_solar", "HV1"]], "config_entries": [HUAWEI]},
+        {"id": "o2", "name": "JV22B2", "identifiers": [["huawei_solar", "JV22B2"]], "via_device_id": "inv", "config_entries": [HUAWEI]},
+        {"id": "o1", "name": "JV22B1", "identifiers": [["huawei_solar", "JV22B1"]], "via_device_id": "inv", "config_entries": [HUAWEI]},
+        {"id": "a2", "name": "Tigo Optimizer A2", "identifiers": [["tigo_rs485", "e_A2"]], "config_entries": [TIGO]},
+        {"id": "b1", "name": "Tigo Optimizer B1", "identifiers": [["tigo_rs485", "e_B1"]], "config_entries": [TIGO]},
+        {"id": "x", "name": "Tigo Optimizer Garage", "identifiers": [["tigo_rs485", "e_Garage"]], "config_entries": [TIGO]},
     ]
     entities, states = [], {}
     # The inverter has an input power but is no optimizer
@@ -46,6 +48,8 @@ def _strings(huawei_in_use: tuple[bool, bool] = (True, False)) -> list[dict[str,
 
 def _found(config: SunflowConfig, monkeypatch: pytest.MonkeyPatch, strings: list[dict[str, Any]]) -> dict[str, module.Optimizer]:
     monkeypatch.setattr(module, "plant_strings", lambda *_: strings)
+    if config.optimizer_settings.entries is None:
+        config.optimizer_settings.entries = [HUAWEI, TIGO]
     found, _ = module.optimizers(config, {}, _snapshot())
     return {o.label: o for o in found}
 
@@ -120,3 +124,26 @@ async def test_layout_separators_are_stored(tmp_path: Path) -> None:
     await set_optimizers(request, OptimizerSettings(layouts={"sofar:1": StringLayout(row_breaks=[2], col_breaks=[3, 5])}))
 
     assert ConfigStore(tmp_path).load().optimizer_settings.layouts["sofar:1"] == StringLayout(row_breaks=[2], col_breaks=[3, 5])
+
+
+@pytest.mark.parametrize(
+    ("settings", "labels"),
+    [
+        pytest.param(OptimizerSettings(), [], id="nothing-taken-over"),
+        pytest.param(OptimizerSettings(entries=[TIGO]), ["A2", "B1", "Garage"], id="tigo-only"),
+        # Before the choice existed: the integrations with placed optimizers
+        pytest.param(
+            OptimizerSettings(placements=[OptimizerPlacement(ha_device_id="o1", row=0, col=0)]), ["JV22B1", "JV22B2"],
+            id="placed-before",
+        ),
+    ],
+)
+def test_only_taken_over_integrations_count(
+    monkeypatch: pytest.MonkeyPatch, settings: OptimizerSettings, labels: list[str]
+) -> None:
+    """Optimizers only count once their integration was taken over under "Geräte"."""
+    monkeypatch.setattr(module, "plant_strings", lambda *_: _strings())
+
+    found, _ = module.optimizers(SunflowConfig(optimizer_settings=settings), {}, _snapshot())
+
+    assert sorted(o.label for o in found) == labels

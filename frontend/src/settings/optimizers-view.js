@@ -102,9 +102,9 @@ class SunflowOptimizers extends LitElement {
         ${data.sources.map((s) => html`<li>
           <strong>${s.name}</strong>
           <span class="small ${s.count ? "" : "muted"}">${s.count
-            ? `${s.count} Optimierer gefunden`
+            ? `${s.count} Optimierer genutzt`
             : s.installed
-              ? "Integration eingerichtet, aber keine Optimierer gefunden"
+              ? "Integration eingerichtet, Optimierer nicht genutzt – unter „Integrationen“ auswählen und unter „Geräte“ nutzen"
               : "Integration nicht eingerichtet"}</span>
           ${s.key === "huawei"
             ? html`<span class="small muted">Über die Integration „Huawei Solar“; Optimierer erscheinen als Unter-Geräte des
@@ -129,7 +129,8 @@ class SunflowOptimizers extends LitElement {
 
   _renderStrings(data) {
     if (!data.optimizers.length) {
-      return html`<p class="muted">Keine Optimierer gefunden.</p>`;
+      return html`<p class="muted">Keine Optimierer genutzt. Integration unter „Integrationen“ auswählen und ihre Optimierer
+        unter „Geräte“ nutzen.</p>`;
     }
     const groups = data.strings
       .map((s) => ({ ...s, optimizers: data.optimizers.filter((o) => o.string === s.key) }))

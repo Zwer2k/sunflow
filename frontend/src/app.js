@@ -405,7 +405,9 @@ class SunflowApp extends LitElement {
       const integrations = await api.discovery();
       this._integrations = integrations;
       this._selected = new Set(
-        integrations.filter((i) => i.supported && i.devices.some((d) => d.profile)).map((i) => i.entry_id),
+        integrations
+          .filter((i) => i.supported && (i.devices.some((d) => d.profile) || i.optimizers_used))
+          .map((i) => i.entry_id),
       );
     } catch (err) {
       this._discoveryError = `Home Assistant nicht erreichbar: ${err.message}`;
@@ -1445,6 +1447,7 @@ class SunflowApp extends LitElement {
     const capabilities = matched.flatMap((d) => d.capabilities ?? []);
     let chip;
     if (!integration.supported) chip = html`<span class="chip warn">Nicht unterstützt – Schalter oder Steckdosen unten als eigene Verbraucher hinzufügen</span>`;
+    else if (matched.length === 0 && integration.optimizers) chip = html`<span class="chip ok">Unterstützt · Optimierer</span>`;
     else if (matched.length === 0) chip = html`<span class="chip warn">Kein passendes Profil</span>`;
     else if (isControllable(capabilities)) chip = html`<span class="chip ok">Unterstützt · steuerbar</span>`;
     else chip = html`<span class="chip neutral">Unterstützt · nur lesen</span>`;
@@ -1460,6 +1463,9 @@ class SunflowApp extends LitElement {
             <strong>${devicePurpose(d.capabilities ?? [])}</strong> · ${[d.manufacturer, d.model].filter(Boolean).join(" ") || d.name}
           </span>`,
         )}
+        ${integration.optimizers
+          ? html`<span class="model"><strong>Optimierer</strong> · ${integration.optimizers} Module</span>`
+          : nothing}
         <span class="muted small">${[
           integration.title !== integration.name ? `Eintrag „${integration.title}“` : null,
           integration.in_energy_dashboard ? "im Energie-Dashboard" : null,
@@ -1480,14 +1486,47 @@ class SunflowApp extends LitElement {
       ${CATEGORIES.map(([key, title]) => {
         const members = devices.filter((d) => this._categoryOf(d) === key);
         const hasBattery = devices.some((d) => (d.capabilities ?? []).includes("battery"));
+        const optimizerSources = (this._integrations ?? []).filter((i) => this._selected.has(i.entry_id) && i.optimizers);
         const extra =
           key === "battery" && hasBattery ? html`<sf-batteries></sf-batteries>`
           : key === "load" ? this._renderManualDevices()
+          : key === "inverter" && optimizerSources.length ? optimizerSources.map((i) => this._renderOptimizerSource(i))
           : nothing;
-        if (!members.length && key !== "load" && !(key === "battery" && hasBattery)) return nothing;
+        if (!members.length && key !== "load" && !(key === "battery" && hasBattery) && !(key === "inverter" && optimizerSources.length)) {
+          return nothing;
+        }
         return html`<h2 class="category">${title}</h2>${members.map((d) => this._renderDevice(d))}${extra}`;
       })}
     `;
+  }
+
+  /** The optimizers of a chosen integration: taken over as a whole, placed under "Optimierer". */
+  _renderOptimizerSource(integration) {
+    const used = integration.optimizers_used;
+    return html`<section class="device compact">
+      <div class="device-title">Optimierer · ${integration.name ?? integration.title}</div>
+      <span class="small muted">${integration.optimizers} Module${integration.title !== integration.name ? ` · Eintrag „${integration.title}“` : ""}</span>
+      <label class="inline">
+        <input type="checkbox" .checked=${used} ?disabled=${this._busy.has(integration.entry_id)}
+          @change=${(e) => this._useOptimizers(integration, e.target.checked)}>
+        von Sunflow nutzen
+      </label>
+      <p class="small muted">${used
+        ? "Strings und Anordnung auf dem Dach legst du unter „Optimierer“ fest; die Werte zeigt die Live-Ansicht je Modul."
+        : "Nicht genutzt: Sunflow zeigt die Module weder auf dem Dach noch in der Live-Ansicht. Zugeordnete Plätze bleiben gespeichert."}</p>
+    </section>`;
+  }
+
+  async _useOptimizers(integration, used) {
+    this._busy = new Set([...this._busy, integration.entry_id]);
+    try {
+      await api.useOptimizers(integration.entry_id, used);
+      this._integrations = this._integrations.map((i) => (i.entry_id === integration.entry_id ? { ...i, optimizers_used: used } : i));
+    } catch (err) {
+      this._error = `Optimierer nicht gespeichert: ${err.message}`;
+    } finally {
+      this._busy = this._without(this._busy, integration.entry_id);
+    }
   }
 
   _renderManualDevices() {

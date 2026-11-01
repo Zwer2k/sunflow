@@ -215,8 +215,10 @@ def match_profile(
 DIRECT_DOMAIN = "sunflow_direct"
 
 
-def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[DiscoveredIntegration]:
-    """Build the integration and device overview for the setup wizard."""
+def discover(
+    snapshot: Snapshot, library: ProfileLibrary, optimizer_entries: frozenset[str] = frozenset()
+) -> list[DiscoveredIntegration]:
+    """Build the integration and device overview for the setup wizard; optimizer_entries count as supported."""
     energy_ids = energy_entity_ids(snapshot.energy_prefs)
     supported_domains = library.integrations
 
@@ -236,7 +238,7 @@ def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[DiscoveredInte
         domain = entry["domain"]
         entry_entities = entities_by_entry.get(entry_id, [])
         in_energy = any(e["entity_id"] in energy_ids for e in entry_entities)
-        supported = domain in supported_domains or domain == DIRECT_DOMAIN
+        supported = domain in supported_domains or domain == DIRECT_DOMAIN or entry_id in optimizer_entries
         if not supported and not in_energy:
             continue
 
