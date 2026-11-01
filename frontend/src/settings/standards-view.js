@@ -353,7 +353,7 @@ class SunflowStandards extends LitElement {
           </label>
           <div class="field">
             <span class="field-label">Alterung bei hohem Ladestand</span>
-            <span class="inline">
+            <span class="inline aging">
               <input type="checkbox" aria-label="Alterung bei hohem Ladestand einrechnen" .checked=${settings.high_soc_aging}
                 ?disabled=${this._saving} @change=${(e) => this._saveSettings({ high_soc_aging: e.target.checked })}>
               ${settings.high_soc_aging
@@ -607,6 +607,8 @@ class SunflowStandards extends LitElement {
     }
     .inline { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
     .inline input[type="checkbox"] { width: 18px; height: 18px; }
+    .aging { display: flex; flex-wrap: wrap; }
+    .aging .input-unit { flex: 1 1 140px; }
     .actions { display: flex; gap: 10px; margin-top: 12px; }
     .secondary, .ok { min-height: 44px; padding: 0 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }

@@ -1223,7 +1223,7 @@ class SunflowApp extends LitElement {
       </div>
       <section class="device compact">
         <div class="device-title">Wetter in der Live-Ansicht</div>
-        <span class="inline">${option("weather_mobile", "auf dem Handy")} ${option("weather_desktop", "auf Tablet und Computer")}</span>
+        <span class="choices">${option("weather_mobile", "auf dem Handy")} ${option("weather_desktop", "auf Tablet und Computer")}</span>
         <p class="small muted">Ausgeblendet bleibt mehr Platz für den Energiefluss. Ist es überall aus, fragt Sunflow die
           Wettervorhersage für die Live-Ansicht gar nicht erst ab.</p>
       </section>
@@ -1255,7 +1255,7 @@ class SunflowApp extends LitElement {
     ];
     return html`<div class="field">
       <span class="field-label">PV-Prognosen fürs Energie-Dashboard</span>
-      <span class="inline">${kinds.map(([kind, label]) => html`<label class="inline">
+      <span class="choices">${kinds.map(([kind, label]) => html`<label class="inline">
         <input type="checkbox" .checked=${settings.forecast_kinds.includes(kind)}
           @change=${(e) => this._setForecastKind(kind, e.target.checked)}> ${label}</label>`)}</span>
       <span class="small muted">Jede gewählte Prognose wird ein eigenes Gerät in Home Assistant. Abgewählte verschwinden
@@ -1302,7 +1302,7 @@ class SunflowApp extends LitElement {
                 </span></div>
             </div>
             <div class="field"><span class="field-label">Darf lesen</span>
-              <span class="inline">${MCP_AREAS.map(([area, label]) => html`<label class="inline">
+              <span class="choices">${MCP_AREAS.map(([area, label]) => html`<label class="inline">
                 <input type="checkbox" .checked=${mcp.areas.includes(area)} @change=${(e) => this._setMcpArea(area, e.target.checked)}>
                 ${label}</label>`)}</span>
               <span class="small muted">Version und Verbindung sind immer lesbar. Nicht freigegebene Bereiche fehlen in der
@@ -2212,7 +2212,7 @@ class SunflowApp extends LitElement {
             : nothing}
           <label class="field">
             <span class="field-label">Strom aus dem Hausspeicher</span>
-            <span class="inline">
+            <span class="inline wrap">
               <input type="checkbox" .checked=${flex.uses_battery} @change=${(e) => set("uses_battery", e.target.checked)}>
               Hausspeicher darf in diesen Verbraucher entladen
             </span>
@@ -2973,6 +2973,8 @@ class SunflowApp extends LitElement {
     }
     .inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
     .inline input { width: 18px; height: 18px; }
+    .choices { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+    .inline.wrap { white-space: normal; }
     .nowrap { white-space: nowrap; }
     td .chip { margin-left: 6px; }
 

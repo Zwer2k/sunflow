@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.72.1
+
+- Dokumentation: vollständig auf Deutsch (`docs/`) und Englisch (`docs/en/`) mit Screenshots – Installation und Einrichtung, Bedienung, Steuerung übernehmen, Einstellungen, So plant Sunflow, Fehlersuche; die bisherigen Seiten (Geräte, Strompreise, Optimierer, Integration, MCP) auch auf Englisch. Die README zeigt Funktionen, Screenshots und die Dokumentation in beiden Sprachen.
+- Einstellungen → Integrationen: Die Bereiche „Darf lesen“ des MCP-Servers und die Prognosearten brechen um, statt über den Rand hinauszulaufen.
+- Einstellungen → Planung: Die Felder von „Alterung bei hohem Ladestand“ überlappten die Notstrom-Reserve; sie stehen jetzt untereinander.
+- Einstellungen → Verbraucher: „Hausspeicher darf in diesen Verbraucher entladen“ bricht um, statt über den Rand hinauszulaufen.
+- Steuerung → Priorität: Eine Grenze, die sich auf ein deaktiviertes Gerät bezieht, erscheint nicht mehr mit dessen interner Kennung. Sie bleibt gespeichert und gilt wieder, wenn das Gerät aktiviert wird.
+
 ## 0.72.0
 
 - Optimierer werden wie andere Geräte eingebunden: Integration unter Einstellungen → Integrationen auswählen (die Karte zeigt die Zahl der Optimierer; Tigo RS485 erscheint jetzt als „Unterstützt · Optimierer“), dann unter Geräte → Wechselrichter bei „Optimierer“ „von Sunflow nutzen“ anhaken. Vorher erscheinen sie weder auf dem Dach noch in der Live-Ansicht. Bereits angeordnete Optimierer bleiben genutzt.

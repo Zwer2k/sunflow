@@ -128,8 +128,9 @@ async def get_control(request: Request) -> dict[str, Any]:
             {
                 "id": i,
                 "name": names[i],
-                "conditions": [c.model_dump() for c in config.valid_conditions(i)],
-                "hidden_conditions": [c.model_dump() for c in config.hidden_conditions(i)],
+                # Conditions on switched off devices stay stored but are not shown
+                "conditions": [c.model_dump() for c in config.valid_conditions(i) if c.device_id in names],
+                "hidden_conditions": [c.model_dump() for c in config.hidden_conditions(i) if c.device_id in names],
             }
             for i in order
         ],

@@ -1,5 +1,7 @@
 # MCP-Server für KI-Assistenten
 
+**Deutsch** · [English](en/mcp.md)
+
 Sunflow hat einen eingebauten MCP-Server ([Model Context Protocol](https://modelcontextprotocol.io)).
 Darüber kann ein KI-Assistent wie Claude Code die Daten deiner Sunflow-Installation lesen, etwa
 um zu erklären, warum der Plan so aussieht, warum die Wallbox nicht geladen hat oder wo eine
@@ -14,7 +16,7 @@ nur lesende Anweisungen zu.
 1. In Home Assistant unter **Einstellungen → Apps → Sunflow → Konfiguration → Netzwerk** einen
    Port für „MCP-Server für KI-Assistenten“ eintragen (z. B. `8099`) und die App neu starten.
    Ohne Port ist der Server von außen nicht erreichbar.
-2. In Sunflow unter **Einstellungen → Geräte**, Abschnitt „MCP-Server für KI-Assistenten“,
+2. In Sunflow unter **Einstellungen → Integrationen**, Abschnitt „MCP-Server für KI-Assistenten“,
    beim Schlüssel auf **Erzeugen** klicken. Schlüssel und fertiger Befehl werden **nur dieses eine Mal**
    angezeigt; Sunflow speichert nur eine Prüfsumme davon.
 3. Den Befehl dort ausführen, wo der Assistent läuft, z. B.:

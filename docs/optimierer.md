@@ -1,5 +1,7 @@
 # Optimierer
 
+**Deutsch** · [English](en/optimizers.md)
+
 Sunflow zeigt Modul-Optimierer so, wie die Module auf dem Dach liegen: In der
 Live-Ansicht öffnet ein Klick auf einen PV-String (Zahl am Kreis = Anzahl Optimierer)
 seine Module mit den aktuellen Werten. Welche Werte erscheinen (Leistung, Spannung und

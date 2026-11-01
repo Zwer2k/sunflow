@@ -1,5 +1,7 @@
 # Strompreise
 
+**Deutsch** · [English](en/prices.md)
+
 Sunflow plant mit dem Bezugspreis jeder Viertelstunde. Die Quelle wählst du unter
 Einstellungen → Tarif & Prognose; angeboten werden alle Sensoren mit einer Einheit pro kWh.
 
