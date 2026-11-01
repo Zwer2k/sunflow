@@ -173,5 +173,7 @@
   "Karte {card} gehört zu keinem Fahrzeug dieser Wallbox": "Card {card} belongs to no vehicle of this wallbox",
   "Datenbank von Home Assistant antwortet nicht, Abfragen für {seconds} s pausiert (Auslöser: {reason})": "Home Assistant's database is not responding, queries paused for {seconds} s (trigger: {reason})",
   "Datenbank von Home Assistant antwortet nicht, Abfragen pausiert": "Home Assistant's database is not responding, queries paused",
-  "Datenbank von Home Assistant ist ausgelastet, Abfragen pausiert": "Home Assistant's database is busy, queries paused"
+  "Datenbank von Home Assistant ist ausgelastet, Abfragen pausiert": "Home Assistant's database is busy, queries paused",
+  "Export enthält keine Konfiguration": "The export contains no configuration",
+  "Die App „{name}“ läuft ebenfalls – diese steuert nichts. Bitte nur eine Sunflow-App starten.": "The App \"{name}\" is running as well – this one does not control anything. Please start only one Sunflow App."
 }

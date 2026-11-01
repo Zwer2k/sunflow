@@ -1,4 +1,5 @@
 name: Sunflow
+# Set by the release workflow once the images of a tag are built; do not change by hand
 version: "0.73.1"
 slug: sunflow
 description: Predictive energy management with PV forecasts and dynamic prices
@@ -8,17 +9,19 @@ arch:
   - amd64
 init: false
 homeassistant_api: true
+# Only to see whether Sunflow Edge runs as well (info of that App)
+hassio_api: true
 ingress: true
 ingress_port: 8099
 # Only for the MCP server (/mcp, own token); the rest stays Ingress only. Off until a host port is set
 ports:
   8099/tcp: null
 ports_description:
-  8099/tcp: MCP-Server für KI-Assistenten (nur lesend)
+  8099/tcp: MCP server for AI assistants (read only)
 # The App announces itself to the Sunflow integration (host, port, token)
 discovery:
   - sunflow_ems
 panel_icon: mdi:solar-power-variant
 panel_title: Sunflow
-# Built locally by the Supervisor (see Dockerfile). Later: prebuilt images by CI
-# image: ghcr.io/zwer2k/sunflow-{arch}
+# Built by .github/workflows/release.yml for every tag (see Dockerfile); Sunflow Edge builds main itself
+image: ghcr.io/zwer2k/sunflow-{arch}

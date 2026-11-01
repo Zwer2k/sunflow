@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import io
 import json
 from pathlib import Path
+import shutil
 import sqlite3
 import tempfile
 from typing import Annotated, Any
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, UploadFi
 
 from sunflow import API_VERSION, __version__
 from sunflow.config.models import McpSettings
+from sunflow.config.store import ConfigStore
 from sunflow.control.journal import JOURNAL_FILE
 from sunflow.devices.discovery import discover
 from sunflow.devices.optimizers import discover as discover_optimizers, used_entries
@@ -168,23 +170,37 @@ async def export_data(request: Request) -> Response:
 
 
 @router.post("/import")
-async def import_data(request: Request, file: UploadFile) -> dict[str, Any]:
-    """Merge the shadow mode data of an export; the configuration is not imported."""
+async def import_data(request: Request, file: UploadFile, config: bool = False) -> dict[str, Any]:
+    """Merge the shadow mode data of an export; with config also take over its configuration (moving)."""
     runner: ShadowRunner = request.app.state.runner
     content = await file.read()
     with tempfile.TemporaryDirectory() as tmp:
         try:
             with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                if "shadow.db" not in archive.namelist():
+                names = archive.namelist()
+                if "shadow.db" not in names:
                     raise HTTPException(status_code=422, detail=t("Export enthält keine shadow.db"))
-                archive.extract("shadow.db", tmp)
+                if config and "config.json" not in names:
+                    raise HTTPException(status_code=422, detail=t("Export enthält keine Konfiguration"))
+                archive.extractall(tmp, [n for n in ("shadow.db", "config.json", "eeprom_writes.json") if n in names])
         except zipfile.BadZipFile as err:
             raise HTTPException(status_code=422, detail=t("Keine gültige Export-Datei")) from err
+        if config:
+            # Migrated like a stored configuration, so older exports work too
+            imported = ConfigStore(Path(tmp)).load()
         try:
             count = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
         except sqlite3.Error as err:
             raise HTTPException(status_code=422, detail=t("Export-Datei nicht lesbar: {error}", error=err)) from err
-    return {"imported_slots": count}
+        if config:
+            # Never control right after moving: the old App may still be running
+            imported.control.enabled = False
+            request.app.state.store.save(imported)
+            eeprom = Path(tmp) / "eeprom_writes.json"
+            if eeprom.exists():
+                shutil.copyfile(eeprom, request.app.state.settings.data_dir / "eeprom_writes.json")
+            runner.request_replan()
+    return {"imported_slots": count, "config": config}
 
 
 @router.get("/shadow")

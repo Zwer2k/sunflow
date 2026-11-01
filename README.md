@@ -70,17 +70,40 @@ switches, power levels and target currents. Test status per device in
 ## Installation as Home Assistant App
 
 1. Settings → Apps → App store → ⋮ → Repositories → add `https://github.com/Zwer2k/sunflow`
-2. Install "Sunflow" (the Supervisor builds it on the device; this takes a few minutes)
+2. Install "Sunflow"
 3. Start it and open the Sunflow panel; set up devices in the wizard
 
 Step-by-step guide: [Installation and setup](docs/en/installation.md).
 
-Updates: the image fetches `main` at build time. A new version number in
-`sunflow_app/config.yaml` triggers the update and a fresh clone; "Rebuild"
-without a version change may reuse the cached clone.
+The repository offers two Apps. Run only one of them; the other stands aside
+(no control, no announcement to the integration) while both are started.
 
-Shadow mode data can be downloaded in the overview ("Daten exportieren") and
-merged into another instance ("Export importieren").
+| App | Folder | Updates | Image |
+|---|---|---|---|
+| Sunflow | `sunflow_app/` | GitHub releases | prebuilt on ghcr.io by `.github/workflows/release.yml` |
+| Sunflow Edge | `sunflow_app_edge/` | every version bump on `main` | built on the device from `main` |
+
+Moving between them: "Export data" in the old App, "Import export" with
+"With configuration" in the new one (Analysis → Shadow mode). Control stays off
+after the move until it is switched on again.
+
+## Releasing
+
+Every change on `main` raises the version in `sunflow_app_edge/config.yaml`,
+`backend/pyproject.toml` and `backend/sunflow/__init__.py` and gets a section in
+`sunflow_app/CHANGELOG.md`; Sunflow Edge offers it as an update.
+
+To release the current state of `main` as the stable App, tag it with that version:
+
+```bash
+git tag v0.74.0 && git push origin v0.74.0
+```
+
+The workflow checks that the tag matches the code version, builds the images for
+amd64 and aarch64, then sets the version in `sunflow_app/config.yaml` (only now does
+Home Assistant offer the update) and creates the GitHub release with all changelog
+sections since the previous release. The image packages on ghcr.io have to be public
+once (package settings on GitHub), or Home Assistant cannot pull them.
 
 ## Repository layout
 

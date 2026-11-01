@@ -29,7 +29,8 @@ from sunflow.devices.executor import EepromGuard
 from sunflow.devices.profiles import load_profiles, load_schema
 from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient, HAError
-from sunflow.integration_link import announce, integration_token
+from sunflow.i18n import t
+from sunflow.integration_link import announce, integration_token, running_peer
 from sunflow.mcp_key import McpKey
 from sunflow.planning.one_time import OneTimeLoads
 from sunflow.settings import Settings
@@ -41,6 +42,7 @@ from . import mcp
 from .common import _LOGGER, DEFAULT_MAX_EEPROM_WRITES, router
 
 RECONNECT_DELAYS = (1, 2, 5, 10, 30)
+PEER_CHECK_SECONDS = 60
 
 
 def _plan_controller(app: FastAPI, settings: Settings) -> PlanController:
@@ -72,6 +74,32 @@ async def _keep_connected(client: HAClient) -> None:
         await asyncio.sleep(1)
 
 
+async def _watch_peer(app: FastAPI, supervisor_token: str, port: int) -> None:
+    """Stand aside while the other Sunflow App (stable or Edge) runs; announce to the integration otherwise."""
+    announced = False
+    while True:
+        try:
+            peer = await running_peer(supervisor_token)
+        except Exception:  # noqa: BLE001 - the watcher must never die; without an answer nothing changes
+            _LOGGER.exception("Checking for another Sunflow App failed")
+            await asyncio.sleep(PEER_CHECK_SECONDS)
+            continue
+        if peer:
+            if not app.state.controller.blocked:
+                _LOGGER.warning("%s is running as well: not controlling and not announcing", peer)
+            app.state.controller.blocked = t(
+                "Die App „{name}“ läuft ebenfalls – diese steuert nichts. Bitte nur eine Sunflow-App starten.", name=peer
+            )
+            announced = False
+        else:
+            app.state.controller.blocked = None
+            # The integration follows the App that announced last
+            if not announced:
+                await announce(supervisor_token, port, app.state.integration_token)
+                announced = True
+        await asyncio.sleep(PEER_CHECK_SECONDS)
+
+
 # The Supervisor's Ingress proxy, and local calls inside the container
 INGRESS_CLIENTS = {"172.30.32.2", "127.0.0.1"}
 # Health for the integration; the MCP server checks its own token
@@ -89,8 +117,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = settings
         app.state.integration_token = integration_token(settings.data_dir)
         app.state.mcp_key = McpKey(settings.data_dir)
-        if settings.supervisor_token:
-            await announce(settings.supervisor_token, settings.port, app.state.integration_token)
         app.state.store = ConfigStore(settings.data_dir)
         app.state.profiles = load_profiles(
             settings.profiles_dir, load_schema(settings.schema_dir)
@@ -108,9 +134,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.runner.counters = EnergyCounters(settings.data_dir)
         app.state.loads = OneTimeLoads(settings.data_dir)
         runner_task = asyncio.create_task(app.state.runner.run())
+        peer_task = (
+            asyncio.create_task(_watch_peer(app, settings.supervisor_token, settings.port))
+            if settings.supervisor_token
+            else None
+        )
         try:
             yield
         finally:
+            if peer_task is not None:
+                peer_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await peer_task
             runner_task.cancel()
             with suppress(asyncio.CancelledError):
                 await runner_task
