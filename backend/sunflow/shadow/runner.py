@@ -10,6 +10,7 @@ import logging
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sunflow.analysis.history import level_key
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.control.controller import PlanController
@@ -27,7 +28,7 @@ from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import PlanResult, compute_plan
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
-from sunflow.planning.vehicles import unplugged_choices, vehicle_at
+from sunflow.planning.vehicles import soc_of, unplugged_choices
 from sunflow.shadow.counters import EnergyCounters
 
 from .store import Sample, ShadowStore, SlotRecorder, actual_action, slot_start
@@ -159,18 +160,17 @@ def string_powers(config: SunflowConfig, profiles: dict[str, Any], snapshot: Any
 
 
 def consumer_levels(config: SunflowConfig, profiles: dict[str, Any], snapshot: Any) -> dict[str, float]:
-    """Level of every controllable consumer by device id: the recognized car's SoC, the tank temperature."""
-    levels = {}
+    """Levels by key: every car's SoC (also away), tank temperatures and the SoC of wallboxes without cars."""
+    levels = {level_key(v.id): soc for v in config.vehicles if (soc := soc_of(v, snapshot.states)) is not None}
     for device in config.devices:
         profile = profiles[device.profile]
-        if "loadpoint" not in profile["capabilities"] and "load" not in profile["capabilities"]:
+        if ("loadpoint" not in profile["capabilities"] and "load" not in profile["capabilities"]) or config.vehicles_at(device.id):
             continue
         roles = {
             r.role: r
             for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
         }
-        recognized, soc = vehicle_at(config, device, roles, snapshot.states)
-        level = soc if recognized.vehicle is not None else next(
+        level = next(
             (roles[r].value for r in ("vehicle_soc", "temperature") if r in roles and isinstance(roles[r].value, int | float)), None
         )
         if level is not None:
