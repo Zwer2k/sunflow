@@ -3,7 +3,13 @@
 from datetime import UTC, datetime, time, timedelta
 
 import pytest
-from sunflow.config.models import ChargingProfile, DeviceConfig, SunflowConfig, Vehicle, VehicleDetection
+from sunflow.config.models import (
+    ChargingProfile,
+    DeviceConfig,
+    SunflowConfig,
+    Vehicle,
+    VehicleDetection,
+)
 from sunflow.planning.habits import departures_from
 from sunflow.planning.vehicle_usage import usage_from
 
