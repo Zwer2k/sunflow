@@ -957,3 +957,34 @@ async def test_charge_limit_lifted_before_poor_pv_days(mode: str, pv_kwh: list[f
     )
     assert (care.limit_wh is None) == lifted
     assert (care.poor_day is not None) == lifted
+
+
+def test_high_soc_aging_charges_just_in_time() -> None:
+    """With calendar aging the battery charges late in the cheap window instead of standing high for hours."""
+    # Cheap 0-5 h (slots 8-27), expensive afterwards
+    inputs = _slots(24, price=lambda i: 0.226 if 8 <= i < 28 else 0.326)
+
+    plain = optimize(inputs, BATTERY, Settings(wear_ct_per_kwh=3))
+    aging = optimize(inputs, BATTERY, Settings(wear_ct_per_kwh=3, high_soc_wh=8000, high_soc_ct_per_kwh_h=0.1))
+
+    def first_full_power(plan: Plan) -> int:
+        return next(t for t, s in enumerate(plan.slots) if s.charge_w > 4000)
+
+    assert first_full_power(plain) == 8
+    assert first_full_power(aging) > 8
+    # The same energy is stored for the expensive hours
+    assert aging.slots[27].soc_wh == pytest.approx(plain.slots[27].soc_wh)
+    assert sum(s.soc_wh for s in aging.slots[8:28]) < sum(s.soc_wh for s in plain.slots[8:28])
+
+
+def test_high_soc_aging_settings() -> None:
+    """The threshold follows the capacity; switched off it is not planned."""
+    from sunflow.config.models import OptimizerConfig
+    from sunflow.planning.plan import optimizer_settings
+
+    battery = BatterySpec(capacity_wh=20000, soc_wh=5000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    on = optimizer_settings(SunflowConfig(optimizer=OptimizerConfig(high_soc_threshold_pct=75)), battery)
+    off = optimizer_settings(SunflowConfig(optimizer=OptimizerConfig(high_soc_aging=False)), battery)
+
+    assert (on.high_soc_wh, on.high_soc_ct_per_kwh_h) == (15000, 0.1)
+    assert off.high_soc_wh is None

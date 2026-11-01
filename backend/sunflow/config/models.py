@@ -239,6 +239,11 @@ class OptimizerConfig(BaseModel):
     full_charge_every_days: int | None = Field(default=None, ge=1, le=90)
     # When PV did not fill the battery for this long, charge it full from the grid at the cheapest time
     full_charge_grid_after_days: int | None = Field(default=None, ge=1, le=120)
+    # Calendar aging: cells age faster the longer they stay at a high SoC. Each kWh above the
+    # threshold costs per hour, so the plan charges shortly before the energy is needed
+    high_soc_aging: bool = True
+    high_soc_threshold_pct: float = Field(default=80.0, ge=30, le=100)
+    high_soc_ct_per_kwh_h: float = Field(default=0.1, ge=0, le=5)
     # Adapt the PV forecast to this site from shadow data; weather entity for the cloud
     # coverage (None: the first weather entity found)
     pv_learning: bool = True
