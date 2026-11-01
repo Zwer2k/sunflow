@@ -158,6 +158,23 @@ async def test_pauses_while_evcc_controls_the_battery(tmp_path: Path) -> None:
     assert not evcc_controls_battery(SimpleNamespace(states={"sensor.evcc_battery_mode_value": {"state": "normal"}}))
 
 
+async def test_hands_back_while_another_app_runs(tmp_path: Path) -> None:
+    """With the other Sunflow App running, a taken-over device is handed back and nothing is written."""
+    device = FakeDevice()
+    controller = _controller(tmp_path, device)
+    await controller.tick(_config(), _plan(), NOW, SNAPSHOT, NOW)
+
+    controller.blocked = "Sunflow Edge"
+    await controller.tick(_config(), _plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=1))
+
+    assert device.mode == "Self Use"
+    assert TakeoverMarker(tmp_path).get() == {}
+    assert controller.paused == "Sunflow Edge"
+    writes = len(device.writes)
+    await controller.tick(_config(), _plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=2))
+    assert len(device.writes) == writes
+
+
 async def test_failure_is_reported_and_retried(tmp_path: Path) -> None:
     """A failed write shows in the status; the next minute tries again."""
     device = FakeDevice()

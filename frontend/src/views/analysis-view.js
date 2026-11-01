@@ -521,17 +521,28 @@ class SunflowAnalysis extends LitElement {
   async _import(event) {
     const file = event.target.files[0];
     if (!file) return;
+    // Moving to another App (e.g. Sunflow Edge) takes the configuration along; cancelling keeps it
+    const withConfig = await confirmDialog({
+      title: t("Konfiguration übernehmen?"),
+      text: t("Die Aufzeichnung wird immer zusammengeführt. Beim Umzug in eine andere Sunflow-App kann auch die Konfiguration übernommen werden: Sie ersetzt die jetzige, die Steuerung bleibt danach aus, bis du sie einschaltest."),
+      confirm: t("Mit Konfiguration"),
+      cancel: t("Nur Aufzeichnung"),
+    });
     const body = new FormData();
     body.append("file", file);
+    const url = `api/v1/import?config=${withConfig}`;
     this._importing = true;
     try {
-      let response = await fetch("api/v1/import", { method: "POST", body });
+      let response = await fetch(url, { method: "POST", body });
       if (response.status === 401 && (await renewIngressSession())) {
-        response = await fetch("api/v1/import", { method: "POST", body });
+        response = await fetch(url, { method: "POST", body });
       }
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail ?? response.statusText);
-      this._importResult = t("{count} Zeitabschnitte importiert.", { count: data.imported_slots });
+      this._importResult = data.config
+        ? t("{count} Zeitabschnitte und die Konfiguration importiert. Die Seite lädt neu.", { count: data.imported_slots })
+        : t("{count} Zeitabschnitte importiert.", { count: data.imported_slots });
+      if (data.config) setTimeout(() => window.location.reload(), 1500);
       this._shadow = await api.shadow();
     } catch (err) {
       this._error = t("Import fehlgeschlagen: {error}", { error: err.message });

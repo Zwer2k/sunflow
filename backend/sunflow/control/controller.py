@@ -710,6 +710,8 @@ class PlanController:
         self._profiles = profiles
         self.statuses: dict[str, DeviceControl] = {}
         self.paused: str | None = None
+        # Set while another Sunflow App runs: then this one hands everything back and waits
+        self.blocked: str | None = None
         self._config = SunflowConfig()
         # Writes of the PV limits, apart from the battery writes of the same device (refresh)
         self._limit_writes: dict[str, DeviceControl] = {}
@@ -736,7 +738,7 @@ class PlanController:
 
     def wanted(self, config: SunflowConfig, device: DeviceConfig) -> bool:
         """Control is on for this device and it passed the checks."""
-        if device not in config.devices:
+        if device not in config.devices or self.blocked:
             return False
         return config.control.enabled and config.control.devices.get(device.id, False) and self.eligible(config, device) is None
 
@@ -752,7 +754,9 @@ class PlanController:
             device = devices.get(device_id)
             if device is None or not self.wanted(config, device):
                 await self._safely(device_id, device, self._hand_back)
-        self.paused = t("evcc steuert gerade den Hausspeicher – Sunflow wartet") if evcc_controls_battery(snapshot) else None
+        self.paused = self.blocked or (
+            t("evcc steuert gerade den Hausspeicher – Sunflow wartet") if evcc_controls_battery(snapshot) else None
+        )
         for device in config.devices:
             if not self.wanted(config, device):
                 continue

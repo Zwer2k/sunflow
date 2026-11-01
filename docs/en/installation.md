@@ -15,10 +15,25 @@
 
 1. In Home Assistant open **Settings → Apps → App store → ⋮ → Repositories** and add
    `https://github.com/Zwer2k/sunflow`.
-2. Install **Sunflow**. The Supervisor builds the App on the device; this takes a few minutes.
+2. Install **Sunflow**.
 3. Start the App and enable "Show in sidebar". Sunflow opens in its panel.
 
 Updates appear like for any other App once a new version is published.
+
+### Sunflow or Sunflow Edge
+
+The repository offers two Apps:
+
+- **Sunflow**: the released versions. For normal use.
+- **Sunflow Edge**: the current development state, with an update for every change. For
+  trying new features; the Supervisor builds it on the device, which takes a few minutes.
+
+Start only one of them. If both run, neither controls anything until one is stopped.
+
+To switch, use **Export data** under **Analysis → Shadow mode** in the current App, install and
+start the other App, stop the current one, and use **Import export** there with **With
+configuration**. Control stays off afterwards until you switch it on again under
+[Control](control.md). Create a new key for the MCP server in the new App.
 
 ## Setup step by step
 

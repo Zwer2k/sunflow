@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.74.0
+
+- Zwei Apps im Repository: **Sunflow** bekommt Updates nur noch mit einem GitHub-Release und installiert ein fertiges Image (schneller, kein Bau auf dem Gerät). **Sunflow Edge** ist der Entwicklungsstand mit einem Update für jede Änderung und baut wie bisher auf dem Gerät.
+- Laufen beide Apps gleichzeitig, steuert keine von ihnen: Übernommene Geräte werden zurückgegeben, die Steuerung zeigt den Grund, und die Integration bleibt bei der App, die sich zuletzt angemeldet hat. Sobald nur noch eine läuft, steuert sie wieder und meldet sich bei der Integration.
+- Umzug zwischen den Apps: „Export importieren“ fragt, ob auch die Konfiguration übernommen werden soll. Mit Konfiguration ersetzt sie die jetzige, die Steuerung bleibt danach aus, bis sie eingeschaltet wird.
+- Die App braucht dafür Lesezugriff auf die Supervisor-Info der jeweils anderen Sunflow-App (`hassio_api`).
+
 ## 0.73.1
 
 - Dokumentation: Screenshots aus einer echten Installation (Kennungen unkenntlich), auf Deutsch und – für die englische Dokumentation – auf Englisch, dazu Beispiele für Wechselrichter- und Wallbox-Einstellungen. Die englischen Seiten nennen die englischen Beschriftungen der Oberfläche.

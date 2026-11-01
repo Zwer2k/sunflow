@@ -1,0 +1,94 @@
+# A tag vX.Y.Z on main releases that state as the stable App "Sunflow":
+# images for both architectures, then the App's version, then the GitHub release.
+# The version is raised in sunflow_app/config.yaml only after the images exist, so the
+# Supervisor never offers an update it cannot pull. Sunflow Edge is not affected.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Tag matches the code version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          code=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' backend/sunflow/__init__.py)
+          if [ "$version" != "$code" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match backend/sunflow/__init__.py ($code)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  image:
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: aarch64
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sunflow_app/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          build-args: |
+            BUILD_VERSION=${{ needs.version.outputs.version }}
+            BUILD_ARCH=${{ matrix.arch }}
+          tags: |
+            ghcr.io/zwer2k/sunflow-${{ matrix.arch }}:${{ needs.version.outputs.version }}
+            ghcr.io/zwer2k/sunflow-${{ matrix.arch }}:latest
+
+  publish:
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Changes since the last stable release
+        run: |
+          previous=$(sed -n 's/^version: "\(.*\)"$/\1/p' sunflow_app/config.yaml)
+          # Every section from the top down to the last stable version (Edge versions in between)
+          awk -v stop="## $previous" '$0 == stop {exit} /^## / {found=1} found' sunflow_app/CHANGELOG.md > notes.md
+      - name: Offer the release to the stable App
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            sed -i "s/^version: \".*\"$/version: \"$VERSION\"/" sunflow_app/config.yaml
+            git diff --quiet && break
+            git commit -am "Release $VERSION as Sunflow"
+            git push origin HEAD:main && break
+            git reset --hard origin/main
+          done
+      - name: GitHub release
+        run: gh release create "v$VERSION" --verify-tag --title "Sunflow $VERSION" --notes-file notes.md

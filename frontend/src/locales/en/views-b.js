@@ -218,4 +218,9 @@ export default {
   "nur wenn angesteckt": "only when plugged in",
   "Wassertemperatur": "water temperature",
   "{name} in {unit}": "{name} in {unit}",
+  "Konfiguration übernehmen?": "Take over the configuration?",
+  "Die Aufzeichnung wird immer zusammengeführt. Beim Umzug in eine andere Sunflow-App kann auch die Konfiguration übernommen werden: Sie ersetzt die jetzige, die Steuerung bleibt danach aus, bis du sie einschaltest.": "The recording is always merged. When moving to another Sunflow App, the configuration can be taken over too: it replaces the current one, and control stays off until you switch it on.",
+  "Mit Konfiguration": "With configuration",
+  "Nur Aufzeichnung": "Recording only",
+  "{count} Zeitabschnitte und die Konfiguration importiert. Die Seite lädt neu.": "{count} time slots and the configuration imported. The page reloads.",
 };

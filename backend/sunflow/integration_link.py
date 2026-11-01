@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 import secrets
 import socket
+from typing import Any
 
 import aiohttp
 
@@ -64,3 +65,41 @@ async def host_port(supervisor_token: str, port: int) -> int | None:
         _LOGGER.warning("App info not available: %s", err)
         return None
     return network.get(f"{port}/tcp")
+
+
+# The stable App and Sunflow Edge come from the same repository; only one may run
+APP_SLUGS = ("sunflow", "sunflow_edge")
+
+
+def peer_slug(own: str) -> str | None:
+    """Slug of the other Sunflow App of the same repository, e.g. "2b15894e_sunflow" → "2b15894e_sunflow_edge"."""
+    repository, _, name = own.partition("_")
+    if name not in APP_SLUGS:
+        return None
+    other = APP_SLUGS[1] if name == APP_SLUGS[0] else APP_SLUGS[0]
+    return f"{repository}_{other}"
+
+
+async def _addon_info(supervisor_token: str, slug: str) -> dict[str, Any] | None:
+    try:
+        async with (
+            aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session,
+            session.get(
+                f"http://supervisor/addons/{slug}/info", headers={"Authorization": f"Bearer {supervisor_token}"}
+            ) as response,
+        ):
+            if response.status >= 400:
+                return None
+            return (await response.json()).get("data")
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.debug("Info of App %s not available: %s", slug, err)
+        return None
+
+
+async def running_peer(supervisor_token: str) -> str | None:
+    """Name of the other Sunflow App when it is running; None if not (or not installed)."""
+    own = await _addon_info(supervisor_token, "self")
+    if not own or (slug := peer_slug(own.get("slug", ""))) is None:
+        return None
+    peer = await _addon_info(supervisor_token, slug)
+    return peer.get("name", slug) if peer and peer.get("state") == "started" else None

@@ -1,0 +1,26 @@
+name: Sunflow Edge
+# Bump with every change on main: a new version makes the Supervisor rebuild from main
+version: "0.74.0"
+slug: sunflow_edge
+description: Development version of Sunflow (main branch) for testing; run either this or Sunflow
+url: https://github.com/Zwer2k/sunflow
+stage: experimental
+arch:
+  - aarch64
+  - amd64
+init: false
+homeassistant_api: true
+# Only to see whether the stable Sunflow runs as well (info of that App)
+hassio_api: true
+ingress: true
+ingress_port: 8099
+# Only for the MCP server (/mcp, own token); the rest stays Ingress only. Off until a host port is set
+ports:
+  8099/tcp: null
+ports_description:
+  8099/tcp: MCP server for AI assistants (read only)
+# The App announces itself to the Sunflow integration (host, port, token)
+discovery:
+  - sunflow_ems
+panel_icon: mdi:solar-power-variant
+panel_title: Sunflow Edge

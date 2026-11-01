@@ -1,0 +1,10 @@
+# Only what the image needs; never local data or exports
+*
+!backend/
+!profiles/
+!schema/
+!frontend/
+backend/.venv
+backend/.env
+backend/*.egg-info
+**/__pycache__
