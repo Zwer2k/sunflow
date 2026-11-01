@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.69.0
+
+- Planung: Alterung bei hohem Ladestand (kalendarische Alterung). Jede kWh über einer Schwelle (Standard 80 %) kostet im Plan je Stunde einen kleinen Betrag (Standard 0,1 ct). Sunflow lädt den Speicher dadurch möglichst kurz vor dem Bedarf – aus dem Netz am Ende des günstigen Fensters statt ab Mitternacht, und lässt ihn nicht unnötig lange voll stehen. Einstellbar und abschaltbar unter Einstellungen → Planung. Standardmäßig an.
+
 ## 0.68.3
 
 - MCP-Server: Schlüssel und die Knöpfe „Erzeugen“ / „Neu …“ / „Zurückziehen …“ stehen in einer Zeile.

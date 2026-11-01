@@ -33,6 +33,8 @@ class SunflowStandards extends LitElement {
     _importLimit: { state: true },
     _daily: { state: true },
     _largeLoad: { state: true },
+    _agingThreshold: { state: true },
+    _agingCost: { state: true },
     _saving: { state: true },
   };
 
@@ -94,6 +96,8 @@ class SunflowStandards extends LitElement {
       if ("import_limit_w" in changes) this._importLimit = undefined;
       if ("daily_consumption_kwh" in changes) this._daily = undefined;
       if ("large_load_threshold_w" in changes) this._largeLoad = undefined;
+      if ("high_soc_threshold_pct" in changes) this._agingThreshold = undefined;
+      if ("high_soc_ct_per_kwh_h" in changes) this._agingCost = undefined;
       await this._load();
       return true;
     } catch (err) {
@@ -108,7 +112,7 @@ class SunflowStandards extends LitElement {
 
   /** Save edited numbers before the wizard moves on; false when they are invalid. */
   async saveIfChanged() {
-    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._exportLimit, this._importLimit, this._daily, this._largeLoad].some(
+    const changed = [this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._exportLimit, this._importLimit, this._daily, this._largeLoad, this._agingThreshold, this._agingCost].some(
       (v) => v !== undefined,
     );
     return !changed || this._saveNumbers(this._settings);
@@ -184,6 +188,22 @@ class SunflowStandards extends LitElement {
         return false;
       }
       changes[key] = kw === null ? null : kw * 1000;
+    }
+    if (this._agingThreshold !== undefined) {
+      const threshold = fromDisplay(this._agingThreshold, "%");
+      if (threshold === undefined || threshold === null || threshold < 30 || threshold > 100) {
+        this._error = "Bitte eine Schwelle zwischen 30 und 100 % eingeben.";
+        return false;
+      }
+      changes.high_soc_threshold_pct = threshold;
+    }
+    if (this._agingCost !== undefined) {
+      const cost = fromDisplay(this._agingCost, "ct");
+      if (cost === undefined || cost === null || cost < 0 || cost > 5) {
+        this._error = "Bitte Kosten zwischen 0 und 5 ct je kWh und Stunde eingeben.";
+        return false;
+      }
+      changes.high_soc_ct_per_kwh_h = cost;
     }
     if (this._reserve !== undefined) {
       const reserve = fromDisplay(this._reserve, "%");
@@ -339,6 +359,33 @@ class SunflowStandards extends LitElement {
             <span class="small muted">War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll – auch wenn Netzladen sonst aus ist. Leer = nie.</span>
           </label>
           <div class="field">
+            <span class="field-label">Alterung bei hohem Ladestand</span>
+            <span class="inline">
+              <input type="checkbox" aria-label="Alterung bei hohem Ladestand einrechnen" .checked=${settings.high_soc_aging}
+                ?disabled=${this._saving} @change=${(e) => this._saveSettings({ high_soc_aging: e.target.checked })}>
+              ${settings.high_soc_aging
+                ? html`<span class="input-unit">
+                      <span class="muted">über</span>
+                      <input inputmode="decimal" aria-label="Schwelle in Prozent"
+                        .value=${this._agingThreshold ?? toDisplay(settings.high_soc_threshold_pct, "%")}
+                        @input=${(e) => (this._agingThreshold = e.target.value)}>
+                      <span class="muted">%</span>
+                    </span>
+                    <span class="input-unit">
+                      <input inputmode="decimal" aria-label="Kosten in ct je kWh und Stunde"
+                        .value=${this._agingCost ?? toDisplay(settings.high_soc_ct_per_kwh_h, "ct")}
+                        @input=${(e) => (this._agingCost = e.target.value)}>
+                      <span class="muted">ct je kWh und Stunde</span>
+                    </span>`
+                : html`einrechnen`}
+            </span>
+            <span class="small muted">Zellen altern schneller, je länger sie voll stehen (kalendarische Alterung). Jede kWh über
+              der Schwelle kostet im Plan je Stunde diesen Betrag – Sunflow lädt dann möglichst kurz vor dem Bedarf, z. B. am Ende
+              des günstigen Nachtfensters statt ab Mitternacht. Beispiel: 4 kWh über der Schwelle für 10 Stunden kosten bei
+              0,1 ct rund 4 ct. Die Alterung, die mit der Zeit ohnehin eintritt, ist darin nicht enthalten, weil sie nicht vom
+              Betrieb abhängt.</span>
+          </div>
+          <div class="field">
             <span class="field-label">Notstrom-Reserve</span>
             <span class="inline">
               <input type="checkbox" aria-label="Notstrom-Reserve freihalten" .checked=${settings.backup_reserve}
@@ -458,7 +505,7 @@ class SunflowStandards extends LitElement {
             <span class="small muted">Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.</span>
           </div>
         </div>
-        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._exportLimit, this._importLimit, this._daily, this._largeLoad].some((v) => v !== undefined)
+        ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._exportLimit, this._importLimit, this._daily, this._largeLoad, this._agingThreshold, this._agingCost].some((v) => v !== undefined)
           ? html`<div class="actions">
               <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
                 Speichern und neu planen

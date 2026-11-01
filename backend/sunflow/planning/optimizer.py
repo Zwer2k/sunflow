@@ -3,7 +3,8 @@
 Per 15 minute slot t (powers in W, energy in Wh):
     pv + import + discharge = load + charge + export
     soc[t] = soc[t-1] + (charge * eta_c - grid_charge * (eta_c - eta_g) - discharge / eta_d) * dt
-minimize   sum(price * import - feed_in * export + wear * discharge) * dt / 1000
+minimize   sum(price * import - feed_in * export + wear * discharge
+               + calendar aging * max(soc - threshold, 0)) * dt / 1000
            - value of the energy left at the end
 """
 
@@ -68,6 +69,9 @@ class Settings:
     # €/kWh missing to full at that slot; high enough to prefer PV, low enough not to
     # force expensive grid charging
     full_charge_penalty: float = 0.25
+    # Calendar aging is faster at a high SoC: every kWh above this (Wh) costs per hour
+    high_soc_wh: float | None = None
+    high_soc_ct_per_kwh_h: float = 0.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -363,6 +367,10 @@ def optimize(
     full_short = count if settings.full_charge_slot is not None and 0 <= settings.full_charge_slot < n else None
     if full_short is not None:
         count += 1
+    # Energy above the high SoC threshold per slot
+    hs = count + np.arange(n) if settings.high_soc_wh is not None and settings.high_soc_ct_per_kwh_h > 0 else None
+    if hs is not None:
+        count += n
     # PV limited away per slot, only where plants can be limited
     cu = count + np.arange(n) if any(i.curtailable_w > 0 for i in inputs) else None
     if cu is not None:
@@ -394,6 +402,8 @@ def optimize(
         cost[full_short] = settings.full_charge_penalty / 1000
     if cu is not None:
         cost[cu] = CURTAIL_COST * DT_H / 1000
+    if hs is not None:
+        cost[hs] = settings.high_soc_ct_per_kwh_h / 100 * DT_H / 1000
     for over in (over_export, over_import):
         if over is not None:
             cost[over] = settings.peak_penalty_ct_per_kwh / 100 * DT_H / 1000
@@ -560,6 +570,9 @@ def optimize(
             for t in range(n):
                 # flow - over <= limit: only the part above the limit costs the penalty
                 gate_rows.append(({flow[t]: 1, over[t]: -1}, limit))
+    if hs is not None:
+        # soc - above <= threshold: only the energy above it costs
+        gate_rows.extend(({s[t]: 1, hs[t]: -1}, settings.high_soc_wh) for t in range(n))
     if full_short is not None:
         # soc at the target slot plus shortfall reaches (almost) full
         gate_rows.append(({s[settings.full_charge_slot]: -1, full_short: -1}, -battery.capacity_wh * FULL_FRACTION))
