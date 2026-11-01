@@ -120,6 +120,8 @@ class FlexLoad:
     # named loads got this much energy; until then it may only run on grid power
     gate_battery_wh: float | None = None
     gate_after: list[tuple[str, float]] = field(default_factory=list)
+    # A car not there yet (expected back): its need is no must, unmet_cost is what it is worth
+    expected: bool = False
 
     @property
     def gated(self) -> bool:
@@ -289,7 +291,7 @@ def simulate_self_consumption(
 
 def has_alternative(load: FlexLoad) -> bool:
     """The need can be covered otherwise at a real price (e.g. district heating)."""
-    return load.unmet_cost < 1.0
+    return load.unmet_cost < 1.0 and not load.expected
 
 
 def immediate_flex(inputs: list[SlotInput], flex: list[FlexLoad]) -> tuple[list[SlotInput], float]:

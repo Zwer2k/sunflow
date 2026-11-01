@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.66.1
+
+- Autos unterwegs: Der Bedarf eines Autos, das nur erwartet wird, ist keine Pflicht mehr. Sunflow plant es in Viertelstunden ein, die günstiger als der mittlere Preis im Plan sind, oder mit PV-Überschuss – erzwingt aber kein teures Netzladen. Bisher konnte eine kurze gelernte Standzeit (z. B. Ankunft 13:33, Abfahrt 15:48) volle 11 kW aus dem Netz einplanen. Steckt das Auto an, gilt wieder der volle Bedarf bis zur Abfahrt.
+
 ## 0.66.0
 
 - Plan: bis zu 96 statt 48 Stunden voraus. Bei Zeittarifen und festem Preis über den ganzen Zeitraum; bei dynamischen Tarifen schätzt Sunflow die noch nicht veröffentlichten Preise je Uhrzeit aus dem Preisverlauf der letzten zwei Wochen (sonst wiederholt es die letzten 24 bekannten Stunden). Geschätzte Preise sind im Plan gestrichelt und markiert. Geschätzt wird nur so weit, wie die PV-Prognose reicht. Ein Auto ohne Abfahrtszeit wird weiterhin innerhalb von 48 Stunden geladen.

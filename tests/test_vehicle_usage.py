@@ -127,3 +127,29 @@ def test_several_cars_are_not_guessed(library) -> None:
 
     assert loads == []
     assert info.reason == "Fahrzeug nicht angesteckt"
+
+
+@pytest.mark.parametrize(
+    ("expected", "charged_wh"),
+    [
+        # Only expected back: charged where cheaper than the median price, nothing forced
+        pytest.param(True, 2 * 11000 * 0.25, id="expected-car"),
+        pytest.param(False, 10000, id="plugged-in-car"),
+    ],
+)
+def test_expected_car_is_no_must(expected: bool, charged_wh: float) -> None:
+    """A car not there yet gets cheap energy only; a plugged-in one its whole need."""
+    from dataclasses import replace
+
+    from sunflow.planning.optimizer import BatterySpec, FlexLoad, SlotInput, optimize
+
+    prices = [0.20 if t in (2, 3) else 0.35 for t in range(8)]
+    inputs = [SlotInput(start=START + timedelta(minutes=15 * t), pv_w=0, load_w=0, price=p, feed_in=0.0) for t, p in enumerate(prices)]
+    battery = BatterySpec(capacity_wh=1000, soc_wh=200, min_soc_wh=200, max_charge_w=100, max_discharge_w=100)
+    car = FlexLoad(name="Fiat", energy_wh=10000, max_power_w=11000, available=[True] * 8, expected=expected)
+    if expected:
+        car = replace(car, unmet_cost=0.35)
+
+    plan = optimize(inputs, battery, flex=[car])
+
+    assert sum(s.flex_w["Fiat"] for s in plan.slots) * 0.25 == pytest.approx(charged_wh, rel=0.01)
