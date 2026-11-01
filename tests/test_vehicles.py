@@ -216,3 +216,28 @@ def test_expected_levels(kind: str, current: float, power: float, expected: list
     )
 
     assert expected_levels(info, slots) == pytest.approx(expected, abs=0.05)
+
+
+def test_every_car_has_its_own_level(library) -> None:
+    """Cars are recorded and shown by car (also while away), not by the wallbox they charge at."""
+    from sunflow.analysis.history import history_series
+    from sunflow.devices.discovery import Snapshot
+    from sunflow.shadow.runner import consumer_levels
+
+    entities = [{"entity_id": "binary_sensor.goe_car", "unique_id": "216505-binary_sensor-car-1", "device_id": "goe"}]
+    states = {"sensor.fiat_soc": {"state": "40", "attributes": {}}, "sensor.tesla_soc": {"state": "75", "attributes": {}}}
+    snapshot = Snapshot(entries=[], devices=[{"id": "goe"}], entities=entities, states=states, energy_prefs=None)
+    wallbox = DeviceConfig(id="wb", ha_device_id="goe", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
+    config = SunflowConfig(
+        devices=[wallbox],
+        vehicles=[
+            Vehicle(id="fiat", name="Fiat", capacity_wh=37500, soc_entity="sensor.fiat_soc"),
+            Vehicle(id="tesla", name="Tesla", capacity_wh=60000, soc_entity="sensor.tesla_soc"),
+        ],
+        charging=[ChargingProfile(vehicle_id="fiat", wallbox_id="wb")],
+    )
+
+    levels = [(s.statistic_id, s.device_id) for s in history_series(config, library.profiles, snapshot) if s.key == "level"]
+
+    assert levels == [("sensor.fiat_soc", "vehicle:fiat"), ("sensor.tesla_soc", "vehicle:tesla")]
+    assert consumer_levels(config, library.profiles, snapshot) == {"vehicle:fiat": 40.0, "vehicle:tesla": 75.0}

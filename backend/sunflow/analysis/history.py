@@ -12,7 +12,6 @@ from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import CANONICAL_SIGNS, preview
 from sunflow.devices.site import PV_OUTPUT_ROLES, device_parameters, measurement_device
 from sunflow.ha import HAClient
-from sunflow.planning.vehicles import vehicle_at
 
 # Short-term statistics are kept 10 days by default; above that use hourly
 FIVE_MINUTE_LIMIT = timedelta(days=10)
@@ -68,14 +67,13 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             add("loadpoint_w", "charge_power", device_id=device.id)
         elif "load" in profile["capabilities"]:
             add("loadpoint_w", "power", device_id=device.id)
-        if "loadpoint" in profile["capabilities"] or "load" in profile["capabilities"]:
-            # The car's own SoC sensor, else the level the device reports (tank temperature)
-            vehicle = vehicle_at(config, device, roles, snapshot.states)[0].vehicle
-            if vehicle is not None and vehicle.soc_entity:
-                series.append(Series(key="level", statistic_id=vehicle.soc_entity, factor=1.0, device_id=device.id))
-            else:
-                add("level", "vehicle_soc", device_id=device.id)
-                add("level", "temperature", device_id=device.id)
+        # Cars have their own line (below); a wallbox without assigned cars shows the SoC it knows
+        if ("loadpoint" in profile["capabilities"] or "load" in profile["capabilities"]) and not config.vehicles_at(device.id):
+            add("level", "vehicle_soc", device_id=device.id)
+            add("level", "temperature", device_id=device.id)
+    for vehicle in config.vehicles:
+        if vehicle.soc_entity:
+            series.append(Series(key="level", statistic_id=vehicle.soc_entity, factor=1.0, device_id=level_key(vehicle.id)))
         if "pv" in profile["capabilities"]:
             role = next((r for r in PV_OUTPUT_ROLES if r in roles and roles[r].entity_id), None)
             if role:
@@ -130,6 +128,11 @@ async def fetch_history(
         point["levels"] = {device_id: sum(v) / len(v) for device_id, v in levels.get(bucket_start, {}).items()}
         points.append(point)
     return points
+
+
+def level_key(vehicle_id: str) -> str:
+    """Key of a car's level in the history (devices use their id)."""
+    return f"vehicle:{vehicle_id}"
 
 
 def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], consumers: set[str]) -> None:

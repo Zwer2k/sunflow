@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.61.1
+
+- Ladestand-Diagramm: eine Linie je Auto statt je Wallbox – mit dem Verlauf seines eigenen Ladestand-Sensors, auch wenn es unterwegs ist; bei mehreren Autos jedes für sich. Der erwartete Verlauf erscheint beim Auto, das gerade an der Wallbox erkannt ist.
+- Ladegrenze, Notstromreserve und Entladegrenze erscheinen nur noch, wenn der Hausspeicher allein angezeigt wird; die Ziele von Auto und Warmwasser ebenso nur bei ihnen.
+
 ## 0.61.0
 
 - Plan: Das Diagramm „Ladestand“ zeigt neben dem Hausspeicher auch Autos (Ladestand) und Warmwasserspeicher (Temperatur), gemessen und erwartet. Standardmäßig alle in % – beim Warmwasser 0 % bei 15 °C bis 100 % beim Ziel. Ein Klick auf einen Eintrag der Legende zeigt nur diesen in seiner Einheit (Speicher und Auto in kWh, Warmwasser in °C) mit seinem Ziel; erneuter Klick zeigt wieder alle in %.

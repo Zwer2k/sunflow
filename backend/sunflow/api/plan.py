@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from sunflow.analysis.history import fetch_history, fill_from_shadow, history_series
+from sunflow.analysis.history import fetch_history, fill_from_shadow, history_series, level_key
 from sunflow.config.models import SunflowConfig
 from sunflow.control.controller import PlanController
 from sunflow.ha import HAError
@@ -66,6 +66,10 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
             )
             | {"levels": expected_levels(info, plan.slots)}
             for info in result.flex
+        ],
+        # Cars have their own level line, also while away
+        "vehicles": [
+            {"id": v.id, "key": level_key(v.id), "name": v.name, "capacity_wh": v.capacity_wh} for v in config.vehicles if v.soc_entity
         ],
         "slots": [asdict(slot) for slot in plan.slots],
         # The forecast as its source delivers it, before learning and nowcast
