@@ -86,6 +86,21 @@ def subtract_loads(
     return base, separated
 
 
+def unmeasured_consumers(
+    measured: list[tuple[datetime, float]], loads: list[list[tuple[datetime, float]]]
+) -> list[tuple[datetime, float]]:
+    """Consumer power per hour that Sunflow measured but Home Assistant's statistics lack.
+
+    measured: hourly means of all consumers from Sunflow's own samples; a sensor
+    excluded from the recorder (e.g. a chatty wallbox) has no statistics.
+    """
+    by_hour: dict[datetime, float] = {}
+    for series in loads:
+        for moment, power in series:
+            by_hour[moment] = by_hour.get(moment, 0.0) + power
+    return [(moment, power - by_hour.get(moment, 0.0)) for moment, power in measured if power > by_hour.get(moment, 0.0)]
+
+
 def _day_type(moment: datetime) -> str:
     return "weekend" if moment.weekday() >= 5 else "weekday"
 

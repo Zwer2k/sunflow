@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.58.0
+
+- Plan-Diagramm: Der Verbrauch von Wallbox und anderen steuerbaren Verbrauchern erscheint auch dann als eigene Kurve, wenn Home Assistant für ihren Leistungssensor keine Statistik führt (z. B. im Recorder ausgeschlossen). Sunflow nimmt dafür seine eigenen Minutenwerte; bisher zählte deren Verbrauch dann zum Hausverbrauch. Auch die Verbrauchsprognose zieht ihn ab, statt nächtliches Autoladen als Hausverbrauch zu lernen. Die Leistung wird jetzt je Verbraucher gespeichert; ältere Viertelstunden ordnen die Summe dem einen Verbraucher ohne Statistik zu.
+- Wallbox: Sunflow prüft, ob der vorgegebene Ladestrom ankommt (go-e: „Maximum allowed current“). Erlaubt die Wallbox nach zwei Minuten weniger, zeigen Steuerung und Protokoll eine Warnung. Filter „nur Fehler und Warnungen“ im Protokoll.
+- Wallbox: Bei unbekanntem Fahrzeug („Wallbox regelt selbst“) entsteht nicht mehr jede Minute ein Protokolleintrag.
+
 ## 0.57.0
 
 - Wallbox: Der höchste Ladestrom der go-e kommt jetzt aus ihrem eingestellten Maximalstrom (`ama`, z. B. 32 A bei 22 kW) statt fest 16 A; damit lädt sie auch einphasig mit mehr als 3,7 kW. Ein in den Kenndaten gespeicherter Wert gilt weiter.

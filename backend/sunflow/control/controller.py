@@ -84,6 +84,8 @@ MIN_PHASE_INTERVAL_MIN = 5.0
 PHASE_OPTIONS = {"one_phase": 1, "1": 1, "three_phases": 3, "3": 3}
 # A temporary current (amx) is sent again after this time even when unchanged
 CURRENT_REFRESH = timedelta(minutes=5)
+# The charger shows the current set after this long, else it did not arrive
+CURRENT_ARRIVES = timedelta(minutes=2)
 VOLTS = 230.0
 ACTION_NAMES = {
     "hold": "Halten",
@@ -120,6 +122,8 @@ class DeviceControl:
     last_current_write: datetime | None = None
     # Action last written to the device
     last_action: str | None = None
+    # Something the device does not do as told (e.g. the current set does not arrive)
+    warning: str | None = None
     calls: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -920,10 +924,42 @@ class PlanController:
                 and status.last_current_write is not None
                 and now - status.last_current_write < CURRENT_REFRESH
             )
-            await apply(access, status, action, power, now, runtime, skip_services=unchanged, reason=reason)
+            # Release calls cannot be read back: sent again only on a change, not every minute
+            await apply(
+                access, status, action, power, now, runtime, skip_services=unchanged, reason=reason,
+                services_on_change=action == "release",
+            )
             if action == "charge" and not unchanged:
                 status.current_a, status.last_current_write = runtime["current_a"], now
+            self._check_current(device, status, profile, action, now, snapshot)
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
+
+    def _check_current(
+        self, device: DeviceConfig, status: DeviceControl, profile: dict[str, Any], action: str, now: datetime,
+        snapshot: Snapshot | None,
+    ) -> None:
+        """Warn when the charger does not take the current Sunflow sets (it reports what it allows)."""
+        warning = None
+        if (
+            action == "charge"
+            and snapshot is not None
+            and "allowed_current" in profile.get("roles", {})
+            and status.current_a is not None
+            and status.last_current_write is not None
+            and now - status.last_current_write >= CURRENT_ARRIVES
+        ):
+            overrides = {k: o.model_dump() for k, o in device.role_overrides.items()}
+            allowed = next(
+                (r.value for r in preview(profile, snapshot, device.ha_device_id, overrides) if r.role == "allowed_current"), None
+            )
+            if isinstance(allowed, int | float) and allowed < status.current_a - 1:
+                warning = (
+                    f"Wallbox erlaubt nur {allowed:.0f} A statt der vorgegebenen {status.current_a} A – "
+                    "der Ladestrom kommt nicht an (z. B. Logikmodus oder Lastmanagement der Wallbox)"
+                )
+        if warning is not None and status.warning is None and self.journal is not None:
+            self.journal.note(device.id, device.name, "warning", warning, now)
+        status.warning = warning
 
     async def _switch_phases(
         self, device: DeviceConfig, status: DeviceControl, profile: dict[str, Any], params: dict[str, Any],

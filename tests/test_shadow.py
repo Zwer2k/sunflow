@@ -180,3 +180,18 @@ def test_load_forecast_is_compared_without_consumers() -> None:
 
     assert evaluation["load_actual_kwh"] == pytest.approx((500 + 600) * 0.25 / 1000)
     assert evaluation["load_mae_w"] == pytest.approx(50)
+
+
+def test_consumers_are_kept_per_device(tmp_path: Path) -> None:
+    """The slot keeps the mean power of each controllable consumer."""
+    from sunflow.shadow.store import Sample, SlotRecorder
+
+    store = ShadowStore(tmp_path)
+    start = datetime(2026, 10, 1, 10, tzinfo=UTC)
+    recorder = SlotRecorder(start=start)
+    for wallbox in (4000.0, 4200.0):
+        recorder.samples.append(Sample(soc_wh=None, battery_w=None, grid_w=None, pv_w=None, load_w=None, loadpoint_w=wallbox, consumers={"wb": wallbox}))
+
+    store.store_actual(start, recorder.summary())
+
+    assert store.rows(start)[0]["actual_consumers"] == {"wb": 4100.0}
