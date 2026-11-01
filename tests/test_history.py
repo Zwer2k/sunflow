@@ -149,3 +149,35 @@ def test_unmeasured_consumers_leave_the_house_load() -> None:
     base, _ = subtract_loads(history, [*statistics, unmeasured_consumers(own, statistics)])
 
     assert [round(w) for _, w in base] == [400, 4400, 4500]
+
+
+async def test_levels_per_consumer() -> None:
+    """The car's SoC and the tank temperature come back per device, not as consumer power."""
+    client = FakeClient({"sensor.load": [(0, 500)], "sensor.fiat_soc": [(0, 40), (5, 42)], "sensor.tank": [(0, 52)]})
+    series = [
+        Series(key="load_w", statistic_id="sensor.load", factor=1),
+        Series(key="level", statistic_id="sensor.fiat_soc", factor=1, device_id="wb"),
+        Series(key="level", statistic_id="sensor.tank", factor=1, device_id="ww"),
+    ]
+
+    (point,) = await fetch_history(client, series, START, START + timedelta(minutes=15), timedelta(minutes=15))
+
+    assert point["levels"] == {"wb": pytest.approx(41), "ww": pytest.approx(52)}
+    assert point["consumers"] == {}
+
+
+def test_levels_without_statistics_come_from_own_samples() -> None:
+    """A car SoC sensor without statistics: the level Sunflow sampled; statistics win where there are any."""
+    from sunflow.analysis.history import fill_from_shadow
+
+    points = [_point(0, None, {}), _point(15, None, {})]
+    points[1]["levels"] = {"ww": 55.0}
+    rows = [
+        {**_row(0, 0.0), "actual_levels": {"wb": 40.0, "ww": 50.0}},
+        {**_row(15, 0.0), "actual_levels": {"wb": 42.0, "ww": 51.0}},
+    ]
+
+    fill_from_shadow(points, rows, set())
+
+    assert points[0]["levels"] == {"wb": 40.0, "ww": 50.0}
+    assert points[1]["levels"] == {"wb": 42.0, "ww": 55.0}

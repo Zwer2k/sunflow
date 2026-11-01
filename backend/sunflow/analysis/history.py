@@ -12,6 +12,7 @@ from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import CANONICAL_SIGNS, preview
 from sunflow.devices.site import PV_OUTPUT_ROLES, device_parameters, measurement_device
 from sunflow.ha import HAClient
+from sunflow.planning.vehicles import vehicle_at
 
 # Short-term statistics are kept 10 days by default; above that use hourly
 FIVE_MINUTE_LIMIT = timedelta(days=10)
@@ -21,7 +22,7 @@ FIVE_MINUTE_LIMIT = timedelta(days=10)
 class Series:
     """One statistic and how to turn it into a site value."""
 
-    key: str  # soc_wh, pv_w, load_w, grid_w, loadpoint_w
+    key: str  # soc_wh, pv_w, load_w, grid_w, loadpoint_w, level (vehicle %, tank °C)
     statistic_id: str
     factor: float  # sign flip and unit conversion (e.g. % -> Wh)
     # Controllable consumers are also returned one by one
@@ -67,6 +68,14 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             add("loadpoint_w", "charge_power", device_id=device.id)
         elif "load" in profile["capabilities"]:
             add("loadpoint_w", "power", device_id=device.id)
+        if "loadpoint" in profile["capabilities"] or "load" in profile["capabilities"]:
+            # The car's own SoC sensor, else the level the device reports (tank temperature)
+            vehicle = vehicle_at(config, device, roles, snapshot.states)[0].vehicle
+            if vehicle is not None and vehicle.soc_entity:
+                series.append(Series(key="level", statistic_id=vehicle.soc_entity, factor=1.0, device_id=device.id))
+            else:
+                add("level", "vehicle_soc", device_id=device.id)
+                add("level", "temperature", device_id=device.id)
         if "pv" in profile["capabilities"]:
             role = next((r for r in PV_OUTPUT_ROLES if r in roles and roles[r].entity_id), None)
             if role:
@@ -93,12 +102,16 @@ async def fetch_history(
     # bucket start -> key -> statistic -> values
     buckets: dict[datetime, dict[str, dict[str, list[float]]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     consumers: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    levels: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for s in series:
         for row in result.get(s.statistic_id, []):
             if row.get("mean") is None:
                 continue
             moment = datetime.fromtimestamp(row["start"] / 1000, UTC)
             offset = (moment - start) // bucket
+            if s.key == "level":
+                levels[start + offset * bucket][s.device_id or ""].append(row["mean"])
+                continue
             buckets[start + offset * bucket][s.key][s.statistic_id].append(row["mean"] * s.factor)
             if s.device_id is not None:
                 consumers[start + offset * bucket][s.device_id].append(max(row["mean"] * s.factor, 0.0))
@@ -114,18 +127,20 @@ async def fetch_history(
                 sum(sum(v) / len(v) for v in per_statistic.values()) if per_statistic else None
             )
         point["consumers"] = {device_id: sum(v) / len(v) for device_id, v in consumers[bucket_start].items()}
+        point["levels"] = {device_id: sum(v) / len(v) for device_id, v in levels.get(bucket_start, {}).items()}
         points.append(point)
     return points
 
 
 def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], consumers: set[str]) -> None:
-    """Consumer power from Sunflow's own minute samples where Home Assistant keeps no statistics.
+    """Consumer power and levels from Sunflow's own minute samples where Home Assistant keeps no statistics.
 
     A sensor excluded from the recorder (e.g. a chatty wallbox) has no history; its power
     would count as house consumption. Older slots only hold the sum of all consumers: it
     goes to the one consumer without statistics.
     """
-    starts = [(datetime.fromisoformat(r["start"]), r) for r in rows if r.get("actual_loadpoint_w") is not None]
+    all_rows = [(datetime.fromisoformat(r["start"]), r) for r in rows]
+    starts = [(start, r) for start, r in all_rows if r.get("actual_loadpoint_w") is not None]
     for point in points:
         begin, end = datetime.fromisoformat(point["start"]), datetime.fromisoformat(point["end"])
         inside = [r for start, r in starts if begin <= start < end]
@@ -142,3 +157,14 @@ def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], c
                 missing.discard(device_id)
         if len(missing) == 1:
             known[missing.pop()] = max(total - sum(known.values()), 0.0)
+    for point in points:
+        begin, end = datetime.fromisoformat(point["start"]), datetime.fromisoformat(point["end"])
+        own: dict[str, list[float]] = {}
+        for start, r in all_rows:
+            if begin <= start < end:
+                for device_id, value in (r.get("actual_levels") or {}).items():
+                    own.setdefault(device_id, []).append(value)
+        levels = point.setdefault("levels", {})
+        for device_id, values in own.items():
+            # Sensors without statistics (e.g. a car's MQTT sensor) from the own samples
+            levels.setdefault(device_id, fmean(values))

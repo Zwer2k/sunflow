@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.61.0
+
+- Plan: Das Diagramm „Ladestand“ zeigt neben dem Hausspeicher auch Autos (Ladestand) und Warmwasserspeicher (Temperatur), gemessen und erwartet. Standardmäßig alle in % – beim Warmwasser 0 % bei 15 °C bis 100 % beim Ziel. Ein Klick auf einen Eintrag der Legende zeigt nur diesen in seiner Einheit (Speicher und Auto in kWh, Warmwasser in °C) mit seinem Ziel; erneuter Klick zeigt wieder alle in %.
+- Der erwartete Verlauf kommt aus der geplanten Leistung (beim Warmwasser abzüglich der täglichen Abkühlung). Gemessen wird aus der Statistik von Home Assistant; fehlt sie (z. B. ein MQTT-Sensor des Autos ohne Statistik), aus Sunflows eigenen Minutenwerten, die ab jetzt auch die Ladestände speichern.
+
 ## 0.60.0
 
 - Neues Profil für ältere go-e Charger mit der lokalen HTTP-API v1 (Integration „goecharger“ aus HACS): Laden erlauben/sperren und Ladestrom als temporärer Strom (`amx`, ohne Flash-Schreiben, wie evcc bei API v1) über die Aktion `goecharger.set_max_current`; den Höchststrom übernimmt Sunflow aus der Wallbox. Diese Wallboxen schalten keine Phasen – die Phasen des Anschlusses stehen in den Kenndaten.

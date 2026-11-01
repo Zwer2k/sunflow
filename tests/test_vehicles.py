@@ -187,3 +187,32 @@ def test_vehicle_at_wallbox(config: SunflowConfig, expected: tuple) -> None:
 
     recognized, soc = vehicle_at(config, config.devices[0], _roles(), {"sensor.fiat_soc": {"state": "71"}})
     assert (recognized.vehicle.id if recognized.vehicle else None, soc) == expected
+
+
+@pytest.mark.parametrize(
+    ("kind", "current", "power", "expected"),
+    [
+        # 37.5 kWh at 90 %: 11 kW for 15 min are 6.6 %; a car stops at full
+        pytest.param("vehicle", 95.0, 11000.0, [100.0, 100.0], id="vehicle-stops-at-full"),
+        pytest.param("vehicle", 40.0, 11000.0, [46.6, 53.2], id="vehicle"),
+        # 300 l: 2.8 kW for 15 min warm the tank by 2 K, it loses 10 K a day
+        pytest.param("heater", 50.0, 2800.0, [51.9, 53.8], id="heater"),
+    ],
+)
+def test_expected_levels(kind: str, current: float, power: float, expected: list[float]) -> None:
+    """The level at the end of each slot from the planned power and the losses."""
+    from datetime import UTC, datetime, timedelta
+
+    from sunflow.planning.plan import WATER_WH_PER_LITRE_KELVIN, FlexInfo, expected_levels
+
+    start = datetime(2026, 11, 1, tzinfo=UTC)
+    slots = [SimpleNamespace(start=start + timedelta(minutes=15 * i), end=start + timedelta(minutes=15 * (i + 1)), flex_w={"WB": power}) for i in range(2)]
+    tank = 300 * WATER_WH_PER_LITRE_KELVIN
+    info = FlexInfo(
+        device_id="d", name="WB", kind=kind, current=current, target=None, unit="", need_wh=0, deadline=None, max_power_w=power,
+        wh_per_unit=37500 / 100 / 0.9 if kind == "vehicle" else tank,
+        loss_wh_per_day=0.0 if kind == "vehicle" else 10 * tank,
+        level_range=(0.0, 100.0) if kind == "vehicle" else (15.0, 60.0),
+    )
+
+    assert expected_levels(info, slots) == pytest.approx(expected, abs=0.05)
