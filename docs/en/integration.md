@@ -10,8 +10,8 @@ Sunflow. Calculation and control remain in the App.
 
 - **Automatic:** the App announces itself to the Supervisor. Home Assistant shows the
   integration as discovered under "Settings → Devices & services"; one click connects it.
-- **Manual:** in Sunflow under "Integrationen → Sunflow-Integration in Home Assistant →
-  Zugangsdaten anzeigen" (show credentials) you find address and key. Enter both when adding the
+- **Manual:** in Sunflow under "Integrations → Sunflow integration in Home Assistant →
+  Show credentials …" you find address and key. Enter both when adding the
   integration.
 
 ## Devices
@@ -26,7 +26,7 @@ Sunflow. Calculation and control remain in the App.
 
 Every forecast is a separate integration entry, because the Energy dashboard selects forecasts by
 entry. Which kinds exist (total, per inverter, per plane/string) is set in Sunflow under
-"Integrationen → Sunflow-Integration in Home Assistant". The integration creates new planes and
+"Integrations → Sunflow integration in Home Assistant". The integration creates new planes and
 systems itself and removes deselected ones; a forecast entry deleted in Home Assistant is not
 created again as long as it stays offered.
 

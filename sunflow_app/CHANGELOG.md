@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.73.1
+
+- Dokumentation: Screenshots aus einer echten Installation (Kennungen unkenntlich), auf Deutsch und – für die englische Dokumentation – auf Englisch, dazu Beispiele für Wechselrichter- und Wallbox-Einstellungen. Die englischen Seiten nennen die englischen Beschriftungen der Oberfläche.
+- Live: Der Umschalter der Wettervorhersage heißt auf Englisch „Days“ statt „days“.
+
 ## 0.73.0
 
 - Sunflow spricht Deutsch und Englisch. Neue Einstellung unter Einstellungen → Anzeige → Sprache: „Wie Home Assistant“ (Standard; Deutsch, wenn Home Assistant auf Deutsch steht, sonst Englisch), „Deutsch“ oder „English“. Sie gilt für die Oberfläche und für Meldungen wie Planhinweise, Empfehlungen, Gerätetest und Steuerungsprotokoll; die Seite lädt nach dem Wechsel neu.

@@ -50,7 +50,7 @@ Notes:
   often per day as the profile allows.
 - **Full power only:** GoodWe and Victron always charge or discharge at full power on command.
   Planning still uses the planned power; the next replan absorbs the difference.
-- **Curtailment:** Sunflow only curtails systems released under "Steuerung" (control), and only
+- **Curtailment:** Sunflow only curtails systems released under "Control", and only
   when exporting costs money (negative feed-in tariff, above the grid-friendly limit).
 
 ## Meters
@@ -95,8 +95,8 @@ this. Only effective while Sunflow controls the wallbox.
 
 ## Own loads
 
-Devices Sunflow does not detect by itself are added in the settings under "Geräte → Eigene
-Verbraucher" (Devices → own loads). Power, meter and temperature are optional.
+Devices Sunflow does not detect by itself are added in the settings under "Devices → Custom
+loads". Power, meter and temperature are optional.
 
 | Type | Profile | Control | Typical devices | Control tested |
 |---|---|---|---|---|

@@ -3,7 +3,7 @@
 [Deutsch](../strompreise.md) · **English**
 
 Sunflow plans with the import price of every quarter hour. Choose the source under Settings →
-Tarif & Prognose (tariff & forecast); all sensors with a unit per kWh are offered.
+Tariff & forecast; all sensors with a unit per kWh are offered.
 
 | Provider / source | Integration in Home Assistant | How Sunflow reads the prices | Price |
 |---|---|---|---|
@@ -28,7 +28,7 @@ prices around noon; until then Sunflow plans with what is known.
 Sunflow plans up to 96 hours ahead, but dynamic tariffs only know today and – from around noon –
 tomorrow. For the hours after that Sunflow estimates the price: per time of day the average of the
 price sensor over the last two weeks (from seven days of history), otherwise the last 24 known
-hours repeated. Estimated prices are dashed in the plan and marked as "geschätzt" (estimated);
+hours repeated. Estimated prices are dashed in the plan and marked as "estimated";
 they only shape the end of the plan and are replaced as soon as the real prices arrive. Prices
 are only estimated as far as all PV forecasts reach, so that missing PV yield does not distort
 the plan. Time-of-use tariffs and fixed prices are known anyway and cover the whole period.

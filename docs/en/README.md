@@ -7,11 +7,11 @@ the PV forecast and the electricity price, and can carry out the plan itself. It
 in Home Assistant and uses the integrations you already have there; it needs no device drivers
 of its own.
 
-> Sunflow speaks German and English and follows the language of Home Assistant; you can change it
-> under Settings → Display. The screenshots in this documentation show the German interface; the
-> English text names the German label in quotes where useful.
+> The interface is available in English and German and follows the language of Home Assistant;
+> you can change it under Settings → Display → Language. The screenshots in this documentation
+> show the English interface.
 
-![Live view](../images/live.png)
+![Live view](../images/en/live.png)
 
 ## Getting started
 
@@ -23,8 +23,8 @@ of its own.
 
 ## Reference
 
-- [Settings](settings.md): every area from "Integrationen" to "Übersicht".
-- [How Sunflow plans](planning.md): strategies, costs, wear, ageing, learning and grid-friendly
+- [Settings](settings.md): every area from "Integrations" to "Summary".
+- [How Sunflow plans](planning.md): strategies, costs, wear, aging, learning and grid-friendly
   behaviour.
 - [Supported devices](devices.md): which inverters, batteries, meters, wallboxes and loads
   Sunflow knows, what it can do with them and what has been tested on real hardware.
@@ -43,9 +43,9 @@ of its own.
 |---|---|
 | Plan | What Sunflow intends for every quarter hour of the next up to 96 hours: battery, loads, grid |
 | Profile | Describes which entities of an integration deliver which values and how the device is controlled |
-| Parameters ("Kenndaten") | Values Sunflow cannot measure, e.g. usable capacity or maximum charging power |
-| Shadow mode ("Schattenbetrieb") | Sunflow records what it would do and what actually happens, even while it does not control anything |
+| Parameters | Values Sunflow cannot measure, e.g. usable capacity or maximum charging power |
+| Shadow mode | Sunflow records what it would do and what actually happens, even while it does not control anything |
 | Strategy | Goal for the home battery: Balanced, Absorb as much PV as possible, or As self-sufficient as possible |
-| Expert mode ("Expertenmodus") | Switch in the settings; additionally shows entity, unit, factor and sign per role |
+| Expert mode | Switch in the settings; additionally shows entity, unit, factor and sign per role |
 
 The screenshots come from a test installation; your values and device names will differ.

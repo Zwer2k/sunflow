@@ -20,8 +20,8 @@ with the lowest cost that meets all constraints.
 
 - Grid import at the price of the quarter hour, minus feed-in tariff.
 - Losses when charging and discharging (efficiency of battery and inverter).
-- Wear per discharged kWh (Settings → Planning → wear cost).
-- Optionally, ageing at high state of charge.
+- Wear per discharged kWh (Settings → Planning → Battery wear cost).
+- Optionally, aging at high state of charge.
 - Strategy surcharges and soft goals such as "grid-friendly". They steer the plan but do not show
   up in the displayed costs.
 
@@ -57,9 +57,9 @@ differences. This is intended, not a bug.
 
 - **Everyday charge limit**: Sunflow only charges above it for a due full charge.
 - **Full charge every … days**: to balance the cells, preferably with PV.
-- **From the grid after … days at the latest**: if PV has not filled the battery for that long,
+- **From the grid at the latest after … days**: if PV has not filled the battery for that long,
   Sunflow fills it from the grid at the cheapest time.
-- **Ageing at high state of charge** (calendar ageing): cells age faster the longer they sit
+- **Aging at high SoC** (calendar aging): cells age faster the longer they sit
   full. Every kWh above the threshold costs a small amount per hour. Sunflow then charges as late
   as possible before the demand, e.g. at the end of the cheap night window instead of from
   midnight. Example: 4 kWh above 80 % for 10 hours cost about 4 ct at 0.1 ct.
@@ -70,18 +70,18 @@ differences. This is intended, not a bug.
 Wallboxes, hot water and own loads are planned in the same calculation as the battery. Each load
 has a mode:
 
-- **Cost-optimal** ("Kostenoptimal"): PV surplus or cheap hours, so that the target is reached in time.
-- **PV surplus only** ("Nur PV-Überschuss"): never from the grid or the home battery.
-- **As fast as possible** ("Schnellstmöglich", "Sofort" under Control): now at full power.
+- **Cost-optimal**: PV surplus or cheap hours, so that the target is reached in time.
+- **PV surplus only**: never from the grid or the home battery.
+- **As fast as possible** ("Now" under Control): now at full power.
 - **Pause** (under Control only): not at all.
 
-**Priority** (Control → Priorität) decides who gets scarce surplus first. **Limits** make a load
+**Priority** (Control → Priority) decides who gets scarce surplus first. **Limits** make a load
 wait until storages ranked higher reach a level.
 
 **Cars**: Sunflow learns consumption, arrival and departure. If the only car of a wallbox is
 away, Sunflow already plans it with learned consumption and arrival, but only with PV surplus or
 cheap power and without obligation. If the car is at home but not plugged in and would get energy
-soon, the hint "Einstecken lohnt sich" (worth plugging in) appears (in Home Assistant as the event
+soon, the hint "… plugging in at "*wallbox*" pays off" appears (in Home Assistant as the event
 `sunflow_ems_plug_in_suggested`).
 
 **One-off loads** such as a washing machine or dryer are scheduled at the cheapest time with the
@@ -91,8 +91,8 @@ action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
 
 - **PV forecast**: Sunflow compares forecast and measurement per hour and cloud cover and learns a
   correction factor, per roof plane when strings are assigned to it. Recent days count more
-  (half-life 30 days). "Neu lernen ab heute" (relearn from today) discards old values of a plane.
-- **Uncertain forecast**: with "Vorsichtig" (cautious) Sunflow plans more with the bad case
+  (half-life 30 days). "Relearn from today" discards old values of a plane.
+- **Uncertain forecast**: with "Cautious" Sunflow plans more with the bad case
   (Solcast p10), so it rather tops up cheaply at night than buys expensive power when the sun
   does not show.
 - **House consumption**: until enough history exists Sunflow uses hourly averages, afterwards
@@ -108,7 +108,7 @@ replaced as soon as the real prices arrive (see [Electricity prices](prices.md))
 
 ## Grid-friendly
 
-With **Netzdienlich** (grid-friendly) Sunflow tries to avoid export and import peaks above the
+With **Grid-friendly** Sunflow tries to avoid export and import peaks above the
 set limits by shifting battery and load charging. Every kWh above the limit counts like 20 ct
 extra in the plan. If a peak cannot be avoided, it is allowed. This is a soft goal and no
 replacement for a limit in the inverter.

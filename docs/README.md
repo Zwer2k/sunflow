@@ -43,4 +43,4 @@ Assistant und nutzt die Integrationen, die du dort schon hast. Eigene Gerätetre
 | Strategie | Ziel für den Hausspeicher: Ausgewogen, Möglichst viel PV aufnehmen oder Möglichst autark |
 | Expertenmodus | Schalter in den Einstellungen; zeigt zusätzlich Entitäten, Einheiten, Faktoren und Vorzeichen je Rolle |
 
-Die Screenshots stammen aus einer Testinstallation. Werte und Gerätenamen sind dort andere als bei dir.
+Die Screenshots stammen aus einer echten Installation; Kennungen wie Seriennummern und Adressen sind unkenntlich gemacht. Werte und Gerätenamen sind bei dir andere.
