@@ -4,7 +4,7 @@ import { poll } from "../lib/poll.js";
 import { dailyRatios, splitFlows } from "../components/flows.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "../components/optimizer-view.js";
-import { decimal, locale, t } from "../lib/i18n.js";
+import { decimal, locale, t, tc } from "../lib/i18n.js";
 
 const REFRESH_MS = 5000;
 const TODAY_REFRESH_MS = 5 * 60 * 1000;
@@ -236,7 +236,7 @@ class SunflowLive extends LitElement {
         </div>
         ${weather.days?.length
           ? html`<div class="range" role="group" aria-label=${t("Wettervorhersage")}>
-              ${[[false, t("Stunden")], [true, t("Tage")]].map(
+              ${[[false, t("Stunden")], [true, tc("tab", "Tage")]].map(
                 ([days, label]) => html`<button class=${days === showDays ? "active" : ""} aria-pressed=${days === showDays}
                   @click=${() => this._setWeatherDays(days)}>${label}</button>`,
               )}

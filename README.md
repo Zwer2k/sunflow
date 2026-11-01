@@ -8,7 +8,7 @@ price, and can carry out the plan itself – using the integrations you already 
 Wallbox, Warmwasser und weitere Verbraucher nach PV-Prognose und Strompreis und setzt
 den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
 
-![Live view](docs/images/live.png)
+![Live view](docs/images/en/live.png)
 
 ## Features
 
@@ -37,7 +37,7 @@ den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
 
 | Planning | Control | Analysis |
 |---|---|---|
-| ![Planning](docs/images/plan.png) | ![Control](docs/images/control.png) | ![Analysis](docs/images/analysis.png) |
+| ![Planning](docs/images/en/plan.png) | ![Control](docs/images/en/control.png) | ![Analysis](docs/images/en/analysis.png) |
 
 ## Documentation
 

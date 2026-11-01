@@ -13,10 +13,10 @@ Assistant. The SQL query opens the recording read-only and only allows reading s
 ## Setup
 
 1. In Home Assistant under **Settings → Apps → Sunflow → Configuration → Network** enter a port
-   for "MCP-Server für KI-Assistenten" (e.g. `8099`) and restart the App. Without a port the
-   server cannot be reached from outside.
-2. In Sunflow under **Einstellungen → Integrationen**, section "MCP-Server für KI-Assistenten",
-   click **Erzeugen** (create) next to the key. Key and ready-made command are shown **only this
+   (e.g. `8099`) for "MCP-Server für KI-Assistenten (nur lesend)" (MCP server for AI assistants,
+   read only) and restart the App. Without a port the server cannot be reached from outside.
+2. In Sunflow under **Settings → Integrations**, section "MCP server for AI assistants",
+   click **Generate** next to the key. Key and ready-made command are shown **only this
    once**; Sunflow only stores a checksum.
 3. Run the command where the assistant runs, e.g.:
 
@@ -25,8 +25,8 @@ Assistant. The SQL query opens the recording read-only and only allows reading s
      --header "Authorization: Bearer <key>"
    ```
 
-Without a key the server is closed. **Zurückziehen** (revoke) invalidates the key immediately;
-**Neu …** (new) replaces it (e.g. if it was lost). The key is only valid for `/mcp`, not for the
+Without a key the server is closed. **Revoke …** invalidates the key immediately;
+**New …** replaces it (e.g. if it was lost). The key is only valid for `/mcp`, not for the
 rest of Sunflow's interface, and is not part of the data export.
 
 The port is reachable in the home network without encryption (HTTP). Do not expose it to the internet.
@@ -50,7 +50,7 @@ The port is reachable in the home network without encryption (HTTP). Do not expo
 
 ## Permissions
 
-Under "Darf lesen" (may read) you decide per area what the assistant may see: live, plan, prices
+Under "May read" you decide per area what the assistant may see: live, plan, prices
 and forecasts · history, recording and analysis (with SQL) · configuration and devices · control
 and control log · errors and warnings of the App. Version and connection are always readable. A
 disabled area is missing from the tool list and refused; some assistants only reload the list on

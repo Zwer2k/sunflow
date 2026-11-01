@@ -199,4 +199,5 @@ export default {
   "Verbrauch noch nicht gelernt (braucht eine Woche Temperatur und Heizleistung) – gleichmäßig über den Tag angenommen.": "Consumption not learned yet (needs a week of temperature and heating power) – assumed evenly over the day.",
   "Alle Linien zeigen": "Show all lines",
   "Hervorheben": "Highlight",
+  "tab|Tage": "Days",
 };

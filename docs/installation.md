@@ -58,11 +58,24 @@ negativ erscheint. Dann:
 
 - **Übernehmen** nimmt das Gerät in Sunflow auf. Die Kategorie (Wechselrichter, Speicher,
   Zähler, Wallbox, Wärme, Verbraucher) wird dabei festgehalten.
+<details><summary>Beispiel: Wechselrichter mit Speicher (Sofar)</summary>
+
+![Sofar mit Live-Werten, Bilanz und Kenndaten](images/device-sofar.png)
+
+</details>
+
 - **Kenndaten** ergänzen, was Sunflow nicht messen kann: nutzbare Kapazität, Mindest-Ladestand,
   höchste Lade- und Entladeleistung, Wirkungsgrad, bei der Wallbox Phasen und Ströme, beim
   Warmwasser Volumen und Tagesbedarf. Felder mit „eigener Wert“ überschreiben den Vorschlag des
   Profils; „zurücksetzen“ nimmt wieder den Vorschlag.
 - **Entitäten zuordnen** (Expertenmodus) ändert Entität, Einheit, Faktor oder Vorzeichen einer Rolle.
+
+<details><summary>Beispiel: Wallbox (go-e) mit Zuordnung der Entitäten und Phasenumschaltung</summary>
+
+![go-e mit Rollen, Entitäten und Kenndaten](images/device-wallbox-entities.png)
+
+</details>
+
 - **aktiv** schaltet ein Gerät aus, ohne seine Einstellungen zu verlieren, z. B. um zwischen
   dem evcc-Ladepunkt und der go-e direkt zu wechseln.
 - **Eigene Verbraucher**: Geräte, die Sunflow nicht selbst erkennt (Schalter, Leistungsstufen
