@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.70.1
+
+- Strategien des Hausspeichers: Unter jeder Strategie (Einstellungen → Planung) und unter der gewählten in der Steuerung lässt sich aufklappen, was der Plan damit anders macht. „Möglichst viel PV aufnehmen“ ist genauer beschrieben: Es hält vor sonnigen Tagen Platz frei, kennt aber keine Einspeisebegrenzung.
+
 ## 0.70.0
 
 - MCP-Server: Neues Werkzeug `get_log` liest Fehler, Warnungen und Hinweise aus dem Log der App seit dem letzten Start, bei Ausnahmen mit Traceback.

@@ -4,6 +4,7 @@ import { confirmDialog } from "../components/dialog.js";
 import { poll } from "../lib/poll.js";
 import { CATEGORY_LABELS, formatPower, formatValue } from "../lib/format.js";
 import { plugInHints } from "../lib/plug-in.js";
+import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -36,11 +37,6 @@ const LOG_ACTIONS = {
 const LOG_HOURS = { 24: "24 Stunden", 72: "3 Tage", 336: "14 Tage" };
 // More rows make the page slow and say nothing more
 const LOG_ROWS = 300;
-const STRATEGIES = {
-  balanced: "Ausgewogen",
-  pv_absorption: "PV aufnehmen",
-  autarky: "Autarkie",
-};
 const MODES = {
   cost: "Kostenoptimal",
   pv_only: "Nur PV",
@@ -391,18 +387,19 @@ class SunflowControl extends LitElement {
         <div class="card-head">
           <div>
             <h2>Hausspeicher</h2>
-            <span class="small muted">Standard: ${STRATEGIES[strategy.default]}</span>
+            <span class="small muted">Standard: ${STRATEGIES[strategy.default].short}</span>
           </div>
           ${strategy.override
-            ? html`<span class="chip">${STRATEGIES[strategy.effective]} · ${untilText(strategy.override.until)}</span>`
+            ? html`<span class="chip">${STRATEGIES[strategy.effective].short} · ${untilText(strategy.override.until)}</span>`
             : nothing}
         </div>
         <div class="segmented" role="group" aria-label="Strategie Hausspeicher">
           ${Object.entries(STRATEGIES).map(
-            ([value, label]) => html`<button aria-pressed=${strategy.effective === value} ?disabled=${this._busy}
-              class=${strategy.effective === value ? "on" : ""} @click=${() => this._setStrategy(value)}>${label}</button>`,
+            ([value, { short }]) => html`<button aria-pressed=${strategy.effective === value} ?disabled=${this._busy}
+              class=${strategy.effective === value ? "on" : ""} @click=${() => this._setStrategy(value)}>${short}</button>`,
           )}
         </div>
+        ${strategyDetails(strategy.effective)}
         ${strategy.override
           ? html`<button class="link" @click=${() => this._apply(() => api.clearStrategyOverride())}>Zurück zum Standard</button>`
           : nothing}
@@ -609,6 +606,8 @@ class SunflowControl extends LitElement {
       display: flex; flex-direction: column; gap: 12px;
     }
     .takeover.on { border-color: var(--sf-primary); }
+    .strategy-details summary { cursor: pointer; color: var(--sf-primary-text); }
+    .strategy-details ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
     .device-toggle { display: flex; gap: 8px; align-items: baseline; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; color: inherit; font: inherit; }
     .caret { width: 14px; color: var(--sf-muted); }
     .takeover-devices { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
