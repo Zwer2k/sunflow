@@ -1,12 +1,13 @@
 """The plan and the measured history around it."""
 
+import asyncio
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from sunflow.analysis.history import fetch_history, history_series
+from sunflow.analysis.history import fetch_history, fill_from_shadow, history_series
 from sunflow.config.models import SunflowConfig
 from sunflow.control.controller import PlanController
 from sunflow.ha import HAError
@@ -165,4 +166,7 @@ async def get_history(
         points = await fetch_history(request.app.state.ha, series, start, end, bucket)
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
+    if (runner := getattr(request.app.state, "runner", None)) is not None:
+        rows = await asyncio.to_thread(runner.shadow.rows, start)
+        fill_from_shadow(points, [r for r in rows if r["start"] < end.isoformat()], {s.device_id for s in series if s.device_id})
     return {"start": start.isoformat(), "end": end.isoformat(), "points": points}

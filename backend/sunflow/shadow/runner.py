@@ -23,6 +23,7 @@ from sunflow.devices.site import (
     site_status,
 )
 from sunflow.ha import HAClient, HAError
+from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import PlanResult, compute_plan
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
@@ -73,6 +74,7 @@ async def current_plan(
     plane_corrections: dict[str, PvCorrection] | None = None,
     live_pv_w: float | None = None,
     live_load_w: float | None = None,
+    consumer_hours: list[tuple[datetime, float]] | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -89,6 +91,7 @@ async def current_plan(
         plane_corrections,
         live_pv_w,
         live_load_w,
+        consumer_hours,
     )
 
 
@@ -125,13 +128,15 @@ async def take_sample(
     }
     capacity = params.get("capacity_wh")
     soc = roles.get("battery_soc")
+    consumers = consumer_powers(config, profiles, values)
     return Sample(
         soc_wh=capacity * soc / 100 if capacity and soc is not None else None,
         battery_w=roles.get("battery_power"),
         grid_w=values(measurement_device(config, profiles, "grid")).get("grid_power"),
         pv_w=site_status(config.devices, profiles, snapshot, measured_by=config.measured_by).pv_total,
         load_w=values(measurement_device(config, profiles, "load")).get("load_power"),
-        loadpoint_w=consumer_power(config, profiles, values),
+        loadpoint_w=sum(consumers.values()) if consumers else None,
+        consumers=consumers,
         strings=string_powers(config, profiles, snapshot),
     )
 
@@ -152,16 +157,16 @@ def string_powers(config: SunflowConfig, profiles: dict[str, Any], snapshot: Any
     return result
 
 
-def consumer_power(config: SunflowConfig, profiles: dict[str, Any], values: Any) -> float | None:
-    """Summed power of the controllable consumers; None without any."""
-    powers = []
+def consumer_powers(config: SunflowConfig, profiles: dict[str, Any], values: Any) -> dict[str, float]:
+    """Power of every controllable consumer by device id."""
+    powers = {}
     for device in config.devices:
         capabilities = profiles[device.profile]["capabilities"]
         if "loadpoint" in capabilities or "load" in capabilities:
             readings = values(device)
             power = readings.get("charge_power") if "loadpoint" in capabilities else readings.get("power")
-            powers.append(max(power or 0.0, 0.0))
-    return sum(powers) if powers else None
+            powers[device.id] = max(power or 0.0, 0.0)
+    return powers
 
 
 @dataclass(kw_only=True)
@@ -348,6 +353,15 @@ class ShadowRunner:
             return
         await asyncio.to_thread(self.shadow.store_actual, self._recorder.start, self._recorder.summary())
 
+    def consumer_hours(self) -> list[tuple[datetime, float]]:
+        """Hourly power of all controllable consumers from the own samples of the load history window."""
+        hours: dict[datetime, list[float]] = {}
+        for row in self.shadow.rows(datetime.now(UTC) - timedelta(days=HISTORY_DAYS)):
+            if row.get("actual_loadpoint_w") is not None:
+                hour = datetime.fromisoformat(row["start"]).replace(minute=0)
+                hours.setdefault(hour, []).append(row["actual_loadpoint_w"])
+        return [(hour, sum(values) / len(values)) for hour, values in sorted(hours.items())]
+
     def request_replan(self) -> None:
         """Replan right away (after a change in the control tab), in the background."""
         if self._replan_task is not None and not self._replan_task.done():
@@ -432,6 +446,7 @@ class ShadowRunner:
             self.plane_corrections,
             self.live_pv(),
             self.live_load(),
+            await asyncio.to_thread(self.consumer_hours),
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)

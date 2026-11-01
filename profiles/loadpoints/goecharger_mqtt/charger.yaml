@@ -20,6 +20,8 @@ roles:
   charged_energy: {key: sensor-wh-0, unit: Wh, optional: true}
   # Current stored in flash; it applies again when Sunflow hands the charger back
   stored_current: {key: number-amp-0, unit: A, optional: true}
+  # Current the charger allows right now: shows whether the current Sunflow sets arrives
+  allowed_current: {key: sensor-acu-0, unit: A, optional: true}
   # RFID: the scanned card ("card_0" = card 1) and whether one is required to charge
   transaction: {key: select-trx-trx, optional: true}
   card_required: {key: switch-acs-0, optional: true}

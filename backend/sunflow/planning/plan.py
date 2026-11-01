@@ -34,6 +34,7 @@ from .load_forecast import (
     fetch_hourly_means,
     find_load_entity,
     subtract_loads,
+    unmeasured_consumers,
 )
 from .load_model import LoadModel
 from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
@@ -949,8 +950,12 @@ async def compute_plan(
     plane_corrections: dict[str, PvCorrection] | None = None,
     live_pv_w: float | None = None,
     live_load_w: float | None = None,
+    consumer_hours: list[tuple[datetime, float]] | None = None,
 ) -> PlanResult:
-    """Fetch forecasts and prices, then optimize the battery schedule."""
+    """Fetch forecasts and prices, then optimize the battery schedule.
+
+    consumer_hours: hourly power of all controllable consumers from Sunflow's own samples.
+    """
     warnings: list[str] = []
     battery_device = next(
         (d for d in config.devices if controls_battery(profiles[d.profile])),
@@ -1059,6 +1064,8 @@ async def compute_plan(
                 )
             except HACommandError as err:
                 warnings.append(f"Verlauf von {device.name} nicht abrufbar ({err}) – bleibt im Hausverbrauch.")
+    if consumer_hours:
+        loadpoint_histories.append(unmeasured_consumers(consumer_hours, loadpoint_histories))
     history, separated = subtract_loads(history, loadpoint_histories)
     load = build_load_forecast(
         history,

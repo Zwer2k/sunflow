@@ -577,3 +577,28 @@ async def test_current_within_wallbox_and_car(tmp_path: Path, phases: int, expec
     await controller.tick(config, plan, NOW, SNAPSHOT, NOW)
 
     assert charger.current == expected
+
+
+@pytest.mark.parametrize(
+    ("allowed", "warned"),
+    [
+        pytest.param(6.0, True, id="current-does-not-arrive"),
+        pytest.param(16.0, False, id="current-arrives"),
+    ],
+)
+async def test_warns_when_the_current_does_not_arrive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, allowed: float, warned: bool) -> None:
+    """The go-e reports what it allows: staying at 6 A while 16 A are set is shown and logged once."""
+    from sunflow.control import controller as module
+    from sunflow.control.journal import ControlJournal
+
+    monkeypatch.setattr(module, "preview", lambda *_: [SimpleNamespace(role="allowed_current", value=allowed, raw_state=str(allowed), entity_id="sensor.acu")])
+    charger = FakeCharger()
+    goe = GOE | {"roles": {"allowed_current": {}}}
+    journal = ControlJournal(tmp_path)
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": goe}, journal)
+
+    for minute in (0, 1, 3, 4):
+        await controller.tick(_charger_config("goe"), _charge_plan(11000, 0, 11000), NOW, SNAPSHOT, NOW + timedelta(minutes=minute))
+
+    assert (controller.statuses["wb"].warning is not None) == warned
+    assert len([e for e in journal.entries(NOW - timedelta(hours=1)) if e["action"] == "warning"]) == int(warned)

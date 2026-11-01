@@ -106,3 +106,46 @@ async def test_consumers_one_by_one_and_summed() -> None:
 
     assert point["consumers"] == {"wallbox": pytest.approx(3000), "ebike": pytest.approx(150)}
     assert point["loadpoint_w"] == pytest.approx(3150)
+
+
+def _point(minutes: int, loadpoint: float | None, consumers: dict[str, float]) -> dict[str, Any]:
+    start = START + timedelta(minutes=minutes)
+    return {"start": start.isoformat(), "end": (start + timedelta(minutes=15)).isoformat(), "load_w": 4400.0, "loadpoint_w": loadpoint, "consumers": consumers}
+
+
+def _row(minutes: int, total: float, consumers: dict[str, float] | None = None) -> dict[str, Any]:
+    return {"start": (START + timedelta(minutes=minutes)).isoformat(), "actual_loadpoint_w": total, "actual_consumers": consumers or {}}
+
+
+def test_consumers_without_statistics_come_from_own_samples() -> None:
+    """A wallbox excluded from the recorder: Sunflow's samples keep it out of the house consumption."""
+    from sunflow.analysis.history import fill_from_shadow
+
+    points = [
+        # Statistics of the heating rod only; the old slot has just the sum
+        _point(0, 0.0, {"ww": 0.0, "bike": 0.0}),
+        _point(15, None, {}),
+        _point(30, 0.0, {"ww": 0.0}),
+    ]
+    rows = [_row(0, 4000.0), _row(15, 4100.0, {"wb": 4000.0, "bike": 100.0}), _row(30, 0.0, {})]
+
+    fill_from_shadow(points, rows, {"wb", "ww", "bike"})
+
+    assert (points[0]["loadpoint_w"], points[0]["consumers"]["wb"]) == (4000.0, 4000.0)
+    assert (points[1]["loadpoint_w"], points[1]["consumers"]) == (4100.0, {"wb": 4000.0, "bike": 100.0, "ww": 0.0})
+    # Two consumers without values: the sum cannot be split
+    assert "wb" not in points[2]["consumers"]
+
+
+def test_unmeasured_consumers_leave_the_house_load() -> None:
+    """Hours the own samples saw more consumer power than the statistics are separated."""
+    from sunflow.planning.load_forecast import subtract_loads, unmeasured_consumers
+
+    hours = [START + timedelta(hours=h) for h in range(3)]
+    history = [(h, 4500.0) for h in hours]
+    statistics = [[(hours[0], 100.0), (hours[1], 100.0)]]
+    own = [(hours[0], 4100.0), (hours[1], 100.0)]
+
+    base, _ = subtract_loads(history, [*statistics, unmeasured_consumers(own, statistics)])
+
+    assert [round(w) for _, w in base] == [400, 4400, 4500]

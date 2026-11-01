@@ -30,6 +30,7 @@ const LOG_ACTIONS = {
   phases_one: "auf 1 Phase",
   phases_three: "auf 3 Phasen",
   phases_restore: "Phasenmodus zurückgestellt",
+  warning: "Warnung",
 };
 const LOG_HOURS = { 24: "24 Stunden", 72: "3 Tage", 336: "14 Tage" };
 // More rows make the page slow and say nothing more
@@ -220,7 +221,7 @@ class SunflowControl extends LitElement {
 
   _renderLog(log, devices) {
     const entries = log
-      .filter((e) => (!this._logForeign || e.kind === "extern") && (!this._logErrors || e.error))
+      .filter((e) => (!this._logForeign || e.kind === "extern") && (!this._logErrors || e.error || e.action === "warning"))
       .slice(0, LOG_ROWS);
     const today = new Date().toDateString();
     const when = (iso) => (new Date(iso).toDateString() === today ? time : dayTime).format(new Date(iso));
@@ -250,7 +251,7 @@ class SunflowControl extends LitElement {
           </label>
           <label class="switch small">
             <input type="checkbox" .checked=${this._logErrors} @change=${(e) => (this._logErrors = e.target.checked)}>
-            <span>nur Fehler</span>
+            <span>nur Fehler und Warnungen</span>
           </label>
         </div>
         ${entries.length
@@ -319,6 +320,7 @@ class SunflowControl extends LitElement {
                 : nothing}
               ${s?.error ? html`<span class="small warn-text">Fehler: ${s.error} – nächster Versuch in einer Minute</span>` : nothing}
               ${s?.note ? html`<span class="small muted">${s.note}</span>` : nothing}
+              ${s?.warning ? html`<span class="small warn-text">⚠ ${s.warning}</span>` : nothing}
             </li>`;
           })}
         </ul>

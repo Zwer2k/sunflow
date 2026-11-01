@@ -3,6 +3,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from statistics import fmean
 from typing import Any
 
 from sunflow.config.models import SunflowConfig
@@ -115,3 +116,29 @@ async def fetch_history(
         point["consumers"] = {device_id: sum(v) / len(v) for device_id, v in consumers[bucket_start].items()}
         points.append(point)
     return points
+
+
+def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], consumers: set[str]) -> None:
+    """Consumer power from Sunflow's own minute samples where Home Assistant keeps no statistics.
+
+    A sensor excluded from the recorder (e.g. a chatty wallbox) has no history; its power
+    would count as house consumption. Older slots only hold the sum of all consumers: it
+    goes to the one consumer without statistics.
+    """
+    starts = [(datetime.fromisoformat(r["start"]), r) for r in rows if r.get("actual_loadpoint_w") is not None]
+    for point in points:
+        begin, end = datetime.fromisoformat(point["start"]), datetime.fromisoformat(point["end"])
+        inside = [r for start, r in starts if begin <= start < end]
+        if not inside:
+            continue
+        total = fmean(r["actual_loadpoint_w"] for r in inside)
+        point["loadpoint_w"] = max(point.get("loadpoint_w") or 0.0, total)
+        known = point.setdefault("consumers", {})
+        missing = consumers - known.keys()
+        for device_id in list(missing):
+            values = [r["actual_consumers"][device_id] for r in inside if device_id in (r.get("actual_consumers") or {})]
+            if values:
+                known[device_id] = fmean(values)
+                missing.discard(device_id)
+        if len(missing) == 1:
+            known[missing.pop()] = max(total - sum(known.values()), 0.0)
