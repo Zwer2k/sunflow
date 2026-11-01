@@ -83,6 +83,8 @@ class SlotInput:
     pv_low_w: float | None = None
     # Part of pv_w from plants whose output Sunflow can limit
     curtailable_w: float = 0.0
+    # The price is not published yet but estimated
+    price_estimated: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -171,6 +173,7 @@ class PlanSlot:
     flex_w: dict[str, float] = field(default_factory=dict)
     # PV the plan limits away (negative feed-in, above the grid friendly export limit)
     curtail_w: float = 0.0
+    price_estimated: bool = False
 
 
 @dataclass(kw_only=True)
@@ -701,6 +704,7 @@ def optimize(
                 action_power_w=power,
                 flex_w={load.name: float(x[f[k][t]]) for k, load in enumerate(flex)},
                 curtail_w=curtail,
+                price_estimated=slot.price_estimated,
             )
         )
     plan.flex = [

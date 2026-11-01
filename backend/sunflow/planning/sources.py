@@ -23,6 +23,8 @@ class PricePoint:
     start: datetime
     end: datetime
     price: float
+    # Not published yet: estimated from the usual prices of this hour
+    estimated: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
