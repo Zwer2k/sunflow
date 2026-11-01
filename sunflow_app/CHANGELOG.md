@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.63.0
+
+- Autos: Sunflow lernt je Auto, wie viel Ladestand es je Stunde verbraucht (getrennt nach Werktag und Wochenende), aus dem Verlauf seines Ladestand-Sensors der letzten vier Wochen – aus der Statistik von Home Assistant, sonst aus Sunflows eigenen Messwerten. Damit nichts verfälscht wird, zählen nur Tage, an denen der Sensor mindestens 20 Stunden Werte hat; gelernt wird erst ab 14 solchen Tagen, ein eigenes Wochenend-Profil erst ab 4 Wochenendtagen, und Sprünge über 25 % in einer Stunde gelten als Messfehler.
+- Wallbox: Die übliche Ankunftszeit wird gelernt (ab 5 Aufenthalten je Tagestyp, aus vier Wochen statt zwei). Ist das einzige Auto einer Wallbox unterwegs, plant Sunflow es mit gelerntem Verbrauch und Ankunft schon jetzt ein: ab der Ankunft, mit dem Ladestand, mit dem es üblicherweise zurückkommt. Bei mehreren Autos an einer Wallbox wird nicht geraten. Das Ladestand-Diagramm zeigt den erwarteten Verlauf unterwegs und darunter, wie weit das Lernen je Auto ist.
+
 ## 0.62.0
 
 - Warmwasser: Sunflow lernt, wann und wie viel Warmwasser verbraucht wird – je Stunde, getrennt nach Werktag und Wochenende, aus Speichertemperatur und Heizleistung der letzten vier Wochen (ab einer Woche Daten). Der gelernte Tagesbedarf ersetzt die pauschalen 10 K pro Tag; ohne eingestellte Bereitzeit plant Sunflow den Speicher bis zur gewohnten Hauptverbrauchszeit heiß (z. B. vor dem Duschen am Morgen, mindestens drei Stunden voraus). Die erwartete Temperatur im Ladestand-Diagramm fällt zu den gelernten Zeiten statt gleichmäßig.

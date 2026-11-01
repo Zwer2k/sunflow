@@ -1,8 +1,9 @@
-"""Habits learned from the history: when the car usually leaves.
+"""Habits learned from the history: when the car usually leaves and comes back.
 
 From the "connected" history of a loadpoint, charging sessions (plug in until
 unplug) are found. The typical departure is the median unplug time per day type
-(workday / weekend) of sessions that lasted long enough to be a real stay.
+(workday / weekend) of sessions that lasted long enough to be a real stay; the
+typical arrival the median plug-in time of those stays.
 """
 
 from dataclasses import dataclass
@@ -13,9 +14,11 @@ from typing import Any
 from sunflow.ha import HAClient
 
 MIN_SESSIONS = 3
+# An expected arrival plans charging for a car that is not there yet: more evidence
+MIN_ARRIVALS = 5
 # Shorter stays are re-plugging or a quick top-up, not a parking period
 MIN_STAY = timedelta(hours=2)
-HISTORY_DAYS = 14
+HISTORY_DAYS = 28
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -25,24 +28,36 @@ class Departure:
     workday: time | None
     weekend: time | None
     sessions: int
+    # Typical plug-in time of a stay (local); None without enough of them
+    arrival_workday: time | None = None
+    arrival_weekend: time | None = None
+
+    def next_arrival(self, moment: datetime, tz: tzinfo) -> datetime | None:
+        """The next typical arrival after moment."""
+        return _next_typical(moment, tz, self.arrival_workday, self.arrival_weekend)
 
     def next_after(self, moment: datetime, tz: tzinfo) -> datetime | None:
         """The next typical departure after moment."""
-        local = moment.astimezone(tz)
-        for offset in range(8):
-            day: date = (local + timedelta(days=offset)).date()
-            typical = self.weekend if day.weekday() >= 5 else self.workday
-            if typical is None:
-                continue
-            candidate = datetime.combine(day, typical, tzinfo=tz)
-            if candidate > local:
-                return candidate
-        return None
+        return _next_typical(moment, tz, self.workday, self.weekend)
+
+
+def _next_typical(moment: datetime, tz: tzinfo, workday: time | None, weekend: time | None) -> datetime | None:
+    local = moment.astimezone(tz)
+    for offset in range(8):
+        day: date = (local + timedelta(days=offset)).date()
+        typical = weekend if day.weekday() >= 5 else workday
+        if typical is None:
+            continue
+        candidate = datetime.combine(day, typical, tzinfo=tz)
+        if candidate > local:
+            return candidate
+    return None
 
 
 def departures_from(states: list[dict[str, Any]], tz: tzinfo) -> Departure:
     """Learn from minimal history states ({"s": "on"/"off", "lu": timestamp})."""
     unplug: dict[str, list[int]] = {"workday": [], "weekend": []}
+    plug_in: dict[str, list[int]] = {"workday": [], "weekend": []}
     plugged_at: datetime | None = None
     for row in states:
         moment = datetime.fromtimestamp(row.get("lu") or row.get("lc") or 0, UTC).astimezone(tz)
@@ -52,10 +67,12 @@ def departures_from(states: list[dict[str, Any]], tz: tzinfo) -> Departure:
             if moment - plugged_at >= MIN_STAY:
                 kind = "weekend" if moment.weekday() >= 5 else "workday"
                 unplug[kind].append(moment.hour * 60 + moment.minute)
+                arrived = "weekend" if plugged_at.weekday() >= 5 else "workday"
+                plug_in[arrived].append(plugged_at.hour * 60 + plugged_at.minute)
             plugged_at = None
 
-    def typical(minutes: list[int]) -> time | None:
-        if len(minutes) < MIN_SESSIONS:
+    def typical(minutes: list[int], least: int = MIN_SESSIONS) -> time | None:
+        if len(minutes) < least:
             return None
         value = int(median(minutes))
         return time(value // 60, value % 60)
@@ -64,6 +81,8 @@ def departures_from(states: list[dict[str, Any]], tz: tzinfo) -> Departure:
         workday=typical(unplug["workday"]),
         weekend=typical(unplug["weekend"]),
         sessions=len(unplug["workday"]) + len(unplug["weekend"]),
+        arrival_workday=typical(plug_in["workday"], MIN_ARRIVALS),
+        arrival_weekend=typical(plug_in["weekend"], MIN_ARRIVALS),
     )
 
 

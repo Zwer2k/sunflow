@@ -704,6 +704,14 @@ class SunflowPlan extends LitElement {
           </div>`
         : nothing}
       ${lineChart(series, { label: "Ladestand gemessen und erwartet", now, range: this._range, ...options })}
+      ${(plan.vehicles ?? []).map((v) => {
+        const at = flex.find((f) => f.vehicle_id === v.id && f.expected_arrival);
+        return html`<p class="small muted">${v.name}: ${v.usage_days
+          ? `Verbrauch aus ${v.usage_days} Tagen gelernt (Ø ${formatValue(v.daily_pct, "%")} am Tag)${at
+            ? ` – unterwegs, zurück erwartet gegen ${time.format(new Date(at.expected_arrival))} mit etwa ${formatValue(at.arrival_soc, "%")}; ab dann eingeplant.`
+            : "."}`
+          : "Verbrauch noch nicht gelernt (braucht 14 Tage mit gut abgedecktem Ladestand) – geplant wird erst, wenn es angesteckt ist."}</p>`;
+      })}
       ${flex.filter((f) => f.kind === "heater" && f.level_range).map((f) => html`<p class="small muted">${f.name}: ${f.usage_days
         ? `Verbrauch je Stunde aus ${f.usage_days} Tagen gelernt – geheizt wird vor der gewohnten Hauptzeit.`
         : "Verbrauch noch nicht gelernt (braucht eine Woche Temperatur und Heizleistung) – gleichmäßig über den Tag angenommen."}</p>`)}

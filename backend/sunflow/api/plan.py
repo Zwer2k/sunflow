@@ -74,7 +74,14 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         ],
         # Cars have their own level line, also while away
         "vehicles": [
-            {"id": v.id, "key": level_key(v.id), "name": v.name, "capacity_wh": v.capacity_wh} for v in config.vehicles if v.soc_entity
+            {
+                "id": v.id, "key": level_key(v.id), "name": v.name, "capacity_wh": v.capacity_wh,
+                # Days its use was learned from (0: not yet)
+                "usage_days": usage.days if (usage := result.vehicle_usages.get(v.id)) else 0,
+                "daily_pct": usage.daily_pct if usage else None,
+            }
+            for v in config.vehicles
+            if v.soc_entity
         ],
         "slots": [asdict(slot) for slot in plan.slots],
         # The forecast as its source delivers it, before learning and nowcast

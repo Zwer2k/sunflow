@@ -76,6 +76,7 @@ async def current_plan(
     live_pv_w: float | None = None,
     live_load_w: float | None = None,
     consumer_hours: list[tuple[datetime, float]] | None = None,
+    vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -93,6 +94,7 @@ async def current_plan(
         live_pv_w,
         live_load_w,
         consumer_hours,
+        vehicle_hours,
     )
 
 
@@ -374,14 +376,22 @@ class ShadowRunner:
             return
         await asyncio.to_thread(self.shadow.store_actual, self._recorder.start, self._recorder.summary())
 
-    def consumer_hours(self) -> list[tuple[datetime, float]]:
-        """Hourly power of all controllable consumers from the own samples of the load history window."""
+    def own_hours(self) -> tuple[list[tuple[datetime, float]], dict[str, list[tuple[datetime, float]]]]:
+        """From the own samples of the history window: hourly power of all controllable consumers, hourly SoC per car."""
         hours: dict[datetime, list[float]] = {}
+        socs: dict[str, dict[datetime, list[float]]] = {}
+        prefix = level_key("")
         for row in self.shadow.rows(datetime.now(UTC) - timedelta(days=HISTORY_DAYS)):
+            hour = datetime.fromisoformat(row["start"]).replace(minute=0)
             if row.get("actual_loadpoint_w") is not None:
-                hour = datetime.fromisoformat(row["start"]).replace(minute=0)
                 hours.setdefault(hour, []).append(row["actual_loadpoint_w"])
-        return [(hour, sum(values) / len(values)) for hour, values in sorted(hours.items())]
+            for key, value in (row.get("actual_levels") or {}).items():
+                if key.startswith(prefix):
+                    socs.setdefault(key.removeprefix(prefix), {}).setdefault(hour, []).append(value)
+        return (
+            [(hour, sum(values) / len(values)) for hour, values in sorted(hours.items())],
+            {car: [(hour, sum(v) / len(v)) for hour, v in sorted(by_hour.items())] for car, by_hour in socs.items()},
+        )
 
     def request_replan(self) -> None:
         """Replan right away (after a change in the control tab), in the background."""
@@ -467,7 +477,7 @@ class ShadowRunner:
             self.plane_corrections,
             self.live_pv(),
             self.live_load(),
-            await asyncio.to_thread(self.consumer_hours),
+            *await asyncio.to_thread(self.own_hours),
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
