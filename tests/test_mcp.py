@@ -3,6 +3,7 @@
 from pathlib import Path
 import sqlite3
 from typing import Any
+from unittest.mock import AsyncMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -118,7 +119,11 @@ def test_key_shown_once_and_revocable(app: FastAPI, client: TestClient, tmp_path
     """A key is only returned when created, kept as a hash, and stops working when replaced or revoked."""
     ingress = TestClient(app, client=("172.30.32.2", 50000))
     ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+    app.state.ha = AsyncMock()
+    app.state.ha.command.return_value = {"internal": "http://192.168.1.10:8123", "external": "https://ha.example.org"}
     link = ingress.get("/api/v1/mcp/link").json()
+    app.state.ha.command.assert_awaited_once_with("network/url")
+    assert link["host"] == "192.168.1.10"
     assert link["port"] == 0
     assert "key" not in link
     assert link["key_created"]

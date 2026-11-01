@@ -1270,8 +1270,8 @@ class SunflowApp extends LitElement {
       this._mcp = undefined;
       api.mcpLink().then((loaded) => (this._mcp = loaded)).catch(() => (this._mcp = false));
     }
-    // The page is served by Home Assistant, whose host also carries the App's mapped port
-    const url = mcp?.port ? `http://${location.hostname}:${mcp.port}${mcp.path}` : null;
+    // The App's mapped port is on the Home Assistant host; the browser's address may be the external one
+    const url = mcp?.port ? `http://${mcp.host ?? location.hostname}:${mcp.port}${mcp.path}` : null;
     const created = mcp?.key_created ? new Date(mcp.key_created).toLocaleString("de-DE") : null;
     return html`<section class="device compact">
       <div class="device-title">MCP-Server für KI-Assistenten</div>
