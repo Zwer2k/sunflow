@@ -110,8 +110,11 @@ Strategie und Netzladen gelten sofort. Zahlenwerte übernimmt **Speichern und ne
 
 ![Anzeige](images/settings-display.png)
 
-Das Wetter in der Live-Ansicht lässt sich für Handy und für Tablet/Computer getrennt ausblenden.
-Ist es überall aus, fragt Sunflow die Wettervorhersage dafür nicht ab.
+- **Wetter in der Live-Ansicht**: für Handy und für Tablet/Computer getrennt ausblendbar. Ist es
+  überall aus, fragt Sunflow die Wettervorhersage dafür nicht ab.
+- **Sprache**: „Wie Home Assistant“ (Standard: Deutsch, wenn Home Assistant auf Deutsch steht, sonst
+  Englisch), „Deutsch“ oder „English“. Gilt für die Oberfläche und für Meldungen wie Planhinweise
+  und Empfehlungen. Die Seite lädt danach neu.
 
 ## Übersicht
 

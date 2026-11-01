@@ -39,6 +39,7 @@ from sunflow.devices.resolver import (
 )
 from sunflow.devices.site import battery_module_ids, device_category, device_parameters
 from sunflow.ha import HAError
+from sunflow.i18n import N_, t
 
 from .common import _configured_device, _library, _replan, _snapshot, display_name
 
@@ -232,29 +233,29 @@ def power_steps_from_options(options: list[str]) -> dict[str, float]:
 def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, RoleOverride], dict[str, float], dict[str, float] | None]:
     """Role bindings, parameters and power steps of a consumer added by hand; 422 on missing or wrong entities."""
     controls = {
-        "switch": ("switch", body.switch_entity, SWITCH_DOMAINS, "Schalter (switch oder input_boolean)"),
-        "stepped": ("level", body.level_entity, SELECT_DOMAINS, "Auswahl der Leistungsstufe (select)"),
-        "current": ("current", body.current_entity, NUMBER_DOMAINS, "Stromstärke (number)"),
+        "switch": ("switch", body.switch_entity, SWITCH_DOMAINS, N_("Schalter (switch oder input_boolean)")),
+        "stepped": ("level", body.level_entity, SELECT_DOMAINS, N_("Auswahl der Leistungsstufe (select)")),
+        "current": ("current", body.current_entity, NUMBER_DOMAINS, N_("Stromstärke (number)")),
     }
     role, entity, domains, label = controls[body.type]
     if not entity or not entity.startswith(domains):
-        raise HTTPException(status_code=422, detail=f"Bitte {label} wählen")
+        raise HTTPException(status_code=422, detail=t("Bitte {label} wählen", label=t(label)))
     overrides = {role: RoleOverride(entity_id=entity)}
     if body.type == "current" and body.switch_entity:
         if not body.switch_entity.startswith(SWITCH_DOMAINS):
-            raise HTTPException(status_code=422, detail="Der Schalter muss ein switch oder input_boolean sein")
+            raise HTTPException(status_code=422, detail=t("Der Schalter muss ein switch oder input_boolean sein"))
         overrides["switch"] = RoleOverride(entity_id=body.switch_entity)
     for role_name, value in (("power", body.power_entity), ("energy", body.energy_entity), ("temperature", body.temperature_entity)):
         if value:
             overrides[role_name] = RoleOverride(entity_id=value)
     if body.kind == "heater" and (not body.temperature_entity or not body.tank_l):
-        raise HTTPException(status_code=422, detail="Für Wärme bitte Temperatursensor und Speichervolumen angeben")
+        raise HTTPException(status_code=422, detail=t("Für Wärme bitte Temperatursensor und Speichervolumen angeben"))
     steps = None
     if body.type == "stepped":
         options = snapshot.states.get(entity, {}).get("attributes", {}).get("options") or []
         steps = body.power_steps or power_steps_from_options(options)
         if not any(w > 0 for w in steps.values()) or not any(w <= 0 for w in steps.values()):
-            raise HTTPException(status_code=422, detail="Leistungsstufen und eine Stufe „aus“ angeben")
+            raise HTTPException(status_code=422, detail=t("Leistungsstufen und eine Stufe „aus“ angeben"))
     parameters: dict[str, float] = {}
     max_power = body.max_power or (max(steps.values()) if steps else None)
     if max_power:
@@ -421,7 +422,7 @@ async def update_device(
             spec = specs.get(name, {})
             if ("min" in spec and value < spec["min"]) or ("max" in spec and value > spec["max"]):
                 raise HTTPException(
-                    status_code=422, detail=f"{name}: erlaubt sind {spec.get('min', '…')} bis {spec.get('max', '…')}"
+                    status_code=422, detail=t("{name}: erlaubt sind {min} bis {max}", name=name, min=spec.get("min", "…"), max=spec.get("max", "…"))
                 )
             device.parameters[name] = value
     # Not the device itself but what belongs to it: kept by device id
@@ -572,7 +573,7 @@ async def set_battery_modules(request: Request, device_id: str, body: BatteryMod
     else:
         taken = {m for owner, modules in config.battery_modules.items() if owner != device_id for m in modules}
         if taken & set(body.modules):
-            raise HTTPException(status_code=422, detail="Ein Modul ist schon einem anderen Wechselrichter zugeordnet")
+            raise HTTPException(status_code=422, detail=t("Ein Modul ist schon einem anderen Wechselrichter zugeordnet"))
         config.battery_modules[device.id] = body.modules
     store.save(config)
     _replan(request)

@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 // Relative URLs so the UI works behind Home Assistant Ingress.
 const BASE = "api/v1";
 
@@ -41,11 +42,11 @@ async function request(method, path, body) {
     // Expired ingress session: renew once and repeat the request
     if (response.status === 401 && (await renewIngressSession())) response = await send(method, path, body);
   } catch (err) {
-    if (err.name === "TimeoutError") throw new Error("Keine Antwort vom Server (Zeitüberschreitung)");
+    if (err.name === "TimeoutError") throw new Error(t("Keine Antwort vom Server (Zeitüberschreitung)"));
     throw err;
   }
   if (response.status === 401) {
-    throw new Error("Sitzung bei Home Assistant abgelaufen – bitte die Seite neu laden");
+    throw new Error(t("Sitzung bei Home Assistant abgelaufen – bitte die Seite neu laden"));
   }
   // Server errors may come as plain text ("Internal Server Error")
   const text = response.status === 204 ? "" : await response.text();
@@ -53,11 +54,11 @@ async function request(method, path, body) {
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
-    if (response.ok) throw new Error("Ungültige Antwort vom Server");
+    if (response.ok) throw new Error(t("Ungültige Antwort vom Server"));
   }
   if (!response.ok) {
     if (response.status >= 500 && !data?.detail) {
-      throw new Error(`Serverfehler (${response.status}) – Details im Log der App`);
+      throw new Error(t("Serverfehler ({status}) – Details im Log der App", { status: response.status }));
     }
     const detail = Array.isArray(data?.detail) ? data.detail.map((e) => e.msg).join("; ") : data?.detail;
     throw new Error(detail ?? `${response.status} ${response.statusText}`);

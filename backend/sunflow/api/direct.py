@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sunflow.config.models import Connection, DeviceConfig
 from sunflow.config.store import ConfigStore
 from sunflow.direct.hub import DirectHub, direct_device_id
+from sunflow.i18n import t
 
 from .common import _library, _replan
 from .devices import device_with_relations
@@ -63,7 +64,7 @@ async def add_direct_device(request: Request, body: DirectDevice) -> dict[str, A
     """Add a device by its profile and address."""
     library = _library(request)
     if (profile := library.profiles.get(body.profile)) is None or "connection" not in profile:
-        raise HTTPException(status_code=422, detail="Unbekanntes Profil für eine Direktanbindung")
+        raise HTTPException(status_code=422, detail=t("Unbekanntes Profil für eine Direktanbindung"))
     store: ConfigStore = request.app.state.store
     config = store.load()
     device = DeviceConfig(

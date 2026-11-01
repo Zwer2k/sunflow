@@ -56,7 +56,7 @@ den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
 | MCP server | [MCP-Server](docs/mcp.md) | [MCP server](docs/en/mcp.md) |
 | Troubleshooting | [Fehlersuche](docs/fehlersuche.md) | [Troubleshooting](docs/en/troubleshooting.md) |
 
-The user interface is currently in German.
+The user interface is available in German and English and follows the language of Home Assistant.
 
 ## Supported devices (overview)
 

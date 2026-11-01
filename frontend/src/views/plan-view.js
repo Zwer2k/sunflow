@@ -4,20 +4,21 @@ import { poll } from "../lib/poll.js";
 import { lineChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "../components/charts.js";
 import { formatValue, toDisplay } from "../lib/format.js";
 import { plugInHints } from "../lib/plug-in.js";
+import { decimal, locale, t } from "../lib/i18n.js";
 
 const ACTIONS = {
-  auto: { label: "Eigenverbrauch", hint: "Speicher lädt aus PV-Überschuss und deckt den Bedarf" },
-  hold: { label: "Speicher halten", hint: "Speicher wird geschont, Bedarf kommt aus dem Netz" },
-  force_charge: { label: "Laden aus dem Netz", hint: "Speicher wird gezielt geladen" },
-  force_discharge: { label: "Entladen ins Netz", hint: "Speicher speist gezielt ein" },
-  limit_discharge: { label: "Entladen begrenzt", hint: "Speicher deckt den Bedarf nur teilweise, der Rest kommt aus dem Netz" },
-  limit_charge: { label: "Laden begrenzt", hint: "Speicher nimmt nur einen Teil des PV-Überschusses auf, der Rest wird eingespeist" },
+  auto: { label: t("Eigenverbrauch"), hint: t("Speicher lädt aus PV-Überschuss und deckt den Bedarf") },
+  hold: { label: t("Speicher halten"), hint: t("Speicher wird geschont, Bedarf kommt aus dem Netz") },
+  force_charge: { label: t("Laden aus dem Netz"), hint: t("Speicher wird gezielt geladen") },
+  force_discharge: { label: t("Entladen ins Netz"), hint: t("Speicher speist gezielt ein") },
+  limit_discharge: { label: t("Entladen begrenzt"), hint: t("Speicher deckt den Bedarf nur teilweise, der Rest kommt aus dem Netz") },
+  limit_charge: { label: t("Laden begrenzt"), hint: t("Speicher nimmt nur einen Teil des PV-Überschusses auf, der Rest wird eingespeist") },
 };
 const LOAD_QUALITY = {
-  day_type: "nach Wochentag",
-  all_days: "Mittel aller Tage",
-  mixed: "teils nach Wochentag",
-  default: "Standardwert",
+  day_type: t("nach Wochentag"),
+  all_days: t("Mittel aller Tage"),
+  mixed: t("teils nach Wochentag"),
+  default: t("Standardwert"),
 };
 // Chart window limits: statistics go back about a month, Solcast looks a week ahead
 const MAX_BACK_DAYS = 31;
@@ -32,13 +33,13 @@ const REFRESH_MS = 60 * 1000;
 const TOTAL_KEY = "sunflow.plan.total";
 const RAW_PV_KEY = "sunflow.plan.rawPv";
 
-const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
-const dayTime = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
-const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+const time = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
+const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const euro = new Intl.NumberFormat(locale(), { style: "currency", currency: "EUR" });
 
 /** Name of the forecast source(s) in use, e.g. "Solcast" or "Solcast + Forecast.Solar". */
 function rawLabel(plan) {
-  return plan.pv_sources?.length ? plan.pv_sources.join(" + ") : "PV-Prognose";
+  return plan.pv_sources?.length ? plan.pv_sources.join(" + ") : t("PV-Prognose");
 }
 
 /** Energy in Wh of a power column over 15 minute slots. */
@@ -67,7 +68,7 @@ function flexWindows(slots, name) {
   }
   return windows.map((w) => ({
     ...w,
-    source: w.pv >= w.energy * 0.8 ? "aus PV-Überschuss" : w.pv > 0 ? "teils PV, teils Netz/Speicher" : "aus Netz/Speicher",
+    source: w.pv >= w.energy * 0.8 ? t("aus PV-Überschuss") : w.pv > 0 ? t("teils PV, teils Netz/Speicher") : t("aus Netz/Speicher"),
   }));
 }
 
@@ -91,15 +92,15 @@ function percentAxis(highest) {
 function socLimits(battery) {
   if (!battery) return [];
   const pct = (wh) => `${Math.round((wh / battery.capacity_wh) * 100)} %`;
-  const limits = [{ value: battery.capacity_wh, label: `voll · ${formatValue(battery.capacity_wh, "Wh")}` }];
+  const limits = [{ value: battery.capacity_wh, label: t("voll · {energy}", { energy: formatValue(battery.capacity_wh, "Wh") }) }];
   if (battery.limit_wh && battery.limit_wh < battery.capacity_wh && !battery.full_charge_at) {
-    limits.push({ value: battery.limit_wh, label: `Ladegrenze ${pct(battery.limit_wh)}` });
+    limits.push({ value: battery.limit_wh, label: t("Ladegrenze {pct}", { pct: pct(battery.limit_wh) }) });
   }
   if (battery.reserve_wh > battery.min_soc_wh) {
-    limits.push({ value: battery.reserve_wh, label: `Notstromreserve ${pct(battery.reserve_wh)}` });
+    limits.push({ value: battery.reserve_wh, label: t("Notstromreserve {pct}", { pct: pct(battery.reserve_wh) }) });
   }
   if (battery.min_soc_wh > 0) {
-    limits.push({ value: battery.min_soc_wh, label: `Entladegrenze ${pct(battery.min_soc_wh)}` });
+    limits.push({ value: battery.min_soc_wh, label: t("Entladegrenze {pct}", { pct: pct(battery.min_soc_wh) }) });
   }
   return limits;
 }
@@ -239,7 +240,7 @@ class SunflowPlan extends LitElement {
       this._plan = await (fresh ? api.plan() : api.latestPlan());
       this._error = null;
     } catch (err) {
-      this._error = `Plan konnte nicht berechnet werden: ${err.message}`;
+      this._error = t("Plan konnte nicht berechnet werden: {error}", { error: err.message });
     } finally {
       await history;
       this._loading = false;
@@ -251,17 +252,15 @@ class SunflowPlan extends LitElement {
     return html`
       <div class="heading">
         <div>
-          <h1>Planung</h1>
-          <p class="muted">Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung.
-            Sunflow steuert noch nichts – die Planung zeigt, was es tun würde. Eingriffe im Tab „Steuerung“,
-            Voreinstellungen unter „Einstellungen → Standards“.</p>
+          <h1>${t("Planung")}</h1>
+          <p class="muted">${t("Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Sunflow steuert noch nichts – die Planung zeigt, was es tun würde. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.")}</p>
         </div>
         <button class="secondary" ?disabled=${this._loading} @click=${() => this._load(true)}>
-          ${this._loading ? "Berechne …" : "Neu berechnen"}
+          ${this._loading ? t("Berechne …") : t("Neu berechnen")}
         </button>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
-      ${plan === null && !this._error ? html`<p class="muted">Berechne Plan …</p>` : nothing}
+      ${plan === null && !this._error ? html`<p class="muted">${t("Berechne Plan …")}</p>` : nothing}
       ${plan ? this._renderPlan(plan) : nothing}
     `;
   }
@@ -270,7 +269,7 @@ class SunflowPlan extends LitElement {
     const slots = plan.slots;
     if (!slots.length) {
       return html`${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
-        <p class="muted">Kein Plan möglich (${plan.status}).</p>`;
+        <p class="muted">${t("Kein Plan möglich ({status}).", { status: plan.status })}</p>`;
     }
     const segs = segments(slots);
     const now = segs[0];
@@ -288,32 +287,32 @@ class SunflowPlan extends LitElement {
       ${plugInHints(plan.plug_in_hints)}
       <div class="tiles">
         <div class="tile now">
-          <div class="small muted">Geplante Steuerung jetzt (bis ${time.format(new Date(now.end))})</div>
+          <div class="small muted">${t("Geplante Steuerung jetzt (bis {time})", { time: time.format(new Date(now.end)) })}</div>
           <div class="value">${ACTIONS[now.action].label}</div>
           <div class="small muted">${ACTIONS[now.action].hint}</div>
           ${this._renderActual(plan, now)}
         </div>
         <div class="tile">
-          <div class="small muted">Erwartete Ersparnis (nächste ${Math.round(slots.length / 4)} h)</div>
+          <div class="small muted">${t("Erwartete Ersparnis (nächste {hours} h)", { hours: Math.round(slots.length / 4) })}</div>
           <div class="value">${euro.format(plan.savings ?? 0)}</div>
-          <div class="small muted">gegenüber reinem Eigenverbrauch</div>
+          <div class="small muted">${t("gegenüber reinem Eigenverbrauch")}</div>
         </div>
         <div class="tile">
-          <div class="small muted">${plan.alternative_cost || plan.baseline_alternative_cost ? "Erwartete Energiekosten" : "Erwartete Stromkosten"}</div>
+          <div class="small muted">${plan.alternative_cost || plan.baseline_alternative_cost ? t("Erwartete Energiekosten") : t("Erwartete Stromkosten")}</div>
           <div class="value">${euro.format(plan.cost)}</div>
-          <div class="small muted">ohne Sunflow ${euro.format(plan.baseline_cost)}${plan.alternative_cost || plan.baseline_alternative_cost
-            ? html` · inkl. Ersatzheizung ${euro.format(plan.alternative_cost)} bzw. ${euro.format(plan.baseline_alternative_cost)}`
+          <div class="small muted">${t("ohne Sunflow {cost}", { cost: euro.format(plan.baseline_cost) })}${plan.alternative_cost || plan.baseline_alternative_cost
+            ? html` · ${t("inkl. Ersatzheizung {planned} bzw. {baseline}", { planned: euro.format(plan.alternative_cost), baseline: euro.format(plan.baseline_alternative_cost) })}`
             : nothing}</div>
         </div>
         <div class="tile">
-          <div class="small muted">Erwarteter Ladestand am Ende</div>
+          <div class="small muted">${t("Erwarteter Ladestand am Ende")}</div>
           <div class="value">${formatValue(slots.at(-1).soc_wh, "Wh")}</div>
           <div class="small muted">${dayTime.format(new Date(slots.at(-1).end))}</div>
         </div>
       </div>
 
       <section>
-        <h2>Geplante Steuerung <span class="tag">Vorschau</span></h2>
+        <h2>${t("Geplante Steuerung")} <span class="tag">${t("Vorschau")}</span></h2>
         <ol class="timeline">
           ${segs.map(
             (s) => html`
@@ -322,7 +321,7 @@ class SunflowPlan extends LitElement {
                 <span class="what">${ACTIONS[s.action].label}${s.slots[0].action_power_w
                   ? html` · ${formatValue(s.slots[0].action_power_w, "W")}`
                   : nothing}</span>
-                <span class="soc small muted">Speicher ${formatValue(s.slots[0].soc_wh, "Wh")} → ${formatValue(s.slots.at(-1).soc_wh, "Wh")}</span>
+                <span class="soc small muted">${t("Speicher {from} → {to}", { from: formatValue(s.slots[0].soc_wh, "Wh"), to: formatValue(s.slots.at(-1).soc_wh, "Wh") })}</span>
               </li>
             `,
           )}
@@ -333,109 +332,108 @@ class SunflowPlan extends LitElement {
 
       <section>
         <div class="section-head">
-          <h2>Verlauf und Prognose</h2>
+          <h2>${t("Verlauf und Prognose")}</h2>
           <div class="window-nav">
-            <div class="range" role="group" aria-label="Zeitraum">
+            <div class="range" role="group" aria-label=${t("Zeitraum")}>
               ${[24, 48, 168].map(
                 (h) => html`<button class=${this._historyHours === h ? "active" : ""} aria-pressed=${this._historyHours === h}
-                  @click=${() => this._setHistoryHours(h)}>${h === 168 ? "7 Tage" : `${h} h`}</button>`,
+                  @click=${() => this._setHistoryHours(h)}>${h === 168 ? t("7 Tage") : `${h} h`}</button>`,
               )}
             </div>
-            <div class="range" role="group" aria-label="Zeitraum verschieben">
-              <button ?disabled=${!this._canShift(-1)} aria-label="früher" @click=${() => this._shiftWindow(-1)}>‹</button>
-              <button class=${this._shift === 0 ? "active" : ""} @click=${() => this._shiftWindow(0)}>Jetzt</button>
-              <button ?disabled=${!this._canShift(1)} aria-label="später" @click=${() => this._shiftWindow(1)}>›</button>
+            <div class="range" role="group" aria-label=${t("Zeitraum verschieben")}>
+              <button ?disabled=${!this._canShift(-1)} aria-label=${t("früher")} @click=${() => this._shiftWindow(-1)}>‹</button>
+              <button class=${this._shift === 0 ? "active" : ""} @click=${() => this._shiftWindow(0)}>${t("Jetzt")}</button>
+              <button ?disabled=${!this._canShift(1)} aria-label=${t("später")} @click=${() => this._shiftWindow(1)}>›</button>
             </div>
           </div>
         </div>
         <p class="small muted window-label">${dayTime.format(this._range.start)} – ${dayTime.format(this._range.end)}${this._range.end > new Date(slots.at(-1).end)
-          ? " · nach dem Planende nur die PV-Prognose"
-          : ""} · zum Verschieben ein Diagramm seitlich ziehen</p>
+          ? ` · ${t("nach dem Planende nur die PV-Prognose")}`
+          : ""} · ${t("zum Verschieben ein Diagramm seitlich ziehen")}</p>
         ${this._historyError
-          ? html`<div class="alert warn">⚠ Gemessener Verlauf nicht abrufbar (${this._historyError})${this._history
-              ? " – angezeigt wird der zuletzt geladene."
-              : " – die Diagramme zeigen nur die Planung."}</div>`
+          ? html`<div class="alert warn">⚠ ${this._history
+              ? t("Gemessener Verlauf nicht abrufbar ({error}) – angezeigt wird der zuletzt geladene.", { error: this._historyError })
+              : t("Gemessener Verlauf nicht abrufbar ({error}) – die Diagramme zeigen nur die Planung.", { error: this._historyError })}</div>`
           : nothing}
         <div class="legend">
-          <span class="legend-item"><span class="line solid"></span>gemessen</span>
-          <span class="legend-item"><span class="line dashed"></span>Prognose / Planung</span>
-          <span class="legend-item muted">Klick auf eine Zahl der Leistungsachse skaliert bis dorthin, erneuter Klick zeigt wieder alles</span>
+          <span class="legend-item"><span class="line solid"></span>${t("gemessen")}</span>
+          <span class="legend-item"><span class="line dashed"></span>${t("Prognose / Planung")}</span>
+          <span class="legend-item muted">${t("Klick auf eine Zahl der Leistungsachse skaliert bis dorthin, erneuter Klick zeigt wieder alles")}</span>
         </div>
       </section>
 
       ${this._renderLevels(plan, slots, capacity, nowDate)}
 
       <section>
-        <h3>PV-Erzeugung und Hausverbrauch</h3>
+        <h3>${t("PV-Erzeugung und Hausverbrauch")}</h3>
         <div class="legend">
-          <span class="legend-item">${this._legendButton("pv", SERIES_COLORS[1], "PV-Erzeugung")}
+          <span class="legend-item">${this._legendButton("pv", SERIES_COLORS[1], t("PV-Erzeugung"))}
             ${plan.pv_correction
-              ? html`<span class="muted">(Prognose an die Anlage angepasst: Ø ${Math.round(plan.pv_correction.overall * 100)} %
-                  aus ${plan.pv_correction.days} Tagen)</span>`
+              ? html`<span class="muted">${t("(Prognose an die Anlage angepasst: Ø {pct} % aus {days} Tagen)", { pct: Math.round(plan.pv_correction.overall * 100), days: plan.pv_correction.days })}</span>`
               : nothing}</span>
           ${consumers.length
             ? consumers.map((c) => this._legendButton(c.key, c.color, c.name))
             : hasLoadpoints
-              ? this._legendButton("consumers", UNASSIGNED_COLOR, "steuerbare Verbraucher")
+              ? this._legendButton("consumers", UNASSIGNED_COLOR, t("steuerbare Verbraucher"))
               : nothing}
-          <span class="legend-item">${this._legendButton("load", SERIES_COLORS[0], hasLoadpoints ? "Hausverbrauch ohne steuerbare Verbraucher" : "Hausverbrauch")}
-            <span class="muted">(Prognose: ${plan.load_model
-              ? `gelerntes Modell mit Außentemperatur aus ${plan.load_model.days} Tagen, Abweichung ${formatValue(plan.load_model.error_model, "W")} statt ${formatValue(plan.load_model.error_average, "W")}`
-              : html`${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${plan.load_history_hours} h Historie${plan.load_scaled_to_kwh
-              ? `, skaliert auf ${toDisplay(plan.load_scaled_to_kwh, "kWh")} kWh/Tag`
-              : ""}${plan.load_separated_hours ? `, ohne steuerbare Verbraucher (${plan.load_separated_hours} h getrennt)` : ""}`})</span></span>
+          <span class="legend-item">${this._legendButton("load", SERIES_COLORS[0], hasLoadpoints ? t("Hausverbrauch ohne steuerbare Verbraucher") : t("Hausverbrauch"))}
+            <span class="muted">(${t("Prognose:")} ${plan.load_model
+              ? t("gelerntes Modell mit Außentemperatur aus {days} Tagen, Abweichung {error} statt {average}", { days: plan.load_model.days, error: formatValue(plan.load_model.error_model, "W"), average: formatValue(plan.load_model.error_average, "W") })
+              : html`${LOAD_QUALITY[plan.load_quality] ?? "–"}, ${t("{hours} h Historie", { hours: plan.load_history_hours })}${plan.load_scaled_to_kwh
+              ? `, ${t("skaliert auf {kwh} kWh/Tag", { kwh: toDisplay(plan.load_scaled_to_kwh, "kWh") })}`
+              : ""}${plan.load_separated_hours ? `, ${t("ohne steuerbare Verbraucher ({hours} h getrennt)", { hours: plan.load_separated_hours })}` : ""}`})</span></span>
           <span class="legend-item total-toggle">
-            <input type="checkbox" id="show-raw-pv" aria-label="Unkorrigierte Prognose einblenden" .checked=${this._showRawPv}
+            <input type="checkbox" id="show-raw-pv" aria-label=${t("Unkorrigierte Prognose einblenden")} .checked=${this._showRawPv}
               @change=${(e) => this._setShowRawPv(e.target.checked)}>
             ${this._showRawPv
-              ? this._legendButton("raw", SERIES_COLORS[1], `${rawLabel(plan)} (unkorrigiert)`)
-              : html`<label for="show-raw-pv">${rawLabel(plan)} (unkorrigiert)</label>`}
+              ? this._legendButton("raw", SERIES_COLORS[1], t("{name} (unkorrigiert)", { name: rawLabel(plan) }))
+              : html`<label for="show-raw-pv">${t("{name} (unkorrigiert)", { name: rawLabel(plan) })}</label>`}
           </span>
           ${hasLoadpoints
             ? html`<span class="legend-item total-toggle">
-                <input type="checkbox" id="show-total" aria-label="Gesamtverbrauch einblenden" .checked=${this._showTotal}
+                <input type="checkbox" id="show-total" aria-label=${t("Gesamtverbrauch einblenden")} .checked=${this._showTotal}
                   @change=${(e) => this._setShowTotal(e.target.checked)}>
                 ${this._showTotal
-                  ? this._legendButton("total", UNASSIGNED_COLOR, "Gesamtverbrauch (mit steuerbaren Verbrauchern)")
-                  : html`<label for="show-total">Gesamtverbrauch (mit steuerbaren Verbrauchern)</label>`}
+                  ? this._legendButton("total", UNASSIGNED_COLOR, t("Gesamtverbrauch (mit steuerbaren Verbrauchern)"))
+                  : html`<label for="show-total">${t("Gesamtverbrauch (mit steuerbaren Verbrauchern)")}</label>`}
               </span>`
             : nothing}
         </div>
         ${lineChart(
           this._focused([
-            { key: "load", name: "Verbrauch gemessen", color: SERIES_COLORS[0], points: this._pastBaseLoad() },
-            { key: "load", name: "Verbrauch Prognose", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
-            { key: "pv", name: "PV gemessen", color: SERIES_COLORS[1], points: this._past("pv_w") },
+            { key: "load", name: t("Verbrauch gemessen"), color: SERIES_COLORS[0], points: this._pastBaseLoad() },
+            { key: "load", name: t("Verbrauch Prognose"), color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "load_w") },
+            { key: "pv", name: t("PV gemessen"), color: SERIES_COLORS[1], points: this._past("pv_w") },
             ...(this._showRawPv
-              ? [{ key: "raw", name: `${rawLabel(plan)} unkorrigiert`, color: SERIES_COLORS[1], thin: true, points: this._rawPv(plan, slots) }]
+              ? [{ key: "raw", name: t("{name} unkorrigiert", { name: rawLabel(plan) }), color: SERIES_COLORS[1], thin: true, points: this._rawPv(plan, slots) }]
               : []),
             ...(consumers.length
               ? consumers.flatMap((c) => [
-                  { key: c.key, name: `${c.name} gemessen`, color: c.color, points: this._pastConsumer(c.key) },
+                  { key: c.key, name: t("{name} gemessen", { name: c.name }), color: c.color, points: this._pastConsumer(c.key) },
                   {
                     key: c.key,
-                    name: `${c.name} geplant`,
+                    name: t("{name} geplant", { name: c.name }),
                     color: c.color,
                     dashed: true,
                     points: slots.map((s) => ({ start: s.start, end: s.end, value: s.flex_w?.[c.name] ?? 0 })),
                   },
                 ])
               : hasLoadpoints
-                ? [{ key: "consumers", name: "Verbraucher gemessen", color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
+                ? [{ key: "consumers", name: t("Verbraucher gemessen"), color: UNASSIGNED_COLOR, points: this._past("loadpoint_w") }]
                 : []),
             {
               key: "pv",
-              name: "PV Prognose",
+              name: t("PV Prognose"),
               color: SERIES_COLORS[1],
               dashed: true,
               points: [...this._future(slots, "pv_w"), ...this._pvAhead.filter((p) => new Date(p.start) >= new Date(slots.at(-1).end))],
             },
             ...(hasLoadpoints && this._showTotal
               ? [
-                  { key: "total", name: "Gesamtverbrauch gemessen", color: UNASSIGNED_COLOR, points: this._past("load_w") },
+                  { key: "total", name: t("Gesamtverbrauch gemessen"), color: UNASSIGNED_COLOR, points: this._past("load_w") },
                   {
                     key: "total",
-                    name: "Gesamtverbrauch geplant",
+                    name: t("Gesamtverbrauch geplant"),
                     color: UNASSIGNED_COLOR,
                     dashed: true,
                     points: slots.map((s) => ({
@@ -448,7 +446,7 @@ class SunflowPlan extends LitElement {
               : []),
           ]),
           {
-            label: "PV-Erzeugung und Hausverbrauch, gemessen und Prognose",
+            label: t("PV-Erzeugung und Hausverbrauch, gemessen und Prognose"),
             formatY: (v) => formatValue(v, "W"),
             now: nowDate,
             range: this._range,
@@ -458,30 +456,29 @@ class SunflowPlan extends LitElement {
       </section>
 
       <section>
-        <h3>Netzbezug und Einspeisung</h3>
+        <h3>${t("Netzbezug und Einspeisung")}</h3>
         <div class="legend">
-          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Netzbezug</span>
-          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>Einspeisung</span>
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>${t("Netzbezug")}</span>
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>${t("Einspeisung")}</span>
           ${curtailed
-            ? html`<span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[2]}"></span>PV abgeregelt</span>`
+            ? html`<span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[2]}"></span>${t("PV abgeregelt")}</span>`
             : nothing}
-          <span class="legend-item muted">erwartet: Bezug ${formatValue(energy(slots, "import_w"), "Wh")},
-            Einspeisung ${formatValue(energy(slots, "export_w"), "Wh")}${curtailed
-              ? `, abgeregelt ${formatValue(energy(slots, "curtail_w"), "Wh")}`
+          <span class="legend-item muted">${t("erwartet: Bezug {import}, Einspeisung {export}", { import: formatValue(energy(slots, "import_w"), "Wh"), export: formatValue(energy(slots, "export_w"), "Wh") })}${curtailed
+              ? `, ${t("abgeregelt {energy}", { energy: formatValue(energy(slots, "curtail_w"), "Wh") })}`
               : ""}</span>
         </div>
         ${lineChart(
           [
-            { name: "Bezug gemessen", color: SERIES_COLORS[0], points: this._pastGrid((g) => Math.max(g, 0)) },
-            { name: "Bezug erwartet", color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "import_w") },
-            { name: "Einspeisung gemessen", color: SERIES_COLORS[1], points: this._pastGrid((g) => Math.max(-g, 0)) },
-            { name: "Einspeisung erwartet", color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "export_w") },
+            { name: t("Bezug gemessen"), color: SERIES_COLORS[0], points: this._pastGrid((g) => Math.max(g, 0)) },
+            { name: t("Bezug erwartet"), color: SERIES_COLORS[0], dashed: true, points: this._future(slots, "import_w") },
+            { name: t("Einspeisung gemessen"), color: SERIES_COLORS[1], points: this._pastGrid((g) => Math.max(-g, 0)) },
+            { name: t("Einspeisung erwartet"), color: SERIES_COLORS[1], dashed: true, points: this._future(slots, "export_w") },
             ...(curtailed
-              ? [{ name: "PV abgeregelt", color: SERIES_COLORS[2], dashed: true, points: this._future(slots, "curtail_w") }]
+              ? [{ name: t("PV abgeregelt"), color: SERIES_COLORS[2], dashed: true, points: this._future(slots, "curtail_w") }]
               : []),
           ],
           {
-            label: "Netzbezug und Einspeisung, gemessen und erwartet",
+            label: t("Netzbezug und Einspeisung, gemessen und erwartet"),
             formatY: (v) => formatValue(v, "W"),
             now: nowDate,
             range: this._range,
@@ -493,8 +490,8 @@ class SunflowPlan extends LitElement {
       ${this._renderCostCurve(plan, slots)}
 
       <section>
-        <h3>Bezugspreis <span class="tag">Vorschau</span></h3>
-        ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price, estimated: s.price_estimated })), "Bezugspreis im Plan", {
+        <h3>${t("Bezugspreis")} <span class="tag">${t("Vorschau")}</span></h3>
+        ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price, estimated: s.price_estimated })), t("Bezugspreis im Plan"), {
           // Same time axis as the charts above
           range: this._range,
           now: nowDate,
@@ -506,10 +503,10 @@ class SunflowPlan extends LitElement {
 
   _renderFlex(plan) {
     const colors = consumerColors(plan.flex);
-    const fmt = (v, unit) => (v === null || v === undefined ? "–" : `${Math.round(v * 10) / 10} ${unit}`.replace(".", ","));
+    const fmt = (v, unit) => (v === null || v === undefined ? "–" : `${decimal(Math.round(v * 10) / 10)} ${unit}`);
     return html`
       <section>
-        <h2>Steuerbare Verbraucher <span class="tag">Vorschau</span></h2>
+        <h2>${t("Steuerbare Verbraucher")} <span class="tag">${t("Vorschau")}</span></h2>
         <div class="flex-list">
           ${plan.flex.map((f) => {
             const windows = flexWindows(plan.slots, f.name);
@@ -517,21 +514,21 @@ class SunflowPlan extends LitElement {
               <div class="flex-card">
                 <div class="flex-head">
                   <strong><span class="swatch inline" style="background:${colors.get(f.device_id)}"></span>${f.name}</strong>
-                  <span class="small muted">${f.kind === "vehicle" && f.vehicle ? f.vehicle : { heater: "Warmwasser", vehicle: "Fahrzeug" }[f.kind] ?? "Verbraucher"}</span>
+                  <span class="small muted">${f.kind === "vehicle" && f.vehicle ? f.vehicle : { heater: t("Warmwasser"), vehicle: t("Fahrzeug") }[f.kind] ?? t("Verbraucher")}</span>
                 </div>
                 <div class="small">
                   ${f.kind === "load" ? nothing : html`${fmt(f.current, f.unit)} → ${fmt(f.target, f.unit)}`}
-                  ${f.need_wh > 0 ? html` · Bedarf ${formatValue(f.need_wh, "Wh")}` : nothing}
+                  ${f.need_wh > 0 ? html` · ${t("Bedarf {energy}", { energy: formatValue(f.need_wh, "Wh") })}` : nothing}
                   ${f.deadline
-                    ? html` · bis ${dayTime.format(new Date(f.deadline))}${f.learned_departure ? " (übliche Abfahrt, gelernt)" : ""}`
+                    ? html` · ${t("bis {time}", { time: dayTime.format(new Date(f.deadline)) })}${f.learned_departure ? ` ${t("(übliche Abfahrt, gelernt)")}` : ""}`
                     : nothing}
-                  ${f.daily_wh > 0 ? html` · danach täglich ${formatValue(f.daily_wh, "Wh")}` : nothing}
+                  ${f.daily_wh > 0 ? html` · ${t("danach täglich {energy}", { energy: formatValue(f.daily_wh, "Wh") })}` : nothing}
                 </div>
                 ${f.reason
-                  ? html`<div class="small muted">Nicht eingeplant: ${f.reason}</div>`
+                  ? html`<div class="small muted">${t("Nicht eingeplant: {reason}", { reason: f.reason })}</div>`
                   : html`
-                      <div class="small">Geplant ${formatValue(f.planned_wh, "Wh")}${f.unmet_wh > 50
-                        ? html` · <span class="warn-text">${formatValue(f.unmet_wh, "Wh")} nicht erfüllbar</span>`
+                      <div class="small">${t("Geplant {energy}", { energy: formatValue(f.planned_wh, "Wh") })}${f.unmet_wh > 50
+                        ? html` · <span class="warn-text">${t("{energy} nicht erfüllbar", { energy: formatValue(f.unmet_wh, "Wh") })}</span>`
                         : nothing}</div>
                       <ul class="windows small">
                         ${windows.map(
@@ -564,21 +561,21 @@ class SunflowPlan extends LitElement {
     const lowest = Math.min(0, ...withSunflow.map((p) => p.value), ...withoutSunflow.map((p) => p.value));
     return html`
       <section>
-        <h3>Kostenverlauf <span class="tag">Vorschau</span></h3>
+        <h3>${t("Kostenverlauf")} <span class="tag">${t("Vorschau")}</span></h3>
         <div class="legend">
-          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>mit Sunflow ${euro.format(planned)}</span>
-          <span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>reiner Eigenverbrauch ${euro.format(without)}</span>
-          <span class="muted small">aufsummierte Stromkosten (Bezug minus Einspeisung)${plan.alternative_cost || plan.baseline_alternative_cost
-            ? `, ohne Ersatzheizung (${euro.format(plan.alternative_cost)} bzw. ${euro.format(plan.baseline_alternative_cost)})`
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>${t("mit Sunflow {cost}", { cost: euro.format(planned) })}</span>
+          <span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>${t("reiner Eigenverbrauch {cost}", { cost: euro.format(without) })}</span>
+          <span class="muted small">${t("aufsummierte Stromkosten (Bezug minus Einspeisung)")}${plan.alternative_cost || plan.baseline_alternative_cost
+            ? `, ${t("ohne Ersatzheizung ({planned} bzw. {baseline})", { planned: euro.format(plan.alternative_cost), baseline: euro.format(plan.baseline_alternative_cost) })}`
             : ""}</span>
         </div>
         ${lineChart(
           [
-            { name: "mit Sunflow", color: SERIES_COLORS[0], points: withSunflow },
-            { name: "reiner Eigenverbrauch", color: UNASSIGNED_COLOR, dashed: true, points: withoutSunflow },
+            { name: t("mit Sunflow"), color: SERIES_COLORS[0], points: withSunflow },
+            { name: t("reiner Eigenverbrauch"), color: UNASSIGNED_COLOR, dashed: true, points: withoutSunflow },
           ],
           // Same time axis as the charts above; the sum starts now
-          { label: "Aufsummierte Stromkosten mit und ohne Sunflow", formatY: (v) => euro.format(v), yMin: lowest, now: new Date(slots[0].start), range: this._range },
+          { label: t("Aufsummierte Stromkosten mit und ohne Sunflow"), formatY: (v) => euro.format(v), yMin: lowest, now: new Date(slots[0].start), range: this._range },
         )}
       </section>
     `;
@@ -591,19 +588,19 @@ class SunflowPlan extends LitElement {
     // The source goes by the last minutes, like the deviation below
     const fromGrid = (actual.recent_grid_w ?? actual.grid_w ?? 0) > 100;
     const what =
-      actual.battery_w > 100 ? `lädt ${power}${fromGrid ? " aus dem Netz" : " aus PV"}`
-      : actual.battery_w < -100 ? `entlädt ${power}`
-      : "ruht";
+      actual.battery_w > 100 ? (fromGrid ? t("lädt {power} aus dem Netz", { power }) : t("lädt {power} aus PV", { power }))
+      : actual.battery_w < -100 ? t("entlädt {power}", { power })
+      : t("ruht");
     // Limits count as their basic behaviour; the measurement cannot tell them apart
     const planned = { limit_charge: "auto", limit_discharge: "limit_discharge" }[now.action] ?? now.action;
     const differs = actual.action && actual.action !== planned;
     return html`<div class="small ${differs ? "warn-text" : "muted"}">
-      Tatsächlich: Speicher ${what}${differs
+      ${t("Tatsächlich: Speicher {what}", { what })}${differs
         ? plan.controlling
-          ? " – weicht seit einigen Minuten vom Plan ab (Sunflow steuert; Grenzen des Wechselrichters oder eine Viertelstunde Verzögerung)"
-          : " – nicht von Sunflow, eine andere Steuerung ist aktiv (Sunflow plant nur)"
+          ? ` – ${t("weicht seit einigen Minuten vom Plan ab (Sunflow steuert; Grenzen des Wechselrichters oder eine Viertelstunde Verzögerung)")}`
+          : ` – ${t("nicht von Sunflow, eine andere Steuerung ist aktiv (Sunflow plant nur)")}`
         : ""}${differs && actual.recent_grid_w !== null && actual.recent_grid_w !== undefined
-        ? ` · Ø letzte Minuten: Netz ${formatValue(actual.recent_grid_w, "W")}, Speicher ${formatValue(actual.recent_battery_w, "W")}`
+        ? ` · ${t("Ø letzte Minuten: Netz {grid}, Speicher {battery}", { grid: formatValue(actual.recent_grid_w, "W"), battery: formatValue(actual.recent_battery_w, "W") })}`
         : ""}
     </div>`;
   }
@@ -700,7 +697,7 @@ class SunflowPlan extends LitElement {
       scale: {
         yMax: (capacityWh || 100) * 1.05,
         limits: flex?.target
-          ? [{ value: capacityWh ? (flex.target / 100) * capacityWh : flex.target, label: `Ziel ${formatValue(flex.target, "%")}` }]
+          ? [{ value: capacityWh ? (flex.target / 100) * capacityWh : flex.target, label: t("Ziel {value}", { value: formatValue(flex.target, "%") }) }]
           : [],
       },
     });
@@ -721,7 +718,7 @@ class SunflowPlan extends LitElement {
         scale: {
           yMin: Math.floor(Math.min(low, ...values) / 5) * 5,
           yMax: Math.max(high, ...values) + 2,
-          limits: [{ value: high, label: `Ziel ${formatValue(high, "°C")}` }],
+          limits: [{ value: high, label: t("Ziel {value}", { value: formatValue(high, "°C") }) }],
         },
       };
     };
@@ -729,7 +726,7 @@ class SunflowPlan extends LitElement {
     const levels = [
       {
         key: "battery",
-        name: "Hausspeicher",
+        name: t("Hausspeicher"),
         past: this._past("soc_wh"),
         future: this._future(slots, "soc_wh"),
         pct: (wh) => (wh / capacity) * 100,
@@ -750,39 +747,39 @@ class SunflowPlan extends LitElement {
     const series = (focus ? [focus] : levels).flatMap((l) => {
       const f = focus ? l.native : l.pct;
       return [
-        { name: `${l.name} gemessen`, color: l.color, points: convert(l.past, f) },
-        { name: `${l.name} erwartet`, color: l.color, dashed: true, points: convert(l.future, f) },
+        { name: t("{name} gemessen", { name: l.name }), color: l.color, points: convert(l.past, f) },
+        { name: t("{name} erwartet", { name: l.name }), color: l.color, dashed: true, points: convert(l.future, f) },
       ];
     });
     const options = focus
       ? { formatY: focus.format, yMin: focus.scale.yMin ?? 0, yMax: focus.scale.yMax, limits: focus.scale.limits }
       : percentAxis(Math.max(...series.flatMap((x) => x.points.map((p) => p.value ?? 0))));
     return html`<section>
-      <h3>Ladestand</h3>
+      <h3>${t("Ladestand")}</h3>
       ${levels.length > 1
         ? html`<div class="legend">
             ${levels.map((l) => {
               const active = this._levelFocus === l.key;
               return html`<button type="button" class="legend-item legend-button ${active ? "active" : ""}" aria-pressed=${active}
-                title=${active ? "Alle in % zeigen" : "Nur diesen in seiner Einheit zeigen"}
+                title=${active ? t("Alle in % zeigen") : t("Nur diesen in seiner Einheit zeigen")}
                 @click=${() => (this._levelFocus = active ? null : l.key)}>
                 <span class="swatch" style="background:${l.color}"></span>${l.name}</button>`;
             })}
-            <span class="legend-item muted">${focus ? "Klick zeigt wieder alle in %" : "alle in % · Klick zeigt einen in kWh bzw. °C"}</span>
+            <span class="legend-item muted">${focus ? t("Klick zeigt wieder alle in %") : t("alle in % · Klick zeigt einen in kWh bzw. °C")}</span>
           </div>`
         : nothing}
-      ${lineChart(series, { label: "Ladestand gemessen und erwartet", now, range: this._range, ...options })}
+      ${lineChart(series, { label: t("Ladestand gemessen und erwartet"), now, range: this._range, ...options })}
       ${(plan.vehicles ?? []).map((v) => {
         const at = flex.find((f) => f.vehicle_id === v.id && f.expected_arrival);
         return html`<p class="small muted">${v.name}: ${v.usage_days
-          ? `Verbrauch aus ${v.usage_days} Tagen gelernt (Ø ${formatValue(v.daily_pct, "%")} am Tag)${at
-            ? ` – unterwegs, zurück erwartet gegen ${time.format(new Date(at.expected_arrival))} mit etwa ${formatValue(at.arrival_soc, "%")}; ab dann eingeplant.`
+          ? `${t("Verbrauch aus {days} Tagen gelernt (Ø {pct} am Tag)", { days: v.usage_days, pct: formatValue(v.daily_pct, "%") })}${at
+            ? ` – ${t("unterwegs, zurück erwartet gegen {time} mit etwa {soc}; ab dann eingeplant.", { time: time.format(new Date(at.expected_arrival)), soc: formatValue(at.arrival_soc, "%") })}`
             : "."}`
-          : "Verbrauch noch nicht gelernt (braucht 14 Tage mit gut abgedecktem Ladestand) – geplant wird erst, wenn es angesteckt ist."}</p>`;
+          : t("Verbrauch noch nicht gelernt (braucht 14 Tage mit gut abgedecktem Ladestand) – geplant wird erst, wenn es angesteckt ist.")}</p>`;
       })}
       ${flex.filter((f) => f.kind === "heater" && f.level_range).map((f) => html`<p class="small muted">${f.name}: ${f.usage_days
-        ? `Verbrauch je Stunde aus ${f.usage_days} Tagen gelernt – geheizt wird vor der gewohnten Hauptzeit.`
-        : "Verbrauch noch nicht gelernt (braucht eine Woche Temperatur und Heizleistung) – gleichmäßig über den Tag angenommen."}</p>`)}
+        ? t("Verbrauch je Stunde aus {days} Tagen gelernt – geheizt wird vor der gewohnten Hauptzeit.", { days: f.usage_days })
+        : t("Verbrauch noch nicht gelernt (braucht eine Woche Temperatur und Heizleistung) – gleichmäßig über den Tag angenommen.")}</p>`)}
     </section>`;
   }
 
@@ -790,7 +787,7 @@ class SunflowPlan extends LitElement {
   _legendButton(key, color, label) {
     const active = this._focus === key;
     return html`<button type="button" class="legend-item legend-button ${active ? "active" : ""}" aria-pressed=${active}
-      title=${active ? "Alle Linien zeigen" : "Hervorheben"} @click=${() => (this._focus = active ? null : key)}>
+      title=${active ? t("Alle Linien zeigen") : t("Hervorheben")} @click=${() => (this._focus = active ? null : key)}>
       <span class="swatch" style="background:${color}"></span>${label}</button>`;
   }
 

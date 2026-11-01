@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import "../components/roof.js";
+import { t, tn } from "../lib/i18n.js";
 
 const TIGO_REPO = "https://github.com/Zwer2k/ha-tigo-rs485";
 
@@ -29,7 +30,7 @@ class SunflowOptimizers extends LitElement {
       this._data = await api.optimizers();
       this._error = null;
     } catch (err) {
-      this._error = `Optimierer nicht abrufbar: ${err.message}`;
+      this._error = t("Optimierer nicht abrufbar: {error}", { error: err.message });
     }
   }
 
@@ -49,7 +50,7 @@ class SunflowOptimizers extends LitElement {
       await api.setOptimizers({ tigo_plant: tigoPlant || null, placements, layouts });
       await this._load();
     } catch (err) {
-      this._error = `Nicht gespeichert: ${err.message}`;
+      this._error = t("Nicht gespeichert: {error}", { error: err.message });
     } finally {
       this._saving = false;
     }
@@ -82,12 +83,11 @@ class SunflowOptimizers extends LitElement {
     const data = this._data;
     return html`
       <div class="heading">
-        <h1>Optimierer</h1>
-        <p class="muted">Optimierer an den PV-Modulen: welchem String sie angehören und wo sie auf dem Dach sitzen. In der
-          Live-Ansicht öffnet ein Klick auf einen String seine Module mit den aktuellen Werten.</p>
+        <h1>${t("Optimierer")}</h1>
+        <p class="muted">${t("Optimierer an den PV-Modulen: welchem String sie angehören und wo sie auf dem Dach sitzen. In der Live-Ansicht öffnet ein Klick auf einen String seine Module mit den aktuellen Werten.")}</p>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
-      ${data === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
+      ${data === null && !this._error ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
       ${data ? this._renderSources(data) : nothing}
       ${data ? this._renderStrings(data) : nothing}
     `;
@@ -96,32 +96,31 @@ class SunflowOptimizers extends LitElement {
   _renderSources(data) {
     const tigo = data.sources.find((s) => s.key === "tigo");
     const plants = [...new Map(data.strings.map((s) => [s.device_id, s.plant])).entries()];
+    const [tigoBefore, tigoAfter] = t("Über die Integration {link}, die den Bus zwischen CCA und TAP mitliest.").split("{link}");
     return html`<section class="card">
-      <h2>Quellen</h2>
+      <h2>${t("Quellen")}</h2>
       <ul class="sources">
         ${data.sources.map((s) => html`<li>
           <strong>${s.name}</strong>
           <span class="small ${s.count ? "" : "muted"}">${s.count
-            ? `${s.count} Optimierer genutzt`
+            ? t("{count} Optimierer genutzt", { count: s.count })
             : s.installed
-              ? "Integration eingerichtet, Optimierer nicht genutzt – unter „Integrationen“ auswählen und unter „Geräte“ nutzen"
-              : "Integration nicht eingerichtet"}</span>
+              ? t("Integration eingerichtet, Optimierer nicht genutzt – unter „Integrationen“ auswählen und unter „Geräte“ nutzen")
+              : t("Integration nicht eingerichtet")}</span>
           ${s.key === "huawei"
-            ? html`<span class="small muted">Über die Integration „Huawei Solar“; Optimierer erscheinen als Unter-Geräte des
-                Wechselrichters. Ist nur ein String in Betrieb, ordnet Sunflow sie ihm zu.</span>`
-            : html`<span class="small muted">Über die Integration
-                <a href=${TIGO_REPO} target="_blank" rel="noopener">Tigo RS485</a>, die den Bus zwischen CCA und TAP mitliest.
-                Dort jedem Optimierer ein Label geben: „A1“ ist String A, Modul 1 – danach ordnet Sunflow ihn zu.</span>`}
+            ? html`<span class="small muted">${t("Über die Integration „Huawei Solar“; Optimierer erscheinen als Unter-Geräte des Wechselrichters. Ist nur ein String in Betrieb, ordnet Sunflow sie ihm zu.")}</span>`
+            : html`<span class="small muted">${tigoBefore}<a href=${TIGO_REPO} target="_blank" rel="noopener">Tigo RS485</a>${tigoAfter}
+                ${t("Dort jedem Optimierer ein Label geben: „A1“ ist String A, Modul 1 – danach ordnet Sunflow ihn zu.")}</span>`}
         </li>`)}
       </ul>
       ${tigo?.count
         ? html`<label class="field">
-            <span class="field-label">Tigo-Optimierer hängen am Wechselrichter</span>
+            <span class="field-label">${t("Tigo-Optimierer hängen am Wechselrichter")}</span>
             <select ?disabled=${this._saving} @change=${(e) => this._save({}, e.target.value)}>
-              <option value="" ?selected=${!data.tigo_plant_chosen}>automatisch (${plants.find(([id]) => id === data.tigo_plant)?.[1] ?? "keiner"})</option>
+              <option value="" ?selected=${!data.tigo_plant_chosen}>${t("automatisch ({name})", { name: plants.find(([id]) => id === data.tigo_plant)?.[1] ?? t("keiner") })}</option>
               ${plants.map(([id, name]) => html`<option value=${id} ?selected=${data.tigo_plant_chosen === id}>${name}</option>`)}
             </select>
-            <span class="small muted">String A ist dessen String 1, B String 2 usw.</span>
+            <span class="small muted">${t("String A ist dessen String 1, B String 2 usw.")}</span>
           </label>`
         : nothing}
     </section>`;
@@ -129,8 +128,7 @@ class SunflowOptimizers extends LitElement {
 
   _renderStrings(data) {
     if (!data.optimizers.length) {
-      return html`<p class="muted">Keine Optimierer genutzt. Integration unter „Integrationen“ auswählen und ihre Optimierer
-        unter „Geräte“ nutzen.</p>`;
+      return html`<p class="muted">${t("Keine Optimierer genutzt. Integration unter „Integrationen“ auswählen und ihre Optimierer unter „Geräte“ nutzen.")}</p>`;
     }
     const groups = data.strings
       .map((s) => ({ ...s, optimizers: data.optimizers.filter((o) => o.string === s.key) }))
@@ -139,13 +137,10 @@ class SunflowOptimizers extends LitElement {
     return html`
       ${groups.map((s) => html`<section class="card">
         <div class="card-head">
-          <h2>${s.name} <span class="small muted">· ${s.optimizers.length} Optimierer</span></h2>
-          <button class="secondary" ?disabled=${this._saving} @click=${() => this._reset(s.optimizers)}>Vorschlag wiederherstellen</button>
+          <h2>${s.name} <span class="small muted">· ${tn(s.optimizers.length, "{count} Optimierer", { count: s.optimizers.length })}</span></h2>
+          <button class="secondary" ?disabled=${this._saving} @click=${() => this._reset(s.optimizers)}>${t("Vorschlag wiederherstellen")}</button>
         </div>
-        <p class="small muted">So anordnen, wie die Module auf dem Dach liegen (oben = First): Modul auf einen freien Platz
-          ziehen – oder antippen und dann den Platz antippen. Auf ein anderes Modul gezogen tauschen beide. Ein ausgewähltes
-          Modul lässt sich quer legen. Zwischen zwei Reihen setzt „+ Trenner“ die Reihen darunter ab, das schmale „+“ zwischen
-          zwei Plätzen die Plätze rechts davon in allen Reihen (z. B. ein anderes Dachstück).</p>
+        <p class="small muted">${t("So anordnen, wie die Module auf dem Dach liegen (oben = First): Modul auf einen freien Platz ziehen – oder antippen und dann den Platz antippen. Auf ein anderes Modul gezogen tauschen beide. Ein ausgewähltes Modul lässt sich quer legen. Zwischen zwei Reihen setzt „+ Trenner“ die Reihen darunter ab, das schmale „+“ zwischen zwei Plätzen die Plätze rechts davon in allen Reihen (z. B. ein anderes Dachstück).")}</p>
         <sf-roof editable .optimizers=${s.optimizers} .visible=${["power"]}
           .breaks=${data.layouts[s.key]?.row_breaks ?? []}
           .colBreaks=${data.layouts[s.key]?.col_breaks ?? []}
@@ -154,30 +149,30 @@ class SunflowOptimizers extends LitElement {
           @rotate=${(e) => this._save({ [e.detail.id]: { rotated: !s.optimizers.find((o) => o.id === e.detail.id).rotated || null } })}></sf-roof>
       </section>`)}
       <section class="card">
-        <h2>Zuordnung</h2>
+        <h2>${t("Zuordnung")}</h2>
         <table>
-          <thead><tr><th>Optimierer</th><th>Quelle</th><th>String</th><th>Name</th></tr></thead>
+          <thead><tr><th>${t("Optimierer")}</th><th>${t("Quelle")}</th><th>String</th><th>Name</th></tr></thead>
           <tbody>
             ${data.optimizers.map((o) => html`<tr class=${unassigned.includes(o) ? "open" : ""}>
               <td>${o.label}</td>
               <td class="small muted">${data.sources.find((s) => s.key === o.source)?.name ?? o.source}</td>
               <td>
-                <select ?disabled=${this._saving} aria-label="String von ${o.label}"
+                <select ?disabled=${this._saving} aria-label=${t("String von {label}", { label: o.label })}
                   @change=${(e) => this._save({ [o.id]: { string: e.target.value === "auto" ? null : e.target.value, row: null, col: null } })}>
-                  <option value="auto" ?selected=${o.string_auto}>automatisch${o.string_auto
-                    ? ` (${data.strings.find((s) => s.key === o.string)?.name ?? "unbekannt"})`
-                    : ""}</option>
-                  <option value="" ?selected=${!o.string_auto && !o.string}>keiner</option>
+                  <option value="auto" ?selected=${o.string_auto}>${o.string_auto
+                    ? t("automatisch ({name})", { name: data.strings.find((s) => s.key === o.string)?.name ?? t("unbekannt") })
+                    : t("automatisch")}</option>
+                  <option value="" ?selected=${!o.string_auto && !o.string}>${t("keiner")}</option>
                   ${data.strings.map((s) => html`<option value=${s.key} ?selected=${!o.string_auto && o.string === s.key}>${s.name}</option>`)}
                 </select>
               </td>
-              <td><input .value=${o.name} aria-label="Name von ${o.label}" ?disabled=${this._saving}
+              <td><input .value=${o.name} aria-label=${t("Name von {label}", { label: o.label })} ?disabled=${this._saving}
                 @change=${(e) => this._save({ [o.id]: { name: e.target.value.trim() && e.target.value.trim() !== o.label ? e.target.value.trim() : null } })}></td>
             </tr>`)}
           </tbody>
         </table>
         ${unassigned.length
-          ? html`<p class="small warn-text">${unassigned.length} Optimierer ohne String – sie erscheinen in keiner Dachansicht.</p>`
+          ? html`<p class="small warn-text">${t("{count} Optimierer ohne String – sie erscheinen in keiner Dachansicht.", { count: unassigned.length })}</p>`
           : nothing}
       </section>
     `;

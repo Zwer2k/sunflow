@@ -13,6 +13,7 @@ from sunflow.devices.site import (
     measurement_candidates,
     measurement_device,
 )
+from sunflow.i18n import N_, t
 
 from .common import _library, _replan
 
@@ -55,7 +56,7 @@ async def set_optimizer(request: Request, body: OptimizerConfig) -> dict[str, An
     return body.model_dump()
 
 
-MEASUREMENT_LABELS = {"grid": "Netz (Bezug und Einspeisung)", "load": "Hausverbrauch"}
+MEASUREMENT_LABELS = {"grid": N_("Netz (Bezug und Einspeisung)"), "load": N_("Hausverbrauch")}
 
 
 def _measurements(config: SunflowConfig, profiles: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -64,7 +65,7 @@ def _measurements(config: SunflowConfig, profiles: dict[str, dict[str, Any]]) ->
         candidates = measurement_candidates(config.devices, profiles, quantity)
         effective = measurement_device(config, profiles, quantity)
         result[quantity] = {
-            "label": MEASUREMENT_LABELS.get(quantity, quantity),
+            "label": t(MEASUREMENT_LABELS[quantity]) if quantity in MEASUREMENT_LABELS else quantity,
             # None: automatic
             "selected": config.measurement_sources.get(quantity),
             "effective": effective.id if effective else None,

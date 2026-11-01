@@ -22,6 +22,7 @@ from sunflow.devices.profiles import battery_actions, controls_battery, supporte
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_kind, device_parameters
 from sunflow.ha import HAClient, HACommandError, HAError
+from sunflow.i18n import N_, number, t
 
 from .habits import (
     ConsumerUsage,
@@ -107,6 +108,8 @@ SLOT_HOURS = 0.25
 VEHICLE_DEADLINE = timedelta(hours=48)
 # The learned main usage counts as deadline only this long ahead, so there is time to heat
 HEATER_MIN_LEAD = timedelta(hours=3)
+# Reason of a consumer without a daily need (a recommendation asks for it)
+NO_DAILY_NEED = N_("Energiebedarf pro Tag fehlt")
 # Without a configured daily need the tank is assumed to cool down by this much per day
 HEATER_DAILY_DROP_K = 10
 # A hot water tank at this temperature counts as empty (0 %)
@@ -321,11 +324,11 @@ def flex_loads(
         if kind == "heater":
             litres = params.get("tank_l")
             if not litres:
-                info.reason = "Speichervolumen fehlt in den Kenndaten"
-                warnings.append(f"{device.name}: Speichervolumen fehlt – Warmwasser wird nicht eingeplant.")
+                info.reason = t("Speichervolumen fehlt in den Kenndaten")
+                warnings.append(t("{name}: Speichervolumen fehlt – Warmwasser wird nicht eingeplant.", name=device.name))
                 continue
             if current is None or target is None:
-                info.reason = "Temperatur oder Ziel nicht lesbar"
+                info.reason = t("Temperatur oder Ziel nicht lesbar")
                 continue
             info.need_wh = max(target - current, 0) * litres * WATER_WH_PER_LITRE_KELVIN
             hot_water_need(info, (hot_water or {}).get(device.id), ready_by, params, slot_starts, tz)
@@ -334,14 +337,16 @@ def flex_loads(
             info.level_range = (COLD_WATER_C, max(target, COLD_WATER_C + 1))
             if settings.alternative_cost_ct is None:
                 warnings.append(
-                    f"{device.name}: Kosten der üblichen Heizung (z. B. Fernwärme) fehlen – Sunflow heizt im "
-                    "Zweifel mit Netzstrom. Preis unter Einstellungen → Verbraucher eintragen."
+                    t(
+                        "{name}: Kosten der üblichen Heizung (z. B. Fernwärme) fehlen – Sunflow heizt im Zweifel mit Netzstrom. Preis unter Einstellungen → Verbraucher eintragen.",
+                        name=device.name,
+                    )
                 )
         elif kind == "load":
             # Set by the user, else learned from the power sensor
             daily = params.get("daily_energy_wh") or (usage.daily_wh if usage else None)
             if not daily:
-                info.reason = "Energiebedarf pro Tag fehlt"
+                info.reason = t(NO_DAILY_NEED)
                 continue
             info.need_wh = daily
             info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
@@ -353,10 +358,10 @@ def flex_loads(
                 vehicle, method = coming_back(recognized, assigned, connected)
                 if vehicle is None:
                     if connected:
-                        info.reason = f"{recognized.reason} – Wallbox regelt selbst"
+                        info.reason = t("{reason} – Wallbox regelt selbst", reason=recognized.reason)
                         info.unknown_vehicle = True
                     else:
-                        info.reason = "Fahrzeug nicht angesteckt"
+                        info.reason = t("Fahrzeug nicht angesteckt")
                     continue
                 info.vehicle_id, info.vehicle, info.vehicle_method = vehicle.id, vehicle.name, method
                 if (limit := vehicle_max_power(vehicle)) is not None and max_power:
@@ -374,16 +379,16 @@ def flex_loads(
             # On the way: planned from its usual arrival with the SoC it usually comes back with
             used = on_the_way(info, connected, vehicle_usages, departures, slot_starts, tz, presences, snapshot.states)
             if used is None:
-                info.reason = "Fahrzeug nicht angesteckt"
+                info.reason = t("Fahrzeug nicht angesteckt")
                 continue
             current = info.arrival_soc = max(info.current - sum(used), 0.0) if used else current
             capacity = params.get("vehicle_capacity_wh")
             if not capacity:
-                info.reason = "Akkukapazität fehlt in den Kenndaten"
-                warnings.append(f"{device.name}: Akkukapazität des Fahrzeugs fehlt – Laden wird nicht eingeplant.")
+                info.reason = t("Akkukapazität fehlt in den Kenndaten")
+                warnings.append(t("{name}: Akkukapazität des Fahrzeugs fehlt – Laden wird nicht eingeplant.", name=device.name))
                 continue
             if current is None:
-                info.reason = "Ladestand des Fahrzeugs unbekannt"
+                info.reason = t("Ladestand des Fahrzeugs unbekannt")
                 continue
             learned = (departures or {}).get(device.id)
             if ready_by:
@@ -414,10 +419,10 @@ def flex_loads(
 
         later_needs = daily_needs(slot_starts, info.deadline, info.daily_wh) if info.daily_wh else []
         if info.need_wh <= 0 and not later_needs:
-            info.reason = "Ziel bereits erreicht"
+            info.reason = t("Ziel bereits erreicht")
             continue
         if paused:
-            info.reason = "pausiert"
+            info.reason = t("pausiert")
             continue
         rank = flex_ids.index(device.id) if device.id in flex_ids else len(flex_ids)
         end = slot_starts[later_needs[-1][1] - 1] + SLOT if later_needs else info.deadline
@@ -730,12 +735,17 @@ class BatteryCare:
     notes: list[str] = field(default_factory=list)
 
 
-WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+WEEKDAYS = (N_("Mo"), N_("Di"), N_("Mi"), N_("Do"), N_("Fr"), N_("Sa"), N_("So"))
 
 
 def german_time(moment: datetime) -> str:
     """'Mo 16:30' independent of the system locale."""
-    return f"{WEEKDAYS[moment.weekday()]} {moment:%H:%M}"
+    return f"{t(WEEKDAYS[moment.weekday()])} {moment:%H:%M}"
+
+
+def short_date(moment: date | datetime) -> str:
+    """'24.12.' in German, '12/24' in English."""
+    return t("{day}.{month}.", day=f"{moment:%d}", month=f"{moment:%m}")
 
 
 def cheapest_window_end(inputs: list[SlotInput], hours: int = 24) -> int:
@@ -829,8 +839,10 @@ async def battery_care(
         else:
             care.poor_day = poor
             care.notes.append(
-                f"Wenig PV erwartet am {WEEKDAYS[poor.weekday()]} {poor.strftime('%d.%m.')} – "
-                "Ladegrenze ausgesetzt, der Speicher darf voll laden."
+                t(
+                    "Wenig PV erwartet am {weekday} {date} – Ladegrenze ausgesetzt, der Speicher darf voll laden.",
+                    weekday=t(WEEKDAYS[poor.weekday()]), date=short_date(poor),
+                )
             )
     every = options.full_charge_every_days
     grid_after = options.full_charge_grid_after_days
@@ -845,15 +857,17 @@ async def battery_care(
     except HACommandError:
         # Unknown counts as not full within the window: a full charge gets planned
         care.last_full = None
-    since = care.last_full.astimezone(tz).strftime("%d.%m.") if care.last_full else f"vor über {window} Tagen"
+    since = short_date(care.last_full.astimezone(tz)) if care.last_full else t("vor über {days} Tagen", days=window)
     # Not full within the queried window counts as overdue as well
     if grid_after and (care.last_full is None or inputs[0].start - care.last_full >= timedelta(days=grid_after)):
         care.full_charge_slot = cheapest_window_end(inputs)
         care.full_charge_at = inputs[care.full_charge_slot].start + SLOT
         care.from_grid = True
         care.notes.append(
-            f"Vollladung überfällig (zuletzt voll: {since}) – wird bis {german_time(care.full_charge_at.astimezone(tz))} "
-            "zum günstigsten Preis aus dem Netz nachgeholt, falls PV nicht reicht."
+            t(
+                "Vollladung überfällig (zuletzt voll: {since}) – wird bis {time} zum günstigsten Preis aus dem Netz nachgeholt, falls PV nicht reicht.",
+                since=since, time=german_time(care.full_charge_at.astimezone(tz)),
+            )
         )
         return care
     if not every:
@@ -864,21 +878,22 @@ async def battery_care(
     # Last slot with PV surplus on each day from the due day on
     candidates: dict[Any, int] = {}
     due_day = due.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-    for t, slot in enumerate(inputs):
+    for index, slot in enumerate(inputs):
         if slot.start >= due_day and slot.pv_w > slot.load_w:
-            candidates[slot.start.astimezone(tz).date()] = t
+            candidates[slot.start.astimezone(tz).date()] = index
     if not candidates:
-        care.notes.append(f"Vollladung fällig (zuletzt voll: {since}) – im Planungszeitraum ist kein PV-Überschuss in Sicht.")
+        care.notes.append(t("Vollladung fällig (zuletzt voll: {since}) – im Planungszeitraum ist kein PV-Überschuss in Sicht.", since=since))
         return care
     care.full_charge_slot = candidates[min(candidates)]
     care.full_charge_at = inputs[care.full_charge_slot].start + SLOT
     care.notes.append(
-        f"Vollladung fällig (zuletzt voll: {since}) – geplant bis "
-        f"{german_time(care.full_charge_at.astimezone(tz))}."
+        t("Vollladung fällig (zuletzt voll: {since}) – geplant bis {time}.", since=since, time=german_time(care.full_charge_at.astimezone(tz)))
     )
     return care
 
 
+# The problem of a battery whose SoC cannot be read (then the history's last value stands in)
+SOC_UNREADABLE = N_("{name}: Ladestand nicht lesbar.")
 # How old the last valid SoC from the history may be when the live value is missing
 SOC_FALLBACK_AGE = timedelta(hours=6)
 
@@ -933,7 +948,7 @@ def battery_spec(
     params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot, modules)}
     capacity = params.get("capacity_wh")
     if not capacity:
-        return None, f"{device.name}: Kapazität unbekannt – bitte in den Kenndaten angeben."
+        return None, t("{name}: Kapazität unbekannt – bitte in den Kenndaten angeben.", name=device.name)
     roles = {
         r.role: r.value
         for r in preview(
@@ -947,7 +962,7 @@ def battery_spec(
     if soc is None:
         soc = soc_fallback
     if soc is None:
-        return None, f"{device.name}: Ladestand nicht lesbar."
+        return None, t(SOC_UNREADABLE, name=device.name)
     # Battery round trip at its terminals (cells, DC/DC), split evenly between directions;
     # the inverter's AC/DC conversion applies to grid charging and to every discharge
     battery_way = math.sqrt((params.get("efficiency_pct") or 90) / 100)
@@ -977,10 +992,9 @@ def large_load_notice(load: LoadForecast, threshold_w: float | None) -> str | No
     # A few rare peaks (oven, sauna) are what the exclusion is for; many hint at an unknown large consumer
     if threshold_w is None or load.excluded_hours <= max(LARGE_LOAD_NOTICE_HOURS, LARGE_LOAD_NOTICE_SHARE * load.history_hours):
         return None
-    return (
-        f"{load.excluded_hours} h Hausverbrauch über {threshold_w / 1000:.1f}".replace(".", ",") + " kW "
-        "(ohne Wallbox, Heizstab und andere Verbraucher in Sunflow) zählen nicht zur Lastprognose. "
-        "Steckt ein regelmäßiger Großverbraucher dahinter, lege ihn als Verbraucher an, damit Sunflow ihn einplant."
+    return t(
+        "{hours} h Hausverbrauch über {threshold} kW (ohne Wallbox, Heizstab und andere Verbraucher in Sunflow) zählen nicht zur Lastprognose. Steckt ein regelmäßiger Großverbraucher dahinter, lege ihn als Verbraucher an, damit Sunflow ihn einplant.",
+        hours=load.excluded_hours, threshold=number(threshold_w / 1000),
     )
 
 
@@ -1015,7 +1029,7 @@ def restrict_to_device(settings: Settings, actions: set[str], warnings: list[str
     """Only plan what the battery can be told: grid charging needs force_charge."""
     if "force_charge" not in actions and settings.allow_grid_charge:
         settings = replace(settings, allow_grid_charge=False)
-        warnings.append("Der Speicher kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant.")
+        warnings.append(t("Der Speicher kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant."))
     if "force_discharge" not in actions:
         settings = replace(settings, allow_battery_export=False)
     return settings
@@ -1070,9 +1084,9 @@ def curtailable_shares(
     if not keys:
         return [0.0] * n
     shares = []
-    for t in range(n):
-        total = sum(powers[t] for powers in plane_slots.values())
-        part = sum(powers[t] for key, powers in plane_slots.items() if key in keys)
+    for index in range(n):
+        total = sum(powers[index] for powers in plane_slots.values())
+        part = sum(powers[index] for key, powers in plane_slots.items() if key in keys)
         shares.append(part / total if total > 0 else 0.0)
     return shares
 
@@ -1202,11 +1216,11 @@ async def compute_plan(
         None,
     )
     if battery_device is None:
-        return PlanResult(plan=Plan(status="no battery"), warnings=["Kein steuerbarer Speicher übernommen."])
+        return PlanResult(plan=Plan(status="no battery"), warnings=[t("Kein steuerbarer Speicher übernommen.")])
     profile = profiles[battery_device.profile]
     modules = config.battery_modules.get(battery_device.id)
     battery, problem = battery_spec(profile, battery_device, snapshot, modules=modules)
-    if battery is None and problem and "Ladestand" in problem:
+    if battery is None and problem == t(SOC_UNREADABLE, name=battery_device.name):
         # Inverter integrations drop single reads ("unknown"); the last valid value from
         # the history is good enough, the SoC changes slowly
         try:
@@ -1218,13 +1232,15 @@ async def compute_plan(
             battery, problem = battery_spec(profile, battery_device, snapshot, soc_fallback=value, modules=modules)
             if since < datetime.now(UTC) - timedelta(minutes=30):
                 warnings.append(
-                    f"{battery_device.name}: Ladestand seit {since.astimezone(tz).strftime('%H:%M')} nicht lesbar – "
-                    f"geplant mit dem letzten Wert {value:.0f} %."
+                    t(
+                        "{name}: Ladestand seit {time} nicht lesbar – geplant mit dem letzten Wert {value} %.",
+                        name=battery_device.name, time=since.astimezone(tz).strftime("%H:%M"), value=f"{value:.0f}",
+                    )
                 )
     if battery is None:
         return PlanResult(plan=Plan(status="no battery data"), warnings=[problem or ""])
     if not battery.max_charge_w or not battery.max_discharge_w:
-        warnings.append("Lade- oder Entladeleistung ist 0 – der Speicher kann so nicht genutzt werden.")
+        warnings.append(t("Lade- oder Entladeleistung ist 0 – der Speicher kann so nicht genutzt werden."))
 
     # Prices
     price_source = "none"
@@ -1237,7 +1253,7 @@ async def compute_plan(
                 client, state, entry, start, HORIZON_HOURS, tz, tariff.exchange_surcharge_ct, tariff.exchange_vat_pct
             )
         except HAError as err:
-            warnings.append(f"Strompreise nicht abrufbar ({err}) – geplant wird nur auf Eigenverbrauch.")
+            warnings.append(t("Strompreise nicht abrufbar ({error}) – geplant wird nur auf Eigenverbrauch.", error=err))
         if prices and max(p.end for p in prices) < start + timedelta(hours=HORIZON_HOURS):
             # Beyond the published prices: the usual ones of each hour (the sensor's history)
             try:
@@ -1257,15 +1273,16 @@ async def compute_plan(
             prices = extend_prices(prices, history, start + timedelta(hours=HORIZON_HOURS), tz)
         if is_exchange(state, entry) and tariff.exchange_surcharge_ct is None:
             warnings.append(
-                "Der Strompreis ist ein reiner Börsenpreis – Netzentgelt, Umlagen und Steuern fehlen. "
-                "Aufschlag und Mehrwertsteuer unter Einstellungen → Tarif & Prognose eintragen."
+                t(
+                    "Der Strompreis ist ein reiner Börsenpreis – Netzentgelt, Umlagen und Steuern fehlen. Aufschlag und Mehrwertsteuer unter Einstellungen → Tarif & Prognose eintragen."
+                )
             )
         price_source = "entity"
     elif config.tariff.fixed_price_ct is not None:
         prices = [PricePoint(start=start, end=start + timedelta(hours=HORIZON_HOURS), price=config.tariff.fixed_price_ct / 100)]
         price_source = "fixed"
     else:
-        warnings.append("Kein Bezugspreis – geplant wird nur auf Eigenverbrauch.")
+        warnings.append(t("Kein Bezugspreis – geplant wird nur auf Eigenverbrauch."))
 
     # PV forecast of all used planes
     series = []
@@ -1283,12 +1300,14 @@ async def compute_plan(
                 case _:
                     continue
         except HACommandError as err:
-            warnings.append(f"PV-Prognose „{plane.display_name}“ nicht abrufbar ({err}) – geplant wird ohne diese Fläche.")
+            warnings.append(
+                t("PV-Prognose „{plane}“ nicht abrufbar ({error}) – geplant wird ohne diese Fläche.", plane=plane.display_name, error=err)
+            )
             continue
         series.append(points)
         used_planes.append(plane)
     if not series:
-        warnings.append("Keine PV-Prognose – geplant wird ohne PV-Ertrag.")
+        warnings.append(t("Keine PV-Prognose – geplant wird ohne PV-Ertrag."))
     # Published prices; estimated ones only reach as far as every PV forecast
     published_end = max((p.end for p in prices if not p.estimated), default=start + timedelta(hours=HORIZON_HOURS))
     pv_ends = [max((p.end for p in points), default=start) for points in series]
@@ -1297,8 +1316,10 @@ async def compute_plan(
     for plane, last in zip(used_planes, pv_ends, strict=False):
         if last < published_end - timedelta(hours=12):
             warnings.append(
-                f"PV-Prognose „{plane.display_name}“ reicht nur bis {german_time(last.astimezone(tz))} – "
-                "danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig)."
+                t(
+                    "PV-Prognose „{plane}“ reicht nur bis {time} – danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig).",
+                    plane=plane.display_name, time=german_time(last.astimezone(tz)),
+                )
             )
     pv = sum_forecasts(series) if series else []
 
@@ -1314,7 +1335,7 @@ async def compute_plan(
         try:
             history = await cached(("hourly", load_entity), HOURLY_TTL, lambda: fetch_hourly_means(client, load_entity, start))
         except HACommandError as err:
-            warnings.append(f"Verlauf des Hausverbrauchs nicht abrufbar ({err}) – Lastprognose mit Standardwerten.")
+            warnings.append(t("Verlauf des Hausverbrauchs nicht abrufbar ({error}) – Lastprognose mit Standardwerten.", error=err))
     # Loadpoints (wallbox, heater) are part of the measured household load
     loadpoint_histories = []
     for device in config.devices:
@@ -1335,7 +1356,7 @@ async def compute_plan(
                     await cached(("hourly", entity), HOURLY_TTL, lambda: fetch_hourly_means(client, entity, start))
                 )
             except HACommandError as err:
-                warnings.append(f"Verlauf von {device.name} nicht abrufbar ({err}) – bleibt im Hausverbrauch.")
+                warnings.append(t("Verlauf von {name} nicht abrufbar ({error}) – bleibt im Hausverbrauch.", name=device.name, error=err))
     if consumer_hours:
         loadpoint_histories.append(unmeasured_consumers(consumer_hours, loadpoint_histories))
     history, separated = subtract_loads(history, loadpoint_histories)
@@ -1350,8 +1371,10 @@ async def compute_plan(
     load.separated_hours = separated
     if load.history_hours < 7 * 24 and not config.optimizer.daily_consumption_kwh:
         warnings.append(
-            f"Erst {load.history_hours} h Verbrauchshistorie – gib deinen durchschnittlichen Tagesverbrauch "
-            "in den Einstellungen an, damit die Lastprognose stimmt."
+            t(
+                "Erst {hours} h Verbrauchshistorie – gib deinen durchschnittlichen Tagesverbrauch in den Einstellungen an, damit die Lastprognose stimmt.",
+                hours=load.history_hours,
+            )
         )
     if notice := large_load_notice(load, config.optimizer.large_load_threshold_w):
         warnings.append(notice)
@@ -1359,7 +1382,7 @@ async def compute_plan(
     settings = optimizer_settings(config, battery)
     inputs = slot_feed_in(build_inputs(start, prices, pv, load, feed_in_price(config, battery_device)), feed_in_of(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
-        warnings.append("Preise reichen nur wenige Stunden in die Zukunft.")
+        warnings.append(t("Preise reichen nur wenige Stunden in die Zukunft."))
     raw_pv = [slot.pv_w for slot in inputs]
     # Forecast per plane and slot, to learn and correct each plane on its own
     plane_slots = {
@@ -1383,13 +1406,13 @@ async def compute_plan(
     site = pv_correction if pv_correction is not None and pv_correction.slots else None
     if config.optimizer.pv_learning and (site or own):
         corrected = []
-        for t, (slot, cloud) in enumerate(zip(inputs, clouds, strict=True)):
+        for index, (slot, cloud) in enumerate(zip(inputs, clouds, strict=True)):
             hour, kind = slot.start.astimezone(tz).hour, cloud_class(cloud)
             site_factor = site.factor(hour, kind) if site else 1.0
             # Each plane with its own factor (e.g. shading of one roof), the rest with the site's
-            total = sum(powers[t] for powers in plane_slots.values())
+            total = sum(powers[index] for powers in plane_slots.values())
             weighted = sum(
-                powers[t] * (own[key].factor(hour, kind) if key in own else site_factor)
+                powers[index] * (own[key].factor(hour, kind) if key in own else site_factor)
                 for key, powers in plane_slots.items()
             )
             factor = weighted / total if total > 0 else site_factor

@@ -4,16 +4,17 @@ import { confirmDialog } from "../components/dialog.js";
 import { poll } from "../lib/poll.js";
 import { lineChart, SERIES_COLORS } from "../components/charts.js";
 import { formatValue } from "../lib/format.js";
+import { decimal, locale, t } from "../lib/i18n.js";
 
 const ACTIONS = {
-  auto: { label: "Eigenverbrauch", hint: "Speicher lädt aus PV-Überschuss und deckt den Bedarf" },
-  hold: { label: "Speicher halten", hint: "Speicher wird geschont, Bedarf kommt aus dem Netz" },
-  force_charge: { label: "Laden aus dem Netz", hint: "Speicher wird gezielt geladen" },
-  force_discharge: { label: "Entladen ins Netz", hint: "Speicher speist gezielt ein" },
-  limit_discharge: { label: "Entladen begrenzt", hint: "Speicher deckt den Bedarf nur teilweise, der Rest kommt aus dem Netz" },
-  limit_charge: { label: "Laden begrenzt", hint: "Speicher nimmt nur einen Teil des PV-Überschusses auf, der Rest wird eingespeist" },
+  auto: { label: t("Eigenverbrauch"), hint: t("Speicher lädt aus PV-Überschuss und deckt den Bedarf") },
+  hold: { label: t("Speicher halten"), hint: t("Speicher wird geschont, Bedarf kommt aus dem Netz") },
+  force_charge: { label: t("Laden aus dem Netz"), hint: t("Speicher wird gezielt geladen") },
+  force_discharge: { label: t("Entladen ins Netz"), hint: t("Speicher speist gezielt ein") },
+  limit_discharge: { label: t("Entladen begrenzt"), hint: t("Speicher deckt den Bedarf nur teilweise, der Rest kommt aus dem Netz") },
+  limit_charge: { label: t("Laden begrenzt"), hint: t("Speicher nimmt nur einen Teil des PV-Überschusses auf, der Rest wird eingespeist") },
 };
-const dayTime = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const REFRESH_MS = 5 * 60 * 1000;
 
 /** Shadow mode evaluation: forecasts and decisions against reality, export/import. */
@@ -66,7 +67,7 @@ class SunflowAnalysis extends LitElement {
         this._energyError = null;
       }
     } catch (err) {
-      if (period === this._period) this._energyError = `Energiebilanz nicht verfügbar: ${err.message}`;
+      if (period === this._period) this._energyError = t("Energiebilanz nicht verfügbar: {error}", { error: err.message });
     }
   }
 
@@ -120,7 +121,7 @@ class SunflowAnalysis extends LitElement {
       this._error = null;
       await this._loadRecommendations();
     } catch (err) {
-      this._error = `Empfehlung konnte nicht übernommen werden: ${err.message}`;
+      this._error = t("Empfehlung konnte nicht übernommen werden: {error}", { error: err.message });
     } finally {
       this._applying = null;
     }
@@ -131,17 +132,17 @@ class SunflowAnalysis extends LitElement {
       await api.dismissRecommendation(rec.id, rec.fingerprint);
       await this._loadRecommendations();
     } catch (err) {
-      this._error = `Ausblenden fehlgeschlagen: ${err.message}`;
+      this._error = t("Ausblenden fehlgeschlagen: {error}", { error: err.message });
     }
   }
 
   _renderRecommendations() {
     const list = this._recommendations;
     if (!list?.length) return nothing;
-    const actionLabel = (a) => (a.type === "navigate" ? "Öffnen" : "Übernehmen");
+    const actionLabel = (a) => (a.type === "navigate" ? t("Öffnen") : t("Übernehmen"));
     return html`
       <section>
-        <h2>Empfehlungen</h2>
+        <h2>${t("Empfehlungen")}</h2>
         <div class="recommendations">
           ${list.map(
             (rec) => html`<article class="recommendation ${rec.severity}">
@@ -152,7 +153,7 @@ class SunflowAnalysis extends LitElement {
                   ? html`<button class="ok" ?disabled=${this._applying === rec.id} @click=${() => this._applyRecommendation(rec)}>
                       ${actionLabel(rec.action)}</button>`
                   : nothing}
-                <button class="secondary" @click=${() => this._dismissRecommendation(rec)}>Ausblenden</button>
+                <button class="secondary" @click=${() => this._dismissRecommendation(rec)}>${t("Ausblenden")}</button>
               </div>
             </article>`,
           )}
@@ -174,7 +175,7 @@ class SunflowAnalysis extends LitElement {
   _renderCosts() {
     const days = this._costs ?? [];
     if (!days.length) return nothing;
-    const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+    const euro = new Intl.NumberFormat(locale(), { style: "currency", currency: "EUR" });
     const sum = (key) => days.reduce((total, d) => total + (d[key] ?? 0), 0);
     const hasWithout = days.some((d) => d.without_pv_cost !== null);
     const point = (d, key) => {
@@ -183,9 +184,9 @@ class SunflowAnalysis extends LitElement {
       return { start, end: new Date(start.getTime() + 86_400_000), value: d[key] };
     };
     const lines = [
-      { name: "Nettokosten", color: SERIES_COLORS[0], points: days.map((d) => point(d, "net_cost")) },
+      { name: t("Nettokosten"), color: SERIES_COLORS[0], points: days.map((d) => point(d, "net_cost")) },
       ...(hasWithout
-        ? [{ name: "ohne PV und Speicher", color: SERIES_COLORS[1], dashed: true, points: days.map((d) => point(d, "without_pv_cost")) }]
+        ? [{ name: t("ohne PV und Speicher"), color: SERIES_COLORS[1], dashed: true, points: days.map((d) => point(d, "without_pv_cost")) }]
         : []),
     ];
     const lowest = Math.min(0, ...days.map((d) => d.net_cost));
@@ -193,9 +194,9 @@ class SunflowAnalysis extends LitElement {
     return html`
       <section>
         <div class="section-head">
-          <h2>Kosten pro Tag</h2>
-          <div class="range" role="group" aria-label="Zeitraum Kosten">
-            ${[[30, "30 Tage"], [90, "90 Tage"]].map(
+          <h2>${t("Kosten pro Tag")}</h2>
+          <div class="range" role="group" aria-label=${t("Zeitraum Kosten")}>
+            ${[[30, t("30 Tage")], [90, t("90 Tage")]].map(
               ([value, label]) => html`<button class=${(this._costDays ?? 30) === value ? "active" : ""}
                 aria-pressed=${(this._costDays ?? 30) === value}
                 @click=${() => { this._costDays = value; this._loadCosts(); }}>${label}</button>`,
@@ -203,21 +204,21 @@ class SunflowAnalysis extends LitElement {
           </div>
         </div>
         <div class="tiles">
-          <div class="tile now"><div class="small muted">Nettokosten</div><div class="value">${euro.format(sum("net_cost"))}</div>
-            <div class="small muted">Bezug ${euro.format(sum("import_cost"))} − Einspeisung ${euro.format(sum("export_revenue"))}</div></div>
+          <div class="tile now"><div class="small muted">${t("Nettokosten")}</div><div class="value">${euro.format(sum("net_cost"))}</div>
+            <div class="small muted">${t("Bezug {import} − Einspeisung {export}", { import: euro.format(sum("import_cost")), export: euro.format(sum("export_revenue")) })}</div></div>
           ${hasWithout
-            ? html`<div class="tile"><div class="small muted">Ohne PV und Speicher</div><div class="value">${euro.format(sum("without_pv_cost"))}</div></div>
-                <div class="tile"><div class="small muted">Ersparnis durch PV und Speicher</div><div class="value">${euro.format(sum("savings"))}</div></div>`
+            ? html`<div class="tile"><div class="small muted">${t("Ohne PV und Speicher")}</div><div class="value">${euro.format(sum("without_pv_cost"))}</div></div>
+                <div class="tile"><div class="small muted">${t("Ersparnis durch PV und Speicher")}</div><div class="value">${euro.format(sum("savings"))}</div></div>`
             : nothing}
         </div>
         <div class="legend">
-          ${lines.map((l) => html`<span class="legend-item"><span class="swatch" style="background:${l.color}"></span>${l.name === "Nettokosten"
-            ? "Nettokosten (Bezug − Einspeisung)"
-            : "ohne PV und Speicher (alles aus dem Netz)"}</span>`)}
+          ${lines.map((l) => html`<span class="legend-item"><span class="swatch" style="background:${l.color}"></span>${l === lines[0]
+            ? t("Nettokosten (Bezug − Einspeisung)")
+            : t("ohne PV und Speicher (alles aus dem Netz)")}</span>`)}
         </div>
-        ${lineChart(lines, { label: "Stromkosten pro Tag", formatY: (v) => euro.format(v), yMin: lowest })}
-        <p class="small muted">Aus Energiezählern und dem Preisverlauf der Tarif-Entität; Einspeisung zur eingestellten Vergütung.
-          ${incomplete ? `${incomplete} Tag(e) mit Lücken in der Statistik.` : ""}</p>
+        ${lineChart(lines, { label: t("Stromkosten pro Tag"), formatY: (v) => euro.format(v), yMin: lowest })}
+        <p class="small muted">${t("Aus Energiezählern und dem Preisverlauf der Tarif-Entität; Einspeisung zur eingestellten Vergütung.")}
+          ${incomplete ? t("{count} Tag(e) mit Lücken in der Statistik.", { count: incomplete }) : ""}</p>
       </section>
     `;
   }
@@ -232,7 +233,7 @@ class SunflowAnalysis extends LitElement {
       this._shadow = await api.shadow();
       this._error = null;
     } catch (err) {
-      this._error = `Analyse konnte nicht geladen werden: ${err.message}`;
+      this._error = t("Analyse konnte nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -240,8 +241,8 @@ class SunflowAnalysis extends LitElement {
     return html`
       <div class="heading">
         <div>
-          <h1>Analyse</h1>
-          <p class="muted">Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?</p>
+          <h1>${t("Analyse")}</h1>
+          <p class="muted">${t("Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?")}</p>
         </div>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
@@ -250,17 +251,17 @@ class SunflowAnalysis extends LitElement {
       ${this._renderCosts()}
       ${this._renderEfficiency()}
       ${this._renderPvLearning()}
-      ${this._shadow === null && !this._error ? html`<p class="muted">Lade …</p>` : nothing}
+      ${this._shadow === null && !this._error ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
       ${this._renderShadow()}
     `;
   }
 
   _renderEnergy() {
     const e = this._energy;
-    const t = e?.totals;
-    if (!this._energyError && (!t || Object.values(t).every((v) => v === null))) return nothing;
+    const totals = e?.totals;
+    if (!this._energyError && (!totals || Object.values(totals).every((v) => v === null))) return nothing;
     const wh = (v) => formatValue(v, "Wh");
-    const pct = (v) => (v === null || v === undefined ? "–" : `${(v * 100).toFixed(1).replace(".", ",")} %`);
+    const pct = (v) => (v === null || v === undefined ? "–" : `${decimal((v * 100).toFixed(1))} %`);
     const tile = (label, value, hint = null, highlight = false) =>
       value === null || value === undefined || value === "–"
         ? nothing
@@ -272,29 +273,32 @@ class SunflowAnalysis extends LitElement {
     return html`
       <section>
         <div class="section-head">
-          <h2>Energiebilanz</h2>
-          <div class="range" role="group" aria-label="Zeitraum">
-            ${[["today", "Heute"], ["7d", "7 Tage"], ["30d", "30 Tage"]].map(
+          <h2>${t("Energiebilanz")}</h2>
+          <div class="range" role="group" aria-label=${t("Zeitraum")}>
+            ${[["today", t("Heute")], ["7d", t("7 Tage")], ["30d", t("30 Tage")]].map(
               ([value, label]) => html`<button class=${this._period === value ? "active" : ""} aria-pressed=${this._period === value}
                 @click=${() => this._setPeriod(value)}>${label}</button>`,
             )}
           </div>
         </div>
         ${this._energyError ? html`<div class="alert error" role="alert">${this._energyError}</div>` : nothing}
-        ${t ? html`<p class="small muted">Aus den Energiezählern${fromDashboard.length ? " (Netz aus dem Energie-Dashboard)" : " der Wechselrichter"}
-          seit ${dayTime.format(new Date(e.start))}${e.consumption_origin === "balance" ? "; Verbrauch aus der Bilanz berechnet" : ""}.</p>
+        ${totals ? html`<p class="small muted">${fromDashboard.length
+          ? t("Aus den Energiezählern (Netz aus dem Energie-Dashboard) seit {time}", { time: dayTime.format(new Date(e.start)) })
+          : t("Aus den Energiezählern der Wechselrichter seit {time}", { time: dayTime.format(new Date(e.start)) })}${e.consumption_origin === "balance"
+          ? `; ${t("Verbrauch aus der Bilanz berechnet")}`
+          : ""}.</p>
         <div class="tiles">
-          ${tile("Autarkie", pct(e.autarky), "Verbrauch ohne Netzbezug", true)}
-          ${tile("Eigenverbrauch", pct(e.self_consumption), "PV selbst genutzt", true)}
-          ${tile("PV erzeugt", t.pv === null ? null : wh(t.pv))}
-          ${tile("Verbraucht", e.consumption === null ? null : wh(e.consumption))}
-          ${tile("Netzbezug", t.grid_import === null ? null : wh(t.grid_import))}
-          ${tile("Eingespeist", t.grid_export === null ? null : wh(t.grid_export))}
-          ${tile("Speicher geladen", t.battery_charge === null ? null : wh(t.battery_charge))}
-          ${tile("Speicher entladen", t.battery_discharge === null ? null : wh(t.battery_discharge),
-            e.battery_ratio === null ? null : `${pct(e.battery_ratio)} der geladenen Energie (ohne Ladestandsänderung)`)}
-          ${e.inverters.map((i) => tile(`Wirkungsgrad ${i.name}`, pct(i.efficiency),
-            i.dc_wh === null ? null : `${wh(i.ac_wh)} AC aus ${wh(i.dc_wh)} DC`))}
+          ${tile(t("Autarkie"), pct(e.autarky), t("Verbrauch ohne Netzbezug"), true)}
+          ${tile(t("Eigenverbrauch"), pct(e.self_consumption), t("PV selbst genutzt"), true)}
+          ${tile(t("PV erzeugt"), totals.pv === null ? null : wh(totals.pv))}
+          ${tile(t("Verbraucht"), e.consumption === null ? null : wh(e.consumption))}
+          ${tile(t("Netzbezug"), totals.grid_import === null ? null : wh(totals.grid_import))}
+          ${tile(t("Eingespeist"), totals.grid_export === null ? null : wh(totals.grid_export))}
+          ${tile(t("Speicher geladen"), totals.battery_charge === null ? null : wh(totals.battery_charge))}
+          ${tile(t("Speicher entladen"), totals.battery_discharge === null ? null : wh(totals.battery_discharge),
+            e.battery_ratio === null ? null : t("{value} der geladenen Energie (ohne Ladestandsänderung)", { value: pct(e.battery_ratio) }))}
+          ${e.inverters.map((i) => tile(t("Wirkungsgrad {name}", { name: i.name }), pct(i.efficiency),
+            i.dc_wh === null ? null : t("{ac} AC aus {dc} DC", { ac: wh(i.ac_wh), dc: wh(i.dc_wh) })))}
         </div>` : nothing}
       </section>
     `;
@@ -307,83 +311,89 @@ class SunflowAnalysis extends LitElement {
     const hours = Object.entries(l.by_hour ?? {});
     return html`
       <section>
-        <h2>Lernen</h2>
-        <h3>PV-Prognose</h3>
+        <h2>${t("Lernen")}</h2>
+        <h3>${t("PV-Prognose")}</h3>
         <p class="small muted">
-          ${l.enabled ? "Die Planung nutzt die angepasste Prognose." : "Ausgeschaltet (Standards) – die Planung nutzt die Rohprognose."}
-          Gelernt wird aus dem Schattenbetrieb: Prognose gegen Messung je Stunde${l.weather_entity
-            ? html` und Bewölkung laut <code>${l.weather_entity}</code>`
-            : " (keine Wetter-Entität gefunden)"}.
-          Mit wenigen Tagen bleiben die Faktoren nahe 100 %.
+          ${l.enabled ? t("Die Planung nutzt die angepasste Prognose.") : t("Ausgeschaltet (Standards) – die Planung nutzt die Rohprognose.")}
+          ${l.weather_entity
+            ? html`${t("Gelernt wird aus dem Schattenbetrieb: Prognose gegen Messung je Stunde und Bewölkung laut")} <code>${l.weather_entity}</code>.`
+            : t("Gelernt wird aus dem Schattenbetrieb: Prognose gegen Messung je Stunde (keine Wetter-Entität gefunden).")}
+          ${t("Mit wenigen Tagen bleiben die Faktoren nahe 100 %.")}
         </p>
         ${l.slots
           ? html`
               <div class="tiles">
-                <div class="tile now"><div class="small muted">Gesamt</div><div class="value">${pct(l.overall)}</div>
-                  <div class="small muted">der Prognose kommt an · ${l.days} Tage</div></div>
-                <div class="tile"><div class="small muted">Klar</div><div class="value">${pct(l.by_cloud.clear)}</div></div>
-                <div class="tile"><div class="small muted">Wechselnd bewölkt</div><div class="value">${pct(l.by_cloud.mixed)}</div></div>
-                <div class="tile"><div class="small muted">Bedeckt</div><div class="value">${pct(l.by_cloud.overcast)}</div></div>
-                <div class="tile"><div class="small muted">Mittlere Abweichung</div>
+                <div class="tile now"><div class="small muted">${t("Gesamt")}</div><div class="value">${pct(l.overall)}</div>
+                  <div class="small muted">${t("der Prognose kommt an")} · ${t("{days} Tage", { days: l.days })}</div></div>
+                <div class="tile"><div class="small muted">${t("Klar")}</div><div class="value">${pct(l.by_cloud.clear)}</div></div>
+                <div class="tile"><div class="small muted">${t("Wechselnd bewölkt")}</div><div class="value">${pct(l.by_cloud.mixed)}</div></div>
+                <div class="tile"><div class="small muted">${t("Bedeckt")}</div><div class="value">${pct(l.by_cloud.overcast)}</div></div>
+                <div class="tile"><div class="small muted">${t("Mittlere Abweichung")}</div>
                   <div class="value">${formatValue(l.error_after, "W")}</div>
-                  <div class="small muted">vorher ${formatValue(l.error_before, "W")}</div></div>
+                  <div class="small muted">${t("vorher {value}", { value: formatValue(l.error_before, "W") })}</div></div>
               </div>
               ${hours.length
-                ? html`<p class="small muted">Je Stunde: ${hours.map(([h, f]) => `${h} Uhr ${pct(f)}`).join(" · ")}</p>`
+                ? html`<p class="small muted">${t("Je Stunde: {hours}", {
+                    hours: hours.map(([h, f]) => t("{hour} Uhr {factor}", { hour: h, factor: pct(f) })).join(" · "),
+                  })}</p>`
                 : nothing}`
-          : html`<p class="muted">Noch keine Tagesdaten – der Schattenbetrieb sammelt ab jetzt.</p>`}
+          : html`<p class="muted">${t("Noch keine Tagesdaten – der Schattenbetrieb sammelt ab jetzt.")}</p>`}
         ${l.planes?.length
-          ? html`<h3>Je Dachfläche</h3>
+          ? html`<h3>${t("Je Dachfläche")}</h3>
               <ul class="small plane-list">
                 ${l.planes.map(
-                  (p) => html`<li><strong>${p.name}</strong>: ${p.slots ? pct(p.overall) : "noch keine Daten"}
+                  (p) => html`<li><strong>${p.name}</strong>: ${p.slots ? pct(p.overall) : t("noch keine Daten")}
                     ${p.slots
-                      ? html`<span class="muted">(${p.days} Tage${p.by_cloud.clear !== null ? ` · klar ${pct(p.by_cloud.clear)}` : ""}${p.by_cloud.overcast !== null
-                          ? ` · bedeckt ${pct(p.by_cloud.overcast)}`
+                      ? html`<span class="muted">(${t("{days} Tage", { days: p.days })}${p.by_cloud.clear !== null ? ` · ${t("klar {value}", { value: pct(p.by_cloud.clear) })}` : ""}${p.by_cloud.overcast !== null
+                          ? ` · ${t("bedeckt {value}", { value: pct(p.by_cloud.overcast) })}`
                           : ""})</span>`
                       : nothing}
                     ${p.learn_since
-                      ? html`<span class="muted">· neu gelernt seit ${new Date(p.learn_since).toLocaleDateString("de-DE")}</span>`
+                      ? html`<span class="muted">· ${t("neu gelernt seit {date}", { date: new Date(p.learn_since).toLocaleDateString(locale()) })}</span>`
                       : nothing}
                     <button class="link" @click=${() => this._restartPlane(p)}
-                      title="Nach Reinigung, Baumschnitt oder Modultausch: ältere Messwerte dieser Fläche nicht mehr verwenden">
-                      Neu lernen ab heute</button></li>`,
+                      title=${t("Nach Reinigung, Baumschnitt oder Modultausch: ältere Messwerte dieser Fläche nicht mehr verwenden")}>
+                      ${t("Neu lernen ab heute")}</button></li>`,
                 )}
               </ul>`
-          : html`<p class="small muted">Tipp: Unter Einstellungen → Tarif & Prognose lassen sich Dachflächen ihren PV-Strings
-              zuordnen; dann lernt Sunflow jede Fläche einzeln (z. B. Verschattung).</p>`}
-        <h3>Hausverbrauch</h3>
+          : html`<p class="small muted">${t("Tipp: Unter Einstellungen → Tarif & Prognose lassen sich Dachflächen ihren PV-Strings zuordnen; dann lernt Sunflow jede Fläche einzeln (z. B. Verschattung).")}</p>`}
+        <h3>${t("Hausverbrauch")}</h3>
         ${l.load_model
           ? html`<p class="small">
-              Modell aus ${l.load_model.days} Tagen: je Stunde, Werktag/Wochenende und Außentemperatur
-              (${l.load_model.heating_w_per_k > 1 ? `+${Math.round(l.load_model.heating_w_per_k)} W je Grad unter 15 °C` : "kein Heizeinfluss erkennbar"}).
-              Auf den letzten Tagen ${formatValue(l.load_model.error_model, "W")} Abweichung statt ${formatValue(l.load_model.error_average, "W")}
-              mit dem Stundenmittel – ${l.load_model.useful ? "die Planung nutzt das Modell." : "noch nicht besser, die Planung bleibt beim Stundenmittel."}
+              ${t("Modell aus {days} Tagen: je Stunde, Werktag/Wochenende und Außentemperatur", { days: l.load_model.days })}
+              (${l.load_model.heating_w_per_k > 1
+                ? t("+{power} W je Grad unter 15 °C", { power: Math.round(l.load_model.heating_w_per_k) })
+                : t("kein Heizeinfluss erkennbar")}).
+              ${t("Auf den letzten Tagen {model} Abweichung statt {average} mit dem Stundenmittel", {
+                model: formatValue(l.load_model.error_model, "W"),
+                average: formatValue(l.load_model.error_average, "W"),
+              })}
+              – ${l.load_model.useful ? t("die Planung nutzt das Modell.") : t("noch nicht besser, die Planung bleibt beim Stundenmittel.")}
             </p>`
-          : html`<p class="small muted">Sammelt Daten: Das Modell startet nach 14 Tagen mit Temperatur und Verbraucherleistung im
-              Schattenbetrieb. Bis dahin plant Sunflow mit den Stundenmitteln der Historie.</p>`}
+          : html`<p class="small muted">${t("Sammelt Daten: Das Modell startet nach 14 Tagen mit Temperatur und Verbraucherleistung im Schattenbetrieb.")}
+              ${t("Bis dahin plant Sunflow mit den Stundenmitteln der Historie.")}</p>`}
       </section>
     `;
   }
 
   async _restartPlane(plane) {
     if (!(await confirmDialog({
-      title: `„${plane.name}“ ab heute neu lernen?`,
-      text: "Die bisherigen Messwerte dieser Fläche werden nicht mehr verwendet. Bis genug neue Tage da sind, plant Sunflow sie mit der Korrektur der ganzen Anlage.",
-      confirm: "Neu lernen",
+      title: t("„{name}“ ab heute neu lernen?", { name: plane.name }),
+      text: t("Die bisherigen Messwerte dieser Fläche werden nicht mehr verwendet. Bis genug neue Tage da sind, plant Sunflow sie mit der Korrektur der ganzen Anlage."),
+      confirm: t("Neu lernen"),
     }))) return;
     try {
       await api.restartPlaneLearning(plane.key);
       this._pvLearning = await api.pvLearning();
     } catch (err) {
-      this._error = `Neu lernen fehlgeschlagen: ${err.message}`;
+      this._error = t("Neu lernen fehlgeschlagen: {error}", { error: err.message });
     }
   }
 
   _renderEfficiency() {
     const series = (this._efficiency ?? []).filter((s) => s.points.some((p) => p.value !== null));
     if (!series.length) return nothing;
-    const pct = (v) => `${(v * 100).toFixed(1).replace(".", ",")} %`;
+    const pct = (v) => `${decimal((v * 100).toFixed(1))} %`;
     const day = (iso) => {
       const [y, m, d] = iso.split("-").map(Number);
       return new Date(y, m - 1, d);
@@ -405,27 +415,27 @@ class SunflowAnalysis extends LitElement {
     return html`
       <section>
         <div class="section-head">
-          <h2>Wirkungsgrade</h2>
-          <div class="range" role="group" aria-label="Zeitraum Wirkungsgrade">
-            ${[[30, "30 Tage"], [90, "90 Tage"], [365, "1 Jahr"]].map(
+          <h2>${t("Wirkungsgrade")}</h2>
+          <div class="range" role="group" aria-label=${t("Zeitraum Wirkungsgrade")}>
+            ${[[30, t("30 Tage")], [90, t("90 Tage")], [365, t("1 Jahr")]].map(
               ([value, label]) => html`<button class=${this._efficiencyDays === value ? "active" : ""}
                 aria-pressed=${this._efficiencyDays === value} @click=${() => this._setEfficiencyDays(value)}>${label}</button>`,
             )}
           </div>
         </div>
-        <p class="small muted">Pro Tag aus den Energiezählern. Speicher: Zyklus einschließlich Eigenverbrauch, um die
-          Änderung des Ladestands bereinigt. Wechselrichter: Wechselstrom-Ertrag geteilt durch Gleichstrom-Eingang.
-          Tage mit wenig Energie (Speicher unter 20 % der Kapazität geladen, Wechselrichter unter 0,5 kWh) werden mit
-          den folgenden zu einem Wert zusammengefasst; Tage mit Lücken in den Daten bleiben leer.</p>
+        <p class="small muted">${t("Pro Tag aus den Energiezählern.")}
+          ${t("Speicher: Zyklus einschließlich Eigenverbrauch, um die Änderung des Ladestands bereinigt.")}
+          ${t("Wechselrichter: Wechselstrom-Ertrag geteilt durch Gleichstrom-Eingang.")}
+          ${t("Tage mit wenig Energie (Speicher unter 20 % der Kapazität geladen, Wechselrichter unter 0,5 kWh) werden mit den folgenden zu einem Wert zusammengefasst; Tage mit Lücken in den Daten bleiben leer.")}</p>
         <div class="legend">
           ${series.map((s, i) => {
             const average = mean(s);
             return html`<span class="legend-item"><span class="swatch" style="background:${lines[i].color}"></span>
-              ${s.name} (${s.kind === "battery" ? "Speicher" : "Wechselrichter"})${average !== null ? ` · Ø ${pct(average)}` : ""}</span>`;
+              ${s.name} (${s.kind === "battery" ? t("Speicher") : t("Wechselrichter")})${average !== null ? ` · Ø ${pct(average)}` : ""}</span>`;
           })}
         </div>
         ${lineChart(lines, {
-          label: "Wirkungsgrade pro Tag",
+          label: t("Wirkungsgrade pro Tag"),
           formatY: (v) => `${Math.round(v * 100)} %`,
           yMin: Math.max(Math.floor(lowest * 10) / 10 - 0.1, 0),
           // Noise can push single days above 100 %; the axis grows instead of cutting them off
@@ -446,61 +456,60 @@ class SunflowAnalysis extends LitElement {
     const deviation = (forecast, actual) => {
       if (forecast < 0.01) return "–";
       const pct = Math.round(((actual - forecast) / forecast) * 100);
-      return `${pct > 0 ? "+" : pct < 0 ? "−" : "±"}${Math.abs(pct)} % ggü. Prognose`;
+      return t("{value} % ggü. Prognose", { value: `${pct > 0 ? "+" : pct < 0 ? "−" : "±"}${Math.abs(pct)}` });
     };
     const kwh = (v) => formatValue(v * 1000, "Wh");
     return html`
       <section>
-        <h2>Schattenbetrieb</h2>
+        <h2>${t("Schattenbetrieb")}</h2>
         <p class="small muted">
-          Seit ${since} protokolliert Sunflow alle 15 Minuten, was es tun würde und was tatsächlich passiert ist –
-          ${e.compared} vollständige Zeitabschnitte (letzte 48 h).
-          ${shadow.status.last_error ? html`<br><span class="warn-text">Letzter Fehler: ${shadow.status.last_error}</span>` : nothing}
+          ${t("Seit {since} protokolliert Sunflow alle 15 Minuten, was es tun würde und was tatsächlich passiert ist – {compared} vollständige Zeitabschnitte (letzte 48 h).", { since, compared: e.compared })}
+          ${shadow.status.last_error ? html`<br><span class="warn-text">${t("Letzter Fehler: {error}", { error: shadow.status.last_error })}</span>` : nothing}
         </p>
         <div class="actions">
-          <a class="secondary button-link" href="api/v1/export" download>Daten exportieren</a>
+          <a class="secondary button-link" href="api/v1/export" download>${t("Daten exportieren")}</a>
           <button class="secondary button-link" ?disabled=${this._importing}
             @click=${(e) => e.currentTarget.nextElementSibling.click()}>
-            ${this._importing ? "Importiere …" : "Export importieren"}
+            ${this._importing ? t("Importiere …") : t("Export importieren")}
           </button>
           <input type="file" accept=".zip" hidden @change=${(e) => this._import(e)}>
           ${this._importResult ? html`<span class="small muted">${this._importResult}</span>` : nothing}
         </div>
         ${e.compared === 0
-          ? html`<p class="muted">Noch keine abgeschlossenen Zeitabschnitte – der erste erscheint nach dem nächsten Viertelstundenwechsel.</p>`
+          ? html`<p class="muted">${t("Noch keine abgeschlossenen Zeitabschnitte – der erste erscheint nach dem nächsten Viertelstundenwechsel.")}</p>`
           : html`
               <div class="tiles">
                 <div class="tile">
-                  <div class="small muted">PV-Prognose</div>
+                  <div class="small muted">${t("PV-Prognose")}</div>
                   <div class="value">${kwh(e.pv_forecast_kwh)}</div>
-                  <div class="small muted">tatsächlich ${kwh(e.pv_actual_kwh)} (${deviation(e.pv_forecast_kwh, e.pv_actual_kwh)})</div>
+                  <div class="small muted">${t("tatsächlich {actual} ({deviation})", { actual: kwh(e.pv_actual_kwh), deviation: deviation(e.pv_forecast_kwh, e.pv_actual_kwh) })}</div>
                 </div>
                 <div class="tile">
-                  <div class="small muted">Lastprognose (ohne steuerbare Verbraucher)</div>
+                  <div class="small muted">${t("Lastprognose (ohne steuerbare Verbraucher)")}</div>
                   <div class="value">${kwh(e.load_forecast_kwh)}</div>
-                  <div class="small muted">tatsächlich ${kwh(e.load_actual_kwh)} (${deviation(e.load_forecast_kwh, e.load_actual_kwh)})</div>
+                  <div class="small muted">${t("tatsächlich {actual} ({deviation})", { actual: kwh(e.load_actual_kwh), deviation: deviation(e.load_forecast_kwh, e.load_actual_kwh) })}</div>
                 </div>
                 <div class="tile">
-                  <div class="small muted">Ladestand-Abweichung</div>
+                  <div class="small muted">${t("Ladestand-Abweichung")}</div>
                   <div class="value">${e.soc_mae_wh === null ? "–" : formatValue(e.soc_mae_wh, "Wh")}</div>
-                  <div class="small muted">mittlerer Abstand Plan zu Ist</div>
+                  <div class="small muted">${t("mittlerer Abstand Plan zu Ist")}</div>
                 </div>
                 <div class="tile">
-                  <div class="small muted">Gleiche Entscheidung</div>
+                  <div class="small muted">${t("Gleiche Entscheidung")}</div>
                   <div class="value">${pct(e.agreement)}</div>
-                  <div class="small muted">${e.differing_slots} Abschnitte hätte Sunflow anders gesteuert</div>
+                  <div class="small muted">${t("{count} Abschnitte hätte Sunflow anders gesteuert", { count: e.differing_slots })}</div>
                 </div>
               </div>
               <div class="legend">
-                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>Ladestand tatsächlich</span>
-                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>Ladestand laut Plan</span>
+                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>${t("Ladestand tatsächlich")}</span>
+                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>${t("Ladestand laut Plan")}</span>
               </div>
               ${lineChart(
                 [
-                  { name: "Ist", color: SERIES_COLORS[0], points: rows.map((r) => this._point(r, "actual_soc_wh")) },
-                  { name: "Plan", color: SERIES_COLORS[1], points: rows.map((r) => this._point(r, "planned_soc_wh")) },
+                  { name: t("Ist"), color: SERIES_COLORS[0], points: rows.map((r) => this._point(r, "actual_soc_wh")) },
+                  { name: t("Plan"), color: SERIES_COLORS[1], points: rows.map((r) => this._point(r, "planned_soc_wh")) },
                 ],
-                { label: "Ladestand Plan gegen Ist", formatY: (v) => formatValue(v, "Wh") },
+                { label: t("Ladestand Plan gegen Ist"), formatY: (v) => formatValue(v, "Wh") },
               )}
               ${this._renderDifferences(rows)}
             `}
@@ -522,10 +531,10 @@ class SunflowAnalysis extends LitElement {
       }
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail ?? response.statusText);
-      this._importResult = `${data.imported_slots} Zeitabschnitte importiert.`;
+      this._importResult = t("{count} Zeitabschnitte importiert.", { count: data.imported_slots });
       this._shadow = await api.shadow();
     } catch (err) {
-      this._error = `Import fehlgeschlagen: ${err.message}`;
+      this._error = t("Import fehlgeschlagen: {error}", { error: err.message });
     } finally {
       this._importing = false;
     }
@@ -541,11 +550,11 @@ class SunflowAnalysis extends LitElement {
 
   _renderDifferences(rows) {
     const differing = rows.filter((r) => r.planned_action !== r.actual_action).slice(-12).reverse();
-    if (!differing.length) return html`<p class="small muted">Bisher hätte Sunflow genauso gehandelt wie der Wechselrichter.</p>`;
+    if (!differing.length) return html`<p class="small muted">${t("Bisher hätte Sunflow genauso gehandelt wie der Wechselrichter.")}</p>`;
     return html`
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Zeit</th><th>Sunflow hätte</th><th>Tatsächlich</th><th>PV / Last (Ist)</th></tr></thead>
+          <thead><tr><th>${t("Zeit")}</th><th>${t("Sunflow hätte")}</th><th>${t("Tatsächlich")}</th><th>${t("PV / Last (Ist)")}</th></tr></thead>
           <tbody>
             ${differing.map(
               (r) => html`<tr>

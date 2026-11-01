@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
+import { t } from "../lib/i18n.js";
 
 
 /** Default planning settings (settings area "Planung"). */
@@ -51,7 +52,7 @@ class SunflowStandards extends LitElement {
         this._historyKwh = plan.load_history_daily_kwh;
       }).catch(() => {});
     } catch (err) {
-      this._error = `Einstellungen konnten nicht geladen werden: ${err.message}`;
+      this._error = t("Einstellungen konnten nicht geladen werden: {error}", { error: err.message });
     }
   }
 
@@ -59,12 +60,12 @@ class SunflowStandards extends LitElement {
     return html`
       <div class="heading">
         <div>
-          <h1>Planung</h1>
-          <p class="muted">Wie Sunflow den Speicher plant: Strategie, Schonung, netzdienliches Verhalten. Vorübergehende Änderungen machst du im Tab „Steuerung“.</p>
+          <h1>${t("Planung")}</h1>
+          <p class="muted">${t("Wie Sunflow den Speicher plant: Strategie, Schonung, netzdienliches Verhalten. Vorübergehende Änderungen machst du im Tab „Steuerung“.")}</p>
         </div>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
-      ${this._settings ? this._renderSettings(this._settings) : html`<p class="muted">Lade …</p>`}
+      ${this._settings ? this._renderSettings(this._settings) : html`<p class="muted">${t("Lade …")}</p>`}
     `;
   }
 
@@ -91,7 +92,7 @@ class SunflowStandards extends LitElement {
       await this._load();
       return true;
     } catch (err) {
-      this._error = `Einstellungen konnten nicht gespeichert werden: ${err.message}`;
+      this._error = t("Einstellungen konnten nicht gespeichert werden: {error}", { error: err.message });
       // Radios and checkboxes show the stored value again
       this.requestUpdate();
       return false;
@@ -115,7 +116,7 @@ class SunflowStandards extends LitElement {
     if (mode === "calc" && (this._wearCalc !== undefined || this._wearMode !== undefined)) {
       const calc = this._parseWearCalc(settings);
       if (!calc) {
-        this._error = "Bitte Preis, Zyklen und Kapazität für den Verschleiß angeben.";
+        this._error = t("Bitte Preis, Zyklen und Kapazität für den Verschleiß angeben.");
         return false;
       }
       changes.wear_calculation = calc;
@@ -125,7 +126,7 @@ class SunflowStandards extends LitElement {
     if (mode === "direct" && this._wear !== undefined) {
       const wear = fromDisplay(this._wear, "ct");
       if (wear === undefined || wear === null || wear < 0) {
-        this._error = "Bitte gültige Verschleißkosten eingeben.";
+        this._error = t("Bitte gültige Verschleißkosten eingeben.");
         return false;
       }
       changes.wear_ct_per_kwh = wear;
@@ -133,7 +134,7 @@ class SunflowStandards extends LitElement {
     if (this._daily !== undefined) {
       const daily = fromDisplay(this._daily, "kWh");
       if (daily === undefined || (daily !== null && daily <= 0)) {
-        this._error = "Bitte einen gültigen Tagesverbrauch in kWh eingeben oder das Feld leeren.";
+        this._error = t("Bitte einen gültigen Tagesverbrauch in kWh eingeben oder das Feld leeren.");
         return false;
       }
       changes.daily_consumption_kwh = daily;
@@ -141,7 +142,7 @@ class SunflowStandards extends LitElement {
     if (this._largeLoad !== undefined) {
       const kw = fromDisplay(this._largeLoad, "kW");
       if (kw === undefined || (kw !== null && kw <= 0)) {
-        this._error = "Bitte eine gültige Leistung in kW eingeben oder das Feld leeren.";
+        this._error = t("Bitte eine gültige Leistung in kW eingeben oder das Feld leeren.");
         return false;
       }
       changes.large_load_threshold_w = kw === null ? null : kw * 1000;
@@ -149,7 +150,7 @@ class SunflowStandards extends LitElement {
     if (this._maxSoc !== undefined) {
       const limit = fromDisplay(this._maxSoc, "%");
       if (limit === undefined || limit === null || limit < 50 || limit > 100) {
-        this._error = "Bitte eine Ladegrenze zwischen 50 und 100 % eingeben.";
+        this._error = t("Bitte eine Ladegrenze zwischen 50 und 100 % eingeben.");
         return false;
       }
       changes.max_soc_pct = limit;
@@ -157,7 +158,7 @@ class SunflowStandards extends LitElement {
     if (this._fullEvery !== undefined) {
       const days = fromDisplay(this._fullEvery, "");
       if (days === undefined || (days !== null && (!Number.isInteger(days) || days < 1 || days > 90))) {
-        this._error = "Bitte ganze Tage zwischen 1 und 90 eingeben oder das Feld leeren.";
+        this._error = t("Bitte ganze Tage zwischen 1 und 90 eingeben oder das Feld leeren.");
         return false;
       }
       changes.full_charge_every_days = days;
@@ -165,7 +166,7 @@ class SunflowStandards extends LitElement {
     if (this._gridAfter !== undefined) {
       const days = fromDisplay(this._gridAfter, "");
       if (days === undefined || (days !== null && (!Number.isInteger(days) || days < 1 || days > 120))) {
-        this._error = "Bitte ganze Tage zwischen 1 und 120 eingeben oder das Feld leeren.";
+        this._error = t("Bitte ganze Tage zwischen 1 und 120 eingeben oder das Feld leeren.");
         return false;
       }
       changes.full_charge_grid_after_days = days;
@@ -174,7 +175,7 @@ class SunflowStandards extends LitElement {
       if (edit === undefined) continue;
       const kw = fromDisplay(edit, "kW");
       if (kw === undefined || (kw !== null && kw <= 0)) {
-        this._error = "Bitte eine gültige Leistung in kW eingeben oder das Feld leeren.";
+        this._error = t("Bitte eine gültige Leistung in kW eingeben oder das Feld leeren.");
         return false;
       }
       changes[key] = kw === null ? null : kw * 1000;
@@ -182,7 +183,7 @@ class SunflowStandards extends LitElement {
     if (this._agingThreshold !== undefined) {
       const threshold = fromDisplay(this._agingThreshold, "%");
       if (threshold === undefined || threshold === null || threshold < 30 || threshold > 100) {
-        this._error = "Bitte eine Schwelle zwischen 30 und 100 % eingeben.";
+        this._error = t("Bitte eine Schwelle zwischen 30 und 100 % eingeben.");
         return false;
       }
       changes.high_soc_threshold_pct = threshold;
@@ -190,7 +191,7 @@ class SunflowStandards extends LitElement {
     if (this._agingCost !== undefined) {
       const cost = fromDisplay(this._agingCost, "ct");
       if (cost === undefined || cost === null || cost < 0 || cost > 5) {
-        this._error = "Bitte Kosten zwischen 0 und 5 ct je kWh und Stunde eingeben.";
+        this._error = t("Bitte Kosten zwischen 0 und 5 ct je kWh und Stunde eingeben.");
         return false;
       }
       changes.high_soc_ct_per_kwh_h = cost;
@@ -198,7 +199,7 @@ class SunflowStandards extends LitElement {
     if (this._reserve !== undefined) {
       const reserve = fromDisplay(this._reserve, "%");
       if (reserve === undefined || reserve === null || reserve < 0 || reserve > 100) {
-        this._error = "Bitte eine Reserve zwischen 0 und 100 % eingeben.";
+        this._error = t("Bitte eine Reserve zwischen 0 und 100 % eingeben.");
         return false;
       }
       changes.backup_reserve_pct = reserve;
@@ -243,6 +244,7 @@ class SunflowStandards extends LitElement {
     const result = calc
       ? (calc.price_eur * 100) / (calc.cycles * calc.capacity_kwh * ((1 + calc.end_of_life_pct / 100) / 2) * (calc.depth_of_discharge_pct / 100))
       : null;
+    const [resultBefore, resultAfter] = t("ergibt {value} je entladener kWh").split("{value}");
     const field = (label, key, unit, hint = null) => html`
       <label class="field">
         <span class="field-label">${label}</span>
@@ -252,30 +254,30 @@ class SunflowStandards extends LitElement {
       </label>`;
     return html`
       <div class="field wide">
-        <span class="field-label">Verschleißkosten Speicher</span>
-        <div class="segmented" role="group" aria-label="Verschleißkosten angeben">
-          ${[["direct", "Direkt in ct/kWh"], ["calc", "Aus Preis und Zyklen"]].map(
+        <span class="field-label">${t("Verschleißkosten Speicher")}</span>
+        <div class="segmented" role="group" aria-label=${t("Verschleißkosten angeben")}>
+          ${[["direct", t("Direkt in ct/kWh")], ["calc", t("Aus Preis und Zyklen")]].map(
             ([value, label]) => html`<button class=${mode === value ? "on" : ""} aria-pressed=${mode === value}
               @click=${() => (this._wearMode = value)}>${label}</button>`,
           )}
         </div>
         ${mode === "direct"
           ? html`<span class="input-unit">
-                <input inputmode="decimal" aria-label="Verschleißkosten in ct/kWh"
+                <input inputmode="decimal" aria-label=${t("Verschleißkosten in ct/kWh")}
                   .value=${this._wear ?? toDisplay(settings.wear_ct_per_kwh, "ct")} @input=${(e) => (this._wear = e.target.value)}>
                 <span class="muted">ct/kWh</span>
               </span>`
           : html`<div class="fields">
-                ${field("Anschaffungspreis", "price", "€", "Speicher ohne Wechselrichter, inkl. Montage")}
-                ${field("Zyklen laut Hersteller", "cycles", "Zyklen")}
-                ${field("Kapazität", "capacity", "kWh")}
-                ${field("bei Entladetiefe", "dod", "%")}
-                ${field("Restkapazität danach", "eol", "%", "z. B. 70 % – die Kapazität sinkt bis dahin")}
+                ${field(t("Anschaffungspreis"), "price", "€", t("Speicher ohne Wechselrichter, inkl. Montage"))}
+                ${field(t("Zyklen laut Hersteller"), "cycles", t("Zyklen"))}
+                ${field(t("Kapazität"), "capacity", "kWh")}
+                ${field(t("bei Entladetiefe"), "dod", "%")}
+                ${field(t("Restkapazität danach"), "eol", "%", t("z. B. 70 % – die Kapazität sinkt bis dahin"))}
               </div>
               <span class="small">${result !== null
-                ? html`ergibt <strong>${toDisplay(Math.round(result * 100) / 100, "ct")} ct/kWh</strong> je entladener kWh`
-                : html`<span class="muted">Preis, Zyklen und Kapazität eingeben</span>`}</span>`}
-        <span class="small muted">Je entladener kWh – verhindert Zyklen für Kleinstbeträge.</span>
+                ? html`${resultBefore}<strong>${toDisplay(Math.round(result * 100) / 100, "ct")} ct/kWh</strong>${resultAfter}`
+                : html`<span class="muted">${t("Preis, Zyklen und Kapazität eingeben")}</span>`}</span>`}
+        <span class="small muted">${t("Je entladener kWh – verhindert Zyklen für Kleinstbeträge.")}</span>
       </div>
     `;
   }
@@ -285,7 +287,7 @@ class SunflowStandards extends LitElement {
       <section class="settings">
         
         <fieldset class="strategy">
-          <legend class="field-label">Strategie des Hausspeichers (Standard)</legend>
+          <legend class="field-label">${t("Strategie des Hausspeichers (Standard)")}</legend>
           ${Object.entries(STRATEGIES).map(
             ([value, { label, hint }]) => html`
               <div class="option ${settings.strategy === value ? "selected" : ""}">
@@ -301,211 +303,195 @@ class SunflowStandards extends LitElement {
         </fieldset>
         <div class="fields">
           <label class="field">
-            <span class="field-label">Ladegrenze im Alltag</span>
+            <span class="field-label">${t("Ladegrenze im Alltag")}</span>
             <span class="input-unit">
               <input inputmode="decimal" .value=${this._maxSoc ?? toDisplay(settings.max_soc_pct, "%")}
                 @input=${(e) => (this._maxSoc = e.target.value)}>
               <span class="muted">%</span>
             </span>
-            <span class="small muted">Schont die Zellen: höher lädt Sunflow nur für eine fällige Vollladung${settings.max_soc_mode === "unless_poor_days"
-              ? " oder vor Tagen mit wenig PV"
-              : ""}. 100 % = keine Grenze.</span>
+            <span class="small muted">${settings.max_soc_mode === "unless_poor_days"
+              ? t("Schont die Zellen: höher lädt Sunflow nur für eine fällige Vollladung oder vor Tagen mit wenig PV. 100 % = keine Grenze.")
+              : t("Schont die Zellen: höher lädt Sunflow nur für eine fällige Vollladung. 100 % = keine Grenze.")}</span>
           </label>
           ${settings.max_soc_pct < 100
             ? html`<label class="field">
-                <span class="field-label">Ladegrenze gilt</span>
+                <span class="field-label">${t("Ladegrenze gilt")}</span>
                 <select ?disabled=${this._saving} @change=${(e) => this._saveSettings({ max_soc_mode: e.target.value })}>
-                  <option value="always" ?selected=${settings.max_soc_mode !== "unless_poor_days"}>immer</option>
+                  <option value="always" ?selected=${settings.max_soc_mode !== "unless_poor_days"}>${t("immer")}</option>
                   <option value="unless_poor_days" ?selected=${settings.max_soc_mode === "unless_poor_days"}>
-                    außer vor Schlechtwetter-Tagen</option>
+                    ${t("außer vor Schlechtwetter-Tagen")}</option>
                 </select>
                 ${settings.max_soc_mode === "unless_poor_days"
                   ? html`<span class="input-unit">
-                      <span class="muted">Vorschau</span>
-                      <select aria-label="Tage im Voraus" ?disabled=${this._saving}
+                      <span class="muted">${t("Vorschau")}</span>
+                      <select aria-label=${t("Tage im Voraus")} ?disabled=${this._saving}
                         @change=${(e) => this._saveSettings({ poor_days_ahead: Number(e.target.value) })}>
                         ${[1, 2, 3, 4, 5].map((d) => html`<option value=${d} ?selected=${(settings.poor_days_ahead ?? 2) === d}>
-                          ${d === 1 ? "morgen" : `${d} Tage`}</option>`)}
+                          ${d === 1 ? t("morgen") : t("{days} Tage", { days: d })}</option>`)}
                       </select>
                     </span>`
                   : nothing}
-                <span class="small muted">Sagt die PV-Prognose für die nächsten Tage weniger Ertrag als den
-                  Tagesverbrauch voraus, setzt Sunflow die Grenze aus und speichert, was die Sonne vorher noch liefert.</span>
+                <span class="small muted">${t("Sagt die PV-Prognose für die nächsten Tage weniger Ertrag als den Tagesverbrauch voraus, setzt Sunflow die Grenze aus und speichert, was die Sonne vorher noch liefert.")}</span>
               </label>`
             : nothing}
           <label class="field">
-            <span class="field-label">Voll laden alle</span>
+            <span class="field-label">${t("Voll laden alle")}</span>
             <span class="input-unit">
-              <input inputmode="numeric" placeholder="z. B. 14" .value=${this._fullEvery ?? toDisplay(settings.full_charge_every_days, "")}
+              <input inputmode="numeric" placeholder=${t("z. B. {example}", { example: "14" })} .value=${this._fullEvery ?? toDisplay(settings.full_charge_every_days, "")}
                 @input=${(e) => (this._fullEvery = e.target.value)}>
-              <span class="muted">Tage</span>
+              <span class="muted">${t("Tage")}</span>
             </span>
-            <span class="small muted">Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt.</span>
+            <span class="small muted">${t("Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt.")}</span>
           </label>
           <label class="field">
-            <span class="field-label">Spätestens nach … aus dem Netz</span>
+            <span class="field-label">${t("Spätestens nach … aus dem Netz")}</span>
             <span class="input-unit">
-              <input inputmode="numeric" placeholder="z. B. 21" .value=${this._gridAfter ?? toDisplay(settings.full_charge_grid_after_days, "")}
+              <input inputmode="numeric" placeholder=${t("z. B. {example}", { example: "21" })} .value=${this._gridAfter ?? toDisplay(settings.full_charge_grid_after_days, "")}
                 @input=${(e) => (this._gridAfter = e.target.value)}>
-              <span class="muted">Tage</span>
+              <span class="muted">${t("Tage")}</span>
             </span>
-            <span class="small muted">War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll – auch wenn Netzladen sonst aus ist. Leer = nie.</span>
+            <span class="small muted">${t("War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll – auch wenn Netzladen sonst aus ist. Leer = nie.")}</span>
           </label>
           <div class="field">
-            <span class="field-label">Alterung bei hohem Ladestand</span>
+            <span class="field-label">${t("Alterung bei hohem Ladestand")}</span>
             <span class="inline aging">
-              <input type="checkbox" aria-label="Alterung bei hohem Ladestand einrechnen" .checked=${settings.high_soc_aging}
+              <input type="checkbox" aria-label=${t("Alterung bei hohem Ladestand einrechnen")} .checked=${settings.high_soc_aging}
                 ?disabled=${this._saving} @change=${(e) => this._saveSettings({ high_soc_aging: e.target.checked })}>
               ${settings.high_soc_aging
                 ? html`<span class="input-unit">
-                      <span class="muted">über</span>
-                      <input inputmode="decimal" aria-label="Schwelle in Prozent"
+                      <span class="muted">${t("über")}</span>
+                      <input inputmode="decimal" aria-label=${t("Schwelle in Prozent")}
                         .value=${this._agingThreshold ?? toDisplay(settings.high_soc_threshold_pct, "%")}
                         @input=${(e) => (this._agingThreshold = e.target.value)}>
                       <span class="muted">%</span>
                     </span>
                     <span class="input-unit">
-                      <input inputmode="decimal" aria-label="Kosten in ct je kWh und Stunde"
+                      <input inputmode="decimal" aria-label=${t("Kosten in ct je kWh und Stunde")}
                         .value=${this._agingCost ?? toDisplay(settings.high_soc_ct_per_kwh_h, "ct")}
                         @input=${(e) => (this._agingCost = e.target.value)}>
-                      <span class="muted">ct je kWh und Stunde</span>
+                      <span class="muted">${t("ct je kWh und Stunde")}</span>
                     </span>`
-                : html`einrechnen`}
+                : html`${t("einrechnen")}`}
             </span>
-            <span class="small muted">Zellen altern schneller, je länger sie voll stehen (kalendarische Alterung). Jede kWh über
-              der Schwelle kostet im Plan je Stunde diesen Betrag – Sunflow lädt dann möglichst kurz vor dem Bedarf, z. B. am Ende
-              des günstigen Nachtfensters statt ab Mitternacht. Beispiel: 4 kWh über der Schwelle für 10 Stunden kosten bei
-              0,1 ct rund 4 ct. Die Alterung, die mit der Zeit ohnehin eintritt, ist darin nicht enthalten, weil sie nicht vom
-              Betrieb abhängt.</span>
+            <span class="small muted">${t("Zellen altern schneller, je länger sie voll stehen (kalendarische Alterung). Jede kWh über der Schwelle kostet im Plan je Stunde diesen Betrag – Sunflow lädt dann möglichst kurz vor dem Bedarf, z. B. am Ende des günstigen Nachtfensters statt ab Mitternacht. Beispiel: 4 kWh über der Schwelle für 10 Stunden kosten bei 0,1 ct rund 4 ct. Die Alterung, die mit der Zeit ohnehin eintritt, ist darin nicht enthalten, weil sie nicht vom Betrieb abhängt.")}</span>
           </div>
           <div class="field">
-            <span class="field-label">Notstrom-Reserve</span>
+            <span class="field-label">${t("Notstrom-Reserve")}</span>
             <span class="inline">
-              <input type="checkbox" aria-label="Notstrom-Reserve freihalten" .checked=${settings.backup_reserve}
+              <input type="checkbox" aria-label=${t("Notstrom-Reserve freihalten")} .checked=${settings.backup_reserve}
                 ?disabled=${this._saving} @change=${(e) => this._saveSettings({ backup_reserve: e.target.checked })}>
               ${settings.backup_reserve
                 ? html`<span class="input-unit">
-                    <input inputmode="decimal" aria-label="Notstrom-Reserve in Prozent"
+                    <input inputmode="decimal" aria-label=${t("Notstrom-Reserve in Prozent")}
                       .value=${this._reserve ?? toDisplay(settings.backup_reserve_pct, "%")}
                       @input=${(e) => (this._reserve = e.target.value)}>
                     <span class="muted">%</span>
                   </span>`
-                : html`freihalten`}
+                : html`${t("freihalten")}`}
             </span>
-            <span class="small muted">Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand,
-              die Reserve bleibt dem Notstrom (EPS) bei Stromausfall vorbehalten. Liegt der Speicher darunter, wird er
-              nicht weiter entladen.</span>
+            <span class="small muted">${t("Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand, die Reserve bleibt dem Notstrom (EPS) bei Stromausfall vorbehalten. Liegt der Speicher darunter, wird er nicht weiter entladen.")}</span>
           </div>
           <label class="field">
-            <span class="field-label">Hausverbrauch pro Tag (Startwert)</span>
+            <span class="field-label">${t("Hausverbrauch pro Tag (Startwert)")}</span>
             <span class="input-unit">
-              <input inputmode="decimal" placeholder="z. B. 14"
+              <input inputmode="decimal" placeholder=${t("z. B. {example}", { example: "14" })}
                 .value=${this._daily ?? toDisplay(settings.daily_consumption_kwh, "kWh")}
                 @input=${(e) => (this._daily = e.target.value)}>
-              <span class="muted">kWh/Tag</span>
+              <span class="muted">${t("kWh/Tag")}</span>
             </span>
-            <span class="small muted">Gilt nur, solange weniger als 7 Tage Verbrauchsverlauf vorliegen; danach plant Sunflow mit
-              den gemessenen Werten (ab 14 Tagen mit dem gelernten Modell). Ohne große Verbraucher wie Wallbox und Heizstab.</span>
+            <span class="small muted">${t("Gilt nur, solange weniger als 7 Tage Verbrauchsverlauf vorliegen; danach plant Sunflow mit den gemessenen Werten (ab 14 Tagen mit dem gelernten Modell). Ohne große Verbraucher wie Wallbox und Heizstab.")}</span>
             ${this._historyKwh
-              ? html`<span class="small">Aus dem Verlauf: <strong>${toDisplay(Math.round(this._historyKwh * 10) / 10, "ct")} kWh/Tag</strong>
-                  · <button class="link" @click=${() => (this._daily = toDisplay(Math.round(this._historyKwh * 10) / 10, "ct"))}>übernehmen</button></span>`
+              ? html`<span class="small">${t("Aus dem Verlauf:")} <strong>${toDisplay(Math.round(this._historyKwh * 10) / 10, "ct")} ${t("kWh/Tag")}</strong>
+                  · <button class="link" @click=${() => (this._daily = toDisplay(Math.round(this._historyKwh * 10) / 10, "ct"))}>${t("übernehmen")}</button></span>`
               : nothing}
           </label>
           <label class="field">
-            <span class="field-label">Großverbraucher ausklammern ab</span>
+            <span class="field-label">${t("Großverbraucher ausklammern ab")}</span>
             <span class="input-unit">
               <input inputmode="decimal"
                 .value=${this._largeLoad ?? toDisplay(settings.large_load_threshold_w === null ? null : settings.large_load_threshold_w / 1000, "kW")}
                 @input=${(e) => (this._largeLoad = e.target.value)}>
               <span class="muted">kW</span>
             </span>
-            <span class="small muted">Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose, damit seltene Spitzen
-              den Alltag nicht verzerren. Wallbox, Heizstab und andere Verbraucher in Sunflow rechnet es ohnehin heraus. Leer = nichts ausklammern.</span>
+            <span class="small muted">${t("Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose, damit seltene Spitzen den Alltag nicht verzerren. Wallbox, Heizstab und andere Verbraucher in Sunflow rechnet es ohnehin heraus. Leer = nichts ausklammern.")}</span>
           </label>
           ${this._renderWear(settings)}
           <label class="field">
-            <span class="field-label">Laden aus dem Netz</span>
+            <span class="field-label">${t("Laden aus dem Netz")}</span>
             <span class="inline">
               <input type="checkbox" .checked=${settings.allow_grid_charge} ?disabled=${this._saving}
                 @change=${(e) => this._saveSettings({ allow_grid_charge: e.target.checked })}>
-              erlaubt, wenn es sich rechnet
+              ${t("erlaubt, wenn es sich rechnet")}
             </span>
           </label>
           <label class="field">
-            <span class="field-label">PV-Prognose</span>
+            <span class="field-label">${t("PV-Prognose")}</span>
             <span class="inline">
               <input type="checkbox" .checked=${settings.pv_learning} ?disabled=${this._saving}
                 @change=${(e) => this._saveSettings({ pv_learning: e.target.checked })}>
-              an die Anlage anpassen (aus Messwerten lernen)
+              ${t("an die Anlage anpassen (aus Messwerten lernen)")}
             </span>
-            <span class="small muted">Vergleicht Prognose und Messung je Stunde und Bewölkung, Details unter „Analyse“.</span>
+            <span class="small muted">${t("Vergleicht Prognose und Messung je Stunde und Bewölkung, Details unter „Analyse“.")}</span>
           </label>
           <div class="field wide">
-            <span class="field-label">Netzdienlich</span>
+            <span class="field-label">${t("Netzdienlich")}</span>
             <span class="inline">
               <input type="checkbox" .checked=${settings.grid_friendly} ?disabled=${this._saving}
                 @change=${(e) => this._saveSettings({ grid_friendly: e.target.checked })}>
-              Einspeise- und Bezugsspitzen vermeiden, wo es wenig kostet
+              ${t("Einspeise- und Bezugsspitzen vermeiden, wo es wenig kostet")}
             </span>
-            <span class="small muted">Weiches Ziel, keine harte Grenze: Sunflow verschiebt Speicherladen und Verbraucher, damit
-              möglichst wenig über den Werten liegt. Jede kWh darüber zählt in der Planung wie 20 ct Mehrkosten (nicht in den
-              angezeigten Kosten). Lässt sich eine Spitze nicht vermeiden – Speicher voll, kein Verbraucher –, wird sie
-              trotzdem zugelassen; PV wird nie abgeregelt.</span>
+            <span class="small muted">${t("Weiches Ziel, keine harte Grenze: Sunflow verschiebt Speicherladen und Verbraucher, damit möglichst wenig über den Werten liegt. Jede kWh darüber zählt in der Planung wie 20 ct Mehrkosten (nicht in den angezeigten Kosten). Lässt sich eine Spitze nicht vermeiden – Speicher voll, kein Verbraucher –, wird sie trotzdem zugelassen; PV wird nie abgeregelt.")}</span>
             ${settings.grid_friendly
               ? html`<div class="fields">
                   <label class="field">
-                    <span class="field-label">Einspeisung möglichst unter</span>
-                    <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 6"
+                    <span class="field-label">${t("Einspeisung möglichst unter")}</span>
+                    <span class="input-unit"><input inputmode="decimal" placeholder=${t("z. B. {example}", { example: "6" })}
                       .value=${this._exportLimit ?? toDisplay(settings.export_limit_w === null ? null : settings.export_limit_w / 1000, "kW")}
                       @input=${(e) => (this._exportLimit = e.target.value)}><span class="muted">kW</span></span>
-                    <span class="small muted">Der Speicher wird morgens nicht schon voll, sondern nimmt die Mittagsspitze auf; Wallbox und
-                      Heizstab laufen bevorzugt dann. Ersetzt keine vorgeschriebene Begrenzung im Wechselrichter
-                      (Solarspitzengesetz: oft 60 % der PV-Leistung).</span>
+                    <span class="small muted">${t("Der Speicher wird morgens nicht schon voll, sondern nimmt die Mittagsspitze auf; Wallbox und Heizstab laufen bevorzugt dann. Ersetzt keine vorgeschriebene Begrenzung im Wechselrichter (Solarspitzengesetz: oft 60 % der PV-Leistung).")}</span>
                   </label>
                   <label class="field">
-                    <span class="field-label">Netzbezug möglichst unter</span>
-                    <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 11"
+                    <span class="field-label">${t("Netzbezug möglichst unter")}</span>
+                    <span class="input-unit"><input inputmode="decimal" placeholder=${t("z. B. {example}", { example: "11" })}
                       .value=${this._importLimit ?? toDisplay(settings.import_limit_w === null ? null : settings.import_limit_w / 1000, "kW")}
                       @input=${(e) => (this._importLimit = e.target.value)}><span class="muted">kW</span></span>
-                    <span class="small muted">Wallbox, Heizstab und Laden aus dem Netz laufen dann eher nacheinander als gleichzeitig,
-                      z. B. damit der Hausanschluss nicht überlastet wird.</span>
+                    <span class="small muted">${t("Wallbox, Heizstab und Laden aus dem Netz laufen dann eher nacheinander als gleichzeitig, z. B. damit der Hausanschluss nicht überlastet wird.")}</span>
                   </label>
                 </div>`
               : nothing}
           </div>
           <div class="field">
-            <span class="field-label">Unsichere PV-Prognose</span>
-            <select aria-label="Unsichere PV-Prognose" ?disabled=${this._saving}
+            <span class="field-label">${t("Unsichere PV-Prognose")}</span>
+            <select aria-label=${t("Unsichere PV-Prognose")} ?disabled=${this._saving}
               @change=${(e) => this._saveSettings({ pv_risk: e.target.value })}>
               ${[
-                ["expected", "Erwartungswert (optimistischer)"],
-                ["balanced", "Ausgewogen"],
-                ["cautious", "Vorsichtig"],
+                ["expected", t("Erwartungswert (optimistischer)")],
+                ["balanced", t("Ausgewogen")],
+                ["cautious", t("Vorsichtig")],
               ].map(([value, label]) => html`<option value=${value} ?selected=${settings.pv_risk === value}>${label}</option>`)}
             </select>
-            <span class="small muted">Vorsichtig plant mehr mit dem schlechten Fall der Prognose (Solcast p10): lieber nachts
-              günstig nachladen, als bei weniger Sonne teuer nachzukaufen.</span>
+            <span class="small muted">${t("Vorsichtig plant mehr mit dem schlechten Fall der Prognose (Solcast p10): lieber nachts günstig nachladen, als bei weniger Sonne teuer nachzukaufen.")}</span>
           </div>
           <div class="field">
-            <span class="field-label">Wetter für die Bewölkung</span>
-            <select aria-label="Wetter-Entität" ?disabled=${this._saving}
+            <span class="field-label">${t("Wetter für die Bewölkung")}</span>
+            <select aria-label=${t("Wetter-Entität")} ?disabled=${this._saving}
               @change=${(e) => this._saveSettings({ weather_entity: e.target.value || null })}>
-              <option value="" ?selected=${!settings.weather_entity}>Automatisch (erste Wetter-Entität)</option>
+              <option value="" ?selected=${!settings.weather_entity}>${t("Automatisch (erste Wetter-Entität)")}</option>
               ${(this._weather ?? []).map(
                 (w) => html`<option value=${w.entity_id} ?selected=${settings.weather_entity === w.entity_id}>
-                  ${w.name}${w.provider ? ` (${w.provider})` : ""}${w.cloud_coverage ? "" : " – ohne Bewölkungsangabe"}</option>`,
+                  ${w.name}${w.provider ? ` (${w.provider})` : ""}${w.cloud_coverage ? "" : ` – ${t("ohne Bewölkungsangabe")}`}</option>`,
               )}
             </select>
-            <span class="small muted">Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.</span>
+            <span class="small muted">${t("Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.")}</span>
           </div>
         </div>
         ${[this._wear, this._wearMode, this._wearCalc, this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._exportLimit, this._importLimit, this._daily, this._largeLoad, this._agingThreshold, this._agingCost].some((v) => v !== undefined)
           ? html`<div class="actions">
               <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
-                Speichern und neu planen
+                ${t("Speichern und neu planen")}
               </button>
             </div>`
-          : html`<p class="small muted">Strategie und Netzladen gelten sofort. Zahlenwerte werden nach einer Änderung mit „Speichern und neu planen“ übernommen.</p>`}
+          : html`<p class="small muted">${t("Strategie und Netzladen gelten sofort. Zahlenwerte werden nach einer Änderung mit „Speichern und neu planen“ übernommen.")}</p>`}
       </section>
     `;
   }

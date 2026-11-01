@@ -4,6 +4,7 @@ import { poll } from "../lib/poll.js";
 import { dailyRatios, splitFlows } from "../components/flows.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "../components/optimizer-view.js";
+import { decimal, locale, t } from "../lib/i18n.js";
 
 const REFRESH_MS = 5000;
 const TODAY_REFRESH_MS = 5 * 60 * 1000;
@@ -55,8 +56,8 @@ const ICONS = {
   load: "M13 2L4 14h7l-1 8 9-12h-7z",
 };
 
-const dayFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-const hourFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
+const dayFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const hourFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
 
 /** Mouse drag scrolls the forecast sideways like a swipe does on touch screens. */
 function dragScroll(event) {
@@ -79,25 +80,25 @@ function dragScroll(event) {
 
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const WEATHER_DAYS_KEY = "sunflow.live.weatherDays";
-const weekday = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
+const weekday = new Intl.DateTimeFormat(locale(), { weekday: "short" });
 
 // Home Assistant weather conditions: symbol and German name
 const WEATHER = {
-  "clear-night": ["🌙", "klar"],
-  cloudy: ["☁️", "bedeckt"],
-  exceptional: ["⚠️", "Unwetter"],
-  fog: ["🌫️", "Nebel"],
-  hail: ["🌨️", "Hagel"],
-  lightning: ["🌩️", "Gewitter"],
-  "lightning-rainy": ["⛈️", "Gewitter mit Regen"],
-  partlycloudy: ["⛅", "teils bewölkt"],
-  pouring: ["🌧️", "Starkregen"],
-  rainy: ["🌦️", "Regen"],
-  snowy: ["❄️", "Schnee"],
-  "snowy-rainy": ["🌨️", "Schneeregen"],
-  sunny: ["☀️", "sonnig"],
-  windy: ["💨", "windig"],
-  "windy-variant": ["💨", "windig, bewölkt"],
+  "clear-night": ["🌙", t("klar")],
+  cloudy: ["☁️", t("bedeckt")],
+  exceptional: ["⚠️", t("Unwetter")],
+  fog: ["🌫️", t("Nebel")],
+  hail: ["🌨️", t("Hagel")],
+  lightning: ["🌩️", t("Gewitter")],
+  "lightning-rainy": ["⛈️", t("Gewitter mit Regen")],
+  partlycloudy: ["⛅", t("teils bewölkt")],
+  pouring: ["🌧️", t("Starkregen")],
+  rainy: ["🌦️", t("Regen")],
+  snowy: ["❄️", t("Schnee")],
+  "snowy-rainy": ["🌨️", t("Schneeregen")],
+  sunny: ["☀️", t("sonnig")],
+  windy: ["💨", t("windig")],
+  "windy-variant": ["💨", t("windig, bewölkt")],
 };
 
 function pct(value) {
@@ -150,7 +151,7 @@ class SunflowLive extends LitElement {
       this._live = await api.live();
       this._error = null;
     } catch (err) {
-      this._error = `Live-Werte nicht verfügbar: ${err.message}`;
+      this._error = t("Live-Werte nicht verfügbar: {error}", { error: err.message });
     }
   }
 
@@ -158,17 +159,17 @@ class SunflowLive extends LitElement {
     try {
       // Energy counters are exact; integrated power means only stand in where counters are missing
       const energy = await api.energy("today").catch(() => null);
-      const t = energy?.totals;
-      if (t && t.pv !== null && t.grid_import !== null && t.grid_export !== null && energy.consumption !== null) {
+      const totals = energy?.totals;
+      if (totals && totals.pv !== null && totals.grid_import !== null && totals.grid_export !== null && energy.consumption !== null) {
         const kwh = (wh) => wh / 1000;
         this._today = {
-          pv: kwh(t.pv),
+          pv: kwh(totals.pv),
           consumption: kwh(energy.consumption),
-          imported: kwh(t.grid_import),
-          exported: kwh(t.grid_export),
+          imported: kwh(totals.grid_import),
+          exported: kwh(totals.grid_export),
           autarky: energy.autarky,
           selfConsumption: energy.self_consumption,
-          source: "Energiezähler",
+          source: t("Energiezähler"),
         };
         this._todayError = null;
         return;
@@ -184,7 +185,7 @@ class SunflowLive extends LitElement {
       const exported = sum((p) => (p.grid_w === null ? 0 : Math.max(-p.grid_w, 0)));
       this._today = {
         pv, consumption, imported, exported, ...dailyRatios({ pv, consumption, imported, exported }),
-        source: "Leistungsmittelwerte (keine Energiezähler gefunden)",
+        source: t("Leistungsmittelwerte (keine Energiezähler gefunden)"),
       };
       this._todayError = null;
     } catch (err) {
@@ -198,19 +199,19 @@ class SunflowLive extends LitElement {
     return html`
       <div class="heading">
         <h1>Live</h1>
-        <span class="small muted subtitle"><span>Aktuelle Energieflüsse</span>${live
-          ? html`<span class="stand">Stand ${dayFormat.format(new Date(live.time))}</span>`
+        <span class="small muted subtitle"><span>${t("Aktuelle Energieflüsse")}</span>${live
+          ? html`<span class="stand">${t("Stand {time}", { time: dayFormat.format(new Date(live.time)) })}</span>`
           : nothing}</span>
         ${live?.weather && (live.display?.weather_mobile || live.display?.weather_desktop)
           ? this._renderWeather(live.weather, live.display)
           : nothing}
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
-      ${live === null && !this._error ? html`<p class="muted">Lade Live-Werte …</p>` : nothing}
+      ${live === null && !this._error ? html`<p class="muted">${t("Lade Live-Werte …")}</p>` : nothing}
       ${live ? this._renderFlow(live) : nothing}
       ${this._renderToday()}
       ${this._optimizers
-        ? html`<sf-optimizer-view .string=${this._optimizers.key} .heading=${`Optimierer · ${this._optimizers.name}`}
+        ? html`<sf-optimizer-view .string=${this._optimizers.key} .heading=${t("Optimierer · {name}", { name: this._optimizers.name })}
             @close=${() => (this._optimizers = null)}></sf-optimizer-view>`
         : nothing}
     `;
@@ -223,19 +224,19 @@ class SunflowLive extends LitElement {
     return html`
       <div class="weather ${display?.weather_mobile === false ? "hide-mobile" : ""} ${display?.weather_desktop === false
         ? "hide-desktop"
-        : ""}" aria-label="Wetter">
+        : ""}" aria-label=${t("Wetter")}>
         <div class="weather-now">
           <span class="weather-symbol" aria-hidden="true">${symbol}</span>
           <div>
             <div><strong>${temp(weather.temperature)}</strong> ${name}</div>
             ${weather.cloud !== null && weather.cloud !== undefined
-              ? html`<div class="small muted">${Math.round(weather.cloud)} % Bewölkung</div>`
+              ? html`<div class="small muted">${t("{cloud} % Bewölkung", { cloud: Math.round(weather.cloud) })}</div>`
               : nothing}
           </div>
         </div>
         ${weather.days?.length
-          ? html`<div class="range" role="group" aria-label="Wettervorhersage">
-              ${[[false, "Stunden"], [true, "Tage"]].map(
+          ? html`<div class="range" role="group" aria-label=${t("Wettervorhersage")}>
+              ${[[false, t("Stunden")], [true, t("Tage")]].map(
                 ([days, label]) => html`<button class=${days === showDays ? "active" : ""} aria-pressed=${days === showDays}
                   @click=${() => this._setWeatherDays(days)}>${label}</button>`,
               )}
@@ -243,15 +244,15 @@ class SunflowLive extends LitElement {
           : nothing}
         <div class="forecast">
         ${this._scroll?.left
-          ? html`<button class="arrow left" aria-label="Früher" @click=${() => this._page(-1)}>‹</button>`
+          ? html`<button class="arrow left" aria-label=${t("Früher")} @click=${() => this._page(-1)}>‹</button>`
           : nothing}
         <ol class="weather-hours" @pointerdown=${dragScroll} @scroll=${() => this._updateScroll()}>
           ${(showDays ? weather.days : weather.hours).map((h) => {
             const [hourSymbol, hourName] = WEATHER[h.condition] ?? ["·", h.condition ?? ""];
             const when = new Date(h.time);
-            return html`<li title="${hourName}${h.precipitation ? `, ${String(h.precipitation).replace(".", ",")} mm` : ""}">
+            return html`<li title="${hourName}${h.precipitation ? `, ${decimal(h.precipitation)} mm` : ""}">
               <span class="small muted">${showDays
-                ? (when.toDateString() === new Date().toDateString() ? "heute" : weekday.format(when))
+                ? (when.toDateString() === new Date().toDateString() ? t("heute") : weekday.format(when))
                 : hourFormat.format(when)}</span>
               <span aria-label=${hourName}>${hourSymbol}</span>
               <span class="small">${temp(h.temperature)}</span>
@@ -262,7 +263,7 @@ class SunflowLive extends LitElement {
           })}
         </ol>
         ${this._scroll?.right
-          ? html`<button class="arrow right" aria-label="Später" @click=${() => this._page(1)}>›</button>`
+          ? html`<button class="arrow right" aria-label=${t("Später")} @click=${() => this._page(1)}>›</button>`
           : nothing}
         </div>
       </div>
@@ -328,17 +329,17 @@ class SunflowLive extends LitElement {
     const summary = [
       hasPv ? `PV ${formatPower(live.pv_w, pvDisplay)}` : null,
       battery
-        ? `Batterie ${formatPower(battery.power_w, battery.display)}${battery.soc_pct === null ? "" : ` bei ${Math.round(battery.soc_pct)} %`}`
+        ? `${t("Batterie")} ${formatPower(battery.power_w, battery.display)}${battery.soc_pct === null ? "" : ` ${t("bei {soc} %", { soc: Math.round(battery.soc_pct) })}`}`
         : null,
-      hasGrid ? `Netz ${formatPower(live.grid_w, displays.grid)}` : null,
-      `Haus ${formatPower(flows.house, displays.load)}`,
+      hasGrid ? `${t("Netz")} ${formatPower(live.grid_w, displays.grid)}` : null,
+      `${t("Haus")} ${formatPower(flows.house, displays.load)}`,
       ...consumers.map((c) => `${c.name} ${formatPower(c.power_w, c.display)}`),
     ]
       .filter(Boolean)
       .join(", ");
 
     return html`
-      <svg viewBox="0 0 ${width} ${height + top}" class="flow" role="img" aria-label="Energiefluss: ${summary}">
+      <svg viewBox="0 0 ${width} ${height + top}" class="flow" role="img" aria-label=${t("Energiefluss: {summary}", { summary })}>
         ${strings.map((string, i) =>
           this._edge(
             `M${stringX(i)},${STRING_Y + STRING_R} C${stringX(i)},${top} ${NODE.pv[0]},${top - 10} ${NODE.pv[0]},${top + NODE.pv[1] - R}`,
@@ -372,23 +373,23 @@ class SunflowLive extends LitElement {
               // The string row above already shows the parts
               live.pv.length > 1 && !strings.length ? live.pv.map((p) => formatPower(p.power_w, p.display)).join(" + ") : null)
           : nothing}
-        ${this._node("grid", NODE.grid, COLOR.grid, "Netz", hasGrid ? formatPower(Math.abs(live.grid_w), displays.grid) : "–",
-          !hasGrid ? "keine Messung" : live.grid_w > ACTIVE_W ? "Bezug" : live.grid_w < -ACTIVE_W ? "Einspeisung" : "ausgeglichen")}
+        ${this._node("grid", NODE.grid, COLOR.grid, t("Netz"), hasGrid ? formatPower(Math.abs(live.grid_w), displays.grid) : "–",
+          !hasGrid ? t("keine Messung") : live.grid_w > ACTIVE_W ? t("Bezug") : live.grid_w < -ACTIVE_W ? t("Einspeisung") : t("ausgeglichen"))}
         ${battery
           ? this._batteryNode(battery)
           : nothing}
-        ${this._node("home", NODE.home, COLOR.home, "Haus", formatPower(homeBase, displays.load),
-          consumers.length ? `gesamt ${formatPower(flows.house, displays.load)}` : null)}
+        ${this._node("home", NODE.home, COLOR.home, t("Haus"), formatPower(homeBase, displays.load),
+          consumers.length ? t("gesamt {power}", { power: formatPower(flows.house, displays.load) }) : null)}
         ${consumers.map((c, i) => this._consumerNode(c, [CONSUMER_X, consumerY(i)], COLOR.consumers[i]))}
         </g>
       </svg>
       ${battery?.parts?.length
-        ? html`<p class="small muted">Speicher: ${battery.parts
+        ? html`<p class="small muted">${t("Speicher:")} ${battery.parts
             .map((b) => `${b.name} ${b.soc_pct === null ? "–" : `${Math.round(b.soc_pct)} %`} · ${formatPower(b.power_w, b.display)}`)
             .join(" · ")}</p>`
         : nothing}
       ${live.consumers.length > MAX_CONSUMERS
-        ? html`<p class="small muted">Weitere Verbraucher: ${live.consumers
+        ? html`<p class="small muted">${t("Weitere Verbraucher:")} ${live.consumers
             .slice(MAX_CONSUMERS)
             .map((c) => `${c.name} ${formatPower(c.power_w, c.display)}`)
             .join(", ")}</p>`
@@ -415,7 +416,7 @@ class SunflowLive extends LitElement {
     const open = string.optimizers > 0;
     return svg`
       <g class="node ${open ? "clickable" : ""}" role=${open ? "button" : "img"} tabindex=${open ? "0" : "-1"}
-        aria-label=${open ? `${string.title}: ${string.optimizers} Optimierer anzeigen` : string.title}
+        aria-label=${open ? t("{name}: {count} Optimierer anzeigen", { name: string.title, count: string.optimizers }) : string.title}
         @click=${() => open && (this._optimizers = { key: string.key, name: string.title })}
         @keydown=${(e) => open && (e.key === "Enter" || e.key === " ") && (this._optimizers = { key: string.key, name: string.title })}>
         <circle cx=${x} cy=${STRING_Y} r=${STRING_R} class="disc thin" style="stroke: ${COLOR.pv}"></circle>
@@ -449,7 +450,7 @@ class SunflowLive extends LitElement {
     const soc = Math.min(Math.max((battery.soc_pct ?? 0) / 100, 0), 1);
     const circumference = 2 * Math.PI * (R + 6);
     const power = battery.power_w ?? 0;
-    const state = power > ACTIVE_W ? "lädt" : power < -ACTIVE_W ? "entlädt" : "ruht";
+    const state = power > ACTIVE_W ? t("lädt") : power < -ACTIVE_W ? t("entlädt") : t("ruht");
     return svg`
       <circle cx=${x} cy=${y} r=${R + 6} class="soc-track"></circle>
       <circle cx=${x} cy=${y} r=${R + 6} class="soc-ring" style="stroke: ${COLOR.battery}"
@@ -458,7 +459,7 @@ class SunflowLive extends LitElement {
         "battery",
         [x, y],
         COLOR.battery,
-        `${battery.count > 1 ? `${battery.count} Speicher` : "Batterie"} ${battery.soc_pct === null ? "" : `${Math.round(battery.soc_pct)} %`}`,
+        `${battery.count > 1 ? t("{count} Speicher", { count: battery.count }) : t("Batterie")} ${battery.soc_pct === null ? "" : `${Math.round(battery.soc_pct)} %`}`,
         formatPower(Math.abs(power), battery.display),
         state,
       )}
@@ -473,7 +474,7 @@ class SunflowLive extends LitElement {
     // A wallbox with assigned cars names the one it recognized
     const detail =
       consumer.kind === "vehicle" && consumer.connected === false
-        ? "kein Auto"
+        ? t("kein Auto")
         : [consumer.vehicle, level].filter(Boolean).join(" ") || null;
     return this._node(
       consumer.kind in ICONS ? consumer.kind : "load",
@@ -487,29 +488,29 @@ class SunflowLive extends LitElement {
   }
 
   _renderToday() {
-    const t = this._today;
-    if (!t) {
+    const today = this._today;
+    if (!today) {
       return this._todayError
-        ? html`<section class="today"><h2>Heute</h2>
-            <p class="small muted">Tageswerte gerade nicht abrufbar (${this._todayError}) – neuer Versuch in Kürze.</p></section>`
+        ? html`<section class="today"><h2>${t("Heute")}</h2>
+            <p class="small muted">${t("Tageswerte gerade nicht abrufbar ({error}) – neuer Versuch in Kürze.", { error: this._todayError })}</p></section>`
         : nothing;
     }
     const kwh = (v) => formatValue(v * 1000, "Wh");
     return html`
       <section class="today">
-        <h2>Heute <span class="small muted source">aus ${t.source}${this._todayError
-          ? html` · <span class="warn-text" title=${this._todayError}>nicht aktuell, Abruf fehlgeschlagen</span>`
+        <h2>${t("Heute")} <span class="small muted source">${t("aus {source}", { source: today.source })}${this._todayError
+          ? html` · <span class="warn-text" title=${this._todayError}>${t("nicht aktuell, Abruf fehlgeschlagen")}</span>`
           : nothing}</span></h2>
         <div class="tiles">
-          <div class="tile"><div class="small muted">PV erzeugt</div><div class="value">${kwh(t.pv)}</div></div>
-          <div class="tile"><div class="small muted">Verbraucht</div><div class="value">${kwh(t.consumption)}</div></div>
-          <div class="tile"><div class="small muted">Netzbezug</div><div class="value">${kwh(t.imported)}</div></div>
-          <div class="tile"><div class="small muted">Eingespeist</div><div class="value">${kwh(t.exported)}</div></div>
-          <div class="tile highlight" title="Anteil des Verbrauchs ohne Netzbezug">
-            <div class="small muted">Autarkie</div><div class="value">${pct(t.autarky)}</div>
+          <div class="tile"><div class="small muted">${t("PV erzeugt")}</div><div class="value">${kwh(today.pv)}</div></div>
+          <div class="tile"><div class="small muted">${t("Verbraucht")}</div><div class="value">${kwh(today.consumption)}</div></div>
+          <div class="tile"><div class="small muted">${t("Netzbezug")}</div><div class="value">${kwh(today.imported)}</div></div>
+          <div class="tile"><div class="small muted">${t("Eingespeist")}</div><div class="value">${kwh(today.exported)}</div></div>
+          <div class="tile highlight" title=${t("Anteil des Verbrauchs ohne Netzbezug")}>
+            <div class="small muted">${t("Autarkie")}</div><div class="value">${pct(today.autarky)}</div>
           </div>
-          <div class="tile highlight" title="Anteil der PV-Erzeugung, der selbst genutzt wird">
-            <div class="small muted">Eigenverbrauch</div><div class="value">${pct(t.selfConsumption)}</div>
+          <div class="tile highlight" title=${t("Anteil der PV-Erzeugung, der selbst genutzt wird")}>
+            <div class="small muted">${t("Eigenverbrauch")}</div><div class="value">${pct(today.selfConsumption)}</div>
           </div>
         </div>
       </section>

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.73.0
+
+- Sunflow spricht Deutsch und Englisch. Neue Einstellung unter Einstellungen → Anzeige → Sprache: „Wie Home Assistant“ (Standard; Deutsch, wenn Home Assistant auf Deutsch steht, sonst Englisch), „Deutsch“ oder „English“. Sie gilt für die Oberfläche und für Meldungen wie Planhinweise, Empfehlungen, Gerätetest und Steuerungsprotokoll; die Seite lädt nach dem Wechsel neu.
+- Zahlen, Uhrzeiten und Eingabefelder folgen der Sprache (1,5 kW bzw. 1.5 kW).
+- Einträge im Steuerungsprotokoll und Planhinweise entstehen in der Sprache, die beim Schreiben galt.
+- Der Hinweis in der Planung verweist auf „Einstellungen → Planung“ statt auf den alten Namen „Standards“.
+
 ## 0.72.2
 
 - Geräte: Rollen und Kenndaten ohne deutsche Bezeichnung erscheinen nicht mehr mit ihrem internen Namen, z. B. bei der go-e „Eingestellter Ladestrom“, „Ladekarte“, „Karte nötig“, „Phasenmodus“ und „Ladestrom ändern höchstens alle“, bei Wechselrichtern „Max. AC-Leistung“; die neuen Kenndaten haben eine kurze Erklärung.

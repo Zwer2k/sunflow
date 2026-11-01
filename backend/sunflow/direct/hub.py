@@ -9,13 +9,14 @@ import logging
 from typing import Any
 
 from sunflow.devices.discovery import DIRECT_DOMAIN, Snapshot
+from sunflow.i18n import N_, t
 
 from .transports import HttpTransport, Transport, TransportError, make_transport
 
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = DIRECT_DOMAIN
-ENTRY = {"entry_id": DIRECT_DOMAIN, "domain": DIRECT_DOMAIN, "title": "Direkt angebunden", "state": "loaded"}
+ENTRY = {"entry_id": DIRECT_DOMAIN, "domain": DIRECT_DOMAIN, "title": N_("Direkt angebunden"), "state": "loaded"}
 DEVICE_PREFIX = "direct_"
 DEFAULT_POLL = timedelta(seconds=10)
 
@@ -214,8 +215,8 @@ class DirectHub:
         states = {k: v for d in self.devices.values() for k, v in d.states().items()}
         return replace(
             snapshot,
-            entries=[*snapshot.entries, ENTRY],
-            integration_names={**snapshot.integration_names, DOMAIN: "Direkt angebunden (Modbus/HTTP)"},
+            entries=[*snapshot.entries, ENTRY | {"title": t(ENTRY["title"])}],
+            integration_names={**snapshot.integration_names, DOMAIN: t("Direkt angebunden (Modbus/HTTP)")},
             devices=[*snapshot.devices, *devices],
             entities=[*snapshot.entities, *entities],
             states={**snapshot.states, **states},

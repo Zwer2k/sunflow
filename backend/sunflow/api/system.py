@@ -20,6 +20,7 @@ from sunflow.control.journal import JOURNAL_FILE
 from sunflow.devices.discovery import discover
 from sunflow.devices.optimizers import discover as discover_optimizers, used_entries
 from sunflow.ha import HAClient, HAError
+from sunflow.i18n import t
 from sunflow.integration_link import app_host, host_port
 from sunflow.mcp_key import McpKey
 from sunflow.shadow.runner import ShadowRunner
@@ -175,14 +176,14 @@ async def import_data(request: Request, file: UploadFile) -> dict[str, Any]:
         try:
             with zipfile.ZipFile(io.BytesIO(content)) as archive:
                 if "shadow.db" not in archive.namelist():
-                    raise HTTPException(status_code=422, detail="Export enthält keine shadow.db")
+                    raise HTTPException(status_code=422, detail=t("Export enthält keine shadow.db"))
                 archive.extract("shadow.db", tmp)
         except zipfile.BadZipFile as err:
-            raise HTTPException(status_code=422, detail="Keine gültige Export-Datei") from err
+            raise HTTPException(status_code=422, detail=t("Keine gültige Export-Datei")) from err
         try:
             count = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
         except sqlite3.Error as err:
-            raise HTTPException(status_code=422, detail=f"Export-Datei nicht lesbar: {err}") from err
+            raise HTTPException(status_code=422, detail=t("Export-Datei nicht lesbar: {error}", error=err)) from err
     return {"imported_slots": count}
 
 

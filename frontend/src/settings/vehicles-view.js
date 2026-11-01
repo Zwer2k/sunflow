@@ -4,6 +4,7 @@ import { confirmDialog } from "../components/dialog.js";
 import { formatValue, fromDisplay, toDisplay } from "../lib/format.js";
 import { poll } from "../lib/poll.js";
 import "../components/picker.js";
+import { decimal, t } from "../lib/i18n.js";
 
 // Live values follow the car's sensors; they change slowly
 const REFRESH_MS = 30000;
@@ -64,7 +65,7 @@ class SunflowVehicles extends LitElement {
       // A poll must not overwrite what is being saved
       if (!this._busy) this._data = data;
     } catch (err) {
-      this._error = `Fahrzeuge nicht verfügbar: ${err.message}`;
+      this._error = t("Fahrzeuge nicht verfügbar: {error}", { error: err.message });
     }
   }
 
@@ -75,26 +76,26 @@ class SunflowVehicles extends LitElement {
     const values = [];
     if (vehicle.soc_entity) {
       values.push({
-        label: "Ladestand",
+        label: t("Ladestand"),
         value: live.soc_pct === null ? "–" : formatValue(live.soc_pct, "%"),
-        hint: live.soc_unavailable ? "Sensor gerade nicht lesbar" : since(live.soc_updated),
+        hint: live.soc_unavailable ? t("Sensor gerade nicht lesbar") : since(live.soc_updated),
       });
       if (live.energy_wh !== null) {
-        values.push({ label: "Im Akku", value: formatValue(live.energy_wh, "Wh"), hint: `von ${formatValue(vehicle.capacity_wh, "Wh")}` });
+        values.push({ label: t("Im Akku"), value: formatValue(live.energy_wh, "Wh"), hint: t("von {capacity}", { capacity: formatValue(vehicle.capacity_wh, "Wh") }) });
       }
     }
     if (vehicle.aux_battery?.voltage_entity) {
       const voltage = live.aux_voltage;
       values.push({
-        label: "12-V-Batterie",
+        label: t("12-V-Batterie"),
         value: voltage === null ? "–" : `${toDisplay(voltage, "V")} V`,
-        hint: voltage !== null && voltage < vehicle.aux_battery.min_voltage_v ? "unter der Grenze" : since(live.aux_updated),
+        hint: voltage !== null && voltage < vehicle.aux_battery.min_voltage_v ? t("unter der Grenze") : since(live.aux_updated),
       });
     }
     if (vehicle.plugged_entity) {
       values.push({
-        label: "Angesteckt / zuhause",
-        value: live.plugged === null ? (live.plugged_state ?? "–") : live.plugged ? "ja" : "nein",
+        label: t("Angesteckt / zuhause"),
+        value: live.plugged === null ? (live.plugged_state ?? "–") : live.plugged ? t("ja") : t("nein"),
         hint: "",
       });
     }
@@ -116,12 +117,11 @@ class SunflowVehicles extends LitElement {
     const data = this._data;
     return html`
       <div class="heading">
-        <h1>Fahrzeuge</h1>
-        <p class="muted">Was das Auto ist: Akku und die Sensoren seiner eigenen Integration. An welcher Wallbox es mit welcher
-          Karte und welchem Ziel lädt, steht unter „Laden“.</p>
+        <h1>${t("Fahrzeuge")}</h1>
+        <p class="muted">${t("Was das Auto ist: Akku und die Sensoren seiner eigenen Integration. An welcher Wallbox es mit welcher Karte und welchem Ziel lädt, steht unter „Laden“.")}</p>
       </div>
       ${this._error ? html`<div class="alert error">${this._error}</div>` : nothing}
-      ${data === null ? html`<p class="muted">Lade …</p>` : nothing}
+      ${data === null ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
       ${(data?.vehicles ?? []).map((v) => {
         const open = this._form !== null && this._editId === v.id;
         const where = (data.charging ?? []).filter((c) => c.vehicle_id === v.id)
@@ -134,11 +134,11 @@ class SunflowVehicles extends LitElement {
               <span>
                 <span class="device-title">${v.name}</span>
                 <span class="small muted block">${toDisplay(v.capacity_wh / 1000, "kWh")} kWh${where.length
-                  ? ` · lädt an ${where.join(", ")}`
-                  : " · noch an keiner Wallbox (→ Laden)"}</span>
+                  ? ` · ${t("lädt an {wallboxes}", { wallboxes: where.join(", ") })}`
+                  : ` · ${t("noch an keiner Wallbox (→ Laden)")}`}</span>
               </span>
             </button>
-            ${v.soc_entity ? nothing : html`<span class="small warn-text">kein Ladestand-Sensor</span>`}
+            ${v.soc_entity ? nothing : html`<span class="small warn-text">${t("kein Ladestand-Sensor")}</span>`}
             ${open
               ? html`${this._renderTiles(v)}${this._renderForm(v)}`
               : this._liveValues(v).length
@@ -148,7 +148,7 @@ class SunflowVehicles extends LitElement {
       })}
       ${this._form !== null && this._editId === null
         ? html`<section class="device">${this._renderForm(null)}</section>`
-        : html`<div><button class="secondary" @click=${() => this._edit(null)}>Fahrzeug hinzufügen …</button></div>`}
+        : html`<div><button class="secondary" @click=${() => this._edit(null)}>${t("Fahrzeug hinzufügen …")}</button></div>`}
     `;
   }
 
@@ -160,49 +160,48 @@ class SunflowVehicles extends LitElement {
       <div class="editor">
         <div class="fields">
           <label class="field">
-            <span class="field-label">Name</span>
-            <span class="input-unit"><input placeholder="z. B. Fiat 500e" .value=${form.name} @input=${(e) => set("name", e.target.value)}></span>
+            <span class="field-label">${t("Name")}</span>
+            <span class="input-unit"><input placeholder=${t("z. B. {example}", { example: "Fiat 500e" })} .value=${form.name} @input=${(e) => set("name", e.target.value)}></span>
           </label>
           <label class="field">
-            <span class="field-label">Akkukapazität (nutzbar)</span>
-            <span class="input-unit"><input inputmode="decimal" placeholder="37,5" .value=${form.capacity_kwh}
+            <span class="field-label">${t("Akkukapazität (nutzbar)")}</span>
+            <span class="input-unit"><input inputmode="decimal" placeholder=${decimal("37.5")} .value=${form.capacity_kwh}
               @input=${(e) => set("capacity_kwh", e.target.value)}><span class="muted">kWh</span></span>
           </label>
           <label class="field">
-            <span class="field-label">Ladewirkungsgrad</span>
+            <span class="field-label">${t("Ladewirkungsgrad")}</span>
             <span class="input-unit"><input inputmode="decimal" placeholder="90" .value=${form.efficiency}
               @input=${(e) => set("efficiency", e.target.value)}><span class="muted">%</span></span>
           </label>
           <label class="field">
-            <span class="field-label">Höchste Ladeleistung einphasig (optional)</span>
-            <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 7,4" .value=${form.max_1p_kw}
+            <span class="field-label">${t("Höchste Ladeleistung einphasig (optional)")}</span>
+            <span class="input-unit"><input inputmode="decimal" placeholder=${t("z. B. {example}", { example: decimal("7.4") })} .value=${form.max_1p_kw}
               @input=${(e) => set("max_1p_kw", e.target.value)}><span class="muted">kW</span></span>
           </label>
           <label class="field">
-            <span class="field-label">Höchste Ladeleistung dreiphasig (optional)</span>
-            <span class="input-unit"><input inputmode="decimal" placeholder="z. B. 11" .value=${form.max_3p_kw}
+            <span class="field-label">${t("Höchste Ladeleistung dreiphasig (optional)")}</span>
+            <span class="input-unit"><input inputmode="decimal" placeholder=${t("z. B. {example}", { example: "11" })} .value=${form.max_3p_kw}
               @input=${(e) => set("max_3p_kw", e.target.value)}><span class="muted">kW</span></span>
           </label>
           <div class="field">
-            <span class="field-label">Ladestand</span>
-            <sf-picker label="Ladestand" empty-label="keiner" placeholder="z. B. MQTT-Sensor des Autos …" .value=${form.soc_entity}
+            <span class="field-label">${t("Ladestand")}</span>
+            <sf-picker label=${t("Ladestand")} empty-label=${t("keiner")} placeholder=${t("z. B. MQTT-Sensor des Autos …")} .value=${form.soc_entity}
               .options=${options(this._candidates?.percent, (c) => `${c.state ?? "–"} %`)}
               @change=${(e) => set("soc_entity", e.detail.value)}></sf-picker>
           </div>
           <div class="field">
-            <span class="field-label">Angesteckt / zuhause (optional)</span>
-            <sf-picker label="Angesteckt" empty-label="keiner" placeholder="Sensor des Autos …" .value=${form.plugged_entity}
+            <span class="field-label">${t("Angesteckt / zuhause (optional)")}</span>
+            <sf-picker label=${t("Angesteckt")} empty-label=${t("keiner")} placeholder=${t("Sensor des Autos …")} .value=${form.plugged_entity}
               .options=${options(this._candidates?.presence, (c) => c.state ?? "–")}
               @change=${(e) => set("plugged_entity", e.detail.value)}></sf-picker>
-            <span class="small muted">Am besten die Anwesenheit (z. B. ein device_tracker des Autos): Sunflow lernt daraus,
-              wann es nach Hause kommt, und meldet, wenn sich das Einstecken lohnt.</span>
+            <span class="small muted">${t("Am besten die Anwesenheit (z. B. ein device_tracker des Autos): Sunflow lernt daraus, wann es nach Hause kommt, und meldet, wenn sich das Einstecken lohnt.")}</span>
           </div>
         </div>
         ${this._renderAux(form, options)}
         <div class="actions">
-          <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>Speichern</button>
-          <button class="secondary" @click=${() => this._cancel()}>Abbrechen</button>
-          ${vehicle ? html`<span class="spacer"></span><button class="link danger" @click=${() => this._remove(vehicle)}>Entfernen</button>` : nothing}
+          <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>${t("Speichern")}</button>
+          <button class="secondary" @click=${() => this._cancel()}>${t("Abbrechen")}</button>
+          ${vehicle ? html`<span class="spacer"></span><button class="link danger" @click=${() => this._remove(vehicle)}>${t("Entfernen")}</button>` : nothing}
         </div>
       </div>
     `;
@@ -217,25 +216,23 @@ class SunflowVehicles extends LitElement {
         ?disabled=${!aux.voltage_entity} @input=${(e) => set(field, e.target.value)}><span class="muted">${unit}</span></span>
     </label>`;
     return html`<fieldset class="group">
-      <legend>12-V-Batterie schützen</legend>
-      <p class="small muted">Manche Autos (z. B. Fiat 500e) entladen ihre 12-V-Batterie, wenn sie lange angesteckt sind,
-        ohne zu laden. Fällt die Spannung unter die Grenze, lädt die Wallbox für kurze Zeit mit der kleinsten Leistung –
-        dabei lädt das Auto auch die 12-V-Batterie. Wirkt nur, solange Sunflow die Wallbox steuert.</p>
+      <legend>${t("12-V-Batterie schützen")}</legend>
+      <p class="small muted">${t("Manche Autos (z. B. Fiat 500e) entladen ihre 12-V-Batterie, wenn sie lange angesteckt sind, ohne zu laden. Fällt die Spannung unter die Grenze, lädt die Wallbox für kurze Zeit mit der kleinsten Leistung – dabei lädt das Auto auch die 12-V-Batterie. Wirkt nur, solange Sunflow die Wallbox steuert.")}</p>
       <div class="fields">
         <div class="field">
-          <span class="field-label">Spannung der 12-V-Batterie</span>
-          <sf-picker label="12-V-Batterie" empty-label="nicht überwachen" placeholder="Sensor des Autos …" .value=${aux.voltage_entity}
+          <span class="field-label">${t("Spannung der 12-V-Batterie")}</span>
+          <sf-picker label=${t("12-V-Batterie")} empty-label=${t("nicht überwachen")} placeholder=${t("Sensor des Autos …")} .value=${aux.voltage_entity}
             .options=${options(this._candidates?.voltage, (c) => `${c.state ?? "–"} V`)}
             @change=${(e) => set("voltage_entity", e.detail.value)}></sf-picker>
         </div>
-        ${number("min_voltage_v", "Laden unter", "V", "12,2")}
-        ${number("charge_min", "Laden für", "min", "5")}
-        ${number("pause_min", "Frühestens wieder nach", "min", "60")}
-        ${number("current_a", "Ladestrom (leer: kleinster der Wallbox)", "A", "6")}
+        ${number("min_voltage_v", t("Laden unter"), "V", decimal("12.2"))}
+        ${number("charge_min", t("Laden für"), "min", "5")}
+        ${number("pause_min", t("Frühestens wieder nach"), "min", "60")}
+        ${number("current_a", t("Ladestrom (leer: kleinster der Wallbox)"), "A", "6")}
         <label class="check">
           <input type="checkbox" .checked=${aux.one_phase} ?disabled=${!aux.voltage_entity}
             @change=${(e) => set("one_phase", e.target.checked)}>
-          <span>einphasig laden (wenn die Wallbox umschalten kann)</span>
+          <span>${t("einphasig laden (wenn die Wallbox umschalten kann)")}</span>
         </label>
       </div>
     </fieldset>`;
@@ -262,7 +259,7 @@ class SunflowVehicles extends LitElement {
       try {
         this._candidates = await api.candidates();
       } catch (err) {
-        this._error = `Entitäten konnten nicht geladen werden: ${err.message}`;
+        this._error = t("Entitäten konnten nicht geladen werden: {error}", { error: err.message });
       }
     }
     this._editId = vehicle?.id ?? null;
@@ -290,18 +287,18 @@ class SunflowVehicles extends LitElement {
     const capacity = fromDisplay(form.capacity_kwh, "kWh");
     const efficiency = form.efficiency === "" ? 90 : fromDisplay(form.efficiency, "%");
     if (!form.name.trim() || !capacity || capacity <= 0 || !efficiency) {
-      this._error = "Bitte Name, Akkukapazität und einen gültigen Wirkungsgrad angeben.";
+      this._error = t("Bitte Name, Akkukapazität und einen gültigen Wirkungsgrad angeben.");
       return;
     }
     const limit = (text) => (text === "" ? null : fromDisplay(text, "kW"));
     const [max1p, max3p] = [limit(form.max_1p_kw), limit(form.max_3p_kw)];
     if ([max1p, max3p].some((w) => w !== null && !(w > 0 && w <= 50))) {
-      this._error = "Höchste Ladeleistung: leer lassen oder eine Leistung bis 50 kW angeben.";
+      this._error = t("Höchste Ladeleistung: leer lassen oder eine Leistung bis 50 kW angeben.");
       return;
     }
     const aux = this._auxFromForm(form.aux);
     if (aux === null) {
-      this._error = "12-V-Batterie: Grenze 10–14 V, Ladezeit 1–120 min, Pause 5–1440 min, Strom 6–32 A.";
+      this._error = t("12-V-Batterie: Grenze 10–14 V, Ladezeit 1–120 min, Pause 5–1440 min, Strom 6–32 A.");
       return;
     }
     const previous = this._data.vehicles.find((v) => v.id === this._editId);
@@ -325,9 +322,9 @@ class SunflowVehicles extends LitElement {
 
   async _remove(vehicle) {
     if (!(await confirmDialog({
-      title: `„${vehicle.name}“ entfernen?`,
-      text: "Mit dem Fahrzeug gehen auch seine Ladeprofile an den Wallboxen.",
-      confirm: "Entfernen",
+      title: t("„{name}“ entfernen?", { name: vehicle.name }),
+      text: t("Mit dem Fahrzeug gehen auch seine Ladeprofile an den Wallboxen."),
+      confirm: t("Entfernen"),
       danger: true,
     }))) return;
     await this._store(this._data.vehicles.filter((v) => v.id !== vehicle.id));
@@ -340,7 +337,7 @@ class SunflowVehicles extends LitElement {
       this._data = await api.setVehicles(vehicles);
       this._error = null;
     } catch (err) {
-      this._error = `Fahrzeuge nicht gespeichert: ${err.message}`;
+      this._error = t("Fahrzeuge nicht gespeichert: {error}", { error: err.message });
     } finally {
       this._busy = false;
     }
@@ -394,10 +391,10 @@ class SunflowVehicles extends LitElement {
 function since(iso) {
   if (!iso) return "";
   const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (minutes < 1) return "gerade eben";
-  if (minutes < 60) return `vor ${minutes} min`;
+  if (minutes < 1) return t("gerade eben");
+  if (minutes < 60) return t("vor {minutes} min", { minutes });
   const hours = Math.round(minutes / 60);
-  return hours < 48 ? `vor ${hours} h` : `vor ${Math.round(hours / 24)} Tagen`;
+  return hours < 48 ? t("vor {hours} h", { hours }) : t("vor {days} Tagen", { days: Math.round(hours / 24) });
 }
 
 customElements.define("sf-vehicles", SunflowVehicles);

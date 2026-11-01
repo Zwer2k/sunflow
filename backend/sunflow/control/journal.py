@@ -15,6 +15,7 @@ from typing import Any
 
 from sunflow.devices.executor import PlannedCall
 from sunflow.ha import HAClient, HAError
+from sunflow.i18n import t
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -184,19 +185,22 @@ class ControlJournal:
         if user := context.get("user_id"):
             if user == self.own_user:
                 return "Sunflow"
-            name = self.users.get(user, f"Kennung {user[:8]}")
-            return f"Benutzer „{name}“ – oder ein Programm mit dessen Zugangstoken (z. B. evcc, Node-RED)"
+            name = self.users[user] if user in self.users else t("Kennung {id}", id=user[:8])
+            return t("Benutzer „{name}“ – oder ein Programm mit dessen Zugangstoken (z. B. evcc, Node-RED)", name=name)
         if parent := context.get("parent_id"):
             causer = next(
                 (s for s in states.values() if s["entity_id"].split(".")[0] in CAUSERS and (s.get("context") or {}).get("id") == parent),
                 None,
             )
             if causer is not None:
-                return f"{causer['entity_id'].split('.')[0].capitalize()} „{causer.get('attributes', {}).get('friendly_name', causer['entity_id'])}“"
-            return "eine Automation, ein Skript oder eine Szene"
-        return (
-            "das Gerät bzw. seine Integration selbst – nicht über Home Assistant geschaltet "
-            "(z. B. eigene Regelung des Geräts oder ein anderes System, das direkt aufs Gerät schreibt)"
+                return t(
+                    "{kind} „{name}“",
+                    kind=causer["entity_id"].split(".")[0].capitalize(),
+                    name=causer.get("attributes", {}).get("friendly_name", causer["entity_id"]),
+                )
+            return t("eine Automation, ein Skript oder eine Szene")
+        return t(
+            "das Gerät bzw. seine Integration selbst – nicht über Home Assistant geschaltet (z. B. eigene Regelung des Geräts oder ein anderes System, das direkt aufs Gerät schreibt)"
         )
 
     async def _identify(self, now: datetime) -> None:

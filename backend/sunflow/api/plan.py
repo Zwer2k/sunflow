@@ -16,6 +16,7 @@ from sunflow.analysis.history import (
 from sunflow.config.models import SunflowConfig
 from sunflow.control.controller import PlanController
 from sunflow.ha import HAError
+from sunflow.i18n import t
 from sunflow.planning.plan import expected_levels
 from sunflow.shadow.runner import ShadowRunner, current_plan
 
@@ -120,14 +121,14 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
     runner: ShadowRunner = request.app.state.runner
     # Without a plan yet, all open tabs wait for one shared computation
     if (latest := await runner.ensure_plan()) is None:
-        raise HTTPException(status_code=503, detail=runner.status.last_error or "Plan wird noch berechnet")
+        raise HTTPException(status_code=503, detail=runner.status.last_error or t("Plan wird noch berechnet"))
     sample = runner.last_sample
     response = plan_response(latest, request.app.state.store.load())
     if runner.status.last_error and runner.status.last_plan:
         # An older plan is still shown; say that newer attempts failed and why
         since = runner.status.last_plan.astimezone(await _local_tz(request)).strftime("%H:%M")
         response["warnings"] = [
-            f"Neuberechnung fehlgeschlagen, angezeigt wird der Plan von {since} ({runner.status.last_error}).",
+            t("Neuberechnung fehlgeschlagen, angezeigt wird der Plan von {time} ({error}).", time=since, error=runner.status.last_error),
             *response["warnings"],
         ]
     controller: PlanController | None = getattr(request.app.state, "controller", None)
@@ -176,7 +177,7 @@ async def get_history(
     # An earlier window when the charts are scrolled back; never into the future
     end = now if end is None else min(end.astimezone(UTC), now)
     if end < now - timedelta(days=31):
-        raise HTTPException(status_code=422, detail="Nicht weiter als 31 Tage zurück")
+        raise HTTPException(status_code=422, detail=t("Nicht weiter als 31 Tage zurück"))
     # 15 minute resolution up to two days, hourly above to keep charts readable
     bucket = timedelta(minutes=15) if hours <= 48 else timedelta(hours=1)
     start = end - timedelta(hours=hours)

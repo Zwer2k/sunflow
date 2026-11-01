@@ -7,8 +7,9 @@ the PV forecast and the electricity price, and can carry out the plan itself. It
 in Home Assistant and uses the integrations you already have there; it needs no device drivers
 of its own.
 
-> The Sunflow user interface is currently in German. The screenshots in this documentation show
-> the German labels; the English text gives the translation of each label in quotes where useful.
+> Sunflow speaks German and English and follows the language of Home Assistant; you can change it
+> under Settings → Display. The screenshots in this documentation show the German interface; the
+> English text names the German label in quotes where useful.
 
 ![Live view](../images/live.png)
 

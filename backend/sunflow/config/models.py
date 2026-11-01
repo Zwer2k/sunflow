@@ -367,6 +367,8 @@ class DisplaySettings(BaseModel):
 
     weather_mobile: bool = True
     weather_desktop: bool = True
+    # "auto" follows the language of Home Assistant
+    language: Literal["auto", "de", "en"] = "auto"
 
 
 class ControlSettings(BaseModel):

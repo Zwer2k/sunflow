@@ -1,14 +1,15 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
+import { t } from "../lib/i18n.js";
 
 const DETECTION = [
-  ["card", "Karte an der Wallbox", "Die gescannte Karte bestimmt das Fahrzeug."],
-  ["manual", "Auswahl in der Steuerung", "Gilt bis zum Abstecken."],
-  ["sensor", "Sensor des Fahrzeugs", "„Angesteckt“ oder „zuhause“ aus der Integration des Autos."],
-  ["single", "Einziges zugeordnetes Fahrzeug", "Ist nur eines zugeordnet, gilt immer dieses."],
+  ["card", t("Karte an der Wallbox"), t("Die gescannte Karte bestimmt das Fahrzeug.")],
+  ["manual", t("Auswahl in der Steuerung"), t("Gilt bis zum Abstecken.")],
+  ["sensor", t("Sensor des Fahrzeugs"), t("„Angesteckt“ oder „zuhause“ aus der Integration des Autos.")],
+  ["single", t("Einziges zugeordnetes Fahrzeug"), t("Ist nur eines zugeordnet, gilt immer dieses.")],
 ];
-const STRATEGIES = { cost: "Kostenoptimal", pv_only: "Nur PV-Überschuss", fast: "Schnellstmöglich" };
+const STRATEGIES = { cost: t("Kostenoptimal"), pv_only: t("Nur PV-Überschuss"), fast: t("Schnellstmöglich") };
 
 /**
  * Which vehicle charges at which wallbox and how (settings area "Laden"): a charging
@@ -50,7 +51,7 @@ class SunflowCharging extends LitElement {
       this._dirty = new Set();
       this._detections = {};
     } catch (err) {
-      this._error = `Ladeprofile nicht verfügbar: ${err.message}`;
+      this._error = t("Ladeprofile nicht verfügbar: {error}", { error: err.message });
     }
   }
 
@@ -58,16 +59,14 @@ class SunflowCharging extends LitElement {
     const data = this._data;
     return html`
       <div class="heading">
-        <h1>Laden</h1>
-        <p class="muted">Je Wallbox: welche Fahrzeuge dort laden, mit welcher Karte, bis zu welchem Ladestand und wann sie
-          fertig sein sollen – und wie die Wallbox das angesteckte Fahrzeug erkennt.</p>
+        <h1>${t("Laden")}</h1>
+        <p class="muted">${t("Je Wallbox: welche Fahrzeuge dort laden, mit welcher Karte, bis zu welchem Ladestand und wann sie fertig sein sollen – und wie die Wallbox das angesteckte Fahrzeug erkennt.")}</p>
       </div>
       ${this._error ? html`<div class="alert error">${this._error}</div>` : nothing}
-      ${data === null ? html`<p class="muted">Lade …</p>` : nothing}
-      ${data && !data.wallboxes.length ? html`<p class="muted">Keine Wallbox eingerichtet (Geräte).</p>` : nothing}
+      ${data === null ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
+      ${data && !data.wallboxes.length ? html`<p class="muted">${t("Keine Wallbox eingerichtet (Geräte).")}</p>` : nothing}
       ${data && data.wallboxes.length && !data.vehicles.length
-        ? html`<p class="muted">Noch keine Fahrzeuge – zuerst unter „Fahrzeuge“ anlegen. Ohne Fahrzeuge plant Sunflow die Wallbox
-            mit ihren Kenndaten und den Vorgaben unter „Verbraucher“.</p>`
+        ? html`<p class="muted">${t("Noch keine Fahrzeuge – zuerst unter „Fahrzeuge“ anlegen. Ohne Fahrzeuge plant Sunflow die Wallbox mit ihren Kenndaten und den Vorgaben unter „Verbraucher“.")}</p>`
         : nothing}
       ${data?.vehicles.length ? data.wallboxes.map((w) => this._renderWallbox(w)) : nothing}
     `;
@@ -80,14 +79,16 @@ class SunflowCharging extends LitElement {
       <section class="device">
         <div class="device-title">${wallbox.name}</div>
         <div class="small muted">${allowed.length
-          ? `${allowed.length} Fahrzeug${allowed.length > 1 ? "e" : ""} darf hier laden`
-          : "Noch kein Fahrzeug – ein angestecktes Auto gilt als unbekannt, die Wallbox regelt dann selbst."}</div>
+          ? allowed.length > 1
+            ? t("{count} Fahrzeuge dürfen hier laden", { count: allowed.length })
+            : t("{count} Fahrzeug darf hier laden", { count: allowed.length })
+          : t("Noch kein Fahrzeug – ein angestecktes Auto gilt als unbekannt, die Wallbox regelt dann selbst.")}</div>
         ${vehicles.map((v) => this._renderProfile(wallbox, v))}
         ${this._renderDetection(wallbox)}
         ${this._dirty.has(wallbox.id)
           ? html`<div class="actions">
-              <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>Speichern</button>
-              <button class="secondary" ?disabled=${this._busy} @click=${() => this._load()}>Verwerfen</button>
+              <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>${t("Speichern")}</button>
+              <button class="secondary" ?disabled=${this._busy} @click=${() => this._load()}>${t("Verwerfen")}</button>
             </div>`
           : nothing}
       </section>
@@ -116,35 +117,35 @@ class SunflowCharging extends LitElement {
           ? html`<div class="fields">
               ${wallbox.cards
                 ? html`<label class="field">
-                    <span class="field-label">Karte an dieser Wallbox</span>
+                    <span class="field-label">${t("Karte an dieser Wallbox")}</span>
                     <select @change=${(e) => update({ card: e.target.value ? Number(e.target.value) : null })}>
-                      <option value="" ?selected=${!profile.card}>keine</option>
-                      ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => html`<option value=${n} ?selected=${profile.card === n}>Karte ${n}</option>`)}
+                      <option value="" ?selected=${!profile.card}>${t("keine")}</option>
+                      ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => html`<option value=${n} ?selected=${profile.card === n}>${t("Karte {number}", { number: n })}</option>`)}
                     </select>
                   </label>`
                 : nothing}
               <label class="field">
-                <span class="field-label">Ziel-Ladestand</span>
+                <span class="field-label">${t("Ziel-Ladestand")}</span>
                 <span class="input-unit"><input inputmode="decimal" placeholder="100"
                   .value=${profile.flex.target === null || profile.flex.target === undefined ? "" : toDisplay(profile.flex.target, "%")}
                   @input=${(e) => update({ flex: { target: e.target.value === "" ? null : fromDisplay(e.target.value, "%") } })}>
                   <span class="muted">%</span></span>
               </label>
               <label class="field">
-                <span class="field-label">Fertig bis (täglich)</span>
+                <span class="field-label">${t("Fertig bis (täglich)")}</span>
                 <span class="input-unit"><input type="time" .value=${profile.flex.ready_by ?? ""}
                   @change=${(e) => update({ flex: { ready_by: e.target.value || null } })}></span>
               </label>
               <label class="field">
-                <span class="field-label">Laden</span>
+                <span class="field-label">${t("Laden")}</span>
                 <select @change=${(e) => update({ flex: { strategy: e.target.value } })}>
                   ${Object.entries(STRATEGIES).map(([value, label]) => html`<option value=${value} ?selected=${profile.flex.strategy === value}>${label}</option>`)}
                 </select>
               </label>
               <label class="field">
-                <span class="field-label">Hausspeicher</span>
+                <span class="field-label">${t("Hausspeicher")}</span>
                 <span class="inline"><input type="checkbox" .checked=${profile.flex.uses_battery !== false}
-                  @change=${(e) => update({ flex: { uses_battery: e.target.checked } })}>darf ins Auto entladen</span>
+                  @change=${(e) => update({ flex: { uses_battery: e.target.checked } })}>${t("darf ins Auto entladen")}</span>
               </label>
             </div>`
           : nothing}
@@ -170,8 +171,8 @@ class SunflowCharging extends LitElement {
       <div class="detection">
         <button class="device-toggle" aria-expanded=${open} @click=${toggle}>
           <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
-          <span><strong>Erkennung des Fahrzeugs</strong>
-            ${open ? nothing : html`<span class="small muted block">${methods.join(" · ") || "aus"}${wallbox.cards && d.authorize ? " · gibt ohne Karte frei" : ""}</span>`}</span>
+          <span><strong>${t("Erkennung des Fahrzeugs")}</strong>
+            ${open ? nothing : html`<span class="small muted block">${methods.join(" · ") || t("aus")}${wallbox.cards && d.authorize ? ` · ${t("gibt ohne Karte frei")}` : ""}</span>`}</span>
         </button>
         ${open
           ? html`
@@ -183,9 +184,9 @@ class SunflowCharging extends LitElement {
               ${wallbox.cards
                 ? html`<label class="inline">
                     <input type="checkbox" .checked=${d.authorize} @change=${(e) => set("authorize", e.target.checked)}>
-                    Ladevorgang ohne Karte freigeben, wenn das Fahrzeug sicher erkannt ist (Sensor oder Auswahl)</label>`
+                    ${t("Ladevorgang ohne Karte freigeben, wenn das Fahrzeug sicher erkannt ist (Sensor oder Auswahl)")}</label>`
                 : nothing}
-              <span class="small muted">Unbekanntes Fahrzeug (fremde Karte, nichts erkannt): Die Wallbox regelt selbst.</span>`
+              <span class="small muted">${t("Unbekanntes Fahrzeug (fremde Karte, nichts erkannt): Die Wallbox regelt selbst.")}</span>`
           : nothing}
       </div>
     `;
@@ -198,7 +199,7 @@ class SunflowCharging extends LitElement {
   /** Charging profiles and recognition together, so one button saves what was changed. */
   async _save() {
     if (this._profiles.some((p) => p.flex.target === undefined)) {
-      this._error = "Bitte einen gültigen Ziel-Ladestand eingeben.";
+      this._error = t("Bitte einen gültigen Ziel-Ladestand eingeben.");
       return;
     }
     this._busy = true;
@@ -212,7 +213,7 @@ class SunflowCharging extends LitElement {
       this._detections = {};
       this._error = null;
     } catch (err) {
-      this._error = `Nicht gespeichert: ${err.message}`;
+      this._error = t("Nicht gespeichert: {error}", { error: err.message });
     } finally {
       this._busy = false;
     }
