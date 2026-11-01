@@ -18,7 +18,7 @@ PLUGGED = {"on", "true", "home", "connected", "plugged", "plugged_in", "charging
 # go-e transaction options: "card_0" is card 1
 CARD_OPTION = re.compile(r"^card_(\d+)$")
 
-METHODS = {"card": "Karte", "manual": "Auswahl", "sensor": "Sensor des Fahrzeugs", "single": "einziges Fahrzeug"}
+METHODS = {"card": "Karte", "manual": "Auswahl", "sensor": "Sensor des Fahrzeugs", "single": "einziges Fahrzeug", "expected": "unterwegs, erwartet"}
 
 
 @dataclass(frozen=True, kw_only=True)

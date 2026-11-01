@@ -14,6 +14,7 @@ from sunflow.config.models import (
     FeedIn,
     ForecastPlane,
     SunflowConfig,
+    Vehicle,
 )
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import battery_actions, controls_battery, supported_action
@@ -49,7 +50,8 @@ from .sources import (
     solcast_forecast,
     sum_forecasts,
 )
-from .vehicles import recognize, soc_of, vehicle_max_power
+from .vehicle_usage import VehicleUsage, usage_from as vehicle_usage_from
+from .vehicles import Recognized, recognize, soc_of, vehicle_max_power
 
 HORIZON_HOURS = 48
 # Database queries change slowly; every replan (each quarter hour) reusing them keeps
@@ -128,9 +130,34 @@ class FlexInfo:
     level_range: tuple[float, float] | None = None
     # Vehicles: battery capacity, to show the level as energy
     capacity_wh: float | None = None
-    # Hot water: the usual draw per slot (learned), and from how many days
+    # Hot water and cars on the way: the usual draw per slot (learned), and from how many days
     drawn_wh: list[float] = field(default_factory=list)
     usage_days: int = 0
+    # A car on the way: when it usually comes back (planned from then on), with which SoC
+    expected_arrival: datetime | None = None
+    arrival_soc: float | None = None
+
+
+def coming_back(recognized: Recognized, assigned: list[Vehicle], connected: bool) -> tuple[Vehicle | None, str | None]:
+    """The recognized car; with none plugged in, the only car of the wallbox is the one that comes back."""
+    if recognized.vehicle is None and not connected and len(assigned) == 1:
+        return assigned[0], "expected"
+    return recognized.vehicle, recognized.method
+
+
+def on_the_way(
+    info: FlexInfo, connected: bool, usages: dict[str, VehicleUsage] | None, habits: dict[str, Departure] | None,
+    slot_starts: list[datetime], tz: tzinfo,
+) -> list[float] | None:
+    """SoC a car on the way uses per slot until its usual arrival (none while plugged in); None without enough learned data or its SoC."""
+    if connected:
+        return []
+    usage, habit = (usages or {}).get(info.vehicle_id or ""), (habits or {}).get(info.device_id)
+    arrival = habit.next_arrival(slot_starts[0], tz) if habit is not None and usage is not None else None
+    if usage is None or arrival is None or arrival >= slot_starts[-1] + SLOT or info.current is None:
+        return None
+    info.expected_arrival, info.usage_days = arrival, usage.days
+    return [usage.used_pct(start, min(start + SLOT, arrival), tz) if start < arrival else 0.0 for start in slot_starts]
 
 
 def hot_water_need(
@@ -178,6 +205,7 @@ def flex_loads(
     departures: dict[str, Departure] | None = None,
     usages: dict[str, ConsumerUsage] | None = None,
     hot_water: dict[str, HotWaterUsage] | None = None,
+    vehicle_usages: dict[str, VehicleUsage] | None = None,
 ) -> tuple[list[FlexLoad], list[FlexInfo], list[str], tuple[tuple[str, float], ...]]:
     """Derive the energy need of every flexible consumer from live values and its settings.
 
@@ -264,16 +292,17 @@ def flex_loads(
             info.daily_wh = daily
         else:
             connected = roles.get("connected") is not None and roles["connected"].raw_state == "on"
-            if config.vehicles_at(device.id):
+            if assigned := config.vehicles_at(device.id):
                 recognized = recognize(config, device, roles, snapshot.states)
-                if (vehicle := recognized.vehicle) is None:
+                vehicle, method = coming_back(recognized, assigned, connected)
+                if vehicle is None:
                     if connected:
                         info.reason = f"{recognized.reason} – Wallbox regelt selbst"
                         info.unknown_vehicle = True
                     else:
                         info.reason = "Fahrzeug nicht angesteckt"
                     continue
-                info.vehicle_id, info.vehicle, info.vehicle_method = vehicle.id, vehicle.name, recognized.method
+                info.vehicle_id, info.vehicle, info.vehicle_method = vehicle.id, vehicle.name, method
                 if (limit := vehicle_max_power(vehicle)) is not None and max_power:
                     # The car's own charger may take less than the wallbox gives
                     max_power = info.max_power_w = min(max_power, limit)
@@ -286,10 +315,12 @@ def flex_loads(
                 settings, paused = config.effective_flex(device, slot_starts[0], profile_at.flex if profile_at else None)
                 ready_by = next_time(settings.ready_by, slot_starts[0], tz) if settings.ready_by else None
                 target = info.target = settings.target if settings.target is not None else target
-            # Recognized but not plugged in: its SoC and target show, nothing is planned
-            if not connected:
+            # On the way: planned from its usual arrival with the SoC it usually comes back with
+            used = on_the_way(info, connected, vehicle_usages, departures, slot_starts, tz)
+            if used is None:
                 info.reason = "Fahrzeug nicht angesteckt"
                 continue
+            current = info.arrival_soc = max(info.current - sum(used), 0.0) if used else current
             capacity = params.get("vehicle_capacity_wh")
             if not capacity:
                 info.reason = "Akkukapazität fehlt in den Kenndaten"
@@ -301,7 +332,7 @@ def flex_loads(
             learned = (departures or {}).get(device.id)
             if ready_by:
                 info.deadline = min(ready_by, horizon_end)
-            elif learned and (departure := learned.next_after(slot_starts[0], tz)) is not None:
+            elif learned and (departure := learned.next_after(info.expected_arrival or slot_starts[0], tz)) is not None:
                 # No departure set: the car usually leaves at this time
                 info.deadline = min(departure, horizon_end)
                 info.learned_departure = True
@@ -320,6 +351,8 @@ def flex_loads(
             info.need_wh = max((target or 100) - current, 0) / 100 * capacity / efficiency
             info.wh_per_unit, info.level_range = capacity / 100 / efficiency, (0.0, 100.0)
             info.capacity_wh = capacity
+            # The chart drains the car on its way (the expected levels start from now)
+            info.drawn_wh = [pct * info.wh_per_unit for pct in used]
             storages[device.id] = (current, target or 100, capacity / efficiency / 100)
 
         later_needs = daily_needs(slot_starts, info.deadline, info.daily_wh) if info.daily_wh else []
@@ -337,7 +370,7 @@ def flex_loads(
                 energy_wh=info.need_wh,
                 later_needs=later_needs,
                 max_power_w=max_power,
-                available=[start < end for start in slot_starts],
+                available=[start < end and (info.expected_arrival is None or start >= info.expected_arrival) for start in slot_starts],
                 # With an alternative heat source the need is optional at that price
                 unmet_cost=settings.alternative_cost_ct / 100
                 if settings.alternative_cost_ct is not None
@@ -447,6 +480,7 @@ class PlanResult:
     temperatures: list[float | None] = field(default_factory=list)
     load_model: LoadModel | None = None
     usages: dict[str, ConsumerUsage] = field(default_factory=dict)
+    vehicle_usages: dict[str, VehicleUsage] = field(default_factory=dict)
     pv_correction: PvCorrection | None = None
 
 
@@ -510,6 +544,24 @@ async def hot_water_usages(
             continue
         if usage is not None:
             result[device.id] = usage
+    return result
+
+
+async def learned_vehicle_usages(
+    client: HAClient, config: SunflowConfig, now: datetime, tz: tzinfo, own: dict[str, list[tuple[datetime, float]]] | None
+) -> dict[str, VehicleUsage]:
+    """Learned use per car from its SoC statistics, else from Sunflow's own samples (own: car id -> hourly SoC)."""
+    result = {}
+    for vehicle in config.vehicles:
+        if not vehicle.soc_entity:
+            continue
+        try:
+            socs = await cached(("hourly", vehicle.soc_entity), HABITS_TTL, lambda e=vehicle.soc_entity: fetch_hourly_means(client, e, now))
+        except HAError:
+            socs = []
+        # A sensor without statistics: the samples Sunflow kept itself
+        if (usage := vehicle_usage_from(socs or (own or {}).get(vehicle.id, []), tz)) is not None:
+            result[vehicle.id] = usage
     return result
 
 
@@ -1042,10 +1094,12 @@ async def compute_plan(
     live_pv_w: float | None = None,
     live_load_w: float | None = None,
     consumer_hours: list[tuple[datetime, float]] | None = None,
+    vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule.
 
-    consumer_hours: hourly power of all controllable consumers from Sunflow's own samples.
+    consumer_hours: hourly power of all controllable consumers from Sunflow's own samples;
+    vehicle_hours: hourly SoC per car from them.
     """
     warnings: list[str] = []
     battery_device = next(
@@ -1237,6 +1291,7 @@ async def compute_plan(
     departures = await vehicle_departures(client, config, profiles, snapshot, tz)
     usages = await consumer_usages(client, config, profiles, snapshot)
     hot_water = await hot_water_usages(client, config, profiles, snapshot, start, tz)
+    vehicle_usages = await learned_vehicle_usages(client, config, start, tz, vehicle_hours)
     loads, flex_infos, flex_warnings, battery_gate = flex_loads(
         config,
         profiles,
@@ -1247,6 +1302,7 @@ async def compute_plan(
         departures=departures,
         usages=usages,
         hot_water=hot_water,
+        vehicle_usages=vehicle_usages,
     )
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings
@@ -1270,6 +1326,7 @@ async def compute_plan(
         temperatures=weather["temperature"],
         load_model=load_model if load_model is not None and load_model.useful else None,
         usages=usages,
+        vehicle_usages=vehicle_usages,
         pv_correction=pv_correction if config.optimizer.pv_learning else None,
         care=care,
         plan=plan,
