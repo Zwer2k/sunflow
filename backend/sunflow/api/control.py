@@ -13,19 +13,35 @@ from sunflow.config.models import (
     PriorityCondition,
     StrategyOverride,
     SunflowConfig,
+    Vehicle,
 )
 from sunflow.config.store import ConfigStore
+from sunflow.control.aux_battery import aux_voltage
 from sunflow.control.controller import PlanController
 from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_category, device_kind
-from sunflow.planning.vehicles import METHODS, vehicle_at
+from sunflow.planning.vehicles import METHODS, scanned_card, vehicle_at
 from sunflow.shadow.runner import ShadowRunner
 
 from .common import _configured_device, _library, _replan, _snapshot
 from .plan import _flex_windows
 
 router = APIRouter()
+
+
+def _aux_battery(
+    vehicle: Vehicle | None, states: dict[str, dict[str, Any]], controller: PlanController | None, device_id: str, now: datetime
+) -> dict[str, Any] | None:
+    """The 12 V battery of the recognized car, when watched: voltage, threshold and a running top-up."""
+    if vehicle is None or not vehicle.aux_battery.voltage_entity:
+        return None
+    until = controller.aux_charging_until(device_id, now) if controller else None
+    return {
+        "voltage": aux_voltage(vehicle, states),
+        "min_voltage": vehicle.aux_battery.min_voltage_v,
+        "charging_until": until.isoformat() if until else None,
+    }
 
 
 @router.get("/control")
@@ -39,6 +55,7 @@ async def get_control(request: Request) -> dict[str, Any]:
     latest = runner.latest
     infos = {f.device_id: f for f in latest.flex} if latest else {}
     names = {BATTERY_PRIORITY_ID: "Hausspeicher"}
+    controller: PlanController | None = getattr(request.app.state, "controller", None)
     devices = []
     for device in config.devices:
         profile = profiles[device.profile]
@@ -84,6 +101,9 @@ async def get_control(request: Request) -> dict[str, Any]:
                 if vehicle
                 else None,
                 "selected_vehicle": config.selected_vehicles.get(device.id),
+                # The RFID card scanned at the wallbox, also when it belongs to no vehicle
+                "card": scanned_card(roles["transaction"].raw_state) if "transaction" in roles else None,
+                "aux_battery": _aux_battery(vehicle, snapshot.states, controller, device.id, now),
                 "manual_choice": config.detection_of(device.id).manual,
                 "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
                 "need_wh": info.need_wh if info else None,

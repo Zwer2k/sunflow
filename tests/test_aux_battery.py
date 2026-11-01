@@ -142,3 +142,22 @@ async def test_evcc_uses_its_minimum_mode(tmp_path: Path) -> None:
     await controller.tick(_config("evcc"), _charge_plan(0), NOW, snapshot, NOW)
 
     assert charger.option == "minpv"
+
+
+def test_control_shows_the_12v_battery() -> None:
+    """The control tab gets voltage, threshold and the end of a running top-up; nothing for unwatched cars."""
+    from sunflow.api.control import _aux_battery
+
+    vehicle = Vehicle(id="fiat", name="500e", capacity_wh=37000, aux_battery=GUARD)
+    controller = PlanController.__new__(PlanController)
+    controller._aux = {"wb": AuxCharge(vehicle_id="fiat", until=NOW + timedelta(minutes=3))}
+    states = {VOLTAGE: {"state": "11.9"}}
+
+    assert _aux_battery(vehicle, states, controller, "wb", NOW) == {
+        "voltage": 11.9,
+        "min_voltage": 12.2,
+        "charging_until": (NOW + timedelta(minutes=3)).isoformat(),
+    }
+    assert _aux_battery(vehicle, states, controller, "wb", NOW + timedelta(minutes=3))["charging_until"] is None
+    assert _aux_battery(Vehicle(id="x", name="X", capacity_wh=1), states, controller, "wb", NOW) is None
+    assert _aux_battery(None, states, controller, "wb", NOW) is None

@@ -405,8 +405,22 @@ class SunflowControl extends LitElement {
             </select>`
           : nothing}
         <span class="small">${v ? html`<strong>${v.name}</strong> <span class="muted">(${v.method})</span>` : html`<span class="muted">nicht erkannt</span>`}</span>
+        ${device.card !== null && device.card !== undefined ? html`<span class="small muted">· Karte ${device.card}</span>` : nothing}
+        ${device.aux_battery ? this._renderAuxBattery(device.aux_battery) : nothing}
       </div>
     `;
+  }
+
+  /** Voltage of the car's 12 V battery and a running top-up. */
+  _renderAuxBattery(aux) {
+    const low = aux.voltage !== null && aux.voltage < aux.min_voltage;
+    const until = aux.charging_until
+      ? new Date(aux.charging_until).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+      : null;
+    return html`<span class="small">· 12-V-Batterie
+      <span class=${low ? "warn-text" : ""}>${aux.voltage !== null ? `${aux.voltage.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 2 })} V` : "nicht lesbar"}</span>${until
+        ? html` <span class="muted">· wird bis ${until} nachgeladen</span>`
+        : nothing}</span>`;
   }
 
   _renderDevice(device) {
