@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.69.1
+
+- Steuerung → Verbraucher: Beim Auto steht die an der Wallbox gewählte Karte (auch wenn sie keinem Fahrzeug zugeordnet ist) und – wenn eingerichtet – die Spannung der 12-V-Batterie, rot unter der eingestellten Schwelle, mit dem Ende einer laufenden Nachladung.
+
 ## 0.69.0
 
 - Planung: Alterung bei hohem Ladestand (kalendarische Alterung). Jede kWh über einer Schwelle (Standard 80 %) kostet im Plan je Stunde einen kleinen Betrag (Standard 0,1 ct). Sunflow lädt den Speicher dadurch möglichst kurz vor dem Bedarf – aus dem Netz am Ende des günstigen Fensters statt ab Mitternacht, und lässt ihn nicht unnötig lange voll stehen. Einstellbar und abschaltbar unter Einstellungen → Planung. Standardmäßig an.

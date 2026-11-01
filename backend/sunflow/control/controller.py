@@ -1019,6 +1019,11 @@ class PlanController:
         self._phases.setdefault(device.id, PhaseState()).switched(now)
         _LOGGER.info("%s: %d -> %d phases", device.name, current, target)
 
+    def aux_charging_until(self, device_id: str, now: datetime) -> datetime | None:
+        """End of the running 12 V top-up at a wallbox, None without one."""
+        state = self._aux.get(device_id)
+        return state.until if state and state.until and state.until > now else None
+
     def _aux_due(self, device: DeviceConfig, snapshot: Snapshot | None, now: datetime) -> tuple[Vehicle, AuxCharge] | None:
         """The plugged-in vehicle whose 12 V battery is being topped up now, with the top-up."""
         state = self._aux.setdefault(device.id, AuxCharge())
