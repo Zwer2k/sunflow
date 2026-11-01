@@ -392,8 +392,8 @@ def test_follow_surplus(planned: float, pv: float, grid: float, charging: bool, 
     assert follow_surplus(planned, 6000 - 1000, live, charging, PARAMS) == expected
 
 
-def test_amx_topic_from_device_serial() -> None:
-    """The go-e topic uses the serial from the device registry; role values are available too."""
+def test_amx_through_the_integration() -> None:
+    """The temporary current goes through the go-e integration's action for this device; role values are available too."""
     from pathlib import Path
 
     from sunflow.control.controller import device_variables
@@ -417,10 +417,10 @@ def test_amx_topic_from_device_serial() -> None:
     charge = plan_charge(profile, "charge", {}, variables | {"current_a": 7}, entities)
     release = plan_charge(profile, "release", {}, variables, entities)
 
-    assert (charge[0].domain, charge[0].service) == ("mqtt", "publish")
-    assert charge[0].data == {"topic": "go-eCharger/216505/amx/set", "payload": 7}
+    assert (charge[0].domain, charge[0].service) == ("goecharger_mqtt", "set_config_key")
+    assert charge[0].data == {"device_id": "d", "key": "amx", "value": 7}
     # Handing back sets the temporary current to the stored one again
-    assert release[0].data["payload"] == 16
+    assert release[0].data["value"] == 16
 
 
 async def test_disabled_device_is_handed_back(tmp_path: Path) -> None:

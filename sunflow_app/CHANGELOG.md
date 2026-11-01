@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.58.1
+
+- go-e: Der Ladestrom geht jetzt über die Aktion „set_config_key“ der go-e-Integration an die Wallbox statt über ein direktes `mqtt.publish`. Bisher kam er nicht an: Die Wallbox blieb beim gespeicherten Strom (z. B. 6 A), egal was Sunflow vorgab – darum lud der Fiat langsamer als geplant.
+
 ## 0.58.0
 
 - Plan-Diagramm: Der Verbrauch von Wallbox und anderen steuerbaren Verbrauchern erscheint auch dann als eigene Kurve, wenn Home Assistant für ihren Leistungssensor keine Statistik führt (z. B. im Recorder ausgeschlossen). Sunflow nimmt dafür seine eigenen Minutenwerte; bisher zählte deren Verbrauch dann zum Hausverbrauch. Auch die Verbrauchsprognose zieht ihn ab, statt nächtliches Autoladen als Hausverbrauch zu lernen. Die Leistung wird jetzt je Verbraucher gespeichert; ältere Viertelstunden ordnen die Summe dem einen Verbraucher ohne Statistik zu.
