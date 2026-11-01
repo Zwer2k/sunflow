@@ -28,6 +28,7 @@ from .habits import (
     learn_usage,
     learn_usage_from_energy,
 )
+from .hot_water import HotWaterUsage, learn_hot_water
 from .load_forecast import (
     LoadForecast,
     build_load_forecast,
@@ -87,6 +88,8 @@ WATER_WH_PER_LITRE_KELVIN = 1.163
 # Target of a heating own consumer when none is set (evcc loadpoints report their own)
 DEFAULT_HOT_WATER_C = 60.0
 HEATER_DEADLINE = timedelta(hours=24)
+# The learned main usage counts as deadline only this long ahead, so there is time to heat
+HEATER_MIN_LEAD = timedelta(hours=3)
 # Without a configured daily need the tank is assumed to cool down by this much per day
 HEATER_DAILY_DROP_K = 10
 # A hot water tank at this temperature counts as empty (0 %)
@@ -125,6 +128,25 @@ class FlexInfo:
     level_range: tuple[float, float] | None = None
     # Vehicles: battery capacity, to show the level as energy
     capacity_wh: float | None = None
+    # Hot water: the usual draw per slot (learned), and from how many days
+    drawn_wh: list[float] = field(default_factory=list)
+    usage_days: int = 0
+
+
+def hot_water_need(
+    info: FlexInfo, drawn: HotWaterUsage | None, ready_by: datetime | None, params: dict[str, Any],
+    slot_starts: list[datetime], tz: tzinfo,
+) -> None:
+    """Deadline, daily need and draw per slot of a tank, from its learned usage where known."""
+    wh_per_kelvin = params["tank_l"] * WATER_WH_PER_LITRE_KELVIN
+    # Without a ready time: hot by the usual main usage, with time enough to heat
+    first = ready_by or (drawn.next_peak(slot_starts[0] + HEATER_MIN_LEAD, tz) if drawn else slot_starts[0] + HEATER_DEADLINE)
+    info.deadline = min(first, slot_starts[-1] + SLOT)
+    info.daily_wh = params.get("daily_energy_wh") or (drawn.daily_wh if drawn else HEATER_DAILY_DROP_K * wh_per_kelvin)
+    info.wh_per_unit, info.loss_wh_per_day = wh_per_kelvin, info.daily_wh
+    if drawn is not None:
+        info.drawn_wh = [drawn.drawn_wh(start, start + SLOT, tz) for start in slot_starts]
+        info.usage_days = drawn.days
 
 
 def expected_levels(info: FlexInfo, slots: list[Any]) -> list[float]:
@@ -132,9 +154,11 @@ def expected_levels(info: FlexInfo, slots: list[Any]) -> list[float]:
     if info.current is None or not info.wh_per_unit:
         return []
     level, result = info.current, []
-    for slot in slots:
+    for index, slot in enumerate(slots):
         hours = (slot.end - slot.start).total_seconds() / 3600
-        energy = (slot.flex_w or {}).get(info.name, 0.0) * hours - info.loss_wh_per_day * hours / 24
+        # The learned draw of this slot, else an even share of the daily need
+        drawn = info.drawn_wh[index] if index < len(info.drawn_wh) else info.loss_wh_per_day * hours / 24
+        energy = (slot.flex_w or {}).get(info.name, 0.0) * hours - drawn
         level += energy / info.wh_per_unit
         if info.level_range is not None:
             low, high = info.level_range
@@ -153,6 +177,7 @@ def flex_loads(
     battery_capacity_wh: float | None = None,
     departures: dict[str, Departure] | None = None,
     usages: dict[str, ConsumerUsage] | None = None,
+    hot_water: dict[str, HotWaterUsage] | None = None,
 ) -> tuple[list[FlexLoad], list[FlexInfo], list[str], tuple[tuple[str, float], ...]]:
     """Derive the energy need of every flexible consumer from live values and its settings.
 
@@ -219,10 +244,8 @@ def flex_loads(
                 info.reason = "Temperatur oder Ziel nicht lesbar"
                 continue
             info.need_wh = max(target - current, 0) * litres * WATER_WH_PER_LITRE_KELVIN
-            info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
-            info.daily_wh = params.get("daily_energy_wh") or HEATER_DAILY_DROP_K * litres * WATER_WH_PER_LITRE_KELVIN
+            hot_water_need(info, (hot_water or {}).get(device.id), ready_by, params, slot_starts, tz)
             storages[device.id] = (current, target, litres * WATER_WH_PER_LITRE_KELVIN)
-            info.wh_per_unit, info.loss_wh_per_day = litres * WATER_WH_PER_LITRE_KELVIN, info.daily_wh
             # Shown as share between cold water and the target
             info.level_range = (COLD_WATER_C, max(target, COLD_WATER_C + 1))
             if settings.alternative_cost_ct is None:
@@ -450,6 +473,39 @@ async def consumer_usages(
             continue
         try:
             usage = await cached(("usage", entity), HABITS_TTL, lambda entity=entity, learner=learner: learner(client, entity))
+        except HAError:
+            continue
+        if usage is not None:
+            result[device.id] = usage
+    return result
+
+
+async def hot_water_usages(
+    client: HAClient, config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot, now: datetime, tz: tzinfo
+) -> dict[str, HotWaterUsage]:
+    """Learned hot water usage of tanks with a temperature and a heating power sensor."""
+    result = {}
+    for device in config.devices:
+        profile = profiles[device.profile]
+        if device_kind(profile, device, snapshot) != "heater":
+            continue
+        roles = {
+            r.role: r
+            for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+            if r.entity_id
+        }
+        params = {p["name"]: p["effective"] for p in device_parameters(profile, device, snapshot)}
+        level = roles.get("temperature") or roles.get("vehicle_soc")
+        power = roles.get("power") or roles.get("charge_power")
+        if level is None or power is None or not params.get("tank_l"):
+            continue
+        wh_per_kelvin = params["tank_l"] * WATER_WH_PER_LITRE_KELVIN
+        try:
+            usage = await cached(
+                ("hot_water", level.entity_id, power.entity_id),
+                HABITS_TTL,
+                lambda t=level.entity_id, p=power.entity_id, k=wh_per_kelvin: learn_hot_water(client, t, p, k, now, tz),
+            )
         except HAError:
             continue
         if usage is not None:
@@ -1180,6 +1236,7 @@ async def compute_plan(
         ]
     departures = await vehicle_departures(client, config, profiles, snapshot, tz)
     usages = await consumer_usages(client, config, profiles, snapshot)
+    hot_water = await hot_water_usages(client, config, profiles, snapshot, start, tz)
     loads, flex_infos, flex_warnings, battery_gate = flex_loads(
         config,
         profiles,
@@ -1189,6 +1246,7 @@ async def compute_plan(
         battery_capacity_wh=battery.capacity_wh,
         departures=departures,
         usages=usages,
+        hot_water=hot_water,
     )
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings

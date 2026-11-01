@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.62.0
+
+- Warmwasser: Sunflow lernt, wann und wie viel Warmwasser verbraucht wird – je Stunde, getrennt nach Werktag und Wochenende, aus Speichertemperatur und Heizleistung der letzten vier Wochen (ab einer Woche Daten). Der gelernte Tagesbedarf ersetzt die pauschalen 10 K pro Tag; ohne eingestellte Bereitzeit plant Sunflow den Speicher bis zur gewohnten Hauptverbrauchszeit heiß (z. B. vor dem Duschen am Morgen, mindestens drei Stunden voraus). Die erwartete Temperatur im Ladestand-Diagramm fällt zu den gelernten Zeiten statt gleichmäßig.
+
 ## 0.61.1
 
 - Ladestand-Diagramm: eine Linie je Auto statt je Wallbox – mit dem Verlauf seines eigenen Ladestand-Sensors, auch wenn es unterwegs ist; bei mehreren Autos jedes für sich. Der erwartete Verlauf erscheint beim Auto, das gerade an der Wallbox erkannt ist.
