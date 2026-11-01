@@ -967,6 +967,23 @@ def battery_spec(
     )
 
 
+# Excluded large-load hours worth a notice: more than this many and this share of the history
+LARGE_LOAD_NOTICE_HOURS = 5
+LARGE_LOAD_NOTICE_SHARE = 0.02
+
+
+def large_load_notice(load: LoadForecast, threshold_w: float | None) -> str | None:
+    """A notice when many hours were left out of the load forecast as large loads."""
+    # A few rare peaks (oven, sauna) are what the exclusion is for; many hint at an unknown large consumer
+    if threshold_w is None or load.excluded_hours <= max(LARGE_LOAD_NOTICE_HOURS, LARGE_LOAD_NOTICE_SHARE * load.history_hours):
+        return None
+    return (
+        f"{load.excluded_hours} h Hausverbrauch über {threshold_w / 1000:.1f}".replace(".", ",") + " kW "
+        "(ohne Wallbox, Heizstab und andere Verbraucher in Sunflow) zählen nicht zur Lastprognose. "
+        "Steckt ein regelmäßiger Großverbraucher dahinter, lege ihn als Verbraucher an, damit Sunflow ihn einplant."
+    )
+
+
 # Import penalty for "autarky": far above price differences and wear, so the battery
 # covers every demand it can and loads go to the PV surplus
 AUTARKY_IMPORT_PENALTY_CT = 100.0
@@ -1336,12 +1353,8 @@ async def compute_plan(
             f"Erst {load.history_hours} h Verbrauchshistorie – gib deinen durchschnittlichen Tagesverbrauch "
             "in den Einstellungen an, damit die Lastprognose stimmt."
         )
-    if load.excluded_hours:
-        warnings.append(
-            f"{load.excluded_hours} h mit mehr als "
-            f"{config.optimizer.large_load_threshold_w / 1000:.1f}".replace(".", ",") + " kW "
-            "(z. B. Wallbox) sind aus der Lastprognose ausgeklammert – solche Lasten plant Sunflow noch nicht ein."
-        )
+    if notice := large_load_notice(load, config.optimizer.large_load_threshold_w):
+        warnings.append(notice)
 
     settings = optimizer_settings(config, battery)
     inputs = slot_feed_in(build_inputs(start, prices, pv, load, feed_in_price(config, battery_device)), feed_in_of(config, battery_device))
