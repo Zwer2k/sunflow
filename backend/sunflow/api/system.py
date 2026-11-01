@@ -9,6 +9,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 import zipfile
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, UploadFile
@@ -16,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, UploadFi
 from sunflow import API_VERSION, __version__
 from sunflow.control.journal import JOURNAL_FILE
 from sunflow.devices.discovery import discover
-from sunflow.ha import HAClient
+from sunflow.ha import HAClient, HAError
 from sunflow.integration_link import app_host, host_port
 from sunflow.mcp_key import McpKey
 from sunflow.shadow.runner import ShadowRunner
@@ -56,7 +57,16 @@ async def mcp_link(request: Request) -> dict[str, Any]:
     """Port of the MCP server and whether it has a key (only through Ingress); without a mapped port it is not reachable."""
     settings = request.app.state.settings
     port = await host_port(settings.supervisor_token, settings.port) if settings.supervisor_token else settings.port
-    return {"port": port, "path": "/mcp", "key_created": request.app.state.mcp_key.created}
+    return {"host": await internal_host(request), "port": port, "path": "/mcp", "key_created": request.app.state.mcp_key.created}
+
+
+async def internal_host(request: Request) -> str | None:
+    """Host of Home Assistant in the home network; the browser may know it only by its external address."""
+    try:
+        urls = await request.app.state.ha.command("network/url")
+    except HAError:
+        return None
+    return urlsplit(urls["internal"]).hostname if urls.get("internal") else None
 
 
 @router.post("/mcp/key")
