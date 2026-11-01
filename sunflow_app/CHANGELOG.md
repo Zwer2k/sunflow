@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.70.2
+
+- Plan-Diagramm: Die Leistung von Wallbox und anderen Verbrauchern kommt jetzt bevorzugt aus Sunflows eigenen Minutenwerten. Ist ein Sensor vom Recorder ausgeschlossen, lieferte der Verlauf von Home Assistant seinen letzten gespeicherten Zustand (z. B. 0 W) stundenlang weiter – die Wallbox fehlte dann in der Grafik, obwohl das Auto lud.
+
 ## 0.70.1
 
 - Strategien des Hausspeichers: Unter jeder Strategie (Einstellungen → Planung) und unter der gewählten in der Steuerung lässt sich aufklappen, was der Plan damit anders macht. „Möglichst viel PV aufnehmen“ ist genauer beschrieben: Es hält vor sonnigen Tagen Platz frei, kennt aber keine Einspeisebegrenzung.
