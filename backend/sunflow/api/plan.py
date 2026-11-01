@@ -7,7 +7,12 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from sunflow.analysis.history import fetch_history, fill_from_shadow, history_series, level_key
+from sunflow.analysis.history import (
+    fetch_history,
+    fill_from_shadow,
+    history_series,
+    level_key,
+)
 from sunflow.config.models import SunflowConfig
 from sunflow.control.controller import PlanController
 from sunflow.ha import HAError
