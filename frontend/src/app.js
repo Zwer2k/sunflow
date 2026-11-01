@@ -1282,19 +1282,20 @@ class SunflowApp extends LitElement {
         ? html`<div class="fields">
               <label class="field"><span class="field-label">Adresse</span>
                 <span class="input-unit"><input readonly .value=${url ?? "kein Port freigegeben"}></span></label>
-              <label class="field"><span class="field-label">Schlüssel</span>
-                <span class="input-unit"><input readonly .value=${mcp.key ?? (created ? `erzeugt am ${created}` : "keiner – Server geschlossen")}></span></label>
+              <div class="field"><span class="field-label">Schlüssel</span>
+                <span class="input-unit">
+                  <input readonly aria-label="Schlüssel"
+                    .value=${mcp.key ?? (created ? `erzeugt am ${created}` : "keiner – Server geschlossen")}>
+                  <button class="secondary" @click=${() => this._createMcpKey()}>${created ? "Neu …" : "Erzeugen"}</button>
+                  ${created ? html`<button class="secondary" @click=${() => this._revokeMcpKey()}>Zurückziehen …</button>` : nothing}
+                </span></div>
             </div>
             ${mcp.key
               ? html`<p class="small">Der Schlüssel wird nur jetzt angezeigt. Sunflow speichert ihn nicht, nur eine Prüfsumme.</p>
                   <label class="field"><span class="field-label">Einrichten in Claude Code</span>
                     <span class="input-unit"><input readonly
                       .value=${`claude mcp add --transport http sunflow ${url ?? "http://<Adresse>:<Port>/mcp"} --header "Authorization: Bearer ${mcp.key}"`}></span></label>`
-              : nothing}
-            <div class="actions">
-              <button class="secondary" @click=${() => this._createMcpKey()}>${created ? "Neuen Schlüssel erzeugen …" : "Schlüssel erzeugen"}</button>
-              ${created ? html`<button class="secondary" @click=${() => this._revokeMcpKey()}>Zurückziehen …</button>` : nothing}
-            </div>`
+              : nothing}`
         : html`<p class="muted">${mcp === false ? "Nicht verfügbar." : "Lade …"}</p>`}
     </section>`;
   }
