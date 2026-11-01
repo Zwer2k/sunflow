@@ -142,8 +142,12 @@ const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" 
 
 const PRICE_ADAPTERS = {
   timeslots: "Zeittarif",
+  tibber: "Tibber",
   nordpool: "Börsenpreis (Nord Pool)",
-  epex_spot: "Börsenpreis (EPEX Spot)",
+  nordpool_core: "Börsenpreis netto (Nord Pool)",
+  epex_spot: "dynamischer Preis (EPEX Spot)",
+  epex_market: "Börsenpreis netto (EPEX Spot)",
+  entsoe: "Börsenpreis (ENTSO-e)",
   fixed: "nur aktueller Preis",
 };
 const weekdayTimeFormat = new Intl.DateTimeFormat("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -223,6 +227,7 @@ class SunflowApp extends LitElement {
     _testConfirm: { state: true },
     _fixedPriceMode: { state: true },
     _fixedPriceEdit: { state: true },
+    _surchargeEdit: { state: true },
     _busy: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
@@ -596,7 +601,7 @@ class SunflowApp extends LitElement {
       return;
     }
     this._fixedPriceMode = false;
-    await this._saveTariff({ import_entity_id: entityId || null, fixed_price_ct: null });
+    await this._saveTariff({ ...this._sources.tariff, import_entity_id: entityId || null, fixed_price_ct: null });
   }
 
   async _saveFixedPrice() {
@@ -606,7 +611,22 @@ class SunflowApp extends LitElement {
       return;
     }
     // Keep the typed price when saving fails, so it is neither lost nor skipped by "Weiter"
-    if (await this._saveTariff({ import_entity_id: null, fixed_price_ct: value })) this._fixedPriceEdit = undefined;
+    if (await this._saveTariff({ ...this._sources.tariff, import_entity_id: null, fixed_price_ct: value })) this._fixedPriceEdit = undefined;
+  }
+
+  async _saveSurcharges() {
+    const edit = this._surchargeEdit ?? {};
+    const value = (key, unit) => (edit[key] === undefined ? this._sources.tariff[key] : fromDisplay(edit[key], unit));
+    const surcharge = value("exchange_surcharge_ct", "ct");
+    const vat = value("exchange_vat_pct", "%");
+    if (surcharge === undefined || vat === undefined || (vat !== null && (vat < 0 || vat > 50))) {
+      this._error = "Bitte Aufschlag in ct/kWh und Mehrwertsteuer in % (0–50) eingeben.";
+      return;
+    }
+    if (await this._saveTariff({ ...this._sources.tariff, exchange_surcharge_ct: surcharge, exchange_vat_pct: vat })) {
+      this._surchargeEdit = undefined;
+      await this._loadPriceSeries();
+    }
   }
 
   async _saveTariff(body) {
@@ -2303,6 +2323,7 @@ class SunflowApp extends LitElement {
               </div>
             `
           : nothing}
+        ${this._priceSeries?.exchange && !fixed ? this._renderSurcharges(sources.tariff) : nothing}
         ${points.length && !fixed ? this._renderPriceSummary(points) : nothing}
         ${points.length && !fixed
           ? html`<figure>
@@ -2314,6 +2335,46 @@ class SunflowApp extends LitElement {
           ? html`<div class="alert warn">⚠ Diese Quelle liefert nur den aktuellen Preis, keinen Verlauf. Die Planung nimmt ihn als konstant an.</div>`
           : nothing}
       </section>
+    `;
+  }
+
+  /** Exchange prices: what comes on top until it is the price paid. */
+  _renderSurcharges(tariff) {
+    const edit = this._surchargeEdit ?? {};
+    const set = (key, value) => (this._surchargeEdit = { ...edit, [key]: value });
+    return html`
+      <p class="small muted">Diese Quelle liefert den reinen Börsenpreis. Für die Planung zählt, was du zahlst: Börsenpreis
+        plus Netzentgelt, Umlagen und Gebühr des Anbieters, darauf die Mehrwertsteuer. Die Werte stehen auf deiner
+        Rechnung bzw. im Preisblatt des Anbieters.</p>
+      <div class="fields">
+        <label class="field">
+          <span class="field-label">Aufschlag netto</span>
+          <span class="input-unit">
+            <input inputmode="decimal" placeholder="z. B. 17,5"
+              .value=${edit.exchange_surcharge_ct ?? toDisplay(tariff.exchange_surcharge_ct, "ct")}
+              @input=${(e) => set("exchange_surcharge_ct", e.target.value)}>
+            <span class="muted">ct/kWh</span>
+          </span>
+        </label>
+        <label class="field">
+          <span class="field-label">Mehrwertsteuer</span>
+          <span class="input-unit">
+            <input inputmode="decimal" placeholder="19"
+              .value=${edit.exchange_vat_pct ?? toDisplay(tariff.exchange_vat_pct, "%")}
+              @input=${(e) => set("exchange_vat_pct", e.target.value)}>
+            <span class="muted">%</span>
+          </span>
+        </label>
+      </div>
+      <div class="actions">
+        <button class="ok" ?disabled=${this._surchargeEdit === undefined} @click=${() => this._saveSurcharges()}>
+          Aufschläge speichern
+        </button>
+      </div>
+      ${tariff.exchange_surcharge_ct == null
+        ? html`<div class="alert warn">⚠ Ohne Aufschläge plant Sunflow mit dem Börsenpreis allein – Netzbezug erscheint viel zu
+            günstig.</div>`
+        : nothing}
     `;
   }
 

@@ -19,9 +19,10 @@ from sunflow.planning.sources import (
     ForecastPoint,
     PricePoint,
     detect_price_adapter,
+    fetch_prices,
     forecast_solar_forecast,
     forecast_solar_planes,
-    price_series,
+    is_exchange,
     price_sources,
     solcast_forecast,
     solcast_sites,
@@ -74,7 +75,7 @@ async def get_sources(request: Request) -> dict[str, Any]:
             {"id": f"{device.id}:{s['index']}", "device_id": device.id, "name": s["name"]} for s in pv_strings(roles)
         ]
     return {
-        "prices": [asdict(p) for p in price_sources(states)],
+        "prices": [asdict(p) for p in price_sources(states, {e["entity_id"]: e for e in snapshot.entities})],
         "forecast_planes": planes,
         "pv_strings": strings,
         "tariff": config.tariff.model_dump(),
@@ -142,10 +143,18 @@ async def get_tariff_series(
     snapshot = await _snapshot(request)
     if (state := snapshot.states.get(entity_id)) is None:
         raise HTTPException(status_code=404, detail=f"Unknown entity {entity_id}")
-    points = price_series(state, _slot_start(), hours, await _local_tz(request))
+    entry = next((e for e in snapshot.entities if e["entity_id"] == entity_id), None)
+    try:
+        points = await fetch_prices(
+            request.app.state.ha, state, entry, _slot_start(), hours, await _local_tz(request),
+            tariff.exchange_surcharge_ct, tariff.exchange_vat_pct,
+        )
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
     return {
         "entity_id": entity_id,
-        "adapter": detect_price_adapter(state.get("attributes", {})),
+        "adapter": detect_price_adapter(state.get("attributes", {}), (entry or {}).get("platform")),
+        "exchange": is_exchange(state, entry),
         "points": [asdict(p) for p in points],
     }
 

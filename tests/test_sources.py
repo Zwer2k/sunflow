@@ -198,3 +198,82 @@ def test_forecast_solar_energy_belongs_to_interval_before_timestamp() -> None:
     # The 15 min 20 s tail lies within the 09:00 cell: 30 Wh in half an hour
     assert by_start["09:00"] == 60
     assert sum(p.power for p in points) / 2 == pytest.approx(239)
+
+
+START = datetime(2026, 11, 2, 0, tzinfo=BERLIN)
+
+
+def _at(minutes: int) -> str:
+    return (START + timedelta(minutes=minutes)).isoformat()
+
+
+class PriceClient:
+    """Answers the price actions of the Tibber and Nord Pool core integrations."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def call_service(self, domain: str, service: str, data: dict[str, Any], return_response: bool = False) -> dict[str, Any]:
+        self.calls.append((domain, service, data))
+        if domain == "tibber":
+            prices = {"Zuhause": [{"start_time": _at(15 * i), "price": 0.30 + i / 100} for i in range(4)], "Ferienhaus": []}
+            return {"response": {"prices": prices}}
+        if data["date"] != START.date().isoformat():
+            from sunflow.ha import HACommandError
+
+            raise HACommandError("no prices for tomorrow yet")
+        return {"response": {"GER": [{"start": _at(60 * h), "end": _at(60 * (h + 1)), "price": 80.0 + h} for h in range(24)]}}
+
+
+@pytest.mark.parametrize(
+    ("attributes", "platform", "adapter"),
+    [
+        pytest.param({"app_nickname": "Zuhause"}, "tibber", "tibber", id="tibber"),
+        pytest.param({}, "nordpool", "nordpool_core", id="nordpool-core"),
+        pytest.param({"raw_today": []}, "nordpool", "nordpool", id="nordpool-custom"),
+        pytest.param({"data": [{"start_time": "x"}], "market_price_per_kwh": 0.1}, "epex_spot", "epex_market", id="epex-market"),
+        pytest.param({"data": [{"start_time": "x"}]}, "epex_spot", "epex_spot", id="epex-total"),
+        pytest.param({"prices": [{"time": "x", "price": 0.1}]}, "entsoe", "entsoe", id="entsoe"),
+    ],
+)
+def test_dynamic_price_providers_are_recognized(attributes: dict[str, Any], platform: str, adapter: str) -> None:
+    """Tibber and Nord Pool by their integration, the others by their price lists."""
+    assert detect_price_adapter(attributes, platform) == adapter
+
+
+async def test_tibber_prices_of_the_sensors_home() -> None:
+    """tibber.get_prices answers per home: the one of the price sensor; each price lasts until the next."""
+    from sunflow.planning.sources import fetch_prices
+
+    client = PriceClient()
+    state = {"entity_id": "sensor.tibber_preis", "state": "0.3", "attributes": {"unit_of_measurement": "EUR/kWh", "app_nickname": "Zuhause"}}
+
+    points = await fetch_prices(client, state, {"platform": "tibber"}, START, 1, BERLIN, 17.0, 19.0)
+
+    assert [(p.end - p.start, round(p.price, 2)) for p in points] == [(timedelta(minutes=15), round(0.30 + i / 100, 2)) for i in range(4)]
+    # Tibber's price is already the price paid: no surcharges
+    assert client.calls[0][:2] == ("tibber", "get_prices")
+
+
+async def test_nordpool_exchange_price_gets_surcharges() -> None:
+    """Nord Pool's €/MWh of the sensor's area plus surcharges and VAT; tomorrow missing is no error."""
+    from sunflow.planning.sources import fetch_prices
+
+    client = PriceClient()
+    state = {"entity_id": "sensor.ger_current_price", "state": "0.08", "attributes": {"unit_of_measurement": "EUR/kWh"}}
+    entry = {"platform": "nordpool", "config_entry_id": "abc", "unique_id": "GER-current_price"}
+
+    points = await fetch_prices(client, state, entry, START.replace(hour=22), 4, BERLIN, 17.0, 19.0)
+
+    assert points[0].price == pytest.approx((0.080 + 22 / 1000 + 0.17) * 1.19)
+    assert [c[2]["config_entry"] for c in client.calls] == ["abc", "abc"]
+    assert len(points) == 2
+
+
+def test_entsoe_prices() -> None:
+    """ENTSO-e lists start times and prices per kWh."""
+    state = {"state": "0.1", "attributes": {"unit_of_measurement": "€/kWh", "prices": [{"time": _at(60 * h), "price": 0.1 * h} for h in range(3)]}}
+
+    points = price_series(state, START, 3, BERLIN)
+
+    assert [(p.start.hour, p.end.hour, p.price) for p in points] == [(0, 1, 0.0), (1, 2, 0.1), (2, 3, pytest.approx(0.2))]

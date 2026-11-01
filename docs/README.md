@@ -10,6 +10,8 @@ und setzt den Plan auf Wunsch selbst um.
   geprüft ist.
 - [Sunflow-Integration](integration.md): Prognose im Energie-Dashboard, Entitäten,
   Aktionen, Ereignisse und Watchdog in Home Assistant.
+- [Strompreise](strompreise.md): dynamische Tarife (Tibber, Nord Pool, aWATTar u. a.) und
+  Aufschläge auf Börsenpreise.
 - [Optimierer](optimierer.md): Modul-Optimierer (Huawei, Tigo) je String auf dem Dach
   anzeigen, zuordnen und anordnen.
 
