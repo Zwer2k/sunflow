@@ -181,3 +181,38 @@ def test_levels_without_statistics_come_from_own_samples() -> None:
 
     assert points[0]["levels"] == {"wb": 40.0, "ww": 50.0}
     assert points[1]["levels"] == {"wb": 42.0, "ww": 55.0}
+
+
+def test_every_plant_and_consumer_keeps_its_series() -> None:
+    """With cars configured, the PV of every plant and the wallbox power are still fetched."""
+    from sunflow.analysis.history import history_series
+    from sunflow.config.models import ChargingProfile, DeviceConfig, SunflowConfig, Vehicle
+    from sunflow.devices.discovery import Snapshot
+
+    profiles = {
+        "pv": {"capabilities": ["pv"], "roles": {"pv_power": {"key": "pv"}}},
+        "wb": {"capabilities": ["loadpoint"], "roles": {"charge_power": {"key": "power"}}},
+    }
+    entities = [
+        {"entity_id": "sensor.roof_pv", "unique_id": "roof_pv", "device_id": "roof"},
+        {"entity_id": "sensor.garage_pv", "unique_id": "garage_pv", "device_id": "garage"},
+        {"entity_id": "sensor.wb_power", "unique_id": "wb_power", "device_id": "w"},
+    ]
+    config = SunflowConfig(
+        devices=[
+            DeviceConfig(id="roof", ha_device_id="roof", profile="pv", profile_version=1, name="Dach"),
+            DeviceConfig(id="wb", ha_device_id="w", profile="wb", profile_version=1, name="Wallbox"),
+            DeviceConfig(id="garage", ha_device_id="garage", profile="pv", profile_version=1, name="Garage"),
+        ],
+        vehicles=[Vehicle(id="fiat", name="Fiat", capacity_wh=37500, soc_entity="sensor.fiat_soc")],
+        charging=[ChargingProfile(vehicle_id="fiat", wallbox_id="wb")],
+    )
+
+    series = history_series(config, profiles, Snapshot(entries=[], devices=[], entities=entities, states={}, energy_prefs=None))
+
+    assert sorted((s.key, s.statistic_id) for s in series) == [
+        ("level", "sensor.fiat_soc"),
+        ("loadpoint_w", "sensor.wb_power"),
+        ("pv_w", "sensor.garage_pv"),
+        ("pv_w", "sensor.roof_pv"),
+    ]

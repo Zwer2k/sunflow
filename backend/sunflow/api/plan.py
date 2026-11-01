@@ -186,5 +186,5 @@ async def get_history(
         raise HTTPException(status_code=502, detail=str(err)) from err
     if (runner := getattr(request.app.state, "runner", None)) is not None:
         rows = await asyncio.to_thread(runner.shadow.rows, start)
-        fill_from_shadow(points, [r for r in rows if r["start"] < end.isoformat()], {s.device_id for s in series if s.device_id})
+        fill_from_shadow(points, [r for r in rows if r["start"] < end.isoformat()], {s.device_id for s in series if s.device_id and s.key == "loadpoint_w"})
     return {"start": start.isoformat(), "end": end.isoformat(), "points": points}
