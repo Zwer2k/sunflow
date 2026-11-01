@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.68.3
+
+- MCP-Server: Schlüssel und die Knöpfe „Erzeugen“ / „Neu …“ / „Zurückziehen …“ stehen in einer Zeile.
+
 ## 0.68.2
 
 - MCP-Server: Die angezeigte Adresse und der Einrichtungsbefehl nutzen die interne Adresse von Home Assistant (Einstellungen → System → Netzwerk, sonst seine lokale IP) statt der Adresse, über die der Browser HA gerade öffnet – die kann die externe sein, an der der freigegebene Port nicht erreichbar ist.
