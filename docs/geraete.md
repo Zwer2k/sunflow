@@ -73,7 +73,11 @@ die nächste Viertelstunde genug erwartet; herunter schneller, damit kein Netzst
 Mindestabstand und Tageslimit verhindern Pendeln bei wechselhaftem Wetter. Beim Zurückgeben
 bekommt die Wallbox ihren vorherigen Phasenmodus wieder.
 
-Ladestrom: Den höchsten Strom der go-e übernimmt Sunflow aus ihrem eingestellten Maximalstrom
+Ladestrom der go-e: Sunflow setzt den Ladestrom „Requested current“ (`amp`), wie evcc bei
+API v2 – den temporären Strom `amx` übernimmt die Firmware 56.x nicht. Weil die go-e diesen Wert
+behält, ändert Sunflow ihn höchstens alle 3 Minuten (Kenndatum `current_interval_min`) und stellt
+den vorher eingestellten Strom wieder her, sobald die Wallbox selbst regelt oder zurückgegeben wird.
+Den höchsten Strom der go-e übernimmt Sunflow aus ihrem eingestellten Maximalstrom
 (`ama`, z. B. 32 A bei einer 22-kW-Wallbox), in den Kenndaten überschreibbar. Die höchste
 Ladeleistung des Autos einphasig und dreiphasig (Einstellungen → Fahrzeuge, z. B. Fiat 500e:
 7,4 kW / 11 kW) begrenzt den Strom zusätzlich und geht in die Planung ein.

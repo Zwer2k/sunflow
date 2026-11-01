@@ -173,10 +173,11 @@
           "items": {"$ref": "#/$defs/step"}
         },
         "remember": {
+          "description": "Entity whose value is stored on takeover and restored when the device regulates itself again: a select (mode) or a number (e.g. a charging current Sunflow overwrites).",
           "type": "object",
           "required": ["key"],
           "additionalProperties": false,
-          "properties": {"key": {"type": "string"}}
+          "properties": {"key": {"type": "string"}, "domain": {"enum": ["select", "number"], "default": "select"}}
         }
       }
     },

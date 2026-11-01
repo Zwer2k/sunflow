@@ -1,10 +1,9 @@
 # go-e Charger (Gemini, HOME) via the goecharger_mqtt custom integration (HACS).
 # Sunflow controls the charger directly; evcc must not control the same charger then.
 # Unique ids look like "216505-select-frc-frc", so keys include the platform.
-# The current is set as "amx": a temporary current that is not stored in the
-# charger's flash (like evcc does), so it may follow the PV surplus every minute.
-# The integration has no entity for it; its action set_config_key publishes it on the
-# integration's own topic (a direct mqtt.publish did not reach the charger).
+# The current is set as the requested current (amp): the temporary current amx is
+# not taken by firmware 56.x. amp is kept by the charger, so it changes at most every
+# current_interval_min and the user's value is restored when Sunflow lets go.
 # Charging is started and stopped with the force state.
 profile: goecharger_mqtt/charger
 version: 2
@@ -49,10 +48,12 @@ parameters:
   phase_max_switches_day: {unit: "", default: 12, min: 1, max: 100, advanced: true}
   min_current_a: {unit: A, default: 6, min: 6, max: 32}
   max_current_a: {unit: A, default: 16, min: 6, max: 32, derive: {sum_key: number-ama-0}}
+  # The requested current is kept by the charger: not changed more often than this
+  current_interval_min: {unit: min, default: 3, min: 1, max: 60, advanced: true}
 
 charge_control:
   charge:
-    - service: {action: goecharger_mqtt.set_config_key, data: {device_id: "{{ device_id }}", key: amx, value: "{{ current_a }}"}, storage: volatile}
+    - number: {key: number-amp-0, value: "{{ current_a }}", write: if_differs}
     - select: {key: select-frc-frc, option: "charge", write: if_differs}
   stop:
     - select: {key: select-frc-frc, option: "dont_charge", write: if_differs}
@@ -61,8 +62,9 @@ charge_control:
     - select: {key: select-trx-trx, option: "{{ transaction }}"}
   # The charger's own logic again (charges when plugged in, unless its schedule says otherwise)
   release:
-    - service: {action: goecharger_mqtt.set_config_key, data: {device_id: "{{ device_id }}", key: amx, value: "{{ role_stored_current }}"}, storage: volatile}
     - select: {key: select-frc-frc, option: "neutral", write: if_differs}
+  # The user's requested current, restored whenever the charger regulates itself again
+  remember: {key: number-amp-0, domain: number}
 
 # The phase switch mode is a setting of the charger (kept in flash): only on change
 phase_switch:
