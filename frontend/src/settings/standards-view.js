@@ -419,7 +419,8 @@ class SunflowStandards extends LitElement {
                 @input=${(e) => (this._largeLoad = e.target.value)}>
               <span class="muted">kW</span>
             </span>
-            <span class="small muted">Stunden darüber (z. B. Wallbox) zählen nicht zur Lastprognose. Leer = nichts ausklammern.</span>
+            <span class="small muted">Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose, damit seltene Spitzen
+              den Alltag nicht verzerren. Wallbox, Heizstab und andere Verbraucher in Sunflow rechnet es ohnehin heraus. Leer = nichts ausklammern.</span>
           </label>
           ${this._renderWear(settings)}
           <label class="field">

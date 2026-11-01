@@ -988,3 +988,23 @@ def test_high_soc_aging_settings() -> None:
 
     assert (on.high_soc_wh, on.high_soc_ct_per_kwh_h) == (15000, 0.1)
     assert off.high_soc_wh is None
+
+
+@pytest.mark.parametrize(
+    ("excluded", "history", "shown"),
+    [
+        pytest.param(1, 672, False, id="a-rare-peak"),
+        pytest.param(13, 672, False, id="two-percent"),
+        pytest.param(20, 672, True, id="many"),
+        pytest.param(6, 48, True, id="short-history"),
+    ],
+)
+def test_large_load_notice(excluded: int, history: int, shown: bool) -> None:
+    """Rare peaks are left out silently; only many such hours ask for a consumer to be set up."""
+    from sunflow.planning.load_forecast import LoadForecast
+    from sunflow.planning.plan import large_load_notice
+
+    load = LoadForecast(points=[], history_hours=history, quality="day_type", excluded_hours=excluded)
+
+    assert (large_load_notice(load, 3500.0) is not None) is shown
+    assert large_load_notice(load, None) is None
