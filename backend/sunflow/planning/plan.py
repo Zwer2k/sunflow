@@ -40,6 +40,7 @@ from .load_forecast import (
 )
 from .load_model import LoadModel
 from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
+from .price_estimate import extend_prices
 from .pv_learning import PvCorrection, cloud_class
 from .sources import (
     ForecastPoint,
@@ -47,18 +48,23 @@ from .sources import (
     fetch_prices,
     forecast_solar_forecast,
     is_exchange,
+    price_factor,
     resample,
     solcast_forecast,
     sum_forecasts,
+    with_surcharges,
 )
 from .vehicle_usage import VehicleUsage, usage_from as vehicle_usage_from
 from .vehicles import Recognized, recognize, soc_of, vehicle_max_power
 
-HORIZON_HOURS = 48
+# The plan looks this far ahead; beyond the published prices with estimated ones
+HORIZON_HOURS = 96
 # Database queries change slowly; every replan (each quarter hour) reusing them keeps
 # the load on the recorder low. On a failure the last result stays good enough
 HOURLY_TTL = timedelta(hours=1)
 HABITS_TTL = timedelta(hours=6)
+# Price history whose mean per hour estimates prices not published yet
+PRICE_HISTORY_DAYS = 14
 _query_cache: dict[tuple[str, ...], tuple[float, Any]] = {}
 
 
@@ -91,6 +97,8 @@ WATER_WH_PER_LITRE_KELVIN = 1.163
 # Target of a heating own consumer when none is set (evcc loadpoints report their own)
 DEFAULT_HOT_WATER_C = 60.0
 HEATER_DEADLINE = timedelta(hours=24)
+# A car without a departure (set or learned) is charged within this time
+VEHICLE_DEADLINE = timedelta(hours=48)
 # The learned main usage counts as deadline only this long ahead, so there is time to heat
 HEATER_MIN_LEAD = timedelta(hours=3)
 # Without a configured daily need the tank is assumed to cool down by this much per day
@@ -338,7 +346,8 @@ def flex_loads(
                 info.deadline = min(departure, horizon_end)
                 info.learned_departure = True
             else:
-                info.deadline = horizon_end
+                # A longer plan must not put charging off for days
+                info.deadline = min(slot_starts[0] + VEHICLE_DEADLINE, horizon_end)
             plan_soc = roles["plan_soc"].value if "plan_soc" in roles else None
             plan_time = roles["plan_time"].raw_state if "plan_time" in roles else None
             if plan_soc and plan_time and plan_time not in ("unknown", "unavailable"):
@@ -1000,14 +1009,15 @@ def build_inputs(
     load: LoadForecast,
     feed_in: float,
 ) -> list[SlotInput]:
-    """Align all series on 15 minute slots until prices run out (max 48 h)."""
+    """Align all series on 15 minute slots until prices run out (at most the horizon)."""
     pv_15 = resample(pv, SLOT)
     inputs = []
     moment = start
     for _ in range(HORIZON_HOURS * 4):
-        price = value_at(prices, moment, "price") if prices else NOMINAL_PRICE
-        if price is None:
+        point = next((p for p in prices if p.start <= moment < p.end), None)
+        if prices and point is None:
             break
+        price = point.price if point is not None else NOMINAL_PRICE
         inputs.append(
             SlotInput(
                 start=moment,
@@ -1016,6 +1026,7 @@ def build_inputs(
                 load_w=value_at(load.points, moment, "power") or 0.0,
                 price=price,
                 feed_in=feed_in,
+                price_estimated=point.estimated if point is not None else False,
             )
         )
         moment += SLOT
@@ -1144,6 +1155,23 @@ async def compute_plan(
             )
         except HAError as err:
             warnings.append(f"Strompreise nicht abrufbar ({err}) – geplant wird nur auf Eigenverbrauch.")
+        if prices and max(p.end for p in prices) < start + timedelta(hours=HORIZON_HOURS):
+            # Beyond the published prices: the usual ones of each hour (the sensor's history)
+            try:
+                history = await cached(
+                    ("hourly", tariff.import_entity_id), HABITS_TTL,
+                    lambda: fetch_hourly_means(client, tariff.import_entity_id or "", start, PRICE_HISTORY_DAYS),
+                )
+            except HAError:
+                history = []
+            factor = price_factor(state.get("attributes", {}).get("unit_of_measurement")) or 1.0
+            history = [(moment, price * factor) for moment, price in history]
+            if is_exchange(state, entry):
+                history = [(p.start, p.price) for p in with_surcharges(
+                    [PricePoint(start=m, end=m + SLOT, price=v) for m, v in history],
+                    tariff.exchange_surcharge_ct, tariff.exchange_vat_pct,
+                )]
+            prices = extend_prices(prices, history, start + timedelta(hours=HORIZON_HOURS), tz)
         if is_exchange(state, entry) and tariff.exchange_surcharge_ct is None:
             warnings.append(
                 "Der Strompreis ist ein reiner Börsenpreis – Netzentgelt, Umlagen und Steuern fehlen. "
@@ -1178,10 +1206,13 @@ async def compute_plan(
         used_planes.append(plane)
     if not series:
         warnings.append("Keine PV-Prognose – geplant wird ohne PV-Ertrag.")
-    horizon_end = start + timedelta(hours=HORIZON_HOURS)
-    for plane, points in zip(used_planes, series, strict=False):
-        last = max((p.end for p in points), default=start)
-        if last < horizon_end - timedelta(hours=12):
+    # Published prices; estimated ones only reach as far as every PV forecast
+    published_end = max((p.end for p in prices if not p.estimated), default=start + timedelta(hours=HORIZON_HOURS))
+    pv_ends = [max((p.end for p in points), default=start) for points in series]
+    if pv_ends:
+        prices = [p for p in prices if not p.estimated or p.end <= min(pv_ends)]
+    for plane, last in zip(used_planes, pv_ends, strict=False):
+        if last < published_end - timedelta(hours=12):
             warnings.append(
                 f"PV-Prognose „{plane.display_name}“ reicht nur bis {german_time(last.astimezone(tz))} – "
                 "danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig)."

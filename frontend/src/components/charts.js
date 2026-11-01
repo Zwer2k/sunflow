@@ -128,7 +128,7 @@ function frame(start, end, scale, formatY, { onScale = null, zoomed = false } = 
 export function priceChart(points, label, { range = null, now = null } = {}) {
   fit();
   const parsed = points
-    .map((p) => ({ start: new Date(p.start), end: new Date(p.end), ct: p.price * 100 }))
+    .map((p) => ({ start: new Date(p.start), end: new Date(p.end), ct: p.price * 100, estimated: Boolean(p.estimated) }))
     .filter((p) => !range || (p.end > range.start && p.start < range.end))
     .map((p) => (range ? { ...p, start: new Date(Math.max(p.start, range.start)), end: new Date(Math.min(p.end, range.end)) } : p));
   if (!parsed.length) return nothing;
@@ -136,18 +136,31 @@ export function priceChart(points, label, { range = null, now = null } = {}) {
   const end = range?.end ?? parsed.at(-1).end;
   const { x, y, axes, left } = frame(start, end, niceScale(Math.max(...parsed.map((p) => p.ct)) * 1.05), (v) => `${Math.round(v)} ct`);
   const nowX = now ? x(now) : null;
-  const path = parsed.map((p, i) => `${i ? "L" : "M"}${x(p.start)},${y(p.ct)} L${x(p.end)},${y(p.ct)}`).join(" ");
+  // Published prices solid, estimated ones (not published yet) dashed
+  const pathOf = (estimated) => parsed
+    .map((p, i) => (p.estimated === estimated
+      ? `${i && parsed[i - 1].estimated === estimated ? "L" : "M"}${x(p.start)},${y(p.ct)} L${x(p.end)},${y(p.ct)}`
+      : ""))
+    .join(" ");
+  const firstEstimate = parsed.find((p) => p.estimated);
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
       ${axes}
       ${nowX !== null && nowX > left && nowX < W - PAD.right
         ? svg`<line x1=${nowX} x2=${nowX} y1=${PAD.top} y2=${H - PAD.bottom} class="now"></line>`
         : nothing}
-      <path d=${path} fill="none" style="stroke: ${SERIES_COLORS[0]}" stroke-width="2" stroke-linejoin="round"></path>
+      <path d=${pathOf(false)} fill="none" style="stroke: ${SERIES_COLORS[0]}" stroke-width="2" stroke-linejoin="round"></path>
+      ${firstEstimate
+        ? svg`<path d=${pathOf(true)} fill="none" style="stroke: ${SERIES_COLORS[0]}" stroke-width="2" stroke-dasharray="5 4"
+              stroke-linejoin="round"></path>
+            <text x=${x(firstEstimate.start) + 4} y=${PAD.top + 10} text-anchor="start" class="axis">geschätzt</text>`
+        : nothing}
       ${parsed.map(
         (p) => svg`<rect x=${x(p.start)} y=${PAD.top} width=${Math.max(x(p.end) - x(p.start), 1)}
           height=${H - PAD.top - PAD.bottom} class="hit">
-          <title>${timeFormat.format(p.start)}–${timeFormat.format(p.end)}: ${p.ct.toFixed(1).replace(".", ",")} ct/kWh</title>
+          <title>${timeFormat.format(p.start)}–${timeFormat.format(p.end)}: ${p.ct.toFixed(1).replace(".", ",")} ct/kWh${p.estimated
+            ? " (geschätzt)"
+            : ""}</title>
         </rect>`,
       )}
     </svg>

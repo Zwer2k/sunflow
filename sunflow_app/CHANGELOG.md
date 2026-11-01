@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.66.0
+
+- Plan: bis zu 96 statt 48 Stunden voraus. Bei Zeittarifen und festem Preis über den ganzen Zeitraum; bei dynamischen Tarifen schätzt Sunflow die noch nicht veröffentlichten Preise je Uhrzeit aus dem Preisverlauf der letzten zwei Wochen (sonst wiederholt es die letzten 24 bekannten Stunden). Geschätzte Preise sind im Plan gestrichelt und markiert. Geschätzt wird nur so weit, wie die PV-Prognose reicht. Ein Auto ohne Abfahrtszeit wird weiterhin innerhalb von 48 Stunden geladen.
+
 ## 0.65.0
 
 - Strompreise: Tibber (Core-Integration, über die Aktion `tibber.get_prices`), Nord Pool (Core-Integration, über `nordpool.get_prices_for_date`) und ENTSO-e (HACS) werden mit ihrem Preisverlauf gelesen. EPEX Spot (HACS) deckt aWATTar, smartENERGY, Energy-Charts, SMARD u. a. ab; dessen Sensor „Market Price“ wird als Börsenpreis erkannt.

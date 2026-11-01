@@ -21,3 +21,13 @@ einzustellen.
 
 Preise, die Sunflow über eine Aktion abfragt, werden 15 Minuten zwischengespeichert. Die Preise
 für morgen veröffentlichen die Börsen gegen Mittag; vorher plant Sunflow mit dem, was bekannt ist.
+
+## Über die veröffentlichten Preise hinaus
+
+Sunflow plant bis zu 96 Stunden voraus. Dynamische Tarife kennen aber nur heute und – ab etwa
+Mittag – morgen. Für die Stunden danach schätzt Sunflow den Preis: je Uhrzeit das Mittel des
+Preissensors der letzten zwei Wochen (ab sieben Tagen Verlauf), sonst die letzten 24 bekannten
+Stunden noch einmal. Geschätzte Preise sind im Plan gestrichelt und als „geschätzt“ markiert; sie
+prägen nur das Ende des Plans und werden ersetzt, sobald die echten Preise da sind. Geschätzt wird
+nur so weit, wie alle PV-Prognosen reichen, damit fehlender PV-Ertrag den Plan nicht verzerrt.
+Zeittarife und feste Preise sind ohnehin bekannt und reichen über den ganzen Zeitraum.
