@@ -125,6 +125,7 @@ export const api = {
   mcpLink: () => request("GET", "/mcp/link"),
   createMcpKey: () => request("POST", "/mcp/key"),
   revokeMcpKey: () => request("DELETE", "/mcp/key"),
+  setMcpSettings: (body) => request("PUT", "/config/mcp", body),
   integrationSettings: () => request("GET", "/config/integration"),
   display: () => request("GET", "/config/display"),
   optimizers: () => request("GET", "/optimizers"),

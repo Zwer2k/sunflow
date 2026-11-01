@@ -317,6 +317,15 @@ class IntegrationSettings(BaseModel):
     forecast_kinds: list[ForecastKind] = Field(default_factory=lambda: ["total", "plant", "plane"])
 
 
+McpArea = Literal["live", "history", "config", "control", "log"]
+
+
+class McpSettings(BaseModel):
+    """What the MCP server may read, per area."""
+
+    areas: list[McpArea] = Field(default_factory=lambda: ["live", "history", "config", "control", "log"])
+
+
 class OptimizerPlacement(BaseModel):
     """Where one optimizer (Home Assistant device) hangs and sits; unset fields are proposed."""
 
@@ -389,6 +398,7 @@ class SunflowConfig(BaseModel):
     priority_conditions: dict[str, list[PriorityCondition]] = Field(default_factory=dict)
     control: ControlSettings = Field(default_factory=ControlSettings)
     integration: IntegrationSettings = Field(default_factory=IntegrationSettings)
+    mcp: McpSettings = Field(default_factory=McpSettings)
     display: DisplaySettings = Field(default_factory=DisplaySettings)
     optimizer_settings: OptimizerSettings = Field(default_factory=OptimizerSettings)
     vehicles: list[Vehicle] = Field(default_factory=list)

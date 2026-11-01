@@ -31,6 +31,15 @@ import {
   toDisplay,
 } from "./lib/format.js";
 
+/** What the MCP server may read; matches the areas in the backend. */
+const MCP_AREAS = [
+  ["live", "Live, Plan, Preise und Prognosen"],
+  ["history", "Verlauf, Aufzeichnung und Auswertung (mit SQL)"],
+  ["config", "Konfiguration und Geräte"],
+  ["control", "Steuerung und Steuerungsprotokoll"],
+  ["log", "Fehler und Warnungen der App"],
+];
+
 // Main menu: view, label, icon (24 px line icon)
 const VIEWS = [
   ["live", "Live", "M3 12h4l3-8 4 16 3-8h4"],
@@ -1290,6 +1299,12 @@ class SunflowApp extends LitElement {
                   ${created ? html`<button class="secondary" @click=${() => this._revokeMcpKey()}>Zurückziehen …</button>` : nothing}
                 </span></div>
             </div>
+            <div class="field"><span class="field-label">Darf lesen</span>
+              <span class="inline">${MCP_AREAS.map(([area, label]) => html`<label class="inline">
+                <input type="checkbox" .checked=${mcp.areas.includes(area)} @change=${(e) => this._setMcpArea(area, e.target.checked)}>
+                ${label}</label>`)}</span>
+              <span class="small muted">Version und Verbindung sind immer lesbar. Nicht freigegebene Bereiche fehlen in der
+                Werkzeugliste des Assistenten.</span></div>
             ${mcp.key
               ? html`<p class="small">Der Schlüssel wird nur jetzt angezeigt. Sunflow speichert ihn nicht, nur eine Prüfsumme.</p>
                   <label class="field"><span class="field-label">Einrichten in Claude Code</span>
@@ -1298,6 +1313,15 @@ class SunflowApp extends LitElement {
               : nothing}`
         : html`<p class="muted">${mcp === false ? "Nicht verfügbar." : "Lade …"}</p>`}
     </section>`;
+  }
+
+  async _setMcpArea(area, on) {
+    const areas = on ? [...new Set([...this._mcp.areas, area])] : this._mcp.areas.filter((a) => a !== area);
+    try {
+      this._mcp = { ...this._mcp, ...(await api.setMcpSettings({ areas })) };
+    } catch (err) {
+      this._error = `Einstellung nicht gespeichert: ${err.message}`;
+    }
   }
 
   async _createMcpKey() {

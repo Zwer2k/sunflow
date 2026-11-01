@@ -45,6 +45,15 @@ Der Port ist im Heimnetz ohne Verschlüsselung (HTTP) erreichbar. Gib ihn nicht 
 | `get_sources`, `get_tariff_series`, `get_forecast_series`, `get_pv_learning` | Preise und PV-Prognose |
 | `get_device_parameters`, `get_device_efficiency`, `get_direct_status` | einzelne Geräte |
 | `get_recommendations`, `get_integration_state` | Empfehlungen, Daten für die Integration |
+| `get_log` | Fehler, Warnungen und Hinweise der App seit dem letzten Start, mit Traceback |
+
+## Berechtigungen
+
+Unter „Darf lesen“ legst du je Bereich fest, was der Assistent sehen darf: Live, Plan, Preise und
+Prognosen · Verlauf, Aufzeichnung und Auswertung (mit SQL) · Konfiguration und Geräte ·
+Steuerung und Steuerungsprotokoll · Fehler und Warnungen der App. Version und Verbindung sind
+immer lesbar. Ein abgeschalteter Bereich fehlt in der Werkzeugliste und wird abgewiesen; manche
+Assistenten laden die Liste erst beim nächsten Start neu.
 
 Der Plan über 96 Stunden ist groß. Kürzt Claude Code die Antwort, hilft
 `MAX_MCP_OUTPUT_TOKENS=50000` als Umgebungsvariable, oder gezielte Abfragen über `query_shadow_db`.

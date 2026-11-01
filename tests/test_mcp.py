@@ -1,5 +1,7 @@
 """Tests for the read-only MCP server."""
 
+import json
+import logging
 from pathlib import Path
 import sqlite3
 from typing import Any
@@ -8,9 +10,10 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
-from sunflow.api import create_app
+from sunflow.api import create_app, mcp
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.config.store import ConfigStore
+from sunflow.log_buffer import LogBuffer
 from sunflow.mcp_key import McpKey
 from sunflow.settings import Settings
 
@@ -148,3 +151,47 @@ def test_legacy_plain_key_removed(tmp_path: Path) -> None:
     (tmp_path / "mcp_token").write_text("old")
     assert McpKey(tmp_path).created is None
     assert not (tmp_path / "mcp_token").exists()
+
+
+def test_areas_limit_the_tools(app: FastAPI, client: TestClient) -> None:
+    """Areas switched off in the settings disappear from the list and refuse calls; status stays."""
+    ingress = TestClient(app, client=("172.30.32.2", 50000))
+    assert ingress.put("/api/v1/config/mcp", json={"areas": ["live"]}).json() == {"areas": ["live"]}
+
+    names = {t["name"] for t in _rpc(client, "tools/list")["result"]["tools"]}
+    assert {"get_status", "get_plan"} <= names
+    assert not names & {"get_config", "query_shadow_db", "get_log", "get_control_log"}
+    refused = _rpc(client, "tools/call", {"name": "get_config", "arguments": {}})["result"]
+    assert refused["isError"]
+    assert "nicht freigegeben" in refused["content"][0]["text"]
+    assert ingress.put("/api/v1/config/mcp", json={"areas": ["secrets"]}).status_code == 422
+    assert client.put("/api/v1/config/mcp", json={"areas": ["log"]}).status_code == 403
+
+
+def test_log_tool(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The log tool returns recent records from a level up, with the traceback of exceptions."""
+    buffer = LogBuffer()
+    monkeypatch.setattr(mcp, "LOG_BUFFER", buffer)
+    logger = logging.getLogger("sunflow.test_mcp")
+    logger.addHandler(buffer)
+    logger.setLevel(logging.INFO)
+    try:
+        logger.info("Replanned")
+        logger.warning("Replan failed: %s", "Not connected")
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            logger.exception("Control failed")
+    finally:
+        logger.removeHandler(buffer)
+
+    def log(arguments: dict[str, Any]) -> list[dict[str, Any]]:
+        result = _rpc(client, "tools/call", {"name": "get_log", "arguments": arguments})["result"]
+        return json.loads(result["content"][0]["text"])["entries"]
+
+    assert [e["message"] for e in log({})] == ["Replan failed: Not connected", "Control failed"]
+    assert [e["message"] for e in log({"level": "info", "limit": 1})] == ["Control failed"]
+    error = log({"level": "error"})
+    assert len(error) == 1
+    assert "ValueError: boom" in error[0]["traceback"]
+    assert _rpc(client, "tools/call", {"name": "get_log", "arguments": {"level": "debug"}})["result"]["isError"]
