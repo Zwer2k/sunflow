@@ -17,7 +17,7 @@ from sunflow import API_VERSION, __version__
 from sunflow.control.journal import JOURNAL_FILE
 from sunflow.devices.discovery import discover
 from sunflow.ha import HAClient
-from sunflow.integration_link import app_host
+from sunflow.integration_link import app_host, host_port
 from sunflow.shadow.runner import ShadowRunner
 from sunflow.shadow.store import evaluate as evaluate_shadow
 
@@ -48,6 +48,14 @@ async def integration_link(request: Request) -> dict[str, Any]:
         "token": request.app.state.integration_token,
         "discovery": settings.supervisor_token is not None,
     }
+
+
+@router.get("/mcp/link")
+async def mcp_link(request: Request) -> dict[str, Any]:
+    """Port and token of the MCP server (only through Ingress); without a mapped port it is not reachable from outside."""
+    settings = request.app.state.settings
+    port = await host_port(settings.supervisor_token, settings.port) if settings.supervisor_token else settings.port
+    return {"port": port, "path": "/mcp", "token": request.app.state.mcp_token}
 
 
 @router.get("/profiles")

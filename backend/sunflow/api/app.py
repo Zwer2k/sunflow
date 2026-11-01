@@ -36,6 +36,7 @@ from sunflow.shadow.counters import EnergyCounters
 from sunflow.shadow.runner import ShadowRunner
 from sunflow.shadow.store import ShadowStore
 
+from . import mcp
 from .common import _LOGGER, DEFAULT_MAX_EEPROM_WRITES, router
 
 RECONNECT_DELAYS = (1, 2, 5, 10, 30)
@@ -72,6 +73,8 @@ async def _keep_connected(client: HAClient) -> None:
 
 # The Supervisor's Ingress proxy, and local calls inside the container
 INGRESS_CLIENTS = {"172.30.32.2", "127.0.0.1"}
+# Health for the integration; the MCP server checks its own token
+OPEN_PATHS = {"/api/v1/health", "/mcp"}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -84,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
         app.state.settings = settings
         app.state.integration_token = integration_token(settings.data_dir)
+        app.state.mcp_token = integration_token(settings.data_dir, "mcp_token")
         if settings.supervisor_token:
             await announce(settings.supervisor_token, settings.port, app.state.integration_token)
         app.state.store = ConfigStore(settings.data_dir)
@@ -126,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Sunflow", version=__version__, lifespan=lifespan)
     app.include_router(router)
+    app.include_router(mcp.router)
 
     @app.exception_handler(HAError)
     async def ha_error(request: Request, err: HAError) -> JSONResponse:
@@ -141,6 +146,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def config_error(request: Request, err: ConfigError) -> JSONResponse:
         return JSONResponse({"detail": str(err)}, status_code=503)
 
+    @app.middleware("http")
+    async def mcp_token_only(request: Request, call_next: Any) -> Any:
+        # The MCP server only reads, but what it reads is private: always its own token, and that token nowhere else
+        token = getattr(app.state, "mcp_token", None)
+        authorized = token is not None and secrets.compare_digest(request.headers.get("authorization", ""), f"Bearer {token}")
+        if (request.url.path == "/mcp") != authorized:
+            if request.url.path == "/mcp":
+                return JSONResponse({"detail": "MCP token required"}, status_code=401)
+            return JSONResponse({"detail": "The MCP token is only valid for /mcp"}, status_code=403)
+        return await call_next(request)
+
     if settings is not None and settings.ingress_only:
 
         @app.middleware("http")
@@ -152,7 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             authorized = token is not None and secrets.compare_digest(
                 request.headers.get("authorization", ""), f"Bearer {token}"
             )
-            if client not in INGRESS_CLIENTS and not authorized and request.url.path != "/api/v1/health":
+            if client not in INGRESS_CLIENTS and not authorized and request.url.path not in OPEN_PATHS:
                 return JSONResponse({"detail": "Only available through Home Assistant"}, status_code=403)
             return await call_next(request)
 

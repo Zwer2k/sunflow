@@ -12,9 +12,9 @@ _LOGGER = logging.getLogger(__name__)
 DISCOVERY_SERVICE = "sunflow_ems"
 
 
-def integration_token(data_dir: Path) -> str:
-    """Token the integration authenticates with; created once and kept in the data directory."""
-    path = data_dir / "integration_token"
+def integration_token(data_dir: Path, name: str = "integration_token") -> str:
+    """Token the integration (or the MCP client) authenticates with; created once and kept in the data directory."""
+    path = data_dir / name
     try:
         if token := path.read_text().strip():
             return token
@@ -46,3 +46,21 @@ async def announce(supervisor_token: str, port: int, token: str) -> None:
                 _LOGGER.warning("Supervisor discovery refused (%s): %s", response.status, await response.text())
     except (aiohttp.ClientError, TimeoutError) as err:
         _LOGGER.warning("Supervisor discovery failed: %s", err)
+
+
+async def host_port(supervisor_token: str, port: int) -> int | None:
+    """Host port the App's port is mapped to in its network settings; None when not mapped."""
+    try:
+        async with (
+            aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session,
+            session.get(
+                "http://supervisor/addons/self/info", headers={"Authorization": f"Bearer {supervisor_token}"}
+            ) as response,
+        ):
+            if response.status >= 400:
+                return None
+            network = (await response.json()).get("data", {}).get("network") or {}
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.warning("App info not available: %s", err)
+        return None
+    return network.get(f"{port}/tcp")

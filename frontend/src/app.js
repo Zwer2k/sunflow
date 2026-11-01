@@ -220,6 +220,7 @@ class SunflowApp extends LitElement {
     _direct: { state: true },
     _directProfiles: { state: true },
     _link: { state: true },
+    _mcp: { state: true },
     _integrationSettings: { state: true },
     _display: { state: true },
     _manualEditId: { state: true },
@@ -268,6 +269,7 @@ class SunflowApp extends LitElement {
     this._direct = null;
     this._directProfiles = null;
     this._link = null;
+    this._mcp = null;
     this._integrationSettings = null;
     this._display = null;
     // Sunflow device id -> device test state
@@ -1166,6 +1168,7 @@ class SunflowApp extends LitElement {
           `}
       ${this._renderDirectForm()}
       ${this._renderIntegrationLink()}
+      ${this._renderMcp()}
     `;
   }
 
@@ -1255,6 +1258,40 @@ class SunflowApp extends LitElement {
       this._integrationSettings = await api.setIntegrationSettings({ ...this._integrationSettings, forecast_kinds });
     } catch (err) {
       this._error = `Einstellung nicht gespeichert: ${err.message}`;
+    }
+  }
+
+  /** The read-only MCP server, so an AI assistant can analyse Sunflow's data. */
+  _renderMcp() {
+    const mcp = this._mcp;
+    // The page is served by Home Assistant, whose host also carries the App's mapped port
+    const url = mcp?.port ? `http://${location.hostname}:${mcp.port}${mcp.path}` : null;
+    return html`<section class="device compact">
+      <div class="device-title">MCP-Server für KI-Assistenten</div>
+      <p class="small muted">Damit kann ein KI-Assistent (z. B. Claude Code) Plan, Verlauf, Aufzeichnung, Steuerungsprotokoll und
+        Konfiguration lesen, um Fragen zu beantworten oder Fehler zu finden. Er kann nichts ändern oder steuern. Von außen
+        erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist.</p>
+      ${mcp
+        ? html`<div class="fields">
+              <label class="field"><span class="field-label">Adresse</span>
+                <span class="input-unit"><input readonly .value=${url ?? "kein Port freigegeben"}></span></label>
+              <label class="field"><span class="field-label">Schlüssel</span>
+                <span class="input-unit"><input readonly .value=${mcp.token}></span></label>
+            </div>
+            ${url
+              ? html`<label class="field"><span class="field-label">Einrichten in Claude Code</span>
+                  <span class="input-unit"><input readonly
+                    .value=${`claude mcp add --transport http sunflow ${url} --header "Authorization: Bearer ${mcp.token}"`}></span></label>`
+              : nothing}`
+        : html`<div><button class="secondary" @click=${() => this._showMcp()}>Zugangsdaten anzeigen …</button></div>`}
+    </section>`;
+  }
+
+  async _showMcp() {
+    try {
+      this._mcp = await api.mcpLink();
+    } catch (err) {
+      this._error = `Zugangsdaten nicht verfügbar: ${err.message}`;
     }
   }
 

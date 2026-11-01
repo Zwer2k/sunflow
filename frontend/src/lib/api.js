@@ -122,6 +122,7 @@ export const api = {
   addManual: (body) => request("POST", "/config/devices/manual", body),
   directProfiles: () => request("GET", "/direct/profiles"),
   integrationLink: () => request("GET", "/integration/link"),
+  mcpLink: () => request("GET", "/mcp/link"),
   integrationSettings: () => request("GET", "/config/integration"),
   display: () => request("GET", "/config/display"),
   optimizers: () => request("GET", "/optimizers"),
