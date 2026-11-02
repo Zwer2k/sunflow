@@ -404,4 +404,12 @@ export default {
   "gemessen von {name} (PV extern)": "measured by {name} (external PV)",
   "{count} angepasste Rollen": "{count} adjusted roles",
   "Komponenten: {list}": "Components: {list}",
+  "Integration neu laden": "Reload integration",
+  "erlaubt, wenn das Gerät keine Werte mehr liefert": "allowed when the device stops delivering values",
+  "nach": "after",
+  "Minuten ohne Werte": "Minutes without values",
+  "Manche Integrationen verbinden sich nach einem Ausfall nicht von selbst neu, z. B. nach einem Neustart von Home Assistant. Sunflow lädt dann den Eintrag der Integration in Home Assistant neu – höchstens alle 30 Minuten und 6-mal am Tag. An das Gerät wird dabei nichts geschrieben; alle Geräte dieser Integration verbinden sich neu.": "Some integrations do not reconnect by themselves after an outage, e.g. after Home Assistant restarted. Sunflow then reloads the integration's entry in Home Assistant – at most every 30 minutes and 6 times a day. Nothing is written to the device; all devices of this integration reconnect.",
+  "Liefert seit {time} keine Werte": "No values since {time}",
+  "Zuletzt neu geladen: {time}": "Last reloaded: {time}",
+  "Minuten ohne Werte: erlaubt sind 10 bis 240.": "Minutes without values: 10 to 240 are allowed.",
 };

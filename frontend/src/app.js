@@ -240,6 +240,7 @@ class SunflowApp extends LitElement {
     _fixedPriceEdit: { state: true },
     _surchargeEdit: { state: true },
     _busy: { state: true },
+    _reloads: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
   };
@@ -478,6 +479,7 @@ class SunflowApp extends LitElement {
     if (area === "devices") {
       this._startPreview();
       this._loadParameters();
+      api.integrationReloads().then((r) => (this._reloads = r.devices)).catch(() => (this._reloads = {}));
     }
     if (area === "consumers") this._loadParameters();
     if (area === "site") this._startSite();
@@ -1847,6 +1849,7 @@ class SunflowApp extends LitElement {
             : nothing}
         </div>
         ${stored && !disabled ? this._renderDeviceFacts(stored) : nothing}
+        ${stored && !disabled && !stored.connection ? this._renderReload(stored) : nothing}
       </section>
     `;
   }
@@ -2056,6 +2059,49 @@ class SunflowApp extends LitElement {
   }
 
   /** Kenndaten of a configured device: what it is. Planning and earnings have their own areas. */
+  /** Explicit permission to reload the device's integration when it stays silent. */
+  _renderReload(device) {
+    const allowed = device.reload_after_min !== null && device.reload_after_min !== undefined;
+    const status = this._reloads?.[device.id];
+    const at = (iso) => weekdayTime(iso);
+    return html`
+      <div class="field reload">
+        <span class="field-label">${t("Integration neu laden")}</span>
+        <span class="choices">
+          <label class="inline wrap">
+            <input type="checkbox" .checked=${allowed} ?disabled=${this._busy.has(device.ha_device_id)}
+              @change=${(e) => this._setReload(device, e.target.checked ? device.reload_after_min ?? 10 : null, e.target)}>
+            ${t("erlaubt, wenn das Gerät keine Werte mehr liefert")}
+          </label>
+          ${allowed
+            ? html`<span class="input-unit reload-minutes"><span class="muted">${t("nach")}</span>
+                <input type="number" min="10" max="240" step="5" aria-label=${t("Minuten ohne Werte")} .value=${String(device.reload_after_min)}
+                  @change=${(e) => this._setReload(device, Number(e.target.value), e.target)}>
+                <span class="muted">min</span></span>`
+            : nothing}
+        </span>
+        <span class="small muted">${t("Manche Integrationen verbinden sich nach einem Ausfall nicht von selbst neu, z. B. nach einem Neustart von Home Assistant. Sunflow lädt dann den Eintrag der Integration in Home Assistant neu – höchstens alle 30 Minuten und 6-mal am Tag. An das Gerät wird dabei nichts geschrieben; alle Geräte dieser Integration verbinden sich neu.")}</span>
+        ${status?.silent_since ? html`<span class="small warn-text">${t("Liefert seit {time} keine Werte", { time: at(status.silent_since) })}</span>` : nothing}
+        ${status?.last_reload ? html`<span class="small muted">${t("Zuletzt neu geladen: {time}", { time: at(status.last_reload) })}</span>` : nothing}
+      </div>
+    `;
+  }
+
+  async _setReload(device, minutes, input) {
+    if (minutes !== null && !(minutes >= 10 && minutes <= 240)) {
+      this._error = t("Minuten ohne Werte: erlaubt sind 10 bis 240.");
+      input.value = String(device.reload_after_min ?? 10);
+      return;
+    }
+    try {
+      await api.setDeviceReload(device.id, minutes);
+      this._configDevices = configuredDevices(await api.config());
+      this._error = null;
+    } catch (err) {
+      this._error = t("Einstellung nicht gespeichert: {error}", { error: err.message });
+    }
+  }
+
   _renderDeviceFacts(device) {
     const params = (this._params[device.id] ?? []).filter((p) => this._advanced || !p.advanced);
     const capabilities = this._capabilitiesOf(device);

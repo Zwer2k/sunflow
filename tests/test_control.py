@@ -769,3 +769,23 @@ async def test_unreadable_mode_is_never_restored(tmp_path: Path) -> None:
 
     assert "unknown" not in device.modes
     assert TakeoverMarker(tmp_path).get() == {}
+
+
+async def test_switches_back_into_the_control_mode(tmp_path: Path) -> None:
+    """Taken over while the integration was down, the switch got lost: the next step switches again."""
+    device = FakeDevice()
+    profile = SOFAR | {"control_mode": {"key": "charger_use_mode", "option": "Passive Mode"}}
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: device.access(), lambda: {"sofar": profile})
+    # Remembered as "unknown" when it was taken over without an answer
+    TakeoverMarker(tmp_path).set("bat", "unknown")
+    snapshot = SimpleNamespace(
+        devices=[{"id": "h"}],
+        entities=[{"entity_id": "select.sofar_charger_use_mode", "unique_id": "sofar_charger_use_mode", "device_id": "h"}],
+        states={"select.sofar_charger_use_mode": {"state": "Self Use"}},
+    )
+
+    await controller.tick(_config(), _plan(), NOW, snapshot, NOW)
+
+    assert device.modes == ["Passive Mode"]
+    # Handed back later, it gets the mode it really had
+    assert TakeoverMarker(tmp_path).get() == {"bat": "Self Use"}

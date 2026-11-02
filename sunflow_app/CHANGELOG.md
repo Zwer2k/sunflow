@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.74.3
+
+- Neuladen der Integration, je Gerät ausdrücklich zu erlauben unter Einstellungen → Geräte → „Integration neu laden“ (Standard: aus). Liefert das Gerät so viele Minuten (Standard 10) keinen einzigen Wert, lädt Sunflow den Eintrag seiner Integration in Home Assistant neu – höchstens alle 30 Minuten und 6-mal am Tag, nie während eines Gerätetests. An das Gerät wird dabei nichts geschrieben. Jedes Neuladen steht im Steuerungsprotokoll; die Geräte-Karte zeigt, seit wann keine Werte kommen und wann zuletzt neu geladen wurde.
+- Steuermodus: Steht ein gesteuerter Wechselrichter nicht (mehr) im Steuermodus – etwa weil das Umschalten verloren ging, während seine Integration nicht verbunden war, oder weil er in seiner App umgestellt wurde –, schaltet Sunflow ihn wieder um und vermerkt das im Protokoll. Bisher blieb er im falschen Modus und lehnte die Steuerwerte mit Modbus-Fehlern ab. Ein beim Übernehmen als „unknown“ gemerkter Modus wird dabei durch den echten ersetzt, damit die Rückgabe ihn wiederherstellt.
+
 ## 0.74.2
 
 - 0.74.1 startete nicht (fehlende Datei); behoben.
