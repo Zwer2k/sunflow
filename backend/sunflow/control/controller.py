@@ -48,6 +48,7 @@ from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
 from sunflow.i18n import N_, number, t
+from sunflow.planning.optimizer import ON_OFF_MIN_SHARE
 from sunflow.planning.vehicles import vehicle_at, vehicle_max_current
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,8 +62,8 @@ MIN_CHARGE_W = 100.0
 FOLLOW_BELOW = 0.9
 # A power step this much above the planned power still counts as fitting
 STEP_TOLERANCE_W = 50.0
-# An on/off consumer runs when at least this share of its power is planned
-SWITCH_ON_SHARE = 0.5
+# An on/off consumer runs when at least this share of its power is planned (as the plan does it)
+SWITCH_ON_SHARE = ON_OFF_MIN_SHARE
 # Grid import tolerated while following the surplus (regulation lag)
 GRID_MARGIN_W = 300.0
 # Already charging, it keeps the minimum current down to this share of it

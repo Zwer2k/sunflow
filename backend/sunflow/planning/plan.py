@@ -483,6 +483,8 @@ def flex_loads(
                 priority_bonus=PRIORITY_STEP * (len(flex_ids) - rank),
                 below_battery=order.index(device.id) > battery_rank if device.id in order else True,
                 expected=info.expected_arrival is not None,
+                # Switched on and off only (a socket, no power steps or current): off or nearly full power
+                on_off="switch" in profile.get("roles", {}) and "current" not in profile.get("roles", {}) and not device.power_steps,
             )
         )
         loads.append(load)

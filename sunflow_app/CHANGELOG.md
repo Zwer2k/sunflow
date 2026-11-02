@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.4
+
+- Planning: loads that can only be switched on and off (a socket without power steps or current, e.g. an e-bike charger) are planned per quarter hour either off or with at least half their power. Before, the plan could spread their energy thinly (e.g. 67 W of a 143 W charger); Control only switches such a load on from half its power, so it was never charged.
+
 ## 0.75.3
 
 - Control: a load with a battery of its own (Charge battery) shows whether it is ready to charge and offers **Plugged in now** / **No longer plugged in**, so it is planned without waiting for a test charge.

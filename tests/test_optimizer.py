@@ -1008,3 +1008,18 @@ def test_large_load_notice(excluded: int, history: int, shown: bool) -> None:
 
     assert (large_load_notice(load, 3500.0) is not None) is shown
     assert large_load_notice(load, None) is None
+
+
+def test_on_off_load_runs_at_full_power() -> None:
+    """A charger on a switched socket is planned off or at least half its power, never spread thin."""
+    from sunflow.planning.optimizer import ON_OFF_MIN_SHARE, FlexLoad
+
+    # Weak sun all day: spreading 400 Wh at a fraction of 143 W would be the cheapest continuous plan
+    inputs = _slots(24, price=lambda i: 0.326, pv=lambda i: 600.0 if 32 <= i < 64 else 0.0)
+    bike = FlexLoad(name="E-Bike", energy_wh=400, max_power_w=143, available=[True] * 96, on_off=True)
+
+    plan = optimize(inputs, BATTERY, Settings(), [bike])
+
+    powers = [s.flex_w["E-Bike"] for s in plan.slots]
+    assert sum(powers) / 4 == pytest.approx(400, abs=1)
+    assert all(p < 1 or p >= ON_OFF_MIN_SHARE * 143 - 0.5 for p in powers)
