@@ -137,10 +137,12 @@ export function priceChart(points, label, { range = null, now = null } = {}) {
   const end = range?.end ?? parsed.at(-1).end;
   const { x, y, axes, left } = frame(start, end, niceScale(Math.max(...parsed.map((p) => p.ct)) * 1.05), (v) => `${Math.round(v)} ct`);
   const nowX = now ? x(now) : null;
-  // Published prices solid, estimated ones (not published yet) dashed
+  // Published prices solid, estimated ones (not published yet) dashed; steps only between
+  // adjoining intervals, a gap (e.g. no recording) stays empty instead of a slope across it
+  const adjoins = (i) => i > 0 && Math.abs(parsed[i - 1].end - parsed[i].start) < 1000;
   const pathOf = (estimated) => parsed
     .map((p, i) => (p.estimated === estimated
-      ? `${i && parsed[i - 1].estimated === estimated ? "L" : "M"}${x(p.start)},${y(p.ct)} L${x(p.end)},${y(p.ct)}`
+      ? `${adjoins(i) && parsed[i - 1].estimated === estimated ? "L" : "M"}${x(p.start)},${y(p.ct)} L${x(p.end)},${y(p.ct)}`
       : ""))
     .join(" ");
   const firstEstimate = parsed.find((p) => p.estimated);

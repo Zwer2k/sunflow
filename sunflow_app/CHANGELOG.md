@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.74.8
+
+- Plan → Bezugspreis: Fehlt in der Aufzeichnung ein Stück (z. B. weil kein Plan berechnet werden konnte), verband das Diagramm die Preise davor und danach mit einer schrägen Linie. Jetzt bleibt die Lücke frei; aneinanderschließende Preise bleiben senkrechte Stufen.
+
 ## 0.74.7
 
 - Aufklappbare Karten merken sich im Browser, ob sie offen oder zu sind, statt zugeklappt zu starten: „Sunflow steuert“ (Steuerung), „Geplante Steuerung“ (Planung), die Gerätekarten unter Einstellungen → Geräte, die Speicherkarten und „Erkennung des Fahrzeugs“ (Laden). Beim ersten Besuch sind sie offen; deaktivierte Geräte bleiben zugeklappt. Gerätekarten, die Aufmerksamkeit brauchen (noch nicht übernommen, Angabe fehlt, gerade bearbeitet), sind wie bisher immer offen.
