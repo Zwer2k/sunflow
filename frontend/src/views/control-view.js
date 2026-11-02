@@ -6,6 +6,7 @@ import { CATEGORY_LABELS, formatPower, formatValue } from "../lib/format.js";
 import { plugInHints } from "../lib/plug-in.js";
 import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 import { decimal, locale, t } from "../lib/i18n.js";
+import { isOpen, setOpen } from "../lib/collapse.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -96,7 +97,7 @@ class SunflowControl extends LitElement {
     this._duration = "midnight";
     this._busy = false;
     this._editing = null;
-    this._takeoverOpen = false;
+    this._takeoverOpen = isOpen("control.takeover");
     this._log = null;
     this._logDevice = "";
     this._logHours = 24;
@@ -289,7 +290,7 @@ class SunflowControl extends LitElement {
       <section class="card takeover ${takeover.enabled ? "on" : ""}">
         <div class="card-head">
           <div>
-            <button class="device-toggle" aria-expanded=${open} @click=${() => (this._takeoverOpen = !open)}>
+            <button class="device-toggle" aria-expanded=${open} @click=${() => setOpen("control.takeover", (this._takeoverOpen = !open))}>
               <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
               <h2>${t("Sunflow steuert")}</h2>
             </button>

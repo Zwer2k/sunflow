@@ -2,12 +2,12 @@ import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { formatSigned, formatValue } from "../lib/format.js";
 import { t, tn } from "../lib/i18n.js";
+import { isOpen, setOpen } from "../lib/collapse.js";
 
 /** Batteries of the inverters with their modules (setup step "Geräte", category "Speicher"). */
 class SunflowBatteries extends LitElement {
   static properties = {
     _batteries: { state: true },
-    _open: { state: true },
     _error: { state: true },
     _busy: { state: true },
   };
@@ -15,7 +15,6 @@ class SunflowBatteries extends LitElement {
   constructor() {
     super();
     this._batteries = null;
-    this._open = new Set();
     this._error = null;
     this._busy = false;
   }
@@ -40,7 +39,7 @@ class SunflowBatteries extends LitElement {
   }
 
   _renderBattery(b) {
-    const open = this._open.has(b.device_id);
+    const open = isOpen(`battery:${b.device_id}`);
     const assigned = b.modules.filter((m) => m.assigned);
     const sum = assigned.reduce((total, m) => total + (m.capacity_wh ?? 0), 0);
     return html`
@@ -99,10 +98,8 @@ class SunflowBatteries extends LitElement {
   }
 
   _toggle(id) {
-    const open = new Set(this._open);
-    if (open.has(id)) open.delete(id);
-    else open.add(id);
-    this._open = open;
+    setOpen(`battery:${id}`, !isOpen(`battery:${id}`));
+    this.requestUpdate();
   }
 
   async _save(battery, modules) {

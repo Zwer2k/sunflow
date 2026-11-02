@@ -5,6 +5,7 @@ import { lineChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "../compo
 import { formatValue, toDisplay } from "../lib/format.js";
 import { plugInHints } from "../lib/plug-in.js";
 import { decimal, locale, t, tn } from "../lib/i18n.js";
+import { isOpen, setOpen } from "../lib/collapse.js";
 
 const ACTIONS = {
   auto: { label: t("Eigenverbrauch"), hint: t("Speicher lädt aus PV-Überschuss und deckt den Bedarf") },
@@ -31,7 +32,6 @@ const MAX_PLAN_HOURS = 48;
 const REFRESH_MS = 60 * 1000;
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const TOTAL_KEY = "sunflow.plan.total";
-const SEGMENTS_KEY = "sunflow.plan.segments";
 const RAW_PV_KEY = "sunflow.plan.rawPv";
 
 const time = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
@@ -157,12 +157,11 @@ class SunflowPlan extends LitElement {
     try {
       this._showTotal = localStorage.getItem(TOTAL_KEY) === "1";
       this._showRawPv = localStorage.getItem(RAW_PV_KEY) === "1";
-      this._segmentsOpen = localStorage.getItem(SEGMENTS_KEY) === "1";
     } catch {
       this._showTotal = false;
       this._showRawPv = false;
-      this._segmentsOpen = false;
     }
+    this._segmentsOpen = isOpen("plan.segments");
   }
 
   connectedCallback() {
@@ -636,11 +635,7 @@ class SunflowPlan extends LitElement {
 
   _toggleSegments() {
     this._segmentsOpen = !this._segmentsOpen;
-    try {
-      localStorage.setItem(SEGMENTS_KEY, this._segmentsOpen ? "1" : "0");
-    } catch {
-      // Not remembered, the section still opens for this visit
-    }
+    setOpen("plan.segments", this._segmentsOpen);
   }
 
   /** Prices of the recorded past (the tariff each slot was planned with), up to the plan. */

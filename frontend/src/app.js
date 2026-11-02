@@ -31,6 +31,7 @@ import {
   toDisplay,
 } from "./lib/format.js";
 import { decimal, locale, t, tn } from "./lib/i18n.js";
+import { isOpen, setOpen } from "./lib/collapse.js";
 
 /** What the MCP server may read; matches the areas in the backend. */
 const MCP_AREAS = [
@@ -202,7 +203,6 @@ class SunflowApp extends LitElement {
     _previews: { state: true },
     _configDevices: { state: true },
     _editing: { state: true },
-    _expanded: { state: true },
     _categories: { state: true },
     _overrides: { state: true },
     _entities: { state: true },
@@ -256,7 +256,6 @@ class SunflowApp extends LitElement {
     this._configDevices = {};
     this._editing = new Set();
     // Device cards opened by the user; configured and complete ones start compact
-    this._expanded = new Set();
     this._categories = {};
     // ha_device_id -> {role: {entity_id?, sign?}}
     this._overrides = {};
@@ -1783,8 +1782,8 @@ class SunflowApp extends LitElement {
     );
     const factsChanged = Boolean(stored) && (Object.keys(this._paramEdits[stored.id] ?? {}).length > 0 || this._nameEdits[stored.id] !== undefined);
     // Needs attention: not taken over yet, values missing or being edited
-    const open = this._expanded.has(id) ||
-      (!disabled && (!configured || dirty || editing || missing || factsChanged || (preview && !preview.complete)));
+    const open = (!disabled && (!configured || dirty || editing || missing || factsChanged || (preview && !preview.complete))) ||
+      isOpen(`device:${id}`, !disabled);
     const head = html`
       <div class="device-head">
         <button class="device-toggle" aria-expanded=${open} @click=${() => this._toggleExpanded(id, open)}>
@@ -1887,10 +1886,8 @@ class SunflowApp extends LitElement {
   }
 
   _toggleExpanded(id, open) {
-    const expanded = new Set(this._expanded);
-    if (open) expanded.delete(id);
-    else expanded.add(id);
-    this._expanded = expanded;
+    setOpen(`device:${id}`, !open);
+    this.requestUpdate();
   }
 
   async _setEnabled(device, enabled, input) {
