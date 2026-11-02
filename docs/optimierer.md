@@ -8,6 +8,15 @@ seine Module mit den aktuellen Werten. Welche Werte erscheinen (Leistung, Spannu
 Strom am Modul bzw. Ausgang, Temperatur, PWM), lässt sich dort ein- und ausblenden; die
 Wahl merkt sich der Browser. Hellere Module liefern weniger als das beste des Strings.
 
+![Optimierer eines Huawei-Strings in der Live-Ansicht](images/live-optimizers.png)
+
+Oben stehen Anzahl, Summe und Spanne der Leistung. Die Module liegen so, wie sie unter
+[Einstellungen → Optimierer](#einstellungen--optimierer) angeordnet sind; ein Abstand trennt
+Dachstücke (hier zwei quer liegende Module unten). „Zuordnung und Anordnung bearbeiten …“ führt
+dorthin.
+
+<img src="images/live-optimizers-mobile.png" alt="Optimierer auf dem Handy" width="300">
+
 ## Quellen
 
 | Hersteller | Integration | Werte | Zuordnung zum String |

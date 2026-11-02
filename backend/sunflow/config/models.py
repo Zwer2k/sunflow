@@ -154,6 +154,8 @@ class DeviceConfig(BaseModel):
     power_steps: dict[str, float] | None = None
     # Devices without an integration: ha_device_id is a pseudo id (direct_<id>)
     connection: Connection | None = None
+    # Reload its Home Assistant integration after this many minutes without any value; None: never
+    reload_after_min: int | None = Field(default=None, ge=10, le=240)
 
 
 class TariffConfig(BaseModel):

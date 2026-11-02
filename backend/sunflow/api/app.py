@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
+from datetime import UTC, datetime
 import hashlib
 from pathlib import Path
 import secrets
@@ -23,6 +24,7 @@ from sunflow.control.controller import (
     device_access,
 )
 from sunflow.control.journal import ControlJournal
+from sunflow.control.reload import ReloadWatchdog
 from sunflow.devices.device_test import RestoreMarker
 from sunflow.devices.discovery import SnapshotCache
 from sunflow.devices.executor import EepromGuard
@@ -43,6 +45,7 @@ from .common import _LOGGER, DEFAULT_MAX_EEPROM_WRITES, router
 
 RECONNECT_DELAYS = (1, 2, 5, 10, 30)
 PEER_CHECK_SECONDS = 60
+RELOAD_CHECK_SECONDS = 60
 
 
 def _plan_controller(app: FastAPI, settings: Settings) -> PlanController:
@@ -72,6 +75,21 @@ async def _keep_connected(client: HAClient) -> None:
                 await asyncio.sleep(delay)
                 continue
         await asyncio.sleep(1)
+
+
+async def _watch_integrations(app: FastAPI) -> None:
+    """Reload the integration of a device that stays silent, where the user allowed it."""
+    watchdog: ReloadWatchdog = app.state.reload_watchdog
+    while True:
+        await asyncio.sleep(RELOAD_CHECK_SECONDS)
+        if not app.state.ha.connected:
+            continue
+        try:
+            snapshot = await app.state.snapshots.get()
+            busy = {device_id for device_id, (_, task) in app.state.device_tests.items() if not task.done()}
+            await watchdog.check(app.state.store.load(), snapshot, datetime.now(UTC), busy)
+        except Exception:  # noqa: BLE001 - the watchdog must never die
+            _LOGGER.exception("Checking for silent devices failed")
 
 
 async def _watch_peer(app: FastAPI, supervisor_token: str, port: int) -> None:
@@ -134,6 +152,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.runner.counters = EnergyCounters(settings.data_dir)
         app.state.loads = OneTimeLoads(settings.data_dir)
         runner_task = asyncio.create_task(app.state.runner.run())
+        app.state.reload_watchdog = ReloadWatchdog(
+            app.state.ha, lambda: app.state.profiles.profiles, app.state.controller.journal
+        )
+        reload_task = asyncio.create_task(_watch_integrations(app))
         peer_task = (
             asyncio.create_task(_watch_peer(app, settings.supervisor_token, settings.port))
             if settings.supervisor_token
@@ -142,6 +164,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            reload_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await reload_task
             if peer_task is not None:
                 peer_task.cancel()
                 with suppress(asyncio.CancelledError):

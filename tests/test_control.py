@@ -12,10 +12,13 @@ from sunflow.control.controller import (
     PlanController,
     TakeoverMarker,
     desired_action,
+    device_access,
     evcc_controls_battery,
 )
-from sunflow.devices.executor import PlannedCall
+from sunflow.devices.executor import EepromGuard, ExecutorError, PlannedCall
+from sunflow.devices.profiles import load_profiles, load_schema
 
+REPO = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 29, 10, 5, tzinfo=UTC)
 SOFAR = {"capabilities": ["battery_window"]}
 
@@ -713,3 +716,56 @@ def test_goe_api_v1_profile(car: str, connected: str) -> None:
     assert (charge[0].domain, charge[0].service, charge[0].data) == ("goecharger", "set_max_current", {"charger_name": "garage", "max_current": 7})
     assert (charge[1].entity_id, charge[1].service) == ("switch.goecharger_garage_allow_charging", "turn_on")
     assert release[0].data["max_current"] == 10
+
+
+class _SofarHA:
+    """Home Assistant with a Sofar whose mode select shows the given state; records service calls."""
+
+    def __init__(self, mode: str) -> None:
+        self.mode = mode
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def get_config_entries(self) -> list[Any]:
+        return []
+
+    async def get_device_registry(self) -> list[Any]:
+        return [{"id": "h"}]
+
+    async def get_entity_registry(self) -> list[Any]:
+        return [{"entity_id": "select.sofar_charger_use_mode", "unique_id": "sofar_charger_use_mode", "device_id": "h"}]
+
+    async def get_energy_prefs(self) -> None:
+        return None
+
+    async def get_states(self) -> list[Any]:
+        return [{"entity_id": "select.sofar_charger_use_mode", "state": self.mode, "attributes": {}}]
+
+    async def command(self, *_: Any, **__: Any) -> list[Any]:
+        return []
+
+    async def call_service(self, domain: str, service: str, data: dict[str, Any], **_: Any) -> None:
+        self.calls.append((domain, service, data))
+
+
+@pytest.mark.parametrize("mode", ["unknown", "unavailable"])
+async def test_no_takeover_while_the_mode_is_unreadable(tmp_path: Path, mode: str) -> None:
+    """Without the current mode nothing could be restored: taking over waits and writes nothing."""
+    profile = load_profiles(REPO / "profiles", load_schema(REPO / "schema")).profiles["solax_modbus/sofar"]
+    ha = _SofarHA(mode)
+    access = device_access(ha, profile, _config().devices[0], EepromGuard(tmp_path, 10))
+
+    with pytest.raises(ExecutorError, match="nicht lesbar"):
+        await access.ensure_mode()
+    assert ha.calls == []
+
+
+async def test_unreadable_mode_is_never_restored(tmp_path: Path) -> None:
+    """A mode remembered as "unknown" by an older version is not written back on hand back."""
+    device = FakeDevice()
+    controller = _controller(tmp_path, device)
+    TakeoverMarker(tmp_path).set("bat", "unknown")
+
+    await controller.tick(_config(enabled=False), _plan(), NOW, SNAPSHOT, NOW)
+
+    assert "unknown" not in device.modes
+    assert TakeoverMarker(tmp_path).get() == {}

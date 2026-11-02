@@ -645,6 +645,31 @@ async def set_device_enabled(request: Request, device_id: str, body: DeviceEnabl
     return {"device_id": device_id, "enabled": body.enabled}
 
 
+class DeviceReload(BaseModel):
+    """Allow reloading a device's integration when it delivers no values (None: not allowed)."""
+
+    minutes: int | None = Field(default=None, ge=10, le=240)
+
+
+@router.put("/config/devices/{device_id}/reload")
+async def set_device_reload(request: Request, device_id: str, body: DeviceReload) -> dict[str, Any]:
+    """Explicit permission to reload the integration of a silent device."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if (device := config.device(device_id)) is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    device.reload_after_min = body.minutes
+    store.save(config)
+    return {"device_id": device_id, "minutes": body.minutes}
+
+
+@router.get("/integration-reloads")
+async def get_integration_reloads(request: Request) -> dict[str, Any]:
+    """When Sunflow last reloaded the integration of a device and whether it is silent now."""
+    watchdog = getattr(request.app.state, "reload_watchdog", None)
+    return {"devices": watchdog.status() if watchdog is not None else {}}
+
+
 @router.delete("/config/devices/{device_id}")
 async def remove_device(request: Request, device_id: str) -> None:
     """Remove a device from the configuration."""

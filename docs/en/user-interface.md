@@ -17,8 +17,14 @@ where energy is going.
 - **House** shows consumption without the controllable loads; "total" below includes them.
 - **Battery** shows power, direction and state of charge; the ring is the state of charge.
 - **Wallbox** shows charging power and the state of charge of the detected car.
-- **PV strings**: a click opens the module optimizers of the string with their current values
-  (see [Optimizers](optimizers.md)).
+- **PV strings**: the number at the circle is the number of optimizers. A click opens the module
+  optimizers of the string with their current values (see [Optimizers](optimizers.md)).
+
+  <details><summary>Example: optimizers of a Huawei string</summary>
+
+  ![Optimizers in the Live view](../images/en/live-optimizers.png)
+
+  </details>
 - **Weather**: current conditions and forecast, switchable between **Hours** and **Days**;
   swipe or use the arrows. It can be hidden under [Settings → Display](settings.md#display).
 - **Today** sums up the energy meters: PV generated, consumed, grid import, exported,
