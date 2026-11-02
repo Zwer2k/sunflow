@@ -150,6 +150,19 @@ def test_own_samples_win_over_a_stale_recorded_state() -> None:
     assert points[0]["consumers"] == {"wb": 3300.0, "bike": 0.2}
 
 
+def test_past_import_price_from_the_recording() -> None:
+    """The price each recorded slot was planned with shows the past tariff; slots without a recording stay without."""
+    from sunflow.analysis.history import fill_from_shadow
+
+    points = [_point(0, 0.0, {}), _point(15, 0.0, {})]
+    rows = [{"start": START.isoformat(), "planned_price": 0.2262}]
+
+    fill_from_shadow(points, rows, set())
+
+    assert points[0]["price"] == 0.2262
+    assert "price" not in points[1]
+
+
 def test_unmeasured_consumers_leave_the_house_load() -> None:
     """Hours the own samples saw more consumer power than the statistics are separated."""
     from sunflow.planning.load_forecast import subtract_loads, unmeasured_consumers

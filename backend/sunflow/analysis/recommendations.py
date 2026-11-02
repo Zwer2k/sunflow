@@ -176,7 +176,8 @@ def limits_cost_pv(config: SunflowConfig, latest: PlanResult | None) -> list[Rec
                     energy=number(planned.unmet_wh / 1000), name=device.name, pct=f"{limit.min_pct:.0f}",
                 ),
                 action={"type": "navigate", "view": "control"},
-                fingerprint=_fingerprint(limit.min_pct, round(planned.unmet_wh / 1000)),
+                # The limit is what the hint is about; the energy changes with every plan
+                fingerprint=_fingerprint(limit.min_pct),
             )
         )
     return result
@@ -198,7 +199,8 @@ def plan_worse_than_baseline(latest: PlanResult | None) -> list[Recommendation]:
                 "Das liegt meist an Vorgaben: Grenzen in der Priorität, „Nur PV“ ohne Speicher, Ladegrenze oder Vollladung. Sunflow hält sich daran, auch wenn es Geld kostet. Prüfe die Grenzen unter Steuerung."
             ),
             action={"type": "navigate", "view": "control"},
-            fingerprint=_fingerprint(round(savings, 1)),
+            # Back only when the plan gets clearly worse (steps of 5 €), not with every plan
+            fingerprint=_fingerprint(float(int(abs(savings) // 5))),
         )
     ]
 
@@ -267,7 +269,8 @@ def pv_forecast(config: SunflowConfig, correction: PvCorrection | None, weather:
                         "Das Anpassen der PV-Prognose ist ausgeschaltet. Eingeschaltet plant Sunflow mit dem, was deine Anlage tatsächlich liefert."
                     ),
                     action={"type": "set_optimizer", "changes": {"pv_learning": True}},
-                    fingerprint=_fingerprint(round(correction.overall * 100)),
+                    # Steps of 10 %: the learned factor moves a little every day
+                    fingerprint=_fingerprint(float(round(correction.overall * 10))),
                 )
             )
     if weather and not any(w.get("cloud_coverage") for w in weather):
