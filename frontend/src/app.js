@@ -1572,12 +1572,12 @@ class SunflowApp extends LitElement {
                   ? html`<div class="small">${t("gemessen: {energy} pro Tag", { energy: formatValue(this._usages[d.id].daily_wh, "Wh") })}${this._usages[d.id].running_w
                       ? html` · ${t("läuft mit {power}", { power: formatValue(this._usages[d.id].running_w, "W") })}`
                       : nothing}</div>`
-                  : nothing}
-                ${d.kind === "heater" || d.disabled ? nothing : this._renderCharger(d)}</div>
+                  : nothing}</div>
                 <span class="item-actions">
                   <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>${t("Bearbeiten")}</button>
                   <button class="secondary danger" @click=${() => this._removeDevice(d)}>${t("Entfernen")}</button>
-                </span></li>`,
+                </span>
+                ${d.kind === "heater" || d.disabled ? nothing : this._renderCharger(d)}</li>`,
             )}</ul>`
           : nothing}
         ${candidates === null
@@ -3201,6 +3201,8 @@ class SunflowApp extends LitElement {
     .plane-strings { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
     .manual-item { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
     .item-actions { display: flex; gap: 8px; }
+    /* Its own block below name and actions, with its own buttons */
+    .manual-item .charger { flex-basis: 100%; border-top: 1px solid var(--sf-border); padding-top: 12px; margin-top: 4px; }
     .restore-banner {
       display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
       margin: 16px max(16px, calc((100% - 1240px) / 2)) 0; padding: 12px 16px; border-radius: 10px;
