@@ -195,3 +195,20 @@ def test_consumers_are_kept_per_device(tmp_path: Path) -> None:
     store.store_actual(start, recorder.summary())
 
     assert store.rows(start)[0]["actual_consumers"] == {"wb": 4100.0}
+
+
+@pytest.mark.parametrize(
+    ("planned", "power", "actual", "battery", "same"),
+    [
+        pytest.param("limit_discharge", 982.0, "auto", -838.0, True, id="limit-above-demand"),
+        pytest.param("limit_discharge", 982.0, "auto", -2500.0, False, id="discharging-beyond-the-limit"),
+        pytest.param("limit_discharge", 982.0, "limit_discharge", -982.0, True, id="limit-bites"),
+        pytest.param("hold", None, "auto", -838.0, False, id="hold-but-discharging"),
+        pytest.param("limit_charge", 500.0, "auto", 500.0, True, id="limited-charge"),
+    ],
+)
+def test_same_decision(planned: str, power: float | None, actual: str, battery: float, same: bool) -> None:
+    """A discharge limit the demand never reaches looks like self-consumption and still keeps to the plan."""
+    from sunflow.shadow.store import same_decision
+
+    assert same_decision(planned, power, actual, battery) is same

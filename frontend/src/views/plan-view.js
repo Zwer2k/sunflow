@@ -11,8 +11,8 @@ const ACTIONS = {
   hold: { label: t("Speicher halten"), hint: t("Speicher wird geschont, Bedarf kommt aus dem Netz") },
   force_charge: { label: t("Laden aus dem Netz"), hint: t("Speicher wird gezielt geladen") },
   force_discharge: { label: t("Entladen ins Netz"), hint: t("Speicher speist gezielt ein") },
-  limit_discharge: { label: t("Entladen begrenzt"), hint: t("Speicher deckt den Bedarf nur teilweise, der Rest kommt aus dem Netz") },
-  limit_charge: { label: t("Laden begrenzt"), hint: t("Speicher nimmt nur einen Teil des PV-Überschusses auf, der Rest wird eingespeist") },
+  limit_discharge: { label: t("Entladen begrenzt"), hint: t("Speicher entlädt höchstens die geplante Leistung, darüber hinaus kommt der Bedarf aus dem Netz") },
+  limit_charge: { label: t("Laden begrenzt"), hint: t("Speicher lädt höchstens die geplante Leistung aus PV, der übrige Überschuss wird eingespeist") },
 };
 const LOAD_QUALITY = {
   day_type: t("nach Wochentag"),
@@ -293,7 +293,7 @@ class SunflowPlan extends LitElement {
         <div class="tile now">
           <div class="small muted">${t("Geplante Steuerung jetzt (bis {time})", { time: time.format(new Date(now.end)) })}</div>
           <div class="value">${ACTIONS[now.action].label}</div>
-          <div class="small muted">${ACTIONS[now.action].hint}</div>
+          <div class="small muted">${this._actionHint(now)}</div>
           ${this._renderActual(plan, now)}
         </div>
         <div class="tile">
@@ -595,6 +595,16 @@ class SunflowPlan extends LitElement {
     `;
   }
 
+  /** What the current action means; a limit is named with its power. */
+  _actionHint(segment) {
+    const power = segment.slots[0]?.action_power_w;
+    if (!power) return ACTIONS[segment.action].hint;
+    const value = formatValue(Math.abs(power), "W");
+    if (segment.action === "limit_discharge") return t("Speicher entlädt höchstens {power}, darüber hinaus kommt der Bedarf aus dem Netz", { power: value });
+    if (segment.action === "limit_charge") return t("Speicher lädt höchstens {power} aus PV, der übrige Überschuss wird eingespeist", { power: value });
+    return ACTIONS[segment.action].hint;
+  }
+
   _renderActual(plan, now) {
     const actual = plan.actual;
     if (!actual || actual.battery_w === null || actual.battery_w === undefined) return nothing;
@@ -607,7 +617,12 @@ class SunflowPlan extends LitElement {
       : t("ruht");
     // Limits count as their basic behaviour; the measurement cannot tell them apart
     const planned = { limit_charge: "auto", limit_discharge: "limit_discharge" }[now.action] ?? now.action;
-    const differs = actual.action && actual.action !== planned;
+    // A discharge limit above the demand never bites: discharging at most the limit keeps to the plan
+    const battery = actual.recent_battery_w ?? actual.battery_w;
+    const limit = Math.abs(now.slots?.[0]?.action_power_w ?? 0);
+    const withinLimit = now.action === "limit_discharge" && actual.action === "auto"
+      && (!limit || -battery <= limit + Math.max(100, 0.1 * limit));
+    const differs = actual.action && actual.action !== planned && !withinLimit;
     return html`<div class="small ${differs ? "warn-text" : "muted"}">
       ${t("Tatsächlich: Speicher {what}", { what })}${differs
         ? plan.controlling
@@ -619,7 +634,6 @@ class SunflowPlan extends LitElement {
     </div>`;
   }
 
-  /** Prices of the recorded past (the tariff each slot was planned with), up to the plan. */
   _toggleSegments() {
     this._segmentsOpen = !this._segmentsOpen;
     try {
@@ -629,6 +643,7 @@ class SunflowPlan extends LitElement {
     }
   }
 
+  /** Prices of the recorded past (the tariff each slot was planned with), up to the plan. */
   _pastPrices(slots) {
     const planStart = slots.length ? new Date(slots[0].start) : null;
     return (this._history?.points ?? [])

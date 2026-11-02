@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.74.6
+
+- Plan: „Entladen begrenzt“ meldete fälschlich „weicht vom Plan ab“, wenn das Haus weniger brauchte als die Grenze. Der Speicher deckt dann alles, das Netz bleibt bei etwa 0 – das sieht aus wie Eigenverbrauch, hält aber den Plan ein. Entlädt der Speicher höchstens die Grenze (mit 10 % bzw. 100 W Spielraum), gilt das jetzt als planmäßig, auch bei „Gleiche Entscheidung“ im Schattenbetrieb.
+- Plan: Die Erklärung unter der geplanten Steuerung nennt bei Begrenzungen die Leistung, z. B. „Speicher entlädt höchstens 982 W, darüber hinaus kommt der Bedarf aus dem Netz“, statt „deckt den Bedarf nur teilweise“. Ebenso bei „Laden begrenzt“.
+
 ## 0.74.5
 
 - Plan → Bezugspreis: Das Diagramm zeigt auch den zurückliegenden Zeitraum – den Preis, mit dem jede Viertelstunde damals geplant wurde (aus der Aufzeichnung), wie die anderen Diagramme beim Zurückblättern.

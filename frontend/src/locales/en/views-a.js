@@ -203,4 +203,6 @@ export default {
   "{count} Abschnitte": "{count} sections",
   "one|{count} Abschnitte": "{count} section",
   "als Nächstes ab {time}: {action}": "next from {time}: {action}",
+  "Speicher entlädt höchstens {power}, darüber hinaus kommt der Bedarf aus dem Netz": "Battery discharges at most {power}; any demand beyond that comes from the grid",
+  "Speicher lädt höchstens {power} aus PV, der übrige Überschuss wird eingespeist": "Battery charges at most {power} from PV; the remaining surplus is exported",
 };

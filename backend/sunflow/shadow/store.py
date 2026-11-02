@@ -278,6 +278,21 @@ def comparable(planned: str) -> str:
     return "auto" if planned == "limit_charge" else planned
 
 
+def same_decision(planned: str, planned_power_w: float | None, actual: str, battery_w: float | None) -> bool:
+    """The measurement matches the plan.
+
+    A discharge limit above the demand never bites: the battery covers everything, which looks
+    like self-consumption. Discharging at most the limit (with some tolerance) keeps to the plan.
+    """
+    if comparable(planned) == actual:
+        return True
+    if planned != "limit_discharge" or actual != "auto" or battery_w is None:
+        return False
+    limit = abs(planned_power_w) if planned_power_w is not None else None
+    tolerance = max(Settings().action_threshold_w, 0.1 * (limit or 0.0))
+    return limit is None or -battery_w <= limit + tolerance
+
+
 def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Compare planned and actual values of slots that have both."""
     complete = [r for r in rows if r["planned_action"] is not None and r["actual_action"] is not None]
@@ -293,7 +308,11 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         pairs = [(r[planned], r[actual]) for r in complete if r[planned] is not None and r[actual] is not None]
         return fmean(abs(p - a) for p, a in pairs) if pairs else None
 
-    differing = [r for r in complete if comparable(r["planned_action"]) != r["actual_action"]]
+    differing = [
+        r
+        for r in complete
+        if not same_decision(r["planned_action"], r.get("planned_power_w"), r["actual_action"], r.get("actual_battery_w"))
+    ]
     return {
         "slots": len(rows),
         "compared": len(complete),
