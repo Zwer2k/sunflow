@@ -846,6 +846,15 @@ class PlanController:
         )
         status.active, status.limit_w = True, limit
 
+    async def _restore_control_mode(self, device: DeviceConfig, access: DeviceAccess, mode: str, now: datetime) -> None:
+        """Switch back into the control mode; a mode remembered while unreadable becomes the real one."""
+        if self._marker.get().get(device.id) in UNAVAILABLE_STATES:
+            self._marker.set(device.id, mode)
+        await access.ensure_mode()
+        _LOGGER.warning("%s was in mode %s: switched back into the control mode", device.name, mode)
+        if self.journal is not None:
+            self.journal.note(device.id, device.name, "mode", t("Steuermodus wieder eingeschaltet (stand auf „{mode}“)", mode=mode), now)
+
     async def _battery(
         self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime,
         snapshot: Snapshot | None = None,
@@ -854,6 +863,9 @@ class PlanController:
         access = self._access_for(device)
         await take_over(access, self._marker, device)
         profile = self._profiles()[device.profile]
+        # Left the control mode (switch lost while the integration was down, or changed in its app)
+        if (mode := wrong_mode(profile, device, snapshot)) is not None and access.ensure_mode is not None:
+            await self._restore_control_mode(device, access, mode, now)
         if (supported := supported_action(profile, action, power))[0] != action:
             name = t(ACTION_NAMES[action]) if action in ACTION_NAMES else action
             reason = t("{reason} ({action} kann das Gerät nicht)", reason=reason, action=name)

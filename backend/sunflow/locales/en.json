@@ -179,5 +179,6 @@
   "Modus von {entity} nicht lesbar – Übernahme wartet, bis das Gerät antwortet": "Mode of {entity} not readable – taking over waits until the device answers",
   "Wert von {entity} nicht lesbar – Übernahme wartet, bis das Gerät antwortet": "Value of {entity} not readable – taking over waits until the device answers",
   "Integration neu geladen: seit {minutes} min keine Werte": "Integration reloaded: no values for {minutes} min",
-  "Integration neu laden fehlgeschlagen: {error}": "Reloading the integration failed: {error}"
+  "Integration neu laden fehlgeschlagen: {error}": "Reloading the integration failed: {error}",
+  "Steuermodus wieder eingeschaltet (stand auf „{mode}“)": "Control mode switched on again (was \"{mode}\")"
 }
