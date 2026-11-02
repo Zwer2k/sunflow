@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.74.2
+
+- 0.74.1 startete nicht (fehlende Datei); behoben.
+- Sunflow übernimmt ein Gerät erst, wenn sein Modus lesbar ist, und schreibt einen gemerkten Modus „unknown“/„unavailable“ nie zurück (z. B. nach einem Neustart von Home Assistant, während der Wechselrichter noch keine Werte liefert).
+- Vorbereitet: Neuladen der Integration eines Geräts, das längere Zeit keine Werte liefert. Standardmäßig aus; die Einstellung in der Oberfläche folgt.
+
 ## 0.74.1
 
 - Dokumentation: Bilder der Optimierer-Ansicht in der Live-Ansicht (Computer und Handy, Deutsch und Englisch) unter „Optimierer“ und „Bedienung“.
