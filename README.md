@@ -14,9 +14,8 @@ den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
 > supported devices. It is provided as is, without any warranty. When Sunflow controls
 > devices, it writes to inverters, batteries, wallboxes and other loads; wrong settings
 > or errors can lead to higher costs, unwanted behaviour or damage to devices, and may
-> affect their manufacturer's warranty. You use Sunflow at your own risk. To the extent
-> permitted by law, the developer accepts no liability for any damage resulting from
-> its use.
+> affect their manufacturer's warranty. You use Sunflow at your own risk. The developer
+> accepts no liability for any damage resulting from its use.
 >
 > **Privat entwickelt, ohne Gewähr.** Sunflow wird privat in der Freizeit entwickelt. Es
 > ist kein Produkt von Home Assistant oder einem Hersteller der unterstützten Geräte und
@@ -24,8 +23,8 @@ den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
 > Steuert Sunflow Geräte, schreibt es an Wechselrichter, Speicher, Wallboxen und andere
 > Verbraucher; falsche Einstellungen oder Fehler können zu höheren Kosten, unerwünschtem
 > Verhalten oder Schäden an Geräten führen und die Herstellergarantie berühren. Die
-> Nutzung erfolgt auf eigenes Risiko. Soweit gesetzlich zulässig, übernimmt der
-> Entwickler keine Haftung für Schäden, die aus der Nutzung entstehen.
+> Nutzung erfolgt auf eigenes Risiko. Der Entwickler übernimmt keine Haftung für
+> Schäden, die aus der Nutzung entstehen.
 
 ![Live view](docs/images/en/live.png)
 
