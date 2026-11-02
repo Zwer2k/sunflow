@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import { t } from "../lib/i18n.js";
+import { isOpen, setOpen } from "../lib/collapse.js";
 
 const DETECTION = [
   ["card", t("Karte an der Wallbox"), t("Die gescannte Karte bestimmt das Fahrzeug.")],
@@ -20,7 +21,6 @@ class SunflowCharging extends LitElement {
   static properties = {
     _data: { state: true },
     _profiles: { state: true },
-    _open: { state: true },
     _dirty: { state: true },
     _detections: { state: true },
     _error: { state: true },
@@ -31,7 +31,6 @@ class SunflowCharging extends LitElement {
     super();
     this._data = null;
     this._profiles = [];
-    this._open = new Set();
     // Wallbox ids with unsaved changes; detection edits by wallbox id
     this._dirty = new Set();
     this._detections = {};
@@ -159,13 +158,11 @@ class SunflowCharging extends LitElement {
       this._detections = { ...this._detections, [wallbox.id]: { ...d, [field]: value } };
       this._markDirty(wallbox.id);
     };
-    const open = this._open.has(wallbox.id);
+    const open = isOpen(`detection:${wallbox.id}`);
     const methods = DETECTION.filter(([key]) => d[key] && (key !== "card" || wallbox.cards)).map(([, label]) => label);
     const toggle = () => {
-      const next = new Set(this._open);
-      if (open) next.delete(wallbox.id);
-      else next.add(wallbox.id);
-      this._open = next;
+      setOpen(`detection:${wallbox.id}`, !open);
+      this.requestUpdate();
     };
     return html`
       <div class="detection">
