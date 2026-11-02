@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.0
+
+- Erstes Release der App „Sunflow“: Sie installiert ein fertiges Image und bekommt Updates nur noch mit einem Release. Den aktuellen Entwicklungsstand gibt es weiter als „Sunflow Edge“. Die Release-Notizen fassen alle Änderungen seit 0.73.1 zusammen.
+- Plan → Ladestand: Der Hinweis zum Lernen des Autoverbrauchs sagt jetzt genau, was zählt: 14 Tage, an denen der Ladestand mindestens 20 Stunden aufgezeichnet ist.
+
 ## 0.74.8
 
 - Plan → Bezugspreis: Fehlt in der Aufzeichnung ein Stück (z. B. weil kein Plan berechnet werden konnte), verband das Diagramm die Preise davor und danach mit einer schrägen Linie. Jetzt bleibt die Lücke frei; aneinanderschließende Preise bleiben senkrechte Stufen.
