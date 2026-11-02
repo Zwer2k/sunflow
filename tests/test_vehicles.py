@@ -63,14 +63,17 @@ def test_scanned_card() -> None:
 
 
 @pytest.mark.parametrize(
-    ("plugged", "energies", "reason"),
+    ("plugged", "energies", "reason", "level"),
     [
         # 40 % of 37.5 kWh at 90 % charging efficiency
-        pytest.param("on", [pytest.approx(0.4 * 37500 / 0.9)], None, id="plugged-in"),
-        pytest.param("off", [], "Fahrzeug nicht angesteckt", id="unplugged-shows-soc"),
+        pytest.param("on", [pytest.approx(0.4 * 37500 / 0.9)], None, 40.0, id="plugged-in"),
+        # Nothing planned, usage not learned: its SoC stays in the chart
+        pytest.param("off", [], "Fahrzeug nicht angesteckt", 40.0, id="unplugged-shows-soc"),
     ],
 )
-def test_flex_loads_plan_the_recognized_vehicle(library, plugged: str, energies: list, reason: str | None) -> None:
+def test_flex_loads_plan_the_recognized_vehicle(
+    library, plugged: str, energies: list, reason: str | None, level: float
+) -> None:
     """A go-e wallbox with an assigned car: SoC and target from the car and its charging profile, planned when plugged in."""
     from datetime import UTC, datetime, timedelta
     from zoneinfo import ZoneInfo
@@ -78,7 +81,7 @@ def test_flex_loads_plan_the_recognized_vehicle(library, plugged: str, energies:
     from sunflow.config.models import FlexSettings
     from sunflow.devices.discovery import Snapshot
     from sunflow.devices.site import device_parameters
-    from sunflow.planning.plan import flex_loads
+    from sunflow.planning.plan import expected_levels, flex_loads
 
     entities = [
         {"entity_id": "binary_sensor.goe_car", "unique_id": "123456-binary_sensor-car-1", "device_id": "goe"},
@@ -113,6 +116,9 @@ def test_flex_loads_plan_the_recognized_vehicle(library, plugged: str, energies:
     assert (info.vehicle, info.vehicle_method, info.current, info.target) == ("Fiat", "single", 40.0, 80.0)
     assert [load.energy_wh for load in loads] == energies
     assert info.reason == reason
+    # Without planned charging the expected SoC of the chart starts at the current one
+    slots = [SimpleNamespace(start=start, end=start + timedelta(minutes=15), flex_w={})]
+    assert expected_levels(info, slots) == [level]
     # The 22 kW wallbox, but the car takes at most 11 kW
     assert info.max_power_w == 11000
     derived = {p["name"]: p["effective"] for p in device_parameters(library.profiles[wallbox.profile], wallbox, snapshot)}

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.74.4
+
+- Plan → Ladestand: Für ein Auto, das nicht angesteckt ist und dessen Verbrauch noch nicht gelernt ist, fehlte die erwartete Linie. Sie zeigt jetzt den jetzigen Ladestand weiter, bis das Auto angesteckt und eingeplant wird; der Hinweis unter dem Diagramm sagt das. Mit gelerntem Verbrauch sinkt sie wie bisher unterwegs.
+
 ## 0.74.3
 
 - Neuladen der Integration, je Gerät ausdrücklich zu erlauben unter Einstellungen → Geräte → „Integration neu laden“ (Standard: aus). Liefert das Gerät so viele Minuten (Standard 10) keinen einzigen Wert, lädt Sunflow den Eintrag seiner Integration in Home Assistant neu – höchstens alle 30 Minuten und 6-mal am Tag, nie während eines Gerätetests. An das Gerät wird dabei nichts geschrieben. Jedes Neuladen steht im Steuerungsprotokoll; die Geräte-Karte zeigt, seit wann keine Werte kommen und wann zuletzt neu geladen wurde.

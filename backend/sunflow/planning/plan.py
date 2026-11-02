@@ -380,6 +380,9 @@ def flex_loads(
             used = on_the_way(info, connected, vehicle_usages, departures, slot_starts, tz, presences, snapshot.states)
             if used is None:
                 info.reason = t("Fahrzeug nicht angesteckt")
+                # Nothing planned and no usage learned: the chart keeps its SoC until it is plugged in
+                if (capacity := params.get("vehicle_capacity_wh")) and info.current is not None:
+                    info.wh_per_unit, info.capacity_wh, info.level_range = capacity / 100, capacity, (0.0, 100.0)
                 continue
             current = info.arrival_soc = max(info.current - sum(used), 0.0) if used else current
             capacity = params.get("vehicle_capacity_wh")

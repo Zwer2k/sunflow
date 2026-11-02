@@ -194,7 +194,7 @@ export default {
   "Ladestand gemessen und erwartet": "SoC measured and expected",
   "Verbrauch aus {days} Tagen gelernt (Ø {pct} am Tag)": "Consumption learned from {days} days (Ø {pct} per day)",
   "unterwegs, zurück erwartet gegen {time} mit etwa {soc}; ab dann eingeplant.": "on the road, expected back around {time} with about {soc}; planned from then on.",
-  "Verbrauch noch nicht gelernt (braucht 14 Tage mit gut abgedecktem Ladestand) – geplant wird erst, wenn es angesteckt ist.": "Consumption not learned yet (needs 14 days with well-covered SoC) – planning starts only once it is plugged in.",
+  "Verbrauch noch nicht gelernt (braucht 14 Tage mit gut abgedecktem Ladestand) – geplant wird erst, wenn es angesteckt ist; bis dahin bleibt der erwartete Ladestand gleich.": "Consumption not learned yet (needs 14 days with well-covered SoC) – planning starts only once it is plugged in; until then the expected SoC stays the same.",
   "Verbrauch je Stunde aus {days} Tagen gelernt – geheizt wird vor der gewohnten Hauptzeit.": "Hourly consumption learned from {days} days – heating happens before the usual peak time.",
   "Verbrauch noch nicht gelernt (braucht eine Woche Temperatur und Heizleistung) – gleichmäßig über den Tag angenommen.": "Consumption not learned yet (needs a week of temperature and heating power) – assumed evenly over the day.",
   "Alle Linien zeigen": "Show all lines",
