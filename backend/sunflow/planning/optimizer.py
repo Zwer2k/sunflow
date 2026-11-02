@@ -126,6 +126,9 @@ class FlexLoad:
     gate_after: list[tuple[str, float]] = field(default_factory=list)
     # A car not there yet (expected back): its need is no must, unmet_cost is what it is worth
     expected: bool = False
+    # Only off or (nearly) full power, e.g. a charger on a switched socket: a slot plans
+    # nothing or at least ON_OFF_MIN_SHARE of its power, never a fraction it cannot run at
+    on_off: bool = False
 
     @property
     def gated(self) -> bool:
@@ -149,6 +152,8 @@ class FlexResult:
 
 
 SOLVER_TIME_LIMIT = 15
+# An on/off load is switched on when at least this share of its power is planned
+ON_OFF_MIN_SHARE = 0.5
 # €/kWh for PV limited away: above the export tie-breaker, so PV is only limited when
 # exporting it really costs (negative feed-in, peak penalty)
 CURTAIL_COST = 0.01
@@ -551,6 +556,13 @@ def optimize(
             slots = [(t, total + i) for i, t in enumerate(t for t in range(n) if upper[f[k][t]] > 0)]
             total += len(slots)
             gate_slots.append((k, slots))
+    # On/off loads: one binary per slot it may run in (1 = on)
+    on_off_slots: list[tuple[int, list[tuple[int, int]]]] = []
+    for k, load in enumerate(flex):
+        if load.on_off:
+            slots = [(t, total + i) for i, t in enumerate(t for t in range(n) if upper[f[k][t]] > 0)]
+            total += len(slots)
+            on_off_slots.append((k, slots))
     battery_after = waits_for(settings.battery_gate_after)
     battery_slots = [(t, total + t) for t in range(n)] if battery_after else []
     total += len(battery_slots)
@@ -562,6 +574,12 @@ def optimize(
         add_gate(slots, f[k], load.max_power_w, load.gate_battery_wh, waits_for(load.gate_after))
     if battery_slots:
         add_gate(battery_slots, c, battery.max_charge_w, None, battery_after)
+    for k, slots in on_off_slots:
+        for t, b in slots:
+            power = upper[f[k][t]]
+            # Off, or between the minimum share and full power
+            gate_rows.append(({f[k][t]: 1, b: -power}, 0.0))
+            gate_rows.append(({f[k][t]: -1, b: ON_OFF_MIN_SHARE * power}, 0.0))
     for over, flow, limit in (
         (over_export, ge, settings.export_soft_limit_w),
         (over_import, gi, settings.import_soft_limit_w),
