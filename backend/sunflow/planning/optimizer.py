@@ -154,6 +154,9 @@ class FlexResult:
 SOLVER_TIME_LIMIT = 15
 # An on/off load is switched on when at least this share of its power is planned
 ON_OFF_MIN_SHARE = 0.5
+# € per switching on of an on/off load: equally cheap slots become one block instead of
+# several pieces (a charger restarts each time), without passing up a clearly cheaper time
+ON_OFF_START_COST = 0.01
 # €/kWh for PV limited away: above the export tie-breaker, so PV is only limited when
 # exporting it really costs (negative feed-in, peak penalty)
 CURTAIL_COST = 0.01
@@ -556,13 +559,16 @@ def optimize(
             slots = [(t, total + i) for i, t in enumerate(t for t in range(n) if upper[f[k][t]] > 0)]
             total += len(slots)
             gate_slots.append((k, slots))
-    # On/off loads: one binary per slot it may run in (1 = on)
+    # On/off loads: one binary per slot it may run in (1 = on) and one per switching on
     on_off_slots: list[tuple[int, list[tuple[int, int]]]] = []
+    on_off_starts: list[int] = []
     for k, load in enumerate(flex):
         if load.on_off:
             slots = [(t, total + i) for i, t in enumerate(t for t in range(n) if upper[f[k][t]] > 0)]
             total += len(slots)
             on_off_slots.append((k, slots))
+            on_off_starts.extend(range(total, total + len(slots)))
+            total += len(slots)
     battery_after = waits_for(settings.battery_gate_after)
     battery_slots = [(t, total + t) for t in range(n)] if battery_after else []
     total += len(battery_slots)
@@ -574,12 +580,20 @@ def optimize(
         add_gate(slots, f[k], load.max_power_w, load.gate_battery_wh, waits_for(load.gate_after))
     if battery_slots:
         add_gate(battery_slots, c, battery.max_charge_w, None, battery_after)
+    starts = iter(on_off_starts)
     for k, slots in on_off_slots:
+        previous: tuple[int, int] | None = None
         for t, b in slots:
             power = upper[f[k][t]]
             # Off, or between the minimum share and full power
             gate_rows.append(({f[k][t]: 1, b: -power}, 0.0))
             gate_rows.append(({f[k][t]: -1, b: ON_OFF_MIN_SHARE * power}, 0.0))
+            # Switched on in this slot: on now and not in the slot right before
+            start = next(starts)
+            cost[start] = ON_OFF_START_COST
+            before = {previous[1]: -1} if previous is not None and previous[0] == t - 1 else {}
+            gate_rows.append(({b: 1, **before, start: -1}, 0.0))
+            previous = (t, b)
     for over, flow, limit in (
         (over_export, ge, settings.export_soft_limit_w),
         (over_import, gi, settings.import_soft_limit_w),
@@ -596,6 +610,8 @@ def optimize(
         gate_rows.append(({s[settings.full_charge_slot]: -1, full_short: -1}, -battery.capacity_wh * FULL_FRACTION))
     integrality = np.zeros(total)
     integrality[count:] = 1
+    # A start follows from the on/off binaries (minimized, it is 0 or 1 anyway): no branching on it
+    integrality[on_off_starts] = 0
     binary_total = total
     smoothed = [gi, ge, *f]
 

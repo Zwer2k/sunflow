@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.5
+
+- Planning: an on/off load (e.g. an e-bike charger) is charged in one piece where it costs the same, instead of being switched on several times within a cheap window. Each switching on counts 1 ct in the plan, so a clearly cheaper or sunnier time still wins.
+
 ## 0.75.4
 
 - Planning: loads that can only be switched on and off (a socket without power steps or current, e.g. an e-bike charger) are planned per quarter hour either off or with at least half their power. Before, the plan could spread their energy thinly (e.g. 67 W of a 143 W charger); Control only switches such a load on from half its power, so it was never charged.
