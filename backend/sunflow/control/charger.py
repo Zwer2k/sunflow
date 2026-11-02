@@ -122,6 +122,15 @@ class ChargerWatch:
             "charges": len(state.charges),
         }
 
+    def set_plugged(self, device: DeviceConfig, plugged: bool, now: datetime) -> None:
+        """Plugged in (or not) as the user says; a load that draws no power is found full or unplugged as usual."""
+        state = self._state(device.id)
+        state.test_due = state.testing_since = None
+        if plugged and not state.ready:
+            state.charge_wh = 0.0
+        self._set_ready(state, plugged, t("Als eingesteckt gemeldet") if plugged else t("Als nicht eingesteckt gemeldet"), now)
+        self._save()
+
     def _set_ready(self, state: _State, ready: bool, note: str, now: datetime) -> None:
         if ready != state.ready:
             self.changed = True

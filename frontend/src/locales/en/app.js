@@ -433,4 +433,6 @@ export default {
   "Ladebereit": "Ready to charge",
   "Nicht ladebereit": "Not ready to charge",
   "Probeladung um {time}": "Test charge at {time}",
+  "aus": "off",
+  "an": "on",
 };

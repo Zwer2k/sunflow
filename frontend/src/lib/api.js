@@ -123,6 +123,7 @@ export const api = {
   setVehicles: (vehicles) => request("PUT", "/config/vehicles", vehicles),
   setCharging: (profiles) => request("PUT", "/config/charging", profiles),
   setVehicleDetection: (id, body) => request("PUT", `/config/devices/${encodeURIComponent(id)}/vehicle-detection`, body),
+  setPlugged: (deviceId, plugged) => request("PUT", `/control/chargers/${encodeURIComponent(deviceId)}`, { plugged }),
   chooseVehicle: (wallboxId, vehicleId) => request("PUT", `/control/vehicles/${encodeURIComponent(wallboxId)}`, { vehicle_id: vehicleId }),
   addManual: (body) => request("POST", "/config/devices/manual", body),
   directProfiles: () => request("GET", "/direct/profiles"),

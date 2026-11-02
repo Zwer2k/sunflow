@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.3
+
+- Control: a load with a battery of its own (Charge battery) shows whether it is ready to charge and offers **Plugged in now** / **No longer plugged in**, so it is planned without waiting for a test charge.
+- Settings → Devices → Custom loads: the Charge battery block can be collapsed like the device cards; collapsed it shows its current state, and the browser remembers the choice.
+
 ## 0.75.2
 
 - Custom loads: "Charge battery" is a separate block below the load's name with its own Save and Cancel; Edit and Remove of the load stay next to its name.

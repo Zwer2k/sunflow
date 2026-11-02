@@ -115,6 +115,10 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "need_wh": info.need_wh if info else None,
                 "reason": info.reason if info else None,
                 "windows": _flex_windows(latest.plan.slots, device.name) if latest else [],
+                # A battery of its own without a plug entity: the user can say it is plugged in
+                "charger": controller.chargers.status(device, snapshot.states) | {"manual": not device.charger.connected_entity}
+                if controller is not None and device.charger is not None
+                else None,
             }
         )
     has_battery = any(controls_battery(profiles[d.profile]) for d in config.devices)
@@ -223,6 +227,24 @@ async def _control_status(request: Request, config: SunflowConfig) -> dict[str, 
 async def get_takeover(request: Request) -> dict[str, Any]:
     """Whether Sunflow controls which device, and what it did last."""
     return await _control_status(request, request.app.state.store.load())
+
+
+class Plugged(BaseModel):
+    """A load with a battery of its own is plugged in now (or no longer)."""
+
+    plugged: bool
+
+
+@router.put("/control/chargers/{device_id}")
+async def set_plugged(request: Request, device_id: str, body: Plugged) -> dict[str, Any]:
+    """Mark a load with a battery of its own as plugged in, so it is planned without waiting for a test charge."""
+    config = request.app.state.store.load()
+    controller: PlanController | None = getattr(request.app.state, "controller", None)
+    if (device := config.device(device_id)) is None or device.charger is None or controller is None:
+        raise HTTPException(status_code=404, detail="No load with a battery of its own")
+    controller.chargers.set_plugged(device, body.plugged, datetime.now(UTC))
+    _replan(request)
+    return {"device_id": device_id, "plugged": body.plugged}
 
 
 @router.put("/control/takeover")

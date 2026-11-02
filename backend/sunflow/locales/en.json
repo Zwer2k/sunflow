@@ -191,5 +191,7 @@
   "Nicht ladebereit (nicht angesteckt oder voll)": "Not ready to charge (not plugged in or full)",
   "Energie je Ladung fehlt (Einstellungen → Geräte → Akku laden)": "Energy per charge missing (Settings → Devices → Charge battery)",
   "Für „Akku laden“ braucht der Verbraucher eine Leistungsmessung": "\"Charge battery\" needs a power measurement of the load",
-  "Zum Ladestand bitte die Akkukapazität angeben": "Please enter the battery capacity for the state of charge"
+  "Zum Ladestand bitte die Akkukapazität angeben": "Please enter the battery capacity for the state of charge",
+  "Als eingesteckt gemeldet": "Reported as plugged in",
+  "Als nicht eingesteckt gemeldet": "Reported as not plugged in"
 }

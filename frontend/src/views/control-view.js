@@ -437,6 +437,23 @@ class SunflowControl extends LitElement {
     `;
   }
 
+  /** A load with a battery of its own: ready or not, and "plugged in now" by hand. */
+  _renderCharger(device) {
+    const charger = device.charger;
+    // The last result already says ready or not (e.g. "Not ready to charge (test drew no power)")
+    const state = charger.testing ? t("Probeladung läuft …") : charger.note ?? (charger.ready ? t("Ladebereit") : t("Nicht ladebereit"));
+    return html`
+      <div class="row">
+        <span class="small ${charger.ready ? "" : "muted"}">${state}</span>
+        ${charger.manual
+          ? html`<button class="plugged" ?disabled=${this._busy}
+              @click=${() => this._apply(() => api.setPlugged(device.id, !charger.ready))}>
+              ${charger.ready ? t("Nicht mehr eingesteckt") : t("Jetzt eingesteckt")}</button>`
+          : nothing}
+      </div>
+    `;
+  }
+
   /** Voltage of the car's 12 V battery and a running top-up. */
   _renderAuxBattery(aux) {
     const low = aux.voltage !== null && aux.voltage < aux.min_voltage;
@@ -469,6 +486,7 @@ class SunflowControl extends LitElement {
           ${device.override ? html`<span class="chip">${t("angepasst")} · ${untilText(device.override.until)}</span>` : nothing}
         </div>
         ${device.vehicles?.length ? this._renderVehicle(device) : nothing}
+        ${device.charger ? this._renderCharger(device) : nothing}
         <div class="segmented" role="group" aria-label=${t("Modus {name}", { name: device.name })}>
           ${Object.entries(MODES).map(
             ([value, label]) => html`<button aria-pressed=${mode === value} ?disabled=${this._busy}
@@ -644,6 +662,10 @@ class SunflowControl extends LitElement {
     .segmented button .std { display: block; font-size: 11px; font-weight: 400; color: var(--sf-muted); }
     .segmented.small-buttons button { min-height: 36px; font-size: 13px; }
     .row { display: flex; flex-direction: column; gap: 6px; }
+    button.plugged {
+      align-self: flex-start; min-height: 40px; padding: 0 14px; border: 1px solid var(--sf-border-strong); border-radius: 8px;
+      background: var(--sf-surface); cursor: pointer; font-weight: 500;
+    }
     .plan { padding: 8px 10px; border-radius: 8px; background: var(--sf-subtle); }
     .link {
       align-self: flex-start; border: 0; background: none; padding: 0; color: var(--sf-primary-text);

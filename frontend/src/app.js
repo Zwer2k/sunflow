@@ -2084,10 +2084,21 @@ class SunflowApp extends LitElement {
           @change=${(e) => set(key, e.detail.value || null)}></sf-picker>
       </div>`;
     const at = (iso) => weekdayTime(iso);
+    // Collapsible like the device cards; open while being edited
+    const open = Boolean(edit) || isOpen(`charger:${device.id}`);
+    const summary = !settings
+      ? t("aus")
+      : status?.testing
+        ? t("Probeladung läuft …")
+        : status?.note ?? (status?.ready ? t("Ladebereit") : t("an"));
     return html`
       <div class="field charger">
-        <span class="field-label">${t("Akku laden")}</span>
-        <label class="inline wrap">
+        <button class="device-toggle" aria-expanded=${open}
+          @click=${() => { setOpen(`charger:${device.id}`, !open); this.requestUpdate(); }}>
+          <span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>
+          <span><span class="field-label">${t("Akku laden")}</span>${open ? nothing : html` <span class="small muted">· ${summary}</span>`}</span>
+        </button>
+        ${open ? html`<label class="inline wrap">
           <input type="checkbox" .checked=${Boolean(settings)}
             @change=${(e) => (e.target.checked
               ? (this._chargerEdits = { ...this._chargerEdits, [device.id]: { done_below_w: 10, done_after_min: 3, trigger_delay_min: 2, test_seconds: 60 } })
@@ -2132,7 +2143,7 @@ class SunflowApp extends LitElement {
               ? html`<div class="actions"><button class="ok" @click=${() => this._saveCharger(device, edit)}>${t("Speichern")}</button>
                   <button class="secondary" @click=${() => this._dropChargerEdit(device)}>${t("Abbrechen")}</button></div>`
               : nothing}`
-          : nothing}
+          : nothing}` : nothing}
       </div>
     `;
   }
