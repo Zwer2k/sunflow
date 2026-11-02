@@ -4,7 +4,7 @@ import { poll } from "../lib/poll.js";
 import { lineChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "../components/charts.js";
 import { formatValue, toDisplay } from "../lib/format.js";
 import { plugInHints } from "../lib/plug-in.js";
-import { decimal, locale, t } from "../lib/i18n.js";
+import { decimal, locale, t, tn } from "../lib/i18n.js";
 
 const ACTIONS = {
   auto: { label: t("Eigenverbrauch"), hint: t("Speicher lädt aus PV-Überschuss und deckt den Bedarf") },
@@ -31,6 +31,7 @@ const MAX_PLAN_HOURS = 48;
 const REFRESH_MS = 60 * 1000;
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const TOTAL_KEY = "sunflow.plan.total";
+const SEGMENTS_KEY = "sunflow.plan.segments";
 const RAW_PV_KEY = "sunflow.plan.rawPv";
 
 const time = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
@@ -126,6 +127,7 @@ class SunflowPlan extends LitElement {
     _error: { state: true },
     _history: { state: true },
     _historyHours: { state: true },
+    _segmentsOpen: { state: true },
     _shift: { state: true },
     _pvAhead: { state: true },
     _focus: { state: true },
@@ -155,9 +157,11 @@ class SunflowPlan extends LitElement {
     try {
       this._showTotal = localStorage.getItem(TOTAL_KEY) === "1";
       this._showRawPv = localStorage.getItem(RAW_PV_KEY) === "1";
+      this._segmentsOpen = localStorage.getItem(SEGMENTS_KEY) === "1";
     } catch {
       this._showTotal = false;
       this._showRawPv = false;
+      this._segmentsOpen = false;
     }
   }
 
@@ -312,8 +316,18 @@ class SunflowPlan extends LitElement {
       </div>
 
       <section>
-        <h2>${t("Geplante Steuerung")} <span class="tag">${t("Vorschau")}</span></h2>
-        <ol class="timeline">
+        <h2>
+          <button class="toggle" aria-expanded=${this._segmentsOpen} @click=${() => this._toggleSegments()}>
+            <span class="caret" aria-hidden="true">${this._segmentsOpen ? "▾" : "▸"}</span>${t("Geplante Steuerung")}
+          </button>
+          <span class="tag">${t("Vorschau")}</span>
+        </h2>
+        ${this._segmentsOpen
+          ? nothing
+          : html`<p class="small muted">${tn(segs.length, "{count} Abschnitte", { count: segs.length })}${segs[1]
+            ? ` · ${t("als Nächstes ab {time}: {action}", { time: dayTime.format(new Date(segs[1].start)), action: ACTIONS[segs[1].action].label })}`
+            : ""}</p>`}
+        ${this._segmentsOpen ? html`<ol class="timeline">
           ${segs.map(
             (s) => html`
               <li class="seg ${s.action}">
@@ -325,7 +339,7 @@ class SunflowPlan extends LitElement {
               </li>
             `,
           )}
-        </ol>
+        </ol>` : nothing}
       </section>
 
       ${plan.flex?.length ? this._renderFlex(plan) : nothing}
@@ -491,7 +505,7 @@ class SunflowPlan extends LitElement {
 
       <section>
         <h3>${t("Bezugspreis")} <span class="tag">${t("Vorschau")}</span></h3>
-        ${priceChart(slots.map((s) => ({ start: s.start, end: s.end, price: s.price, estimated: s.price_estimated })), t("Bezugspreis im Plan"), {
+        ${priceChart([...this._pastPrices(slots), ...slots.map((s) => ({ start: s.start, end: s.end, price: s.price, estimated: s.price_estimated }))], t("Bezugspreis im Plan"), {
           // Same time axis as the charts above
           range: this._range,
           now: nowDate,
@@ -603,6 +617,23 @@ class SunflowPlan extends LitElement {
         ? ` · ${t("Ø letzte Minuten: Netz {grid}, Speicher {battery}", { grid: formatValue(actual.recent_grid_w, "W"), battery: formatValue(actual.recent_battery_w, "W") })}`
         : ""}
     </div>`;
+  }
+
+  /** Prices of the recorded past (the tariff each slot was planned with), up to the plan. */
+  _toggleSegments() {
+    this._segmentsOpen = !this._segmentsOpen;
+    try {
+      localStorage.setItem(SEGMENTS_KEY, this._segmentsOpen ? "1" : "0");
+    } catch {
+      // Not remembered, the section still opens for this visit
+    }
+  }
+
+  _pastPrices(slots) {
+    const planStart = slots.length ? new Date(slots[0].start) : null;
+    return (this._history?.points ?? [])
+      .filter((p) => p.price !== null && p.price !== undefined && (!planStart || new Date(p.end) <= planStart))
+      .map((p) => ({ start: p.start, end: p.end, price: p.price }));
   }
 
   _past(key) {
@@ -948,6 +979,11 @@ class SunflowPlan extends LitElement {
     .flex-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
     .windows { margin: 4px 0 0; padding-left: 18px; }
     h3 { margin: 0 0 8px; font-size: 15px; }
+    h2 .toggle {
+      display: inline-flex; align-items: center; gap: 6px; padding: 0; border: none; background: none;
+      font: inherit; color: inherit; cursor: pointer;
+    }
+    h2 .caret { font-size: 12px; color: var(--sf-muted); }
     .tag {
       font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-left: 6px;
       background: var(--sf-neutral-bg); color: var(--sf-neutral-text); vertical-align: middle;

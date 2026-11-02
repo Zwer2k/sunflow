@@ -171,10 +171,16 @@ def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], c
     for point in points:
         begin, end = datetime.fromisoformat(point["start"]), datetime.fromisoformat(point["end"])
         own: dict[str, list[float]] = {}
+        prices: list[float] = []
         for start, r in all_rows:
             if begin <= start < end:
                 for device_id, value in (r.get("actual_levels") or {}).items():
                     own.setdefault(device_id, []).append(value)
+                # The import price the slot was planned with: the tariff that applied then
+                if r.get("planned_price") is not None:
+                    prices.append(r["planned_price"])
+        if prices:
+            point["price"] = fmean(prices)
         levels = point.setdefault("levels", {})
         for device_id, values in own.items():
             # Sensors without statistics (e.g. a car's MQTT sensor) from the own samples

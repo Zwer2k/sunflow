@@ -1,5 +1,6 @@
 """Tests for the recommendations derived from settings, plan and measured data."""
 
+import pytest
 from sunflow.analysis.efficiency import EfficiencyEstimate
 from sunflow.analysis.recommendations import build
 from sunflow.config.models import DeviceConfig, FlexSettings, SunflowConfig
@@ -97,3 +98,35 @@ def test_no_power_recommendation_for_stepped_consumers() -> None:
     found = {r["id"] for r in build(config, latest, {}, [], 0, None, [])}
 
     assert "consumer_power:ww" not in found
+
+
+@pytest.mark.parametrize(
+    ("limit", "unmet_kwh", "same"),
+    [
+        pytest.param(90.0, 14.2, True, id="new-plan-same-limit"),
+        pytest.param(80.0, 15.6, False, id="limit-changed"),
+    ],
+)
+def test_limit_hint_stays_dismissed_while_the_plan_changes(limit: float, unmet_kwh: float, same: bool) -> None:
+    """The hint is about the limit: a new plan with other energy does not bring it back."""
+    from types import SimpleNamespace
+
+    from sunflow.analysis.recommendations import limits_cost_pv
+    from sunflow.config.models import PriorityCondition
+
+    def fingerprint(min_pct: float, unmet_wh: float) -> str:
+        tank = DeviceConfig(id="ww", ha_device_id="h", profile="p", profile_version=1, name="Warmwasserspeicher")
+        config = SunflowConfig(
+            devices=[tank],
+            planning={"ww": FlexSettings(alternative_cost_ct=10)},
+            priorities=["battery", "ww"],
+            priority_conditions={"ww": [PriorityCondition(device_id="battery", min_pct=min_pct)]},
+        )
+        latest = SimpleNamespace(
+            flex=[SimpleNamespace(device_id="ww", name="Warmwasserspeicher")],
+            plan=SimpleNamespace(flex=[SimpleNamespace(name="Warmwasserspeicher", unmet_wh=unmet_wh)]),
+        )
+        (hint,) = limits_cost_pv(config, latest)
+        return hint.fingerprint
+
+    assert (fingerprint(90.0, 15600) == fingerprint(limit, unmet_kwh * 1000)) is same

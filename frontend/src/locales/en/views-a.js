@@ -200,4 +200,7 @@ export default {
   "Alle Linien zeigen": "Show all lines",
   "Hervorheben": "Highlight",
   "tab|Tage": "Days",
+  "{count} Abschnitte": "{count} sections",
+  "one|{count} Abschnitte": "{count} section",
+  "als Nächstes ab {time}: {action}": "next from {time}: {action}",
 };

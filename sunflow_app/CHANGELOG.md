@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.74.5
+
+- Plan → Bezugspreis: Das Diagramm zeigt auch den zurückliegenden Zeitraum – den Preis, mit dem jede Viertelstunde damals geplant wurde (aus der Aufzeichnung), wie die anderen Diagramme beim Zurückblättern.
+- Plan → Geplante Steuerung lässt sich zuklappen (Klick auf die Überschrift). Zugeklappt steht dort, wie viele Abschnitte es gibt und was als Nächstes kommt; der Browser merkt sich die Wahl.
+- Empfehlungen: „Grenze ‚ab Hausspeicher … %‘ kostet PV“ kam nach dem Ausblenden mit jedem neuen Plan zurück, weil die ungedeckte Energie zum Wiedererkennen zählte. Jetzt kommt sie erst wieder, wenn sich die Grenze ändert. Ebenso stabiler: „Plan ist … teurer“ (erst wieder bei 5 € mehr) und „PV-Prognose liegt bei … %“ (in 10-%-Schritten). Einmal muss eine schon ausgeblendete Empfehlung noch erneut ausgeblendet werden.
+
 ## 0.74.4
 
 - Plan → Ladestand: Für ein Auto, das nicht angesteckt ist und dessen Verbrauch noch nicht gelernt ist, fehlte die erwartete Linie. Sie zeigt jetzt den jetzigen Ladestand weiter, bis das Auto angesteckt und eingeplant wird; der Hinweis unter dem Diagramm sagt das. Mit gelerntem Verbrauch sinkt sie wie bisher unterwegs.
