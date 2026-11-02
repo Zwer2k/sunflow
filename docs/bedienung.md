@@ -17,8 +17,14 @@ zeigen, wohin die Energie gerade fließt.
 - **Haus** zeigt den Verbrauch ohne die steuerbaren Verbraucher, darunter „gesamt“ mit ihnen.
 - **Speicher** zeigt Leistung, Richtung und Ladestand; der Ring ist der Ladestand.
 - **Wallbox** zeigt Ladeleistung und Ladestand des erkannten Autos.
-- **PV-Strings**: Ein Klick öffnet die Modul-Optimierer des Strings mit ihren aktuellen Werten
-  (siehe [Optimierer](optimierer.md)).
+- **PV-Strings**: Die Zahl am Kreis ist die Anzahl der Optimierer. Ein Klick öffnet die
+  Modul-Optimierer des Strings mit ihren aktuellen Werten (siehe [Optimierer](optimierer.md)).
+
+  <details><summary>Beispiel: Optimierer eines Huawei-Strings</summary>
+
+  ![Optimierer in der Live-Ansicht](images/live-optimizers.png)
+
+  </details>
 - **Wetter**: aktuelle Bedingungen und Vorhersage, umschaltbar zwischen Stunden und Tagen;
   wischen oder mit den Pfeilen blättern. Unter [Einstellungen → Anzeige](einstellungen.md#anzeige)
   lässt es sich ausblenden.

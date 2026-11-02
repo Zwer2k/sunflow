@@ -8,6 +8,14 @@ current values. Which values appear (power, voltage and current at module input 
 temperature, PWM) can be toggled there; the browser remembers the choice. Lighter modules deliver
 less than the best one of the string.
 
+![Optimizers of a Huawei string in the Live view](../images/en/live-optimizers.png)
+
+The top line shows count, total and range of the power. The modules sit as arranged under
+[Settings → Optimizers](#settings--optimizers); a gap separates parts of the roof (here two
+modules lying sideways at the bottom). "Edit assignment and layout …" leads there.
+
+<img src="../images/en/live-optimizers-mobile.png" alt="Optimizers on a phone" width="300">
+
 ## Sources
 
 | Manufacturer | Integration | Values | Assignment to the string |

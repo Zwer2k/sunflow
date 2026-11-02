@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.74.1
+
+- Dokumentation: Bilder der Optimierer-Ansicht in der Live-Ansicht (Computer und Handy, Deutsch und Englisch) unter „Optimierer“ und „Bedienung“.
+
 ## 0.74.0
 
 - Zwei Apps im Repository: **Sunflow** bekommt Updates nur noch mit einem GitHub-Release und installiert ein fertiges Image (schneller, kein Bau auf dem Gerät). **Sunflow Edge** ist der Entwicklungsstand mit einem Update für jede Änderung und baut wie bisher auf dem Gerät.

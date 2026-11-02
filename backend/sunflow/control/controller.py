@@ -42,7 +42,7 @@ from sunflow.devices.executor import (
     plan_steps,
 )
 from sunflow.devices.profiles import controls_battery, supported_action
-from sunflow.devices.resolver import device_entities, preview
+from sunflow.devices.resolver import UNAVAILABLE_STATES, device_entities, preview
 from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
@@ -539,7 +539,8 @@ async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str
     if access.pv_limit:
         await apply(access, DeviceControl(device_id=device_id, name=status.name), PV_RELEASE, None, datetime.now(UTC), reason=t(HAND_BACK))
         status.limit_w = None
-    if (previous := taken[device_id]) and access.set_mode:
+    # A mode remembered while the device did not answer (older versions) is never written back
+    if (previous := taken[device_id]) and previous not in UNAVAILABLE_STATES and access.set_mode:
         await access.set_mode(previous)
         if access.journal is not None:
             access.journal.note(device_id, status.name, "mode", t("{hand_back}: Modus wieder „{previous}“", hand_back=t(HAND_BACK), previous=previous), datetime.now(UTC))
@@ -634,7 +635,10 @@ def device_access(
         async def current_option() -> str | None:
             # Only remembered here; charge and stop switch it
             entity_id, states = await remembered_entity()
-            return states.get(entity_id or "", {}).get("state")
+            current = states.get(entity_id or "", {}).get("state")
+            if entity_id is not None and (current is None or current in UNAVAILABLE_STATES):
+                raise ExecutorError(t("Wert von {entity} nicht lesbar – Übernahme wartet, bis das Gerät antwortet", entity=entity_id))
+            return current
 
         async def restore(option: str) -> None:
             entity_id, states = await remembered_entity()
@@ -669,6 +673,9 @@ def device_access(
         current = snapshot.states.get(entity_id, {}).get("state")
         if current == option:
             return None
+        # Without the current mode there is nothing to restore later: wait until the device answers
+        if current is None or current in UNAVAILABLE_STATES:
+            raise ExecutorError(t("Modus von {entity} nicht lesbar – Übernahme wartet, bis das Gerät antwortet", entity=entity_id))
         call = PlannedCall(
             domain="select", service="select_option", data={"option": option}, entity_id=entity_id, storage="eeprom", write="always"
         )
@@ -899,7 +906,7 @@ class PlanController:
             return
         if action == "release" and access.release is None:
             # Nothing of its own to fall back to (evcc): its previous mode until a plan is there again
-            if (previous := self._marker.get().get(device.id)) and access.set_mode:
+            if (previous := self._marker.get().get(device.id)) and previous not in UNAVAILABLE_STATES and access.set_mode:
                 await access.set_mode(previous)
         else:
             profile = self._profiles()[device.profile]
@@ -976,7 +983,7 @@ class PlanController:
                 status.current_a, status.last_current_write = runtime["current_a"], now
             if action == "release" and access.remember_value and access.set_mode:
                 # The charger regulates itself with the user's current again
-                if previous := self._marker.get().get(device.id):
+                if (previous := self._marker.get().get(device.id)) and previous not in UNAVAILABLE_STATES:
                     await access.set_mode(previous)
                 status.current_a = None
             self._check_current(device, status, profile, action, now, snapshot)

@@ -175,5 +175,9 @@
   "Datenbank von Home Assistant antwortet nicht, Abfragen pausiert": "Home Assistant's database is not responding, queries paused",
   "Datenbank von Home Assistant ist ausgelastet, Abfragen pausiert": "Home Assistant's database is busy, queries paused",
   "Export enthält keine Konfiguration": "The export contains no configuration",
-  "Die App „{name}“ läuft ebenfalls – diese steuert nichts. Bitte nur eine Sunflow-App starten.": "The App \"{name}\" is running as well – this one does not control anything. Please start only one Sunflow App."
+  "Die App „{name}“ läuft ebenfalls – diese steuert nichts. Bitte nur eine Sunflow-App starten.": "The App \"{name}\" is running as well – this one does not control anything. Please start only one Sunflow App.",
+  "Modus von {entity} nicht lesbar – Übernahme wartet, bis das Gerät antwortet": "Mode of {entity} not readable – taking over waits until the device answers",
+  "Wert von {entity} nicht lesbar – Übernahme wartet, bis das Gerät antwortet": "Value of {entity} not readable – taking over waits until the device answers",
+  "Integration neu geladen: seit {minutes} min keine Werte": "Integration reloaded: no values for {minutes} min",
+  "Integration neu laden fehlgeschlagen: {error}": "Reloading the integration failed: {error}"
 }
