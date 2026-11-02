@@ -186,3 +186,15 @@ async def test_controller_switches_for_the_test_only_when_triggered(library, tmp
     await tick(2)
     await tick(5)
     assert ("switch", "turn_on") in ha.calls
+
+
+@pytest.mark.parametrize("plugged", [True, False])
+def test_plugged_by_hand(tmp_path: Path, plugged: bool) -> None:
+    """"Plugged in now" in the control tab makes it ready without a test; "no longer" ends it."""
+    watch, bike = ChargerWatch(tmp_path), _bike()
+    watch.set_plugged(bike, True, NOW)
+    watch.set_plugged(bike, plugged, NOW + timedelta(minutes=1))
+
+    assert watch.ready(bike, UNLOCKED) is plugged
+    assert watch.changed
+    assert (watch.step(bike, False, 0.0, UNLOCKED, NOW + timedelta(minutes=2)) is None) is plugged

@@ -223,4 +223,9 @@ export default {
   "Mit Konfiguration": "With configuration",
   "Nur Aufzeichnung": "Recording only",
   "{count} Zeitabschnitte und die Konfiguration importiert. Die Seite lädt neu.": "{count} time slots and the configuration imported. The page reloads.",
+  "Probeladung läuft …": "Test charge running …",
+  "Ladebereit": "Ready to charge",
+  "Nicht ladebereit": "Not ready to charge",
+  "Nicht mehr eingesteckt": "No longer plugged in",
+  "Jetzt eingesteckt": "Plugged in now",
 };
