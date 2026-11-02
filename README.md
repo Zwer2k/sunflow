@@ -9,17 +9,16 @@ Wallbox, Warmwasser und weitere Verbraucher nach PV-Prognose und Strompreis und 
 den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
 
 > [!WARNING]
-> **Private project, no warranty.** Sunflow is developed privately in spare time and is
-> not affiliated with Home Assistant or the device manufacturers. It writes to inverters,
-> batteries and wallboxes; errors in Sunflow or in its settings can damage devices. You
-> use Sunflow at your own risk. The developer accepts no liability for any damage
-> resulting from its use.
+> **Private project, use at your own risk.** Sunflow is developed privately in spare time
+> and is not affiliated with Home Assistant or the device manufacturers. It writes to
+> inverters, batteries and wallboxes; errors in Sunflow or in its settings can damage
+> devices. Warranty and liability are excluded as set out in the [license](LICENSE).
 >
-> **Privat entwickelt, ohne Gewähr.** Sunflow wird privat in der Freizeit entwickelt und
-> steht in keiner Verbindung zu Home Assistant oder den Geräteherstellern. Es schreibt an
-> Wechselrichter, Speicher und Wallboxen; Fehler in Sunflow oder in den Einstellungen
-> können Geräte beschädigen. Die Nutzung erfolgt auf eigenes Risiko. Der Entwickler
-> übernimmt keine Haftung für Schäden, die aus der Nutzung entstehen.
+> **Privat entwickelt, Nutzung auf eigenes Risiko.** Sunflow wird privat in der Freizeit
+> entwickelt und steht in keiner Verbindung zu Home Assistant oder den Geräteherstellern.
+> Es schreibt an Wechselrichter, Speicher und Wallboxen; Fehler in Sunflow oder in den
+> Einstellungen können Geräte beschädigen. Gewährleistung und Haftung sind nach der
+> [Lizenz](LICENSE) ausgeschlossen.
 
 ![Live view](docs/images/en/live.png)
 
@@ -184,3 +183,8 @@ SUNFLOW_PORT=8099
 ```
 
 Inside the App it uses the Supervisor proxy and `SUPERVISOR_TOKEN` instead.
+
+## License
+
+Copyright 2026 Jurij Retzlaff. Licensed under the [Apache License 2.0](LICENSE).
+The bundled Lit library (`frontend/vendor/`) is © Google LLC under the BSD-3-Clause license.
