@@ -106,6 +106,26 @@ Geräte, die Sunflow nicht von selbst erkennt, legst du in den Einstellungen unt
 | Leistungsstufen | `generic/stepped` | Auswahl (select) mit Stufen in W/kW | ESPHome-Heizstab mit Stufen | 🧪 |
 | Ziel-Stromstärke | `generic/current` | Zahl (number) in A, optional Schalter | Wallbox oder Heizstab mit einstellbarem Strom | 🧪 |
 
+### Akku laden (E-Bike, Werkzeugakkus)
+
+Manche Verbraucher laden einen eigenen Akku und sind nur manchmal angesteckt, etwa das Ladegerät
+eines E-Bikes an einer schaltbaren Steckdose. Unter „Eigene Verbraucher“ lässt sich dafür
+**Akku laden** einschalten. Der Verbraucher braucht eine Leistungsmessung.
+
+- **Ladebereit** ist er, wenn die optionale Entität „angesteckt“ an ist. Ohne sie prüft Sunflow es
+  mit einer **Probeladung**: Nach dem Auslöser (z. B. die Gartenhaustür wird verriegelt, Zustand
+  `locked`; leer heißt bei jeder Änderung) und der eingestellten Wartezeit schaltet es den
+  Verbraucher kurz ein. Zieht er dabei mindestens die Schwelle, ist er ladebereit.
+- **Eingeplant** wird er nur, solange er ladebereit ist, mit PV-Überschuss oder günstigem Strom und
+  wie gewohnt bis „Fertig bis“. Bis dahin ist er ausgeschaltet.
+- **Wie viel**: mit Ladestand-Entität und Akkukapazität aus dem Ladestand, sonst mit der Energie je
+  Ladung. Den Startwert ersetzt Sunflow durch das Mittel der letzten Ladungen, sobald es sie gemessen
+  hat.
+- **Voll oder abgesteckt**: Bleibt die Leistung beim Laden für die eingestellte Zeit unter der
+  Schwelle, schaltet Sunflow ab. Erst der nächste Auslöser bzw. das nächste Anstecken macht ihn wieder
+  ladebereit.
+- Geschaltet wird nur, wenn Sunflow den Verbraucher steuert (Steuerung → Sunflow steuert).
+
 ## Ein Gerät fehlt oder ist geprüft?
 
 Wer ein Gerät aus der Tabelle an echter Hardware geprüft hat, meldet das bitte mit

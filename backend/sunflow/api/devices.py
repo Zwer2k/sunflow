@@ -15,6 +15,7 @@ from sunflow.analysis.efficiency import (
     estimate_from_history,
 )
 from sunflow.config.models import (
+    ChargerSettings,
     DeviceConfig,
     FeedIn,
     FlexSettings,
@@ -214,6 +215,9 @@ MANUAL_PROFILE = MANUAL_PROFILES["switch"]
 SWITCH_DOMAINS = ("switch.", "input_boolean.")
 SELECT_DOMAINS = ("select.", "input_select.")
 NUMBER_DOMAINS = ("number.", "input_number.")
+TRIGGER_DOMAINS = (
+    "lock.", "binary_sensor.", "input_boolean.", "switch.", "cover.", "person.", "device_tracker.", "input_select.", "select.",
+)
 STEP_POWER = re.compile(r"(\d+(?:[.,]\d+)?)\s*(kw|w)\b", re.IGNORECASE)
 OFF_OPTIONS = {"off", "aus", "0", "none", "stop"}
 
@@ -272,7 +276,7 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
     """Entities that can switch a consumer, power sensors to measure it and % sensors (vehicle SoC)."""
     snapshot = await _snapshot(request)
     switches, power, percent, presence, voltage = [], [], [], [], []
-    selects, numbers, temperature, energy = [], [], [], []
+    selects, numbers, temperature, energy, triggers = [], [], [], [], []
     for entity_id, state in sorted(snapshot.states.items()):
         attributes = state.get("attributes", {})
         item = {
@@ -293,6 +297,9 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
         if entity_id.startswith(("binary_sensor.", "device_tracker.")):
             # "Plugged in" or "at home" of a car
             presence.append(item)
+        if entity_id.startswith(TRIGGER_DOMAINS):
+            # Starts a test charge of a load with a battery of its own (e.g. the shed door locked)
+            triggers.append(item)
         if entity_id.startswith(SELECT_DOMAINS):
             selects.append(item | {"options": attributes.get("options") or []})
         elif entity_id.startswith(NUMBER_DOMAINS):
@@ -313,6 +320,7 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
         "numbers": numbers,
         "temperature": temperature,
         "energy": energy,
+        "triggers": triggers,
     }
 
 
@@ -661,6 +669,35 @@ async def set_device_reload(request: Request, device_id: str, body: DeviceReload
     device.reload_after_min = body.minutes
     store.save(config)
     return {"device_id": device_id, "minutes": body.minutes}
+
+
+@router.put("/config/devices/{device_id}/charger")
+async def set_device_charger(request: Request, device_id: str, body: ChargerSettings | None = None) -> dict[str, Any]:
+    """A battery of its own for an own load (e-bike …): readiness, test charge, done threshold; null switches it off."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if (device := config.device(device_id)) is None or device.profile not in MANUAL_PROFILES.values():
+        raise HTTPException(status_code=404, detail="Manual device not configured")
+    # Test and end of a charge are judged by the power
+    if body is not None and "power" not in device.role_overrides:
+        raise HTTPException(status_code=422, detail=t("Für „Akku laden“ braucht der Verbraucher eine Leistungsmessung"))
+    if body is not None and body.soc_entity and not body.capacity_wh:
+        raise HTTPException(status_code=422, detail=t("Zum Ladestand bitte die Akkukapazität angeben"))
+    device.charger = body
+    store.save(config)
+    _replan(request)
+    return {"device_id": device_id, "charger": body.model_dump() if body else None}
+
+
+@router.get("/chargers")
+async def get_chargers(request: Request) -> dict[str, Any]:
+    """Per own load with a battery: ready, since when, last result, a test that is due, learned energy."""
+    controller: PlanController | None = getattr(request.app.state, "controller", None)
+    if controller is None:
+        return {"devices": {}}
+    config = request.app.state.store.load()
+    states = (await _snapshot(request)).states
+    return {"devices": {d.id: controller.chargers.status(d, states) for d in config.devices if d.charger is not None}}
 
 
 @router.get("/integration-reloads")

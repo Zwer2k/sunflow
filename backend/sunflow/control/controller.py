@@ -27,6 +27,7 @@ from typing import Any
 
 from sunflow.config.models import AuxBatteryGuard, DeviceConfig, SunflowConfig, Vehicle
 from sunflow.control.aux_battery import AuxCharge, aux_charge_due, aux_voltage
+from sunflow.control.charger import ChargerWatch
 from sunflow.control.journal import ControlJournal
 from sunflow.devices.discovery import Snapshot, fetch_snapshot
 from sunflow.devices.executor import (
@@ -146,7 +147,9 @@ def desired_action(
 
 
 def current_slot(plan: Any, now: datetime) -> Any:
-    """The plan slot running now, None outside the plan."""
+    """The plan slot running now, None outside the plan or without one."""
+    if plan is None:
+        return None
     return next(
         (s for s in plan.plan.slots if datetime.fromisoformat(str(s.start)) <= now < datetime.fromisoformat(str(s.end))),
         None,
@@ -719,6 +722,8 @@ class PlanController:
         self.paused: str | None = None
         # Set while another Sunflow App runs: then this one hands everything back and waits
         self.blocked: str | None = None
+        # Own loads with a battery of their own: readiness, test charges, charged energy
+        self.chargers = ChargerWatch(marker.data_dir)
         self._config = SunflowConfig()
         # Writes of the PV limits, apart from the battery writes of the same device (refresh)
         self._limit_writes: dict[str, DeviceControl] = {}
@@ -898,6 +903,16 @@ class PlanController:
         info = next((f for f in getattr(plan, "flex", None) or [] if f.device_id == device.id), None)
         if info is not None and info.unknown_vehicle:
             action, power, reason = "release", None, info.reason
+        if device.charger is not None and snapshot is not None:
+            # Not ready: off; a due test switches on for a moment whatever the plan says
+            profile = self._profiles()[device.profile]
+            overrides = {k: o.model_dump() for k, o in device.role_overrides.items()}
+            roles = {r.role: r for r in preview(profile, snapshot, device.ha_device_id, overrides)}
+            switch_on = roles["switch"].raw_state == "on" if "switch" in roles and roles["switch"].raw_state else None
+            power_w = roles["power"].value if "power" in roles else None
+            if (forced := self.chargers.step(device, switch_on, power_w, snapshot.states, now)) is not None:
+                action, reason = forced
+                power = (device.parameters.get("max_power") or profile.get("parameters", {}).get("max_power", {}).get("default")) if action == "charge" else None
         access = self._access_for(device)
         await take_over(access, self._marker, device)
         aux = self._aux_due(device, snapshot, now)

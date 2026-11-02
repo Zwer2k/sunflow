@@ -98,6 +98,7 @@ async def get_plan(request: Request) -> dict[str, Any]:
     """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
     try:
         runner = getattr(request.app.state, "runner", None)
+        controller = getattr(request.app.state, "controller", None)
         result = await current_plan(
             request.app.state.ha,
             request.app.state.store,
@@ -106,6 +107,7 @@ async def get_plan(request: Request) -> dict[str, Any]:
             await runner.pv_correction() if runner else None,
             runner.load_model if runner else None,
             runner.plane_corrections if runner else None,
+            chargers=controller.chargers if controller is not None else None,
         )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err

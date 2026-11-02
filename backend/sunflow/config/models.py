@@ -130,6 +130,28 @@ class Connection(BaseModel):
     unit_id: int | None = Field(default=None, ge=0, le=255)
 
 
+class ChargerSettings(BaseModel):
+    """A load that charges a battery of its own (e-bike, tool batteries) and is only sometimes plugged in.
+
+    Ready to charge from a "plugged in" entity, else from a short test charge after a trigger
+    (e.g. the shed door locked). Power below a threshold while switched on means full or
+    unplugged.
+    """
+
+    soc_entity: str | None = None
+    capacity_wh: float | None = Field(default=None, gt=0, le=1_000_000)
+    connected_entity: str | None = None
+    # Energy of a charge without a SoC; replaced by the mean of the last charges once known
+    energy_wh: float | None = Field(default=None, gt=0, le=1_000_000)
+    done_below_w: float = Field(default=10.0, ge=0, le=100_000)
+    done_after_min: int = Field(default=3, ge=1, le=120)
+    trigger_entity: str | None = None
+    # State of the trigger that starts a test (e.g. "locked"); None: any change
+    trigger_state: str | None = None
+    trigger_delay_min: int = Field(default=2, ge=0, le=240)
+    test_seconds: int = Field(default=60, ge=20, le=600)
+
+
 class DeviceConfig(BaseModel):
     """A device managed by Sunflow: what it is and how its entities are read.
 
@@ -156,6 +178,8 @@ class DeviceConfig(BaseModel):
     connection: Connection | None = None
     # Reload its Home Assistant integration after this many minutes without any value; None: never
     reload_after_min: int | None = Field(default=None, ge=10, le=240)
+    # Own loads with a battery of their own; None: planned by their daily need
+    charger: ChargerSettings | None = None
 
 
 class TariffConfig(BaseModel):

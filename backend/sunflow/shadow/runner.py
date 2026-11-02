@@ -14,6 +14,7 @@ from sunflow import i18n
 from sunflow.analysis.history import level_key
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.config.store import ConfigStore
+from sunflow.control.charger import ChargerWatch
 from sunflow.control.controller import PlanController
 from sunflow.devices.discovery import Snapshot, SnapshotCache, fetch_snapshot
 from sunflow.devices.profiles import ProfileLibrary, controls_battery
@@ -78,6 +79,7 @@ async def current_plan(
     live_load_w: float | None = None,
     consumer_hours: list[tuple[datetime, float]] | None = None,
     vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
+    chargers: ChargerWatch | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -96,6 +98,7 @@ async def current_plan(
         live_load_w,
         consumer_hours,
         vehicle_hours,
+        chargers,
     )
 
 
@@ -303,6 +306,10 @@ class ShadowRunner:
                     await self.controller.tick(
                         self._store.load(), self.latest, self.status.last_plan, snapshot, now, self.last_sample
                     )
+                    # A charger became ready (test) or full: the plan follows right away
+                    if self.controller.chargers.changed:
+                        self.controller.chargers.changed = False
+                        self.request_replan()
             except HAError as err:
                 _LOGGER.warning("Control step failed: %s", err)
 
@@ -480,6 +487,7 @@ class ShadowRunner:
             self.live_pv(),
             self.live_load(),
             *await asyncio.to_thread(self.own_hours),
+            chargers=self.controller.chargers if self.controller is not None else None,
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)

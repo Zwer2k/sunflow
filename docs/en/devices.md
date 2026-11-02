@@ -104,6 +104,25 @@ loads". Power, meter and temperature are optional.
 | Power levels | `generic/stepped` | select with levels in W/kW | ESPHome heating rod with levels | 🧪 |
 | Target current | `generic/current` | number in A, optional switch | wallbox or heating rod with adjustable current | 🧪 |
 
+### Charge battery (e-bike, tool batteries)
+
+Some loads charge a battery of their own and are only plugged in at times, e.g. an e-bike charger
+on a switchable socket. Under "Custom loads" you can switch on **Charge battery** for them. The load
+needs a power measurement.
+
+- **Ready to charge** when the optional "plugged in" entity is on. Without one, Sunflow checks with a
+  **test charge**: after the trigger (e.g. the shed door is locked, state `locked`; empty means any
+  change) and the set waiting time it switches the load on briefly. If it draws at least the
+  threshold, it is ready.
+- **Planned** only while it is ready, with PV surplus or cheap power and by "Ready by" as usual.
+  Until then it is switched off.
+- **How much**: from the state of charge with an SoC entity and the battery capacity, else with the
+  energy per charge. Sunflow replaces the starting value with the mean of the last charges once it
+  has measured them.
+- **Full or unplugged**: if the power stays below the threshold for the set time while charging,
+  Sunflow switches off. Only the next trigger or plugging in makes it ready again.
+- Switching only happens while Sunflow controls the load (Control → Sunflow controls).
+
 ## A device is missing or has been tested?
 
 If you have tested a device from the table on real hardware, please report it with integration

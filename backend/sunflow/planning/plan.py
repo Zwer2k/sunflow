@@ -17,6 +17,7 @@ from sunflow.config.models import (
     SunflowConfig,
     Vehicle,
 )
+from sunflow.control.charger import ChargerReady, ChargerWatch
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import battery_actions, controls_battery, supported_action
 from sunflow.devices.resolver import preview
@@ -99,6 +100,8 @@ WATER_WH_PER_LITRE_KELVIN = 1.163
 # Target of a heating own consumer when none is set (evcc loadpoints report their own)
 DEFAULT_HOT_WATER_C = 60.0
 HEATER_DEADLINE = timedelta(hours=24)
+# Charger of an e-bike or tool battery: energy from the socket per energy into the battery
+CHARGER_EFFICIENCY = 0.85
 # A car at home but not plugged in: hinted when the plan gives it this much within this time
 PLUG_IN_HINT_AHEAD = timedelta(hours=6)
 PLUG_IN_HINT_MIN_WH = 1000.0
@@ -253,6 +256,32 @@ def expected_levels(info: FlexInfo, slots: list[Any]) -> list[float]:
     return result
 
 
+def _number(states: dict[str, dict[str, Any]], entity_id: str | None) -> float | None:
+    """The numeric state of an entity; None without a usable value."""
+    try:
+        return float(states[entity_id]["state"]) if entity_id else None
+    except KeyError, TypeError, ValueError:
+        return None
+
+
+def charger_need(
+    info: FlexInfo, device: DeviceConfig, charger: ChargerReady | None, states: dict[str, dict[str, Any]], target: float | None
+) -> str | None:
+    """Need of a load with a battery of its own; the reason when it is not planned (not ready, no energy)."""
+    if charger is None or not charger.ready or device.charger is None:
+        return t("Nicht ladebereit (nicht angesteckt oder voll)")
+    soc = _number(states, device.charger.soc_entity)
+    if soc is not None and device.charger.capacity_wh:
+        info.current, info.unit = soc, "%"
+        info.target = target if target is not None else 100.0
+        info.need_wh = max(info.target - soc, 0.0) / 100 * device.charger.capacity_wh / CHARGER_EFFICIENCY
+    elif charger.energy_wh:
+        info.need_wh = charger.energy_wh
+    else:
+        return t("Energie je Ladung fehlt (Einstellungen → Geräte → Akku laden)")
+    return None
+
+
 def flex_loads(
     config: SunflowConfig,
     profiles: dict[str, dict[str, Any]],
@@ -265,6 +294,7 @@ def flex_loads(
     hot_water: dict[str, HotWaterUsage] | None = None,
     vehicle_usages: dict[str, VehicleUsage] | None = None,
     presences: dict[str, Departure] | None = None,
+    chargers: dict[str, ChargerReady] | None = None,
 ) -> tuple[list[FlexLoad], list[FlexInfo], list[str], tuple[tuple[str, float], ...]]:
     """Derive the energy need of every flexible consumer from live values and its settings.
 
@@ -342,6 +372,11 @@ def flex_loads(
                         name=device.name,
                     )
                 )
+        elif kind == "load" and device.charger is not None:
+            if (reason := charger_need(info, device, (chargers or {}).get(device.id), snapshot.states, target)) is not None:
+                info.reason = reason
+                continue
+            info.deadline = min(ready_by or slot_starts[0] + HEATER_DEADLINE, horizon_end)
         elif kind == "load":
             # Set by the user, else learned from the power sensor
             daily = params.get("daily_energy_wh") or (usage.daily_wh if usage else None)
@@ -1207,6 +1242,7 @@ async def compute_plan(
     live_load_w: float | None = None,
     consumer_hours: list[tuple[datetime, float]] | None = None,
     vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
+    chargers: ChargerWatch | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule.
 
@@ -1454,6 +1490,7 @@ async def compute_plan(
         hot_water=hot_water,
         vehicle_usages=vehicle_usages,
         presences=presences,
+        chargers=chargers.planning(config, snapshot.states) if chargers else None,
     )
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings

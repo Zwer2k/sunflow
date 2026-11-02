@@ -241,6 +241,8 @@ class SunflowApp extends LitElement {
     _surchargeEdit: { state: true },
     _busy: { state: true },
     _reloads: { state: true },
+    _chargers: { state: true },
+    _chargerEdits: { state: true },
     _error: { state: true },
     _haConnected: { state: true },
   };
@@ -275,6 +277,7 @@ class SunflowApp extends LitElement {
     this._efficiency = {};
     this._flexEdits = {};
     this._candidates = null;
+    this._chargerEdits = {};
     this._manual = { ...EMPTY_MANUAL };
     this._direct = null;
     this._directProfiles = null;
@@ -479,6 +482,7 @@ class SunflowApp extends LitElement {
       this._startPreview();
       this._loadParameters();
       api.integrationReloads().then((r) => (this._reloads = r.devices)).catch(() => (this._reloads = {}));
+      api.chargers().then((r) => (this._chargers = r.devices)).catch(() => (this._chargers = {}));
     }
     if (area === "consumers") this._loadParameters();
     if (area === "site") this._startSite();
@@ -1568,7 +1572,8 @@ class SunflowApp extends LitElement {
                   ? html`<div class="small">${t("gemessen: {energy} pro Tag", { energy: formatValue(this._usages[d.id].daily_wh, "Wh") })}${this._usages[d.id].running_w
                       ? html` · ${t("läuft mit {power}", { power: formatValue(this._usages[d.id].running_w, "W") })}`
                       : nothing}</div>`
-                  : nothing}</div>
+                  : nothing}
+                ${d.kind === "heater" || d.disabled ? nothing : this._renderCharger(d)}</div>
                 <span class="item-actions">
                   <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>${t("Bearbeiten")}</button>
                   <button class="secondary danger" @click=${() => this._removeDevice(d)}>${t("Entfernen")}</button>
@@ -2056,6 +2061,100 @@ class SunflowApp extends LitElement {
   }
 
   /** Kenndaten of a configured device: what it is. Planning and earnings have their own areas. */
+  /** An own load with a battery of its own (e-bike …): when it is ready, how much it needs, when it is full. */
+  _renderCharger(device) {
+    const edit = this._chargerEdits?.[device.id];
+    const settings = edit ?? device.charger;
+    const status = this._chargers?.[device.id];
+    if (settings && this._candidates === null && !this._loadingCandidates) {
+      this._loadingCandidates = true;
+      this._loadCandidates().finally(() => (this._loadingCandidates = false));
+    }
+    const set = (key, value) => (this._chargerEdits = { ...this._chargerEdits, [device.id]: { ...settings, [key]: value } });
+    const number = (key, label, unit, hint) => html`<label class="field">
+        <span class="field-label">${label}</span>
+        <span class="input-unit"><input type="number" min="0" .value=${settings[key] ?? ""}
+          @input=${(e) => set(key, e.target.value === "" ? null : Number(e.target.value))}><span class="muted">${unit}</span></span>
+        ${hint ? html`<span class="small muted">${hint}</span>` : nothing}
+      </label>`;
+    const picker = (key, label, options, empty) => html`<div class="field">
+        <span class="field-label">${label}</span>
+        <sf-picker label=${label} empty-label=${empty} placeholder=${t("Name oder Entität suchen …")} .value=${settings[key] ?? ""}
+          .options=${(options ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: c.state ?? "–" }))}
+          @change=${(e) => set(key, e.detail.value || null)}></sf-picker>
+      </div>`;
+    const at = (iso) => weekdayTime(iso);
+    return html`
+      <div class="field charger">
+        <span class="field-label">${t("Akku laden")}</span>
+        <label class="inline wrap">
+          <input type="checkbox" .checked=${Boolean(settings)}
+            @change=${(e) => (e.target.checked
+              ? (this._chargerEdits = { ...this._chargerEdits, [device.id]: { done_below_w: 10, done_after_min: 3, trigger_delay_min: 2, test_seconds: 60 } })
+              : this._saveCharger(device, null))}>
+          ${t("Verbraucher lädt einen eigenen Akku (z. B. E-Bike) und ist nur manchmal angesteckt")}
+        </label>
+        ${settings
+          ? html`
+            <span class="small muted">${t("Sunflow plant ihn nur, wenn er ladebereit ist – mit PV-Überschuss oder günstigem Strom –, und schaltet ihn sonst aus. Ladebereit heißt: die Entität „angesteckt“ ist an, oder eine kurze Probeladung nach dem Auslöser hat Leistung gezeigt. Sinkt die Leistung beim Laden unter die Schwelle, gilt er als voll oder abgesteckt. Geschaltet wird nur, wenn Sunflow den Verbraucher steuert.")}</span>
+            <div class="fields">
+              ${picker("connected_entity", t("Angesteckt (optional)"), this._candidates?.presence, t("keine"))}
+              ${picker("soc_entity", t("Ladestand (optional)"), this._candidates?.percent, t("keiner"))}
+              ${settings.soc_entity
+                ? number("capacity_wh", t("Akkukapazität"), "Wh")
+                : number("energy_wh", t("Energie je Ladung"), "Wh", status?.charges
+                  ? t("Gelernt aus {count} Ladungen: {energy}", { count: status.charges, energy: formatValue(status.energy_wh, "Wh") })
+                  : t("Startwert, bis Sunflow es aus den ersten Ladungen gelernt hat"))}
+              ${number("done_below_w", t("Voll oder abgesteckt unter"), "W")}
+              ${number("done_after_min", t("… für"), "min")}
+            </div>
+            ${settings.connected_entity
+              ? nothing
+              : html`<div class="fields">
+                  ${picker("trigger_entity", t("Auslöser für die Probeladung"), this._candidates?.triggers, t("keiner"))}
+                  <label class="field">
+                    <span class="field-label">${t("bei Zustand")}</span>
+                    <span class="input-unit"><input .value=${settings.trigger_state ?? ""} placeholder=${t("jede Änderung")}
+                      @input=${(e) => set("trigger_state", e.target.value.trim() || null)}></span>
+                    <span class="small muted">${t("z. B. locked, off, closed")}</span>
+                  </label>
+                  ${number("trigger_delay_min", t("danach warten"), "min")}
+                  ${number("test_seconds", t("Probeladung"), "s")}
+                </div>`}
+            ${status
+              ? html`<span class="small ${status.ready ? "" : "muted"}">${status.testing
+                ? t("Probeladung läuft …")
+                : status.note ?? (status.ready ? t("Ladebereit") : t("Nicht ladebereit"))}${status.since && !status.testing ? ` · ${at(status.since)}` : ""}${status.test_due
+                  ? ` · ${t("Probeladung um {time}", { time: at(status.test_due) })}`
+                  : ""}</span>`
+              : nothing}
+            ${edit
+              ? html`<div class="actions"><button class="ok" @click=${() => this._saveCharger(device, edit)}>${t("Speichern")}</button>
+                  <button class="secondary" @click=${() => this._dropChargerEdit(device)}>${t("Abbrechen")}</button></div>`
+              : nothing}`
+          : nothing}
+      </div>
+    `;
+  }
+
+  _dropChargerEdit(device) {
+    const edits = { ...this._chargerEdits };
+    delete edits[device.id];
+    this._chargerEdits = edits;
+  }
+
+  async _saveCharger(device, settings) {
+    try {
+      await api.setDeviceCharger(device.id, settings);
+      this._dropChargerEdit(device);
+      this._configDevices = configuredDevices(await api.config());
+      this._chargers = (await api.chargers()).devices;
+      this._error = null;
+    } catch (err) {
+      this._error = t("Einstellung nicht gespeichert: {error}", { error: err.message });
+    }
+  }
+
   /** Explicit permission to reload the device's integration when it stays silent. */
   _renderReload(device) {
     const allowed = device.reload_after_min !== null && device.reload_after_min !== undefined;
