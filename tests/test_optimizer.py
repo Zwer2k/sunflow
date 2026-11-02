@@ -1023,3 +1023,18 @@ def test_on_off_load_runs_at_full_power() -> None:
     powers = [s.flex_w["E-Bike"] for s in plan.slots]
     assert sum(powers) / 4 == pytest.approx(400, abs=1)
     assert all(p < 1 or p >= ON_OFF_MIN_SHARE * 143 - 0.5 for p in powers)
+
+
+def test_on_off_load_charges_in_one_block() -> None:
+    """In an equally cheap night window the charger runs in one piece, not switched on several times."""
+    from sunflow.planning.optimizer import FlexLoad
+
+    inputs = _slots(24, price=lambda i: 0.226 if i < 20 else 0.326)
+    bike = FlexLoad(name="E-Bike", energy_wh=400, max_power_w=143, available=[True] * 96, on_off=True)
+
+    plan = optimize(inputs, BATTERY, Settings(), [bike])
+
+    on = [s.flex_w["E-Bike"] >= 1 for s in plan.slots]
+    switched_on = sum(1 for t, running in enumerate(on) if running and (t == 0 or not on[t - 1]))
+    assert switched_on == 1
+    assert sum(on[:20]) == sum(on)
