@@ -2,53 +2,52 @@
 
 ## 0.75.0
 
-- Erstes Release der App „Sunflow“: Sie installiert ein fertiges Image und bekommt Updates nur noch mit einem Release. Den aktuellen Entwicklungsstand gibt es weiter als „Sunflow Edge“. Die Release-Notizen fassen alle Änderungen seit 0.73.1 zusammen.
-- Plan → Ladestand: Der Hinweis zum Lernen des Autoverbrauchs sagt jetzt genau, was zählt: 14 Tage, an denen der Ladestand mindestens 20 Stunden aufgezeichnet ist.
+- First release of the "Sunflow" App: it installs a prebuilt image and only gets updates with a release. The current development state remains available as "Sunflow Edge". These notes cover all changes since 0.73.1.
+- Planning → State of charge: the hint about learning the car's consumption now says exactly what counts: 14 days on which the SoC was recorded for at least 20 hours.
 
 ## 0.74.8
 
-- Plan → Bezugspreis: Fehlt in der Aufzeichnung ein Stück (z. B. weil kein Plan berechnet werden konnte), verband das Diagramm die Preise davor und danach mit einer schrägen Linie. Jetzt bleibt die Lücke frei; aneinanderschließende Preise bleiben senkrechte Stufen.
+- Planning → Import price: when part of the recording is missing (e.g. because no plan could be computed), the chart joined the prices before and after with a slope. The gap now stays empty; adjoining prices remain vertical steps.
 
 ## 0.74.7
 
-- Aufklappbare Karten merken sich im Browser, ob sie offen oder zu sind, statt zugeklappt zu starten: „Sunflow steuert“ (Steuerung), „Geplante Steuerung“ (Planung), die Gerätekarten unter Einstellungen → Geräte, die Speicherkarten und „Erkennung des Fahrzeugs“ (Laden). Beim ersten Besuch sind sie offen; deaktivierte Geräte bleiben zugeklappt. Gerätekarten, die Aufmerksamkeit brauchen (noch nicht übernommen, Angabe fehlt, gerade bearbeitet), sind wie bisher immer offen.
+- Collapsible cards remember in the browser whether they are open or closed instead of starting collapsed: "Sunflow controls" (Control), "Planned control" (Planning), the device cards under Settings → Devices, the battery cards and "Vehicle detection" (Charging). They are open on the first visit; deactivated devices stay collapsed. Device cards that need attention (not added yet, a value missing, being edited) are always open, as before.
 
 ## 0.74.6
 
-- Plan: „Entladen begrenzt“ meldete fälschlich „weicht vom Plan ab“, wenn das Haus weniger brauchte als die Grenze. Der Speicher deckt dann alles, das Netz bleibt bei etwa 0 – das sieht aus wie Eigenverbrauch, hält aber den Plan ein. Entlädt der Speicher höchstens die Grenze (mit 10 % bzw. 100 W Spielraum), gilt das jetzt als planmäßig, auch bei „Gleiche Entscheidung“ im Schattenbetrieb.
-- Plan: Die Erklärung unter der geplanten Steuerung nennt bei Begrenzungen die Leistung, z. B. „Speicher entlädt höchstens 982 W, darüber hinaus kommt der Bedarf aus dem Netz“, statt „deckt den Bedarf nur teilweise“. Ebenso bei „Laden begrenzt“.
+- Planning: "Discharge limited" wrongly reported "deviates from the plan" when the house needed less than the limit. The battery then covers everything and the grid stays near 0 – this looks like self-consumption but keeps to the plan. Discharging at most the limit (with 10 % or 100 W tolerance) now counts as planned, also for "Same decision" in shadow mode.
+- Planning: the explanation of the planned control names the power for limits, e.g. "Battery discharges at most 982 W; any demand beyond that comes from the grid", instead of "covers the demand only partly". The same for "Charge limited".
 
 ## 0.74.5
 
-- Plan → Bezugspreis: Das Diagramm zeigt auch den zurückliegenden Zeitraum – den Preis, mit dem jede Viertelstunde damals geplant wurde (aus der Aufzeichnung), wie die anderen Diagramme beim Zurückblättern.
-- Plan → Geplante Steuerung lässt sich zuklappen (Klick auf die Überschrift). Zugeklappt steht dort, wie viele Abschnitte es gibt und was als Nächstes kommt; der Browser merkt sich die Wahl.
-- Empfehlungen: „Grenze ‚ab Hausspeicher … %‘ kostet PV“ kam nach dem Ausblenden mit jedem neuen Plan zurück, weil die ungedeckte Energie zum Wiedererkennen zählte. Jetzt kommt sie erst wieder, wenn sich die Grenze ändert. Ebenso stabiler: „Plan ist … teurer“ (erst wieder bei 5 € mehr) und „PV-Prognose liegt bei … %“ (in 10-%-Schritten). Einmal muss eine schon ausgeblendete Empfehlung noch erneut ausgeblendet werden.
+- Planning → Import price: the chart also shows the past – the price each quarter hour was planned with (from the recording), like the other charts when paging back.
+- Planning → Planned control can be collapsed (click the heading). Collapsed, it shows how many sections there are and what comes next.
+- Recommendations: "limit 'from home battery … %' costs PV" came back after hiding with every new plan, because the uncovered energy was part of what identifies it. It now only returns when the limit changes. Also steadier: "plan costs … more" (only again at €5 more) and "PV forecast is … % of the measurement" (in steps of 10 %). A recommendation hidden before has to be hidden once more.
 
 ## 0.74.4
 
-- Plan → Ladestand: Für ein Auto, das nicht angesteckt ist und dessen Verbrauch noch nicht gelernt ist, fehlte die erwartete Linie. Sie zeigt jetzt den jetzigen Ladestand weiter, bis das Auto angesteckt und eingeplant wird; der Hinweis unter dem Diagramm sagt das. Mit gelerntem Verbrauch sinkt sie wie bisher unterwegs.
+- Planning → State of charge: for a car that is not plugged in and whose consumption is not learned yet, the expected line was missing. It now continues at the current SoC until the car is plugged in and planned; the note below the chart says so. With learned consumption it drops on the way as before.
 
 ## 0.74.3
 
-- Neuladen der Integration, je Gerät ausdrücklich zu erlauben unter Einstellungen → Geräte → „Integration neu laden“ (Standard: aus). Liefert das Gerät so viele Minuten (Standard 10) keinen einzigen Wert, lädt Sunflow den Eintrag seiner Integration in Home Assistant neu – höchstens alle 30 Minuten und 6-mal am Tag, nie während eines Gerätetests. An das Gerät wird dabei nichts geschrieben. Jedes Neuladen steht im Steuerungsprotokoll; die Geräte-Karte zeigt, seit wann keine Werte kommen und wann zuletzt neu geladen wurde.
-- Steuermodus: Steht ein gesteuerter Wechselrichter nicht (mehr) im Steuermodus – etwa weil das Umschalten verloren ging, während seine Integration nicht verbunden war, oder weil er in seiner App umgestellt wurde –, schaltet Sunflow ihn wieder um und vermerkt das im Protokoll. Bisher blieb er im falschen Modus und lehnte die Steuerwerte mit Modbus-Fehlern ab. Ein beim Übernehmen als „unknown“ gemerkter Modus wird dabei durch den echten ersetzt, damit die Rückgabe ihn wiederherstellt.
+- Reloading the integration, to be allowed explicitly per device under Settings → Devices → "Reload integration" (off by default). If the device delivers not a single value for that many minutes (default 10), Sunflow reloads its integration entry in Home Assistant – at most every 30 minutes and 6 times a day, never during a device test. Nothing is written to the device. Every reload appears in the control log; the device card shows since when values are missing and when it was last reloaded.
+- Control mode: if a controlled inverter is not (or no longer) in its control mode – e.g. because the switch got lost while its integration was disconnected, or because it was changed in its app – Sunflow switches it back and notes this in the log. Before, it stayed in the wrong mode and refused the control values with Modbus errors. A mode remembered as "unknown" when taking over is replaced by the real one, so handing back restores it.
 
 ## 0.74.2
 
-- 0.74.1 startete nicht (fehlende Datei); behoben.
-- Sunflow übernimmt ein Gerät erst, wenn sein Modus lesbar ist, und schreibt einen gemerkten Modus „unknown“/„unavailable“ nie zurück (z. B. nach einem Neustart von Home Assistant, während der Wechselrichter noch keine Werte liefert).
-- Vorbereitet: Neuladen der Integration eines Geräts, das längere Zeit keine Werte liefert. Standardmäßig aus; die Einstellung in der Oberfläche folgt.
+- 0.74.1 did not start (missing file); fixed.
+- Sunflow only takes over a device once its mode is readable, and never writes back a remembered mode "unknown"/"unavailable" (e.g. after a Home Assistant restart while the inverter delivers no values yet).
 
 ## 0.74.1
 
-- Dokumentation: Bilder der Optimierer-Ansicht in der Live-Ansicht (Computer und Handy, Deutsch und Englisch) unter „Optimierer“ und „Bedienung“.
+- Documentation: images of the optimizer view in the Live view (computer and phone, German and English) under "Optimizers" and "User interface".
 
 ## 0.74.0
 
-- Zwei Apps im Repository: **Sunflow** bekommt Updates nur noch mit einem GitHub-Release und installiert ein fertiges Image (schneller, kein Bau auf dem Gerät). **Sunflow Edge** ist der Entwicklungsstand mit einem Update für jede Änderung und baut wie bisher auf dem Gerät.
-- Laufen beide Apps gleichzeitig, steuert keine von ihnen: Übernommene Geräte werden zurückgegeben, die Steuerung zeigt den Grund, und die Integration bleibt bei der App, die sich zuletzt angemeldet hat. Sobald nur noch eine läuft, steuert sie wieder und meldet sich bei der Integration.
-- Umzug zwischen den Apps: „Export importieren“ fragt, ob auch die Konfiguration übernommen werden soll. Mit Konfiguration ersetzt sie die jetzige, die Steuerung bleibt danach aus, bis sie eingeschaltet wird.
-- Die App braucht dafür Lesezugriff auf die Supervisor-Info der jeweils anderen Sunflow-App (`hassio_api`).
+- Two Apps in the repository: **Sunflow** only gets updates with a GitHub release and installs a prebuilt image (faster, no build on the device). **Sunflow Edge** is the development state with an update for every change and builds on the device as before.
+- If both Apps run at the same time, neither controls anything: taken-over devices are handed back, Control shows the reason, and the integration stays with the App that announced itself last. As soon as only one runs, it controls again and announces itself to the integration.
+- Moving between the Apps: "Import export" asks whether to take over the configuration too. With configuration it replaces the current one; control stays off afterwards until it is switched on.
+- For this the App needs read access to the Supervisor info of the other Sunflow App (`hassio_api`).
 
 ## 0.73.1
 
