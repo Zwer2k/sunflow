@@ -180,5 +180,16 @@
   "Wert von {entity} nicht lesbar – Übernahme wartet, bis das Gerät antwortet": "Value of {entity} not readable – taking over waits until the device answers",
   "Integration neu geladen: seit {minutes} min keine Werte": "Integration reloaded: no values for {minutes} min",
   "Integration neu laden fehlgeschlagen: {error}": "Reloading the integration failed: {error}",
-  "Steuermodus wieder eingeschaltet (stand auf „{mode}“)": "Control mode switched on again (was \"{mode}\")"
+  "Steuermodus wieder eingeschaltet (stand auf „{mode}“)": "Control mode switched on again (was \"{mode}\")",
+  "Voll oder abgesteckt": "Full or unplugged",
+  "Prüft, ob {name} ladebereit ist": "Checking whether {name} is ready to charge",
+  "Ladebereit (Prüfung)": "Ready to charge (test)",
+  "Nicht ladebereit (Prüfung ohne Leistung)": "Not ready to charge (test drew no power)",
+  "Nicht ladebereit": "Not ready to charge",
+  "Nicht angesteckt": "Not plugged in",
+  "Voll – wieder eingeplant, wenn neu angesteckt": "Full – planned again once plugged in anew",
+  "Nicht ladebereit (nicht angesteckt oder voll)": "Not ready to charge (not plugged in or full)",
+  "Energie je Ladung fehlt (Einstellungen → Geräte → Akku laden)": "Energy per charge missing (Settings → Devices → Charge battery)",
+  "Für „Akku laden“ braucht der Verbraucher eine Leistungsmessung": "\"Charge battery\" needs a power measurement of the load",
+  "Zum Ladestand bitte die Akkukapazität angeben": "Please enter the battery capacity for the state of charge"
 }

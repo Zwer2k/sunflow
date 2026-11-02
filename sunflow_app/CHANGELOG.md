@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.1
+
+- Custom loads: **Charge battery** for loads with a battery of their own that are only plugged in at times, such as an e-bike charger on a switchable socket (Settings → Devices → Custom loads). Ready to charge is decided by an optional "plugged in" entity, or by a short test charge after a trigger (e.g. the shed door locked) and a waiting time: if the load draws power, it is planned with PV surplus or cheap power and switched off until then. The energy comes from an optional state-of-charge entity, else from the energy per charge, learned from the last charges. Power below a threshold while charging means full or unplugged and switches it off. Switching only happens while Sunflow controls the load.
+- Control: a test charge without a current plan no longer fails.
+
 ## 0.75.0
 
 - First release of the "Sunflow" App: it installs a prebuilt image and only gets updates with a release. The current development state remains available as "Sunflow Edge". These notes cover all changes since 0.73.1.
