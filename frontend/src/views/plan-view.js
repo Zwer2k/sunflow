@@ -256,7 +256,8 @@ class SunflowPlan extends LitElement {
       <div class="heading">
         <div>
           <h1>${t("Planung")}</h1>
-          <p class="muted">${t("Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Sunflow steuert noch nichts – die Planung zeigt, was es tun würde. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.")}</p>
+          <p class="muted">${t("Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.")}
+            ${plan ? this._controlNote(plan) : nothing}</p>
         </div>
         <button class="secondary" ?disabled=${this._loading} @click=${() => this._load(true)}>
           ${this._loading ? t("Berechne …") : t("Neu berechnen")}
@@ -319,7 +320,7 @@ class SunflowPlan extends LitElement {
           <button class="toggle" aria-expanded=${this._segmentsOpen} @click=${() => this._toggleSegments()}>
             <span class="caret" aria-hidden="true">${this._segmentsOpen ? "▾" : "▸"}</span>${t("Geplante Steuerung")}
           </button>
-          <span class="tag">${t("Vorschau")}</span>
+          ${this._controlTag(plan, plan.battery_device)}
         </h2>
         ${this._segmentsOpen
           ? nothing
@@ -519,14 +520,14 @@ class SunflowPlan extends LitElement {
     const fmt = (v, unit) => (v === null || v === undefined ? "–" : `${decimal(Math.round(v * 10) / 10)} ${unit}`);
     return html`
       <section>
-        <h2>${t("Steuerbare Verbraucher")} <span class="tag">${t("Vorschau")}</span></h2>
+        <h2>${t("Steuerbare Verbraucher")}</h2>
         <div class="flex-list">
           ${plan.flex.map((f) => {
             const windows = flexWindows(plan.slots, f.name);
             return html`
               <div class="flex-card">
                 <div class="flex-head">
-                  <strong><span class="swatch inline" style="background:${colors.get(f.device_id)}"></span>${f.name}</strong>
+                  <strong><span class="swatch inline" style="background:${colors.get(f.device_id)}"></span>${f.name}${this._controlTag(plan, f.device_id)}</strong>
                   <span class="small muted">${f.kind === "vehicle" && f.vehicle ? f.vehicle : { heater: t("Warmwasser"), vehicle: t("Fahrzeug") }[f.kind] ?? t("Verbraucher")}</span>
                 </div>
                 <div class="small">
@@ -631,6 +632,25 @@ class SunflowPlan extends LitElement {
         ? ` · ${t("Ø letzte Minuten: Netz {grid}, Speicher {battery}", { grid: formatValue(actual.recent_grid_w, "W"), battery: formatValue(actual.recent_battery_w, "W") })}`
         : ""}
     </div>`;
+  }
+
+  /** Whether the plan is carried out: nothing, everything, or which devices. */
+  _controlNote(plan) {
+    const controlled = new Set(plan.controlled ?? []);
+    const names = new Map([[plan.battery_device, t("Hausspeicher")], ...(plan.flex ?? []).map((f) => [f.device_id, f.name])]);
+    const planned = [...names.keys()].filter((id) => id);
+    if (!controlled.size) return t("Sunflow steuert noch nichts – die Planung zeigt, was es tun würde.");
+    if (planned.every((id) => controlled.has(id))) return t("Sunflow setzt den Plan um.");
+    const doing = planned.filter((id) => controlled.has(id)).map((id) => names.get(id)).join(", ");
+    return t("Sunflow setzt den Plan bei {devices} um; Geräte mit „nur Plan“ zeigen nur, was es tun würde.", { devices: doing });
+  }
+
+  /** "Only plan" for a device Sunflow does not control, "carried out" for one it does. */
+  _controlTag(plan, deviceId) {
+    if (!deviceId) return nothing;
+    return (plan.controlled ?? []).includes(deviceId)
+      ? html`<span class="tag on">${t("wird umgesetzt")}</span>`
+      : html`<span class="tag">${t("nur Plan")}</span>`;
   }
 
   _toggleSegments() {
@@ -998,6 +1018,7 @@ class SunflowPlan extends LitElement {
       font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-left: 6px;
       background: var(--sf-neutral-bg); color: var(--sf-neutral-text); vertical-align: middle;
     }
+    .tag.on { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
     .section-head { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
     .range { display: flex; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; }
     .range button {
