@@ -29,7 +29,12 @@ zeigen, wohin die Energie gerade fließt.
   wischen oder mit den Pfeilen blättern. Unter [Einstellungen → Anzeige](einstellungen.md#anzeige)
   lässt es sich ausblenden.
 - **Heute** fasst die Energiezähler zusammen: PV erzeugt, verbraucht, Netzbezug, eingespeist,
-  Autarkie und Eigenverbrauch.
+  Verluste von Wechselrichter und Speicher, Autarkie und Eigenverbrauch.
+- **Verluste Wechselrichter/Speicher** (unter dem Energiefluss, Mittel der letzten Minuten):
+  Bilanz aus PV, Netz und Speicher minus gemessenem Hausverbrauch, also Wandlungsverluste und
+  Eigenverbrauch der Geräte. Das Energie-Dashboard von Home Assistant zählt sie zum Hausverbrauch;
+  deshalb zeigt es mehr Verbrauch und mehr Autarkie als Sunflow. Nur mit einem Verbrauchszähler
+  bzw. einer Verbrauchsmessung.
 
 <img src="images/live-mobile.png" alt="Live auf dem Handy" width="300">
 

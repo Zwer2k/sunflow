@@ -445,6 +445,17 @@ class ShadowRunner:
             return None
         return sum(g for g, _ in pairs) / len(pairs), sum(b for _, b in pairs) / len(pairs)
 
+    def recent_losses(self) -> float | None:
+        """Mean losses of inverter and battery over the last minutes (W): the balance minus the measured load."""
+        gaps = [
+            s.pv_w + s.grid_w - s.battery_w - s.load_w
+            for s in self._recent
+            if None not in (s.pv_w, s.grid_w, s.battery_w, s.load_w)
+        ]
+        if len(gaps) < RECENT_ACTION_MIN_SAMPLES:
+            return None
+        return max(sum(gaps) / len(gaps), 0.0)
+
     def recent_action(self) -> str | None:
         """What the battery did over the last minutes."""
         return actual_action(*means) if (means := self.recent_means()) else None

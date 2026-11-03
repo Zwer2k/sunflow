@@ -169,6 +169,7 @@ class SunflowLive extends LitElement {
           exported: kwh(totals.grid_export),
           autarky: energy.autarky,
           selfConsumption: energy.self_consumption,
+          losses: energy.losses === null || energy.losses === undefined ? null : kwh(energy.losses),
           source: t("Energiezähler"),
         };
         this._todayError = null;
@@ -383,6 +384,9 @@ class SunflowLive extends LitElement {
         ${consumers.map((c, i) => this._consumerNode(c, [CONSUMER_X, consumerY(i)], COLOR.consumers[i]))}
         </g>
       </svg>
+      ${live.losses_w !== null && live.losses_w !== undefined
+        ? html`<p class="small muted" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>${t("Verluste Wechselrichter/Speicher: {power} (Ø letzte Minuten)", { power: formatValue(live.losses_w, "W") })}</p>`
+        : nothing}
       ${battery?.parts?.length
         ? html`<p class="small muted">${t("Speicher:")} ${battery.parts
             .map((b) => `${b.name} ${b.soc_pct === null ? "–" : `${Math.round(b.soc_pct)} %`} · ${formatPower(b.power_w, b.display)}`)
@@ -506,6 +510,11 @@ class SunflowLive extends LitElement {
           <div class="tile"><div class="small muted">${t("Verbraucht")}</div><div class="value">${kwh(today.consumption)}</div></div>
           <div class="tile"><div class="small muted">${t("Netzbezug")}</div><div class="value">${kwh(today.imported)}</div></div>
           <div class="tile"><div class="small muted">${t("Eingespeist")}</div><div class="value">${kwh(today.exported)}</div></div>
+          ${today.losses !== null && today.losses !== undefined
+            ? html`<div class="tile" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>
+                <div class="small muted">${t("Verluste WR/Speicher")}</div><div class="value">${kwh(today.losses)}</div>
+              </div>`
+            : nothing}
           <div class="tile highlight" title=${t("Anteil des Verbrauchs ohne Netzbezug")}>
             <div class="small muted">${t("Autarkie")}</div><div class="value">${pct(today.autarky)}</div>
           </div>
