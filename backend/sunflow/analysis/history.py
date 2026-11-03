@@ -15,7 +15,10 @@ from sunflow.devices.state_history import state_means
 from sunflow.ha import HAClient, HAError
 
 # Short-term statistics are kept 10 days by default; above that use hourly
+# Home Assistant keeps 5 minute statistics this long (recorder default), then hourly ones only
 FIVE_MINUTE_LIMIT = timedelta(days=10)
+# Sunflow's own recording: one row per quarter hour
+RECORDED_SLOT = timedelta(minutes=15)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -88,7 +91,8 @@ async def fetch_history(
     """Return bucketed means per key; PV of several plants is summed."""
     if not series:
         return []
-    period = "5minute" if end - start <= FIVE_MINUTE_LIMIT else "hour"
+    # By age: older 5 minute statistics are purged, a window scrolled back gets hourly ones
+    period = "5minute" if bucket < timedelta(hours=1) and start >= datetime.now(UTC) - FIVE_MINUTE_LIMIT else "hour"
     result = await client.command(
         "recorder/statistics_during_period",
         start_time=start.isoformat(),
@@ -153,9 +157,14 @@ def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], c
     """
     all_rows = [(datetime.fromisoformat(r["start"]), r) for r in rows]
     starts = [(start, r) for start, r in all_rows if r.get("actual_loadpoint_w") is not None]
+
+    def overlapping(recorded: list[tuple[datetime, dict[str, Any]]], begin: datetime, end: datetime) -> list[dict[str, Any]]:
+        # A recorded quarter hour counts for every point it overlaps (a 5 minute point lies inside one)
+        return [r for start, r in recorded if start < end and start + RECORDED_SLOT > begin]
+
     for point in points:
         begin, end = datetime.fromisoformat(point["start"]), datetime.fromisoformat(point["end"])
-        inside = [r for start, r in starts if begin <= start < end]
+        inside = overlapping(starts, begin, end)
         if not inside:
             continue
         total = fmean(r["actual_loadpoint_w"] for r in inside)
@@ -172,13 +181,12 @@ def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], c
         begin, end = datetime.fromisoformat(point["start"]), datetime.fromisoformat(point["end"])
         own: dict[str, list[float]] = {}
         prices: list[float] = []
-        for start, r in all_rows:
-            if begin <= start < end:
-                for device_id, value in (r.get("actual_levels") or {}).items():
-                    own.setdefault(device_id, []).append(value)
-                # The import price the slot was planned with: the tariff that applied then
-                if r.get("planned_price") is not None:
-                    prices.append(r["planned_price"])
+        for r in overlapping(all_rows, begin, end):
+            for device_id, value in (r.get("actual_levels") or {}).items():
+                own.setdefault(device_id, []).append(value)
+            # The import price the slot was planned with: the tariff that applied then
+            if r.get("planned_price") is not None:
+                prices.append(r["planned_price"])
         if prices:
             point["price"] = fmean(prices)
         levels = point.setdefault("levels", {})
