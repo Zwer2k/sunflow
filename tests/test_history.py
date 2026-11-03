@@ -6,7 +6,8 @@ from typing import Any
 import pytest
 from sunflow.analysis.history import Series, fetch_history
 
-START = datetime(2026, 10, 24, 10, 0, tzinfo=UTC)
+# Recent: Home Assistant keeps 5 minute statistics for 10 days only
+START = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) - timedelta(days=1)
 
 
 class FakeClient:

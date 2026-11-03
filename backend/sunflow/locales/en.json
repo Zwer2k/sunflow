@@ -193,5 +193,6 @@
   "Für „Akku laden“ braucht der Verbraucher eine Leistungsmessung": "\"Charge battery\" needs a power measurement of the load",
   "Zum Ladestand bitte die Akkukapazität angeben": "Please enter the battery capacity for the state of charge",
   "Als eingesteckt gemeldet": "Reported as plugged in",
-  "Als nicht eingesteckt gemeldet": "Reported as not plugged in"
+  "Als nicht eingesteckt gemeldet": "Reported as not plugged in",
+  "nach Plan – geplante Entladung dieser Viertelstunde verbraucht": "as planned – the discharge planned for this quarter hour is used up"
 }

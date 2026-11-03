@@ -35,6 +35,18 @@ def battery_actions(profile: dict[str, Any]) -> set[str]:
     return set(BATTERY_ACTIONS) if controls_battery(profile) else {"auto"}
 
 
+def volatile_action(profile: dict[str, Any], action: str) -> bool:
+    """The action writes no value to flash: it may be rewritten as often as needed."""
+    if "battery_control" in profile:
+        steps, default = profile["battery_control"].get(action, []), "volatile"
+    elif primitives := profile.get("primitive"):
+        ((_, primitive),) = primitives.items()
+        steps, default = primitive["steps"], primitive.get("storage", "eeprom")
+    else:
+        return False
+    return bool(steps) and all(spec.get("storage", default) != "eeprom" for step in steps for spec in step.values())
+
+
 def supported_action(profile: dict[str, Any], action: str, power: float | None = None) -> tuple[str, float | None]:
     """The action and its power, or the closest action the device supports."""
     supported = battery_actions(profile)

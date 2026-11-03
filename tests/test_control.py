@@ -16,7 +16,7 @@ from sunflow.control.controller import (
     evcc_controls_battery,
 )
 from sunflow.devices.executor import EepromGuard, ExecutorError, PlannedCall
-from sunflow.devices.profiles import load_profiles, load_schema
+from sunflow.devices.profiles import load_profiles, load_schema, volatile_action
 
 REPO = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 29, 10, 5, tzinfo=UTC)
@@ -789,3 +789,78 @@ async def test_switches_back_into_the_control_mode(tmp_path: Path) -> None:
     assert device.modes == ["Passive Mode"]
     # Handed back later, it gets the mode it really had
     assert TakeoverMarker(tmp_path).get() == {"bat": "Self Use"}
+
+
+def _window(storage: str) -> dict[str, Any]:
+    window = {"storage": storage, "steps": [{"number": {"key": "passive_mode_battery_power_min"}}]}
+    return SOFAR | {"primitive": {"battery_window": window}, "parameters": {"max_discharge": {"unit": "W", "default": 5000}}}
+
+
+@pytest.mark.parametrize(
+    ("storage", "expected"),
+    [
+        pytest.param(
+            "volatile",
+            [("limit_discharge", 5000), ("limit_discharge", 5000), ("limit_discharge", 5000), ("limit_discharge", 4000),
+             ("limit_discharge", 2000), ("hold", None)],
+            id="ram-covers-the-peak-until-the-energy-is-used",
+        ),
+        pytest.param("eeprom", [("limit_discharge", 1000)] * 6, id="flash-keeps-the-planned-limit"),
+    ],
+)
+async def test_partial_discharge_is_energy_for_the_slot(tmp_path: Path, storage: str, expected: list) -> None:
+    """1000 W planned for the rest of the slot (10 min, ~167 Wh): a 2 kW peak gets it all, then the battery holds."""
+    written: list[tuple[str, float | None]] = []
+
+    async def plan(action: str, runtime: dict) -> tuple:
+        written.append((action, runtime.get("P")))
+        return [], {}
+
+    async def run(calls: list, states: dict, force: bool = False) -> None:
+        return None
+
+    access = DeviceAccess(plan=plan, run=run, release=None)
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: access, lambda: {"sofar": _window(storage)})
+    peak = SimpleNamespace(battery_w=-2000.0)
+
+    for minute in range(6):
+        await controller.tick(_config(), _plan("limit_discharge", 1000), NOW, SNAPSHOT, NOW + timedelta(minutes=minute), peak)
+
+    assert written[: len(expected)] == expected
+
+
+async def test_replan_within_the_slot_starts_a_new_budget(tmp_path: Path) -> None:
+    """A replan gives the power for the rest of the slot; what was used before does not count against it."""
+    written: list[tuple[str, float | None]] = []
+
+    async def plan(action: str, runtime: dict) -> tuple:
+        written.append((action, runtime.get("P")))
+        return [], {}
+
+    async def run(calls: list, states: dict, force: bool = False) -> None:
+        return None
+
+    access = DeviceAccess(plan=plan, run=run, release=None)
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: access, lambda: {"sofar": _window("volatile")})
+    peak = SimpleNamespace(battery_w=-2000.0)
+    for minute in range(6):
+        await controller.tick(_config(), _plan("limit_discharge", 1000), NOW, SNAPSHOT, NOW + timedelta(minutes=minute), peak)
+    assert written[-1] == ("hold", None)
+
+    await controller.tick(_config(), _plan("limit_discharge", 600), NOW, SNAPSHOT, NOW + timedelta(minutes=6), peak)
+
+    # 600 W for the 4 minutes left: 40 Wh, at most 2.4 kW for the next minute
+    assert written[-1] == ("limit_discharge", 2400)
+
+
+@pytest.mark.parametrize(
+    ("profile", "volatile"),
+    [
+        pytest.param("solax_modbus/sofar", True, id="sofar-passive-mode-in-ram"),
+        pytest.param("huawei_solar/sun2000_luna2000", False, id="huawei-max-discharge-in-flash"),
+    ],
+)
+def test_limit_discharge_storage_of_the_profiles(profile: str, volatile: bool) -> None:
+    """Only inverters that keep the discharge limit in RAM get it rewritten every minute."""
+    library = load_profiles(REPO / "profiles", load_schema(REPO / "schema"))
+    assert volatile_action(library.profiles[profile], "limit_discharge") is volatile
