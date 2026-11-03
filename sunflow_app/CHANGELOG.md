@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.10
+
+- Planning: the grid import and export chart also shows the battery power, measured and planned (+ charging, − discharging). Measured values come from the battery power sensor's statistics, else from Sunflow's own samples.
+
 ## 0.75.9
 
 - Hot water: a tank that warms up again without its own heating (district heating, gas) has another heat source. Sunflow learns the temperature at which it starts, and the temperature forecast no longer falls below it. Before, the forecast assumed the tank kept cooling down until the heating rod was switched on. Planning shows the learned temperature below the chart.
