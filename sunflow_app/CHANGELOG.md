@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.12
+
+- Energy balance: a PV plant measured by the Sofar as external PV (PV ext) is no longer counted twice. The Sofar's yield counter already contains it, so PV generated was too high by that plant's yield (e.g. 7.0 instead of 6.4 kWh today). New profile flag `includes_pv_ext` for yield counters that count the external PV.
+
 ## 0.75.11
 
 - The integration carries the Sunflow version (before: its own 0.4.0), so HACS shows the same version as the App; a release checks that both match.
