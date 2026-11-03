@@ -25,7 +25,7 @@ RECORDED_SLOT = timedelta(minutes=15)
 class Series:
     """One statistic and how to turn it into a site value."""
 
-    key: str  # soc_wh, pv_w, load_w, grid_w, loadpoint_w, level (vehicle %, tank °C)
+    key: str  # soc_wh, battery_w, pv_w, load_w, grid_w, loadpoint_w, level (vehicle %, tank °C)
     statistic_id: str
     factor: float  # sign flip and unit conversion (e.g. % -> Wh)
     # Controllable consumers are also returned one by one
@@ -63,6 +63,7 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             }
             if capacity := params.get("capacity_wh"):
                 add("soc_wh", "battery_soc", capacity / 100)
+            add("battery_w", "battery_power")
         if load_device is not None and device.id == load_device.id:
             add("load_w", "load_power")
         if grid_device is not None and device.id == grid_device.id:
@@ -130,7 +131,7 @@ async def fetch_history(
     for bucket_start in sorted(buckets):
         values = buckets[bucket_start]
         point: dict[str, Any] = {"start": bucket_start.isoformat(), "end": (bucket_start + bucket).isoformat()}
-        for key in ("soc_wh", "pv_w", "load_w", "grid_w", "loadpoint_w"):
+        for key in ("soc_wh", "battery_w", "pv_w", "load_w", "grid_w", "loadpoint_w"):
             per_statistic = values.get(key)
             # Mean per statistic, summed over statistics (several PV plants)
             point[key] = (
@@ -181,7 +182,10 @@ def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], c
         begin, end = datetime.fromisoformat(point["start"]), datetime.fromisoformat(point["end"])
         own: dict[str, list[float]] = {}
         prices: list[float] = []
+        batteries: list[float] = []
         for r in overlapping(all_rows, begin, end):
+            if r.get("actual_battery_w") is not None:
+                batteries.append(r["actual_battery_w"])
             for device_id, value in (r.get("actual_levels") or {}).items():
                 own.setdefault(device_id, []).append(value)
             # The import price the slot was planned with: the tariff that applied then
@@ -189,6 +193,9 @@ def fill_from_shadow(points: list[dict[str, Any]], rows: list[dict[str, Any]], c
                 prices.append(r["planned_price"])
         if prices:
             point["price"] = fmean(prices)
+        # A battery power sensor without statistics: from the own samples
+        if point.get("battery_w") is None and batteries:
+            point["battery_w"] = fmean(batteries)
         levels = point.setdefault("levels", {})
         for device_id, values in own.items():
             # Sensors without statistics (e.g. a car's MQTT sensor) from the own samples
