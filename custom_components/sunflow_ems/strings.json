@@ -20,6 +20,15 @@
       },
       "hassio_confirm": {
         "description": "Connect Home Assistant with the Sunflow App? Its learned PV forecasts become available for the energy dashboard."
+      },
+      "reauth_confirm": {
+        "description": "The Sunflow App rejected the token. Enter its current token (shown in Sunflow under Integrations).",
+        "data": {
+          "token": "Token"
+        },
+        "data_description": {
+          "token": "Token of the Sunflow App (shown next to the address)."
+        }
       }
     }
   },

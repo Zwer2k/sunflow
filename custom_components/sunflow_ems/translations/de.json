@@ -20,6 +20,15 @@
       },
       "hassio_confirm": {
         "description": "Home Assistant mit der Sunflow-App verbinden? Ihre gelernten PV-Prognosen stehen dann für das Energie-Dashboard zur Verfügung."
+      },
+      "reauth_confirm": {
+        "description": "Die Sunflow-App hat den Schlüssel abgelehnt. Gib ihren aktuellen Schlüssel ein (steht in Sunflow unter Integrationen).",
+        "data": {
+          "token": "Schlüssel"
+        },
+        "data_description": {
+          "token": "Schlüssel der Sunflow-App (steht neben der Adresse)."
+        }
       }
     }
   },
