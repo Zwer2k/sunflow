@@ -29,6 +29,10 @@ Schalter je Gerät. Siehe [Sunflow-Integration](integration.md).
   Laden aus dem Netz oder begrenztes Laden bzw. Entladen. Beim Sofar geschieht das
   leistungsgenau über das Fenster des Passivmodus. Geplant wird nur, was das Gerät kann (siehe
   [Unterstützte Geräte](geraete.md)).
+  Eine geplante Teilentladung ist Energie für die Viertelstunde: Kurze Verbrauchsspitzen deckt
+  der Speicher ganz, bis diese Energie verbraucht ist, danach hält er. Das gilt nur für Geräte,
+  deren Entladegrenze im RAM liegt (Sofar-Passivmodus); Geräte, die sie im Flash speichern,
+  behalten die feste Grenze des Plans.
 - **Wallbox**: In den geplanten Viertelstunden wird geladen, sonst gesperrt. Beim PV-Überschuss
   folgt der Ladestrom dem Überschuss. Die go-e schaltet Sunflow bei Bedarf zwischen 1 und 3 Phasen um.
 - **Warmwasser und eigene Verbraucher**: ein- und ausschalten oder Leistungsstufe bzw. Strom

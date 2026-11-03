@@ -28,6 +28,10 @@ per device. See [Sunflow integration](integration.md).
 - **Battery**: every minute Sunflow applies the planned action, e.g. self-consumption, hold,
   charge from grid, or limited charging or discharging. On the Sofar this is power-exact via the
   passive mode window. Only what the device can do is planned (see [Supported devices](devices.md)).
+  A planned partial discharge is energy for the quarter hour: the battery covers short load peaks
+  in full until that energy is used, then it holds. This applies only to devices that keep the
+  discharge limit in RAM (Sofar passive mode); devices that store it in flash keep the plan's
+  fixed limit.
 - **Wallbox**: charges in the planned quarter hours and is locked otherwise. On PV surplus the
   charging current follows the surplus. Sunflow switches the go-e between 1 and 3 phases when needed.
 - **Hot water and own loads**: switched on and off, or power level or current set, as planned.

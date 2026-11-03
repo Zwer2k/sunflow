@@ -42,7 +42,7 @@ from sunflow.devices.executor import (
     plan_pv_limit,
     plan_steps,
 )
-from sunflow.devices.profiles import controls_battery, supported_action
+from sunflow.devices.profiles import controls_battery, supported_action, volatile_action
 from sunflow.devices.resolver import UNAVAILABLE_STATES, device_entities, preview
 from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
@@ -81,6 +81,11 @@ MIN_CURTAIL_W = 100.0
 LIMIT_STEP_W = 100.0
 # How often the hand-back calls for the integration's watchdog are planned again
 FALLBACK_REFRESH = timedelta(minutes=10)
+# A planned partial discharge is energy for the slot: written every minute, the limit covers
+# load peaks fully until that energy is used (only where the limit is not stored in flash)
+BUDGET_STEP_W = 100.0
+BUDGET_MIN_WH = 5.0
+BUDGET_MAX_STEP = timedelta(minutes=5)
 # Phase switching of chargers: actions besides the charge actions
 PHASES_PREFIX = "phases_"
 PHASES_ONE, PHASES_THREE, PHASES_RESTORE = f"{PHASES_PREFIX}one", f"{PHASES_PREFIX}three", f"{PHASES_PREFIX}restore"
@@ -130,6 +135,17 @@ class DeviceControl:
     # Something the device does not do as told (e.g. the current set does not arrive)
     warning: str | None = None
     calls: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
+class DischargeBudget:
+    """Energy a planned partial discharge may take from the battery in the running slot."""
+
+    slot: datetime
+    power_w: float
+    energy_wh: float
+    last: datetime
+    used_wh: float = 0.0
 
 
 def desired_action(
@@ -725,6 +741,8 @@ class PlanController:
         self.blocked: str | None = None
         # Own loads with a battery of their own: readiness, test charges, charged energy
         self.chargers = ChargerWatch(marker.data_dir)
+        # Planned partial discharge per battery
+        self._budgets: dict[str, DischargeBudget] = {}
         self._config = SunflowConfig()
         # Writes of the PV limits, apart from the battery writes of the same device (refresh)
         self._limit_writes: dict[str, DeviceControl] = {}
@@ -785,7 +803,7 @@ class PlanController:
             elif self.paused:
                 self._status(device).reason = self.paused
             else:
-                await self._safely(device.id, device, lambda d, s: self._battery(d, s, plan, plan_at, now, snapshot))
+                await self._safely(device.id, device, lambda d, s: self._battery(d, s, plan, plan_at, now, snapshot, live))
             if "pv_limit" in profile:
                 await self._safely(device.id, device, lambda d, s: self._limit(d, s, plan, plan_at, now, snapshot, live))
         if now - self._fallback_at >= FALLBACK_REFRESH:
@@ -863,7 +881,7 @@ class PlanController:
 
     async def _battery(
         self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime,
-        snapshot: Snapshot | None = None,
+        snapshot: Snapshot | None = None, live: Any = None,
     ) -> None:
         action, power, reason = desired_action(plan, plan_at, now)
         access = self._access_for(device)
@@ -876,12 +894,18 @@ class PlanController:
             name = t(ACTION_NAMES[action]) if action in ACTION_NAMES else action
             reason = t("{reason} ({action} kann das Gerät nicht)", reason=reason, action=name)
             action, power = supported
+        defaults = {n: spec["default"] for n, spec in profile.get("parameters", {}).items() if "default" in spec}
+        planned = reason == t(ON_PLAN)
+        if action == "limit_discharge" and power and planned and volatile_action(profile, action):
+            max_discharge = (defaults | device.parameters).get("max_discharge")
+            action, power = self._discharge_budget(device.id, current_slot(plan, now), power, now, live, max_discharge)
+            if action == "hold":
+                reason = t("nach Plan – geplante Entladung dieser Viertelstunde verbraucht")
         control = profile.get("battery_control", {})
         refresh = parse_duration(control["refresh"], timedelta()) if "refresh" in control else None
-        defaults = {n: spec["default"] for n, spec in profile.get("parameters", {}).items() if "default" in spec}
         runtime: dict[str, float] = {"P": abs(power)} if power is not None else {}
         if (buffer := (defaults | device.parameters).get("grid_offset")) is not None:
-            runtime["grid_offset"] = grid_buffer(buffer, current_slot(plan, now) if plan else None, reason == t(ON_PLAN))
+            runtime["grid_offset"] = grid_buffer(buffer, current_slot(plan, now) if plan else None, planned)
         try:
             await apply(access, status, action, power, now, runtime, refresh=refresh, services_on_change=True, reason=reason)
         except Exception as err:
@@ -895,6 +919,29 @@ class PlanController:
             raise
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
         status.grid_target_w = runtime.get("grid_offset")
+
+    def _discharge_budget(
+        self, device_id: str, slot: Any, power: float, now: datetime, live: Any, max_discharge: float | None
+    ) -> tuple[str, float | None]:
+        """Limit of a planned partial discharge: open while the slot's energy lasts, holding once it is used."""
+        if slot is None:
+            return "limit_discharge", power
+        start, end = datetime.fromisoformat(str(slot.start)), datetime.fromisoformat(str(slot.end))
+        budget = self._budgets.get(device_id)
+        # A new slot or a replan within it: its power is meant for the rest of the slot
+        if budget is None or budget.slot != start or budget.power_w != power:
+            budget = DischargeBudget(slot=start, power_w=power, energy_wh=power * (end - now).total_seconds() / 3600, last=now)
+            self._budgets[device_id] = budget
+        battery_w = getattr(live, "battery_w", None)
+        if battery_w is not None and battery_w < 0 and timedelta(0) < now - budget.last <= BUDGET_MAX_STEP:
+            budget.used_wh += -battery_w * (now - budget.last).total_seconds() / 3600
+        budget.last = now
+        remaining_wh = budget.energy_wh - budget.used_wh
+        if remaining_wh < BUDGET_MIN_WH:
+            return "hold", None
+        # At most what is left until the next step a minute later
+        limit = math.floor(round(remaining_wh * 60 / BUDGET_STEP_W, 6)) * BUDGET_STEP_W
+        return "limit_discharge", min(limit, max_discharge) if max_discharge else limit
 
     async def _charge(
         self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime, live: Any,

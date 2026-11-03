@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.8
+
+- Battery: a planned partial discharge now counts as energy for the quarter hour. Short load peaks (cooking, kettle) are covered by the battery in full until that energy is used, then it holds. Before, the fixed limit let part of a peak come from the grid although the plan had energy left for it. Only for inverters that keep the discharge limit in RAM (Sofar passive mode); those that store it in flash (e.g. Huawei) keep the fixed limit, so they are not written every minute.
+- After a replan within the quarter hour, the new power applies to the minutes left.
+
 ## 0.75.7
 
 - Planning charts: the measured history of 24 h and 48 h has 5 minute resolution (before: 15 minutes) and reaches up to the last full 5 minutes instead of the last full quarter hour; the line between measured and forecast moves with it. Sunflow's own quarter-hour samples and the past price apply to every 5 minute point of their quarter hour.
