@@ -151,16 +151,20 @@ async def energy_balance(client: HAClient, sources: EnergySources, start: dateti
         values = [changes[s] for s in sources.statistics.get(key, []) if s in changes]
         totals[key] = sum(values) if values else None
     consumption, consumption_origin = totals["load"], "counter"
-    if consumption is None and totals["grid_import"] is not None and totals["pv"] is not None:
-        # Without a consumption counter the house takes what is left in the balance
-        consumption = (
+    rest = None
+    if totals["grid_import"] is not None and totals["pv"] is not None:
+        # What is left in the balance: the house plus the losses of inverter and battery
+        # (PV and battery counters count on the DC side, standby is drawn around the clock)
+        rest = (
             totals["pv"]
             + totals["grid_import"]
             - (totals["grid_export"] or 0)
             + (totals["battery_discharge"] or 0)
             - (totals["battery_charge"] or 0)
         )
-        consumption_origin = "balance"
+    if consumption is None and rest is not None:
+        # Without a consumption counter the house takes what is left in the balance
+        consumption, consumption_origin = rest, "balance"
     autarky = ratio(totals["grid_import"], consumption)
     self_consumption = ratio(totals["grid_export"], totals["pv"])
     return {
@@ -170,6 +174,8 @@ async def energy_balance(client: HAClient, sources: EnergySources, start: dateti
         "origin": sources.origin,
         "consumption": consumption,
         "consumption_origin": consumption_origin if consumption is not None else None,
+        # Only measurable with a consumption counter; a negative rest is measuring noise
+        "losses": max(rest - consumption, 0.0) if rest is not None and consumption_origin == "counter" and consumption is not None else None,
         "autarky": min(max(1 - autarky, 0), 1) if autarky is not None else None,
         "self_consumption": min(max(1 - self_consumption, 0), 1) if self_consumption is not None else None,
         "battery_ratio": ratio(totals["battery_discharge"], totals["battery_charge"]),

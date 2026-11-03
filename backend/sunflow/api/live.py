@@ -128,6 +128,8 @@ async def get_live(request: Request) -> dict[str, Any]:
         "grid_w": grid_w,
         "load_w": load_w,
         "consumers": consumers,
+        # Inverter and battery losses, averaged over the last minutes (single readings are not in step)
+        "losses_w": runner.recent_losses() if (runner := getattr(request.app.state, "runner", None)) and load_w is not None else None,
         "displays": displays,
         # Not fetched when no screen shows it
         "weather": await _live_weather(request, config, snapshot)

@@ -85,6 +85,8 @@ async def test_energy_balance_from_counters() -> None:
     assert balance["totals"]["pv"] == 11800
     assert balance["consumption"] == 12000
     assert balance["consumption_origin"] == "counter"
+    # 11800 + 3000 - 1180 + 3600 - 5000 in the balance, 12000 measured in the house
+    assert balance["losses"] == pytest.approx(220)
     assert balance["autarky"] == pytest.approx(0.75)
     assert balance["self_consumption"] == pytest.approx(0.9)
     assert balance["battery_ratio"] == pytest.approx(0.72)
@@ -101,6 +103,7 @@ async def test_energy_balance_without_load_counter() -> None:
 
     assert balance["consumption"] == 8000
     assert balance["consumption_origin"] == "balance"
+    assert balance["losses"] is None
     assert balance["battery_ratio"] is None
 
 

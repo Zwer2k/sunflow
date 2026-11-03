@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.13
+
+- Live: the losses of inverter and battery are shown below the energy flow (average of the last minutes) and as a tile under "Today". They are the balance of PV, grid and battery minus the measured house consumption: conversion losses and the devices' own consumption. Home Assistant's energy dashboard counts them as house consumption, which is why it shows more consumption and more self-sufficiency.
+
 ## 0.75.12
 
 - Energy balance: a PV plant measured by the Sofar as external PV (PV ext) is no longer counted twice. The Sofar's yield counter already contains it, so PV generated was too high by that plant's yield (e.g. 7.0 instead of 6.4 kWh today). New profile flag `includes_pv_ext` for yield counters that count the external PV.

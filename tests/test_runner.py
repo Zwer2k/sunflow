@@ -174,6 +174,22 @@ def test_recent_action_goes_by_the_mean_of_the_last_minutes() -> None:
     assert runner.recent_action() is None
 
 
+
+def test_recent_losses_are_the_balance_minus_the_load() -> None:
+    """PV + grid - battery - load over the last minutes; one reading out of step does not count alone."""
+    from collections import deque
+
+    from sunflow.shadow.runner import ShadowRunner
+    from sunflow.shadow.store import Sample
+
+    runner = ShadowRunner.__new__(ShadowRunner)
+    runner._recent = deque(
+        [Sample(soc_wh=None, battery_w=900, grid_w=g, pv_w=1500, load_w=480) for g in (0, 0, 0, -300)]
+    )
+    assert runner.recent_losses() == pytest.approx(45)
+    runner._recent = deque([Sample(soc_wh=None, battery_w=0, grid_w=400, pv_w=0, load_w=None)] * 5)
+    assert runner.recent_losses() is None
+
 async def test_replan_waits_for_the_connection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A change while Home Assistant restarts is planned by the next tick once connected, without a warning."""
     attempts = []

@@ -28,7 +28,12 @@ where energy is going.
 - **Weather**: current conditions and forecast, switchable between **Hours** and **Days**;
   swipe or use the arrows. It can be hidden under [Settings → Display](settings.md#display).
 - **Today** sums up the energy meters: PV generated, consumed, grid import, exported,
-  self-sufficiency and self-consumption.
+  inverter/battery losses, self-sufficiency and self-consumption.
+- **Inverter/battery losses** (below the energy flow, average of the last minutes): the balance
+  of PV, grid and battery minus the measured house consumption, i.e. conversion losses and the
+  devices' own consumption. Home Assistant's energy dashboard counts them as house consumption,
+  so it shows more consumption and more self-sufficiency than Sunflow. Only with a consumption
+  counter or measurement.
 
 <img src="../images/en/live-mobile.png" alt="Live on a phone" width="300">
 
