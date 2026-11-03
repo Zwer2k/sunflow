@@ -1,5 +1,6 @@
 """Config flow for Sunflow: the App (found by the Supervisor or by hand) and its forecasts."""
 
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol  # noqa: TID251 - custom integration, also for older Home Assistant
@@ -73,6 +74,32 @@ class SunflowConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_TOKEN): str,
                 }
             ),
+            errors=errors,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """The App rejected the token, e.g. after it was reinstalled."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the current token of the App."""
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        if user_input is not None:
+            if (
+                error := await self._check(entry.data[CONF_URL], user_input[CONF_TOKEN])
+            ) is None:
+                return self.async_update_reload_and_abort(
+                    entry, data_updates={CONF_TOKEN: user_input[CONF_TOKEN]}
+                )
+            errors["base"] = error
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_TOKEN): str}),
             errors=errors,
         )
 

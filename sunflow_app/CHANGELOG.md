@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.14
+
+- Integration: when the App rejects the token (e.g. after reinstalling it), Home Assistant asks for the current token under Settings → Devices & services. The entry keeps its address and reloads with the new token; before, it had to be removed and added again.
+
 ## 0.75.13
 
 - Live: the losses of inverter and battery are shown below the energy flow (average of the last minutes) and as a tile under "Today". They are the balance of PV, grid and battery minus the measured house consumption: conversion losses and the devices' own consumption. Home Assistant's energy dashboard counts them as house consumption, which is why it shows more consumption and more self-sufficiency.
