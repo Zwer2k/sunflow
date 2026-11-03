@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.11
+
+- The integration carries the Sunflow version (before: its own 0.4.0), so HACS shows the same version as the App; a release checks that both match.
+- The repository is checked by the HACS action and hassfest on every push. The documentation describes installing the integration with HACS or by hand.
+
 ## 0.75.10
 
 - Planning: the grid import and export chart also shows the battery power, measured and planned (+ charging, − discharging). Measured values come from the battery power sensor's statistics, else from Sunflow's own samples.

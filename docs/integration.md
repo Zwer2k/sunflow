@@ -6,6 +6,17 @@ Die Integration verbindet Home Assistant mit der Sunflow-App. Sie bringt die gel
 PV-Prognose ins Energie-Dashboard, zeigt Plan und Steuerung als Entitäten und lässt
 Sunflow aus Automationen bedienen. Gerechnet und gesteuert wird weiter in der App.
 
+Die Integration braucht die Sunflow-App; ohne sie tut sie nichts.
+
+## Installation
+
+Mit HACS: „HACS → ⋮ → Benutzerdefinierte Repositories“, `https://github.com/Zwer2k/sunflow`
+mit Typ „Integration“ hinzufügen, „Sunflow“ herunterladen und Home Assistant neu starten.
+Updates bietet HACS dann mit jeder neuen Sunflow-Version an.
+
+Ohne HACS: den Ordner `custom_components/sunflow_ems` aus dem Repository nach
+`/config/custom_components/` kopieren und Home Assistant neu starten.
+
 ## Einrichtung
 
 - **Automatisch:** Die App meldet sich beim Supervisor. Home Assistant zeigt die

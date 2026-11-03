@@ -28,6 +28,12 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match backend/sunflow/__init__.py ($code)"
             exit 1
           fi
+          # HACS installs the integration from the tag: its version must be the same
+          integration=$(sed -n 's/^  "version": "\(.*\)",\?$/\1/p' custom_components/sunflow_ems/manifest.json)
+          if [ "$version" != "$integration" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match custom_components/sunflow_ems/manifest.json ($integration)"
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   image:
