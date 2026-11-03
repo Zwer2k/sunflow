@@ -6,6 +6,17 @@ The integration connects Home Assistant with the Sunflow App. It brings the lear
 into the Energy dashboard, exposes plan and control as entities and lets automations operate
 Sunflow. Calculation and control remain in the App.
 
+The integration needs the Sunflow App; on its own it does nothing.
+
+## Installation
+
+With HACS: "HACS → ⋮ → Custom repositories", add `https://github.com/Zwer2k/sunflow` with
+type "Integration", download "Sunflow" and restart Home Assistant. HACS then offers an update
+with every new Sunflow version.
+
+Without HACS: copy the folder `custom_components/sunflow_ems` from the repository to
+`/config/custom_components/` and restart Home Assistant.
+
 ## Setup
 
 - **Automatic:** the App announces itself to the Supervisor. Home Assistant shows the
