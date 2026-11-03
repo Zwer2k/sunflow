@@ -75,6 +75,8 @@ Defaults for wallboxes without assigned vehicles, hot water and own loads:
 
 Sunflow learns when and how much hot water is used (per hour, weekdays and weekends separately,
 from one week of data) and, without a set ready time, heats up before the usual main usage time.
+If the tank regularly warms up without its own heating rod (district heating, gas), Sunflow learns
+the temperature at which that heat source starts; the temperature forecast does not fall below it.
 
 ## Tariff & forecast
 

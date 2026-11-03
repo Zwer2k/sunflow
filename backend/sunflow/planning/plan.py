@@ -149,6 +149,8 @@ class FlexInfo:
     wh_per_unit: float | None = None
     loss_wh_per_day: float = 0.0
     level_range: tuple[float, float] | None = None
+    # Tanks: temperature another heat source keeps (learned), the forecast does not fall below it
+    level_floor: float | None = None
     # Vehicles: battery capacity, to show the level as energy
     capacity_wh: float | None = None
     # Hot water and cars on the way: the usual draw per slot (learned), and from how many days
@@ -235,6 +237,7 @@ def hot_water_need(
     if drawn is not None:
         info.drawn_wh = [drawn.drawn_wh(start, start + SLOT, tz) for start in slot_starts]
         info.usage_days = drawn.days
+        info.level_floor = drawn.floor_c
 
 
 def expected_levels(info: FlexInfo, slots: list[Any]) -> list[float]:
@@ -250,8 +253,8 @@ def expected_levels(info: FlexInfo, slots: list[Any]) -> list[float]:
         level += energy / info.wh_per_unit
         if info.level_range is not None:
             low, high = info.level_range
-            # A car stops at full; a tank does not cool below cold water
-            level = min(max(level, low), high) if info.kind == "vehicle" else max(level, low)
+            # A car stops at full; a tank does not cool below cold water or what its other heat source keeps
+            level = min(max(level, low), high) if info.kind == "vehicle" else max(level, low, info.level_floor or low)
         result.append(round(level, 2))
     return result
 

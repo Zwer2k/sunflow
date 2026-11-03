@@ -73,3 +73,46 @@ def test_heater_is_hot_before_the_usual_usage(library) -> None:
     assert info.daily_wh == pytest.approx(usage.daily_wh)
     assert info.usage_days == 8
     assert len(info.drawn_wh) == 96
+
+
+def _district_heating(days: int) -> tuple[list[tuple[datetime, float]], list[tuple[datetime, float]]]:
+    """No own heating: drawn 1 K per hour, district heating warms it from below 44 °C back to 47 °C."""
+    temperatures, heating = [], []
+    temperature = 47.0
+    for hour in range(days * 24):
+        moment = START + timedelta(hours=hour)
+        temperatures.append((moment, temperature))
+        heating.append((moment, 0.0))
+        temperature = 47.0 if temperature < 44.5 else temperature - 1.0
+    return temperatures, heating
+
+
+@pytest.mark.parametrize(
+    ("history", "floor"),
+    [
+        pytest.param(_district_heating(8), 44.0, id="other-heat-source"),
+        pytest.param(_history(8), None, id="own-heating-only"),
+    ],
+)
+def test_learns_what_another_heat_source_keeps(history: tuple, floor: float | None) -> None:
+    """Warming up without the own heating is another heat source; it starts at about the same temperature."""
+    usage = usage_from(*history, TANK, UTC)
+
+    assert usage is not None
+    assert usage.floor_c == floor
+
+
+def test_forecast_does_not_fall_below_the_other_heat_source() -> None:
+    """Without own heating planned the tank forecast stays at what district heating keeps."""
+    from types import SimpleNamespace
+
+    from sunflow.planning.plan import FlexInfo, expected_levels
+
+    info = FlexInfo(
+        device_id="ww", name="Warmwasser", kind="heater", current=46.0, target=60.0, unit="°C", need_wh=0.0,
+        deadline=START + timedelta(hours=5), max_power_w=2800.0, wh_per_unit=TANK, loss_wh_per_day=24 * TANK,
+        level_range=(15.0, 60.0), level_floor=44.0,
+    )
+    slots = [SimpleNamespace(start=START + timedelta(hours=h), end=START + timedelta(hours=h + 1), flex_w={}) for h in range(5)]
+
+    assert expected_levels(info, slots) == [45.0, 44.0, 44.0, 44.0, 44.0]

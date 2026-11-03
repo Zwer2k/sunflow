@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.9
+
+- Hot water: a tank that warms up again without its own heating (district heating, gas) has another heat source. Sunflow learns the temperature at which it starts, and the temperature forecast no longer falls below it. Before, the forecast assumed the tank kept cooling down until the heating rod was switched on. Planning shows the learned temperature below the chart.
+- Planning: with a battery whose discharge limit lives in RAM (Sofar), a planned partial discharge is shown as energy per quarter hour ("up to … per quarter hour, covering peaks in full"). Discharging more than the planned power during a peak, or holding once that energy is used, is no longer reported as a deviation.
+
 ## 0.75.8
 
 - Battery: a planned partial discharge now counts as energy for the quarter hour. Short load peaks (cooking, kettle) are covered by the battery in full until that energy is used, then it holds. Before, the fixed limit let part of a peak come from the grid although the plan had energy left for it. Only for inverters that keep the discharge limit in RAM (Sofar passive mode); those that store it in flash (e.g. Huawei) keep the fixed limit, so they are not written every minute.

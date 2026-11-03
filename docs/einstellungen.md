@@ -73,6 +73,8 @@ Standard-Vorgaben für Wallboxen ohne zugeordnete Fahrzeuge, Warmwasser und eige
 Sunflow lernt, wann und wie viel Warmwasser verbraucht wird (je Stunde, Werktag und Wochenende
 getrennt, ab einer Woche Daten), und heizt ohne eingestellte Bereitzeit bis zur gewohnten
 Hauptverbrauchszeit.
+Erwärmt sich der Speicher regelmäßig ohne den eigenen Heizstab (Fernwärme, Gas), lernt Sunflow
+die Temperatur, bei der diese Wärmequelle einsetzt; die Temperatur-Prognose fällt nicht darunter.
 
 ## Tarif & Prognose
 
