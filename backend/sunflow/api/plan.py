@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from sunflow.analysis.history import (
+    FIVE_MINUTE_LIMIT,
     fetch_history,
     fill_from_shadow,
     history_series,
@@ -21,7 +22,7 @@ from sunflow.i18n import t
 from sunflow.planning.plan import expected_levels
 from sunflow.shadow.runner import ShadowRunner, current_plan
 
-from .common import _library, _local_tz, _slot_start, _snapshot
+from .common import _library, _local_tz, _snapshot
 
 router = APIRouter()
 
@@ -181,14 +182,16 @@ async def get_history(
     snapshot = await _snapshot(request)
     config = request.app.state.store.load()
     series = history_series(config, _library(request).profiles, snapshot)
-    now = _slot_start()
+    # Up to the last complete 5 minutes, so the measured lines reach almost to now
+    clock = datetime.now(UTC).replace(second=0, microsecond=0)
+    now = clock - timedelta(minutes=clock.minute % 5)
     # An earlier window when the charts are scrolled back; never into the future
     end = now if end is None else min(end.astimezone(UTC), now)
     if end < now - timedelta(days=31):
         raise HTTPException(status_code=422, detail=t("Nicht weiter als 31 Tage zurück"))
-    # 15 minute resolution up to two days, hourly above to keep charts readable
-    bucket = timedelta(minutes=15) if hours <= 48 else timedelta(hours=1)
     start = end - timedelta(hours=hours)
+    # 5 minutes up to two days while Home Assistant still has them, else hourly (also readable for a week)
+    bucket = timedelta(minutes=5) if hours <= 48 and start >= now - FIVE_MINUTE_LIMIT else timedelta(hours=1)
     if bucket == timedelta(hours=1):
         start = start.replace(minute=0)
     try:

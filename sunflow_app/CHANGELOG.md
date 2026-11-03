@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.7
+
+- Planning charts: the measured history of 24 h and 48 h has 5 minute resolution (before: 15 minutes) and reaches up to the last full 5 minutes instead of the last full quarter hour; the line between measured and forecast moves with it. Sunflow's own quarter-hour samples and the past price apply to every 5 minute point of their quarter hour.
+- A window scrolled back more than 10 days now gets hourly values. Before, it asked Home Assistant for 5 minute statistics it had already purged, and the charts stayed empty.
+
 ## 0.75.6
 
 - Planning shows what is carried out: the intro says whether Sunflow controls nothing, everything, or which devices; "Planned control" and every controllable load are marked **carried out** or **plan only**. Before, it always said Sunflow controls nothing yet, also while it did.

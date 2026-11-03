@@ -280,7 +280,9 @@ class SunflowPlan extends LitElement {
     const history = this._history?.points ?? [];
     const capacity =
       plan.battery?.capacity_wh || Math.max(...slots.map((s) => s.soc_wh), ...history.map((p) => p.soc_wh ?? 0)) || 1;
-    const nowDate = new Date(slots[0].start);
+    // Measured up to the last full 5 minutes, which lie inside the plan's first quarter hour
+    const measuredEnd = history.length ? new Date(history.at(-1).end) : null;
+    const nowDate = measuredEnd && measuredEnd > new Date(slots[0].start) ? measuredEnd : new Date(slots[0].start);
     const curtailed = slots.some((s) => (s.curtail_w ?? 0) > 0);
     const hasLoadpoints =
       history.some((p) => p.loadpoint_w !== null && p.loadpoint_w !== undefined) || Boolean(plan.flex?.length);

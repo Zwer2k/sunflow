@@ -242,3 +242,19 @@ def test_every_plant_and_consumer_keeps_its_series() -> None:
         ("pv_w", "sensor.garage_pv"),
         ("pv_w", "sensor.roof_pv"),
     ]
+
+
+def test_five_minute_points_take_their_recorded_quarter_hour() -> None:
+    """Every 5 minute point inside a recorded quarter hour gets its own samples and price, not only the first."""
+    from sunflow.analysis.history import fill_from_shadow
+
+    points = [
+        {"start": (START + timedelta(minutes=m)).isoformat(), "end": (START + timedelta(minutes=m + 5)).isoformat(), "loadpoint_w": None, "consumers": {}}
+        for m in (0, 5, 10, 15)
+    ]
+    rows = [_row(0, 130.0, {"bike": 130.0}) | {"planned_price": 0.2262}]
+
+    fill_from_shadow(points, rows, {"bike"})
+
+    assert [p["consumers"].get("bike") for p in points] == [130.0, 130.0, 130.0, None]
+    assert [p.get("price") for p in points] == [0.2262, 0.2262, 0.2262, None]
