@@ -261,6 +261,10 @@
           "description": "Entities with a finer resolution (e.g. per battery input) whose sum replaces the live value when any is readable; the key's entity stays for statistics.",
           "type": "array",
           "items": {"type": "string"}
+        },
+        "includes_pv_ext": {
+          "description": "pv_energy: the counter also counts the external PV the device measures (pv_ext_power); a plant measured by it then does not count its own counter again.",
+          "type": "boolean"
         }
       }
     },

@@ -262,3 +262,33 @@ async def test_efficiency_history_merges_days_with_little_energy() -> None:
     assert merged["energy_wh"] == pytest.approx(5000)
     # Still too little on its own; the window is not closed yet
     assert last["value"] is None
+
+
+@pytest.mark.parametrize(
+    ("measured", "pv"),
+    [
+        pytest.param(True, ["sensor.sofar_solar_generation_total"], id="carport-behind-the-sofar-counted-once"),
+        pytest.param(False, ["sensor.inverter_total_yield", "sensor.sofar_solar_generation_total"], id="separate-plants"),
+    ],
+)
+def test_pv_measured_as_pv_ext_is_not_counted_twice(library, measured: bool, pv: list[str]) -> None:
+    """The Sofar's yield counter includes the AC-coupled plant behind its external CT."""
+    from sunflow.analysis.energy import energy_sources
+    from sunflow.config.models import DeviceConfig, MeasuredBy, SunflowConfig
+    from sunflow.devices.discovery import Snapshot
+
+    def entity(entity_id: str, unique_id: str, device_id: str) -> dict[str, Any]:
+        return {"entity_id": entity_id, "unique_id": unique_id, "device_id": device_id, "config_entry_id": "e", "disabled_by": None}
+
+    entities = [
+        entity("sensor.sofar_solar_generation_total", "sofar_solar_generation_total", "d_sofar"),
+        entity("sensor.inverter_total_yield", "hw_accumulated_yield_energy", "d_hw"),
+    ]
+    snapshot = Snapshot(entries=[], devices=[], entities=entities, states={}, energy_prefs=None)
+    sofar = DeviceConfig(id="sofar", ha_device_id="d_sofar", profile="solax_modbus/sofar", profile_version=1, name="Sofar")
+    huawei = DeviceConfig(id="hw", ha_device_id="d_hw", profile="huawei_solar/pv_only", profile_version=1, name="Carport")
+    config = SunflowConfig(
+        devices=[huawei, sofar], measured_by={"hw": MeasuredBy(device_id="sofar", role="pv_ext_power")} if measured else {}
+    )
+
+    assert sorted(energy_sources(config, library.profiles, snapshot).statistics["pv"]) == sorted(pv)

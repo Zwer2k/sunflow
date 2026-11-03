@@ -73,6 +73,14 @@ def energy_sources(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
     devices: dict[str, list[str]] = {}
     sources = EnergySources()
     chosen = {quantity: measurement_device(config, profiles, quantity) for quantity in set(QUANTITY_KEYS.values())}
+    # Plants whose yield the counter of the device measuring them already contains
+    counted = {
+        device_id
+        for device_id, link in config.measured_by.items()
+        if link.role == "pv_ext_power"
+        and (meter := config.device(link.device_id)) is not None
+        and profiles[meter.profile]["roles"].get("pv_energy", {}).get("includes_pv_ext")
+    }
     for device in config.devices:
         profile = profiles[device.profile]
         roles = {
@@ -84,6 +92,8 @@ def energy_sources(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
         for role, key in ENERGY_ROLES.items():
             quantity = QUANTITY_KEYS.get(key)
             if quantity and (chosen[quantity] is None or chosen[quantity].id != device.id):
+                continue
+            if key == "pv" and device.id in counted:
                 continue
             if role in roles and roles[role].entity_id:
                 devices.setdefault(key, []).append(roles[role].entity_id)
