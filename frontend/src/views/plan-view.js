@@ -295,7 +295,7 @@ class SunflowPlan extends LitElement {
         <div class="tile now">
           <div class="small muted">${t("Geplante Steuerung jetzt (bis {time})", { time: time.format(new Date(now.end)) })}</div>
           <div class="value">${ACTIONS[now.action].label}</div>
-          <div class="small muted">${this._actionHint(now)}</div>
+          <div class="small muted">${this._actionHint(now, plan)}</div>
           ${this._renderActual(plan, now)}
         </div>
         <div class="tile">
@@ -598,10 +598,14 @@ class SunflowPlan extends LitElement {
   }
 
   /** What the current action means; a limit is named with its power. */
-  _actionHint(segment) {
+  _actionHint(segment, plan) {
     const power = segment.slots[0]?.action_power_w;
     if (!power) return ACTIONS[segment.action].hint;
     const value = formatValue(Math.abs(power), "W");
+    if (segment.action === "limit_discharge" && plan?.discharge_budget) {
+      const energy = formatValue(Math.abs(power) / 4, "Wh");
+      return t("Speicher gibt je Viertelstunde bis zu {energy} ab und deckt dabei auch Spitzen ganz, danach hält er", { energy });
+    }
     if (segment.action === "limit_discharge") return t("Speicher entlädt höchstens {power}, darüber hinaus kommt der Bedarf aus dem Netz", { power: value });
     if (segment.action === "limit_charge") return t("Speicher lädt höchstens {power} aus PV, der übrige Überschuss wird eingespeist", { power: value });
     return ACTIONS[segment.action].hint;
@@ -622,8 +626,10 @@ class SunflowPlan extends LitElement {
     // A discharge limit above the demand never bites: discharging at most the limit keeps to the plan
     const battery = actual.recent_battery_w ?? actual.battery_w;
     const limit = Math.abs(now.slots?.[0]?.action_power_w ?? 0);
-    const withinLimit = now.action === "limit_discharge" && actual.action === "auto"
-      && (!limit || -battery <= limit + Math.max(100, 0.1 * limit));
+    // With the energy per slot the battery covers peaks fully and holds once it is used
+    const withinLimit = now.action === "limit_discharge" && (plan.discharge_budget
+      ? ["auto", "hold"].includes(actual.action)
+      : actual.action === "auto" && (!limit || -battery <= limit + Math.max(100, 0.1 * limit)));
     const differs = actual.action && actual.action !== planned && !withinLimit;
     return html`<div class="small ${differs ? "warn-text" : "muted"}">
       ${t("Tatsächlich: Speicher {what}", { what })}${differs
@@ -842,7 +848,9 @@ class SunflowPlan extends LitElement {
       })}
       ${flex.filter((f) => f.kind === "heater" && f.level_range).map((f) => html`<p class="small muted">${f.name}: ${f.usage_days
         ? t("Verbrauch je Stunde aus {days} Tagen gelernt – geheizt wird vor der gewohnten Hauptzeit.", { days: f.usage_days })
-        : t("Verbrauch noch nicht gelernt (braucht eine Woche Temperatur und Heizleistung) – gleichmäßig über den Tag angenommen.")}</p>`)}
+        : t("Verbrauch noch nicht gelernt (braucht eine Woche Temperatur und Heizleistung) – gleichmäßig über den Tag angenommen.")}${f.level_floor != null
+        ? ` ${t("Eine andere Wärmequelle (z. B. Fernwärme) hält ihn bei etwa {temperature} – die Prognose fällt nicht darunter.", { temperature: formatValue(f.level_floor, "°C") })}`
+        : ""}</p>`)}
     </section>`;
   }
 

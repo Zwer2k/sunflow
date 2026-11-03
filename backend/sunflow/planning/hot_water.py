@@ -4,11 +4,15 @@ Per hour the tank gets the heating energy and loses what was drawn (and its stan
 loss): drawn = heating - temperature rise x tank content. Averaged per hour of the day
 and day type (workday / weekend), this gives the usual usage profile, e.g. showers in
 the morning and baths in the evening.
+
+A tank that warms up again without its heating (district heating, a gas boiler) has
+another heat source; the temperature at which it starts is learned as the floor the
+tank does not cool below.
 """
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
-from statistics import fmean
+from statistics import fmean, quantiles
 
 from sunflow.ha import HAClient
 
@@ -17,6 +21,10 @@ from .load_forecast import fetch_hourly_means
 # Fewer days say nothing about habits
 MIN_DAYS = 7
 DAY_TYPES = ("workday", "weekend")
+# A rise within an hour from this much, not explained by the own heating: another heat source
+REHEAT_MIN_K = 1.0
+# ...seen on this share of the days at least, so a sunny tank or a single event does not count
+REHEAT_MIN_DAY_SHARE = 0.5
 
 
 def day_type(moment: datetime) -> str:
@@ -30,6 +38,8 @@ class HotWaterUsage:
 
     hourly_wh: dict[str, list[float]]
     days: int
+    # Temperature another heat source keeps the tank at (°C); None without one
+    floor_c: float | None = None
 
     @property
     def daily_wh(self) -> float:
@@ -62,19 +72,27 @@ def usage_from(
     heated = dict(heating)
     drawn: dict[str, list[list[float]]] = {kind: [[] for _ in range(24)] for kind in DAY_TYPES}
     days = set()
+    reheats: list[float] = []
+    reheat_days = set()
     for hour, value in temperatures:
         later = temperature.get(hour + timedelta(hours=1))
         if later is None:
             continue
         local = hour.astimezone(tz)
+        rise = later - value
         # Heating that did not warm the tank was drawn (or lost); a rise beyond it is measuring noise
-        drawn[day_type(local)][local.hour].append(max(heated.get(hour, 0.0) - (later - value) * wh_per_kelvin, 0.0))
+        drawn[day_type(local)][local.hour].append(max(heated.get(hour, 0.0) - rise * wh_per_kelvin, 0.0))
         days.add(local.date())
+        if rise >= REHEAT_MIN_K and (rise - REHEAT_MIN_K / 2) * wh_per_kelvin > heated.get(hour, 0.0):
+            reheats.append(value)
+            reheat_days.add(local.date())
     if len(days) < MIN_DAYS or not heating:
         return None
     return HotWaterUsage(
         hourly_wh={kind: [fmean(values) if values else 0.0 for values in drawn[kind]] for kind in DAY_TYPES},
         days=len(days),
+        # Where the other source usually starts: its lower quartile, not a single deep draw
+        floor_c=round(quantiles(reheats, n=4)[0], 1) if len(reheats) >= 2 and len(reheat_days) >= REHEAT_MIN_DAY_SHARE * len(days) else None,
     )
 
 

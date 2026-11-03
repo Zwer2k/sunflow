@@ -16,7 +16,7 @@ from sunflow.analysis.history import (
 )
 from sunflow.config.models import SunflowConfig
 from sunflow.control.controller import PlanController
-from sunflow.devices.profiles import controls_battery
+from sunflow.devices.profiles import controls_battery, volatile_action
 from sunflow.ha import HAError
 from sunflow.i18n import t
 from sunflow.planning.plan import expected_levels
@@ -144,6 +144,10 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
         # Which devices carry out the plan; the others only show what Sunflow would do
         "controlled": sorted(d for d, s in controller.statuses.items() if s.active) if controller else [],
         "battery_device": next((d.id for d in config.devices if controls_battery(profiles[d.profile])), None),
+        # A planned partial discharge is energy for the slot that covers peaks (see the controller)
+        "discharge_budget": any(
+            controls_battery(profiles[d.profile]) and volatile_action(profiles[d.profile], "limit_discharge") for d in config.devices
+        ),
         "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
         # What the battery does right now (Sunflow does not control yet; another system may)
         "actual": asdict(sample)
