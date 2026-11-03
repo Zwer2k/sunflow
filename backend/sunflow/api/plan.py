@@ -15,6 +15,7 @@ from sunflow.analysis.history import (
 )
 from sunflow.config.models import SunflowConfig
 from sunflow.control.controller import PlanController
+from sunflow.devices.profiles import controls_battery
 from sunflow.ha import HAError
 from sunflow.i18n import t
 from sunflow.planning.plan import expected_levels
@@ -135,8 +136,13 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
         ]
     controller: PlanController | None = getattr(request.app.state, "controller", None)
     recent = runner.recent_means() or (None, None)
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
     return response | {
         "controlling": bool(controller and any(s.active for s in controller.statuses.values())),
+        # Which devices carry out the plan; the others only show what Sunflow would do
+        "controlled": sorted(d for d, s in controller.statuses.items() if s.active) if controller else [],
+        "battery_device": next((d.id for d in config.devices if controls_battery(profiles[d.profile])), None),
         "computed": runner.status.last_plan.isoformat() if runner.status.last_plan else None,
         # What the battery does right now (Sunflow does not control yet; another system may)
         "actual": asdict(sample)

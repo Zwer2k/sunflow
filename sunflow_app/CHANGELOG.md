@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.6
+
+- Planning shows what is carried out: the intro says whether Sunflow controls nothing, everything, or which devices; "Planned control" and every controllable load are marked **carried out** or **plan only**. Before, it always said Sunflow controls nothing yet, also while it did.
+
 ## 0.75.5
 
 - Planning: an on/off load (e.g. an e-bike charger) is charged in one piece where it costs the same, instead of being switched on several times within a cheap window. Each switching on counts 1 ct in the plan, so a clearly cheaper or sunnier time still wins.

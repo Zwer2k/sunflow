@@ -101,7 +101,6 @@ export default {
   "Notstromreserve {pct}": "Backup reserve {pct}",
   "Entladegrenze {pct}": "Discharge limit {pct}",
   "Plan konnte nicht berechnet werden: {error}": "The plan could not be calculated: {error}",
-  "Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Sunflow steuert noch nichts – die Planung zeigt, was es tun würde. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.": "Left of \"now\" measured values, right of it forecasts and the planned control. Sunflow does not control anything yet – the plan shows what it would do. Overrides in the \"Control\" tab, presets under \"Settings → Planning\".",
   "Berechne …": "Calculating …",
   "Neu berechnen": "Recalculate",
   "Berechne Plan …": "Calculating plan …",
@@ -205,4 +204,10 @@ export default {
   "als Nächstes ab {time}: {action}": "next from {time}: {action}",
   "Speicher entlädt höchstens {power}, darüber hinaus kommt der Bedarf aus dem Netz": "Battery discharges at most {power}; any demand beyond that comes from the grid",
   "Speicher lädt höchstens {power} aus PV, der übrige Überschuss wird eingespeist": "Battery charges at most {power} from PV; the remaining surplus is exported",
+  "Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.": "Left of \"now\" measured values, right of it forecasts and the planned control. Overrides in the \"Control\" tab, presets under \"Settings → Planning\".",
+  "Sunflow steuert noch nichts – die Planung zeigt, was es tun würde.": "Sunflow does not control anything yet – the plan shows what it would do.",
+  "Sunflow setzt den Plan um.": "Sunflow carries out the plan.",
+  "Sunflow setzt den Plan bei {devices} um; Geräte mit „nur Plan“ zeigen nur, was es tun würde.": "Sunflow carries out the plan for {devices}; devices marked \"plan only\" only show what it would do.",
+  "wird umgesetzt": "carried out",
+  "nur Plan": "plan only",
 };
