@@ -185,6 +185,8 @@ SUNFLOW_HA_TOKEN=<long-lived access token>
 # optional
 SUNFLOW_HA_URL=http://localhost:8123
 SUNFLOW_PORT=8099
+# refuse a wrong integration token like the App (to test the integration's reauth)
+SUNFLOW_REQUIRE_TOKEN=1
 ```
 
 Inside the App it uses the Supervisor proxy and `SUPERVISOR_TOKEN` instead.

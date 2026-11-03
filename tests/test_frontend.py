@@ -272,6 +272,31 @@ def test_ingress_only(tmp_path: Path) -> None:
     assert other.get("/api/v1/config", headers={"Authorization": "Bearer wrong"}).status_code == 403
 
 
+
+def test_require_token_in_development(tmp_path: Path) -> None:
+    """Without the Supervisor a wrong token can be refused; the browser sends none."""
+    settings = Settings(
+        ha_url="http://localhost:8123",
+        ha_token="x",
+        port=0,
+        data_dir=tmp_path,
+        profiles_dir=tmp_path,
+        schema_dir=tmp_path,
+        frontend_dir=tmp_path / "missing",
+        require_token=True,
+    )
+    from sunflow.config.store import ConfigStore
+
+    app = create_app(settings)
+    app.state.store = ConfigStore(tmp_path)
+    app.state.integration_token = "secret"
+    client = TestClient(app, client=("192.168.1.20", 50000))
+
+    assert client.get("/api/v1/config").status_code == 200
+    assert client.get("/api/v1/config", headers={"Authorization": "Bearer secret"}).status_code == 200
+    assert client.get("/api/v1/config", headers={"Authorization": "Bearer wrong"}).status_code == 403
+    assert client.get("/api/v1/health", headers={"Authorization": "Bearer wrong"}).status_code == 200
+
 def test_rejects_nan_parameters(tmp_path: Path) -> None:
     """NaN must not reach config.json, where it would break every later request."""
     from sunflow.config.models import DeviceConfig, SunflowConfig

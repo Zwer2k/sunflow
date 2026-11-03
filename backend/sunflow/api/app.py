@@ -233,6 +233,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return JSONResponse({"detail": "Only available through Home Assistant"}, status_code=403)
             return await call_next(request)
 
+    if settings is not None and settings.require_token and not settings.ingress_only:
+
+        @app.middleware("http")
+        async def wrong_token(request: Request, call_next: Any) -> Any:
+            # The browser sends no token: only a wrong one is refused
+            header = request.headers.get("authorization")
+            if (
+                header
+                and request.url.path not in OPEN_PATHS
+                and not secrets.compare_digest(header, f"Bearer {app.state.integration_token}")
+            ):
+                return JSONResponse({"detail": "Wrong integration token"}, status_code=403)
+            return await call_next(request)
+
     if settings is not None and settings.frontend_dir.is_dir():
         add_frontend(app, settings.frontend_dir)
     return app
