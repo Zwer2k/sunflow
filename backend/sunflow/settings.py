@@ -25,6 +25,8 @@ class Settings:
     ingress_only: bool = False
     # Set when running as App: announces the App to the integration (discovery)
     supervisor_token: str | None = None
+    # Development: refuse a wrong integration token like the App does
+    require_token: bool = False
 
     @property
     def ha_websocket_url(self) -> str:
@@ -65,4 +67,5 @@ def load_settings() -> Settings:
         ),
         ingress_only=supervisor_token is not None,
         supervisor_token=supervisor_token,
+        require_token=os.environ.get("SUNFLOW_REQUIRE_TOKEN") == "1",
     )

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.15
+
+- Development: with `SUNFLOW_REQUIRE_TOKEN=1` the backend outside the Supervisor refuses a wrong integration token like the App does, so the integration's reauth can be tried out. The App itself is unchanged.
+
 ## 0.75.14
 
 - Integration: when the App rejects the token (e.g. after reinstalling it), Home Assistant asks for the current token under Settings → Devices & services. The entry keeps its address and reloads with the new token; before, it had to be removed and added again.
