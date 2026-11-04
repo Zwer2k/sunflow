@@ -20,6 +20,8 @@ export default {
   "Weitere Treffer – Suche verfeinern": "More matches – refine your search",
   "Leistung": "Power",
   "Spannung Modul": "Module voltage",
+  "Ertrag heute": "Yield today",
+  "Ertrag gesamt": "Total yield",
   "Strom Modul": "Module current",
   "Spannung Ausgang": "Output voltage",
   "Strom Ausgang": "Output current",

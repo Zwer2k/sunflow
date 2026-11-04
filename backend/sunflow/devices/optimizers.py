@@ -45,6 +45,7 @@ SOURCES = (
             "voltage_out": "_output_voltage",
             "current_out": "_output_current",
             "temperature": "_temperature",
+            "energy_total": "_accumulated_energy_yield",
         },
         required=("power", "voltage_in"),
         sub_device=True,
@@ -60,6 +61,9 @@ SOURCES = (
             "voltage_out": "_voltage_out",
             "temperature": "_temperature",
             "pwm": "_pwm",
+            # Since tigo_rs485 1.1.0
+            "energy_today": "_energy_today",
+            "energy_total": "_energy_total",
         },
         required=("power",),
     ),
@@ -72,6 +76,8 @@ VALUE_UNITS = {
     "current_out": "A",
     "temperature": "°C",
     "pwm": "",
+    "energy_today": "kWh",
+    "energy_total": "kWh",
 }
 TIGO_LABEL = re.compile(r"^([A-Za-z])\s*0*(\d+)$")
 # A string counts as in use with this much voltage

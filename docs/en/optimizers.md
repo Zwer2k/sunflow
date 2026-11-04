@@ -5,7 +5,7 @@
 Sunflow shows module optimizers the way the modules sit on the roof: in the Live view a click on
 a PV string (the number at the circle = number of optimizers) opens its modules with their
 current values. Which values appear (power, voltage and current at module input and output,
-temperature, PWM) can be toggled there; the browser remembers the choice. Lighter modules deliver
+temperature, PWM, yield today and total) can be toggled there; the browser remembers the choice. Lighter modules deliver
 less than the best one of the string.
 
 ![Optimizers of a Huawei string in the Live view](../images/en/live-optimizers.png)
@@ -20,8 +20,8 @@ modules lying sideways at the bottom). "Edit assignment and layout …" leads th
 
 | Manufacturer | Integration | Values | Assignment to the string |
 |---|---|---|---|
-| Huawei (SUN2000-…-P) | [Huawei Solar](https://github.com/wlcrs/huawei_solar) | power, input and output voltage/current, temperature | Optimizers are sub-devices of the inverter. With only one string in operation automatically; otherwise choose in the settings (the integration does not pass on the string). |
-| Tigo TS4 | [Tigo RS485](https://github.com/Zwer2k/ha-tigo-rs485) | power, input/output voltage, current, temperature, PWM | By the label from the Tigo integration: "A1" = string A (string 1 of the inverter), module 1. The inverter is suggested (the only one without optimizers of its own) or chosen. |
+| Huawei (SUN2000-…-P) | [Huawei Solar](https://github.com/wlcrs/huawei_solar) | power, input and output voltage/current, temperature, total yield | Optimizers are sub-devices of the inverter. With only one string in operation automatically; otherwise choose in the settings (the integration does not pass on the string). |
+| Tigo TS4 | [Tigo RS485](https://github.com/Zwer2k/ha-tigo-rs485) | power, input/output voltage, current, temperature, PWM, yield today and total (from version 1.1.0) | By the label from the Tigo integration: "A1" = string A (string 1 of the inverter), module 1. The inverter is suggested (the only one without optimizers of its own) or chosen. |
 
 ## Adding optimizers
 

@@ -13,8 +13,8 @@ from sunflow.config.models import (
 from sunflow.devices import optimizers as module
 from sunflow.devices.discovery import Snapshot
 
-HUAWEI_KEYS = ("output_power", "input_voltage", "input_current", "output_voltage", "output_current", "temperature")
-TIGO_KEYS = ("power", "voltage_in", "current", "voltage_out", "temperature", "pwm")
+HUAWEI_KEYS = ("output_power", "input_voltage", "input_current", "output_voltage", "output_current", "temperature", "accumulated_energy_yield")
+TIGO_KEYS = ("power", "voltage_in", "current", "voltage_out", "temperature", "pwm", "energy_today", "energy_total")
 HUAWEI = "huawei-entry"
 TIGO = "tigo-entry"
 
@@ -36,6 +36,9 @@ def _snapshot() -> Snapshot:
             entity_id = f"sensor.{device}_{key}"
             entities.append({"entity_id": entity_id, "unique_id": f"{device.upper()}_{key}", "device_id": device})
             states[entity_id] = {"state": "300" if "power" in key else "40", "attributes": {}}
+            if "energy" in key:
+                today = key == "energy_today"
+                states[entity_id] = {"state": "1.5" if today else "812", "attributes": {"unit_of_measurement": "kWh"}}
     states["sensor.o1_output_power"] = {"state": "0.31", "attributes": {"unit_of_measurement": "kW"}}
     return Snapshot(entries=[], devices=devices, entities=entities, states=states, energy_prefs=None)
 
@@ -63,6 +66,16 @@ def test_discovers_huawei_and_tigo_optimizers() -> None:
     ]
     assert found[0].entities["power"] == "sensor.o1_output_power"
     assert found[2].entities["current_in"] == "sensor.a2_current"
+
+
+def test_yield_per_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tigo reports today's and the total yield, Huawei the total; both in Wh."""
+    found = _found(SunflowConfig(), monkeypatch, _strings())
+
+    assert found["A2"].values["energy_today"] == pytest.approx(1_500)
+    assert found["A2"].values["energy_total"] == pytest.approx(812_000)
+    assert found["JV22B1"].values["energy_total"] == pytest.approx(812_000)
+    assert "energy_today" not in found["JV22B1"].values
 
 
 @pytest.mark.parametrize(
