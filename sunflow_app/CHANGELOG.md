@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.31
+
+- PV correction by sun position: planning uses a plane's model only when it was learned from at least 60 days and beats the correction by time of day in the backtest. Before, a plane with only a few days of forecast history (e.g. a new Solcast site) was corrected by sun position as well. Analysis shows per plane whether planning uses it.
+
 ## 0.75.30
 
 - Planning: new switch "correct by sun position (test)" under Settings → Planning → PV forecast (off by default). For planes with Solcast history the forecast is then corrected per sun elevation and direction, telling clear from cloudy slots by the forecast itself; other planes keep the correction by time of day. The model is learned once a day in the background and is also shown under Analysis.

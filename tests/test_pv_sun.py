@@ -66,3 +66,24 @@ def test_factor_for_a_slot_ahead() -> None:
     assert correction.factor_at(morning, clear_sky, LAT, LON) == pytest.approx(0.3, abs=0.12)
     assert correction.factor_at(morning, clear_sky / 4, LAT, LON) == correction.factor(elevation, azimuth, clear=False)
     assert correction.factor_at(datetime(2026, 12, 15, 22, tzinfo=UTC), 0.0, LAT, LON) == 1.0
+
+
+@pytest.mark.parametrize(
+    ("days", "by_sun", "plannable"),
+    [
+        pytest.param(595, 131.0, True, id="long-and-better"),
+        pytest.param(10, 131.0, False, id="too-short"),
+        pytest.param(595, 200.0, False, id="not-better"),
+    ],
+)
+def test_planning_uses_a_plane_only_when_proven(days: int, by_sun: float, plannable: bool) -> None:
+    """Enough history and better than the correction by time of day in the backtest."""
+    from sunflow.planning.pv_sun import PlaneSun, SunCorrection
+
+    plane = PlaneSun(
+        key="solcast:x", name="Süd-Ost", source="solcast",
+        correction=SunCorrection(days=days, hours=days * 10),
+        backtest={"raw": 270.0, "by_hour": 176.0, "by_sun": by_sun},
+    )
+
+    assert plane.plannable is plannable

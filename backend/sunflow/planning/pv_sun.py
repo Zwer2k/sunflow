@@ -36,6 +36,8 @@ FACTOR_RANGE = (0.05, 1.7)
 # Neighbouring cells count half in the prior of a cell
 NEIGHBOUR_WEIGHT = 0.5
 BACKTEST_DAYS = 21
+# Planning uses a plane's model only when learned from this many days and better in the backtest
+MIN_DAYS_TO_PLAN = 60
 SOLCAST_CHUNK = timedelta(days=30)
 HISTORY_DAYS = 730
 
@@ -285,9 +287,19 @@ class PlaneSun:
     first: datetime | None = None
     missing: str | None = None
 
+    @property
+    def plannable(self) -> bool:
+        """Enough history, and closer to the measurement than the correction by time of day."""
+        return (
+            self.correction is not None
+            and self.correction.days >= MIN_DAYS_TO_PLAN
+            and self.backtest is not None
+            and self.backtest["by_sun"] < self.backtest["by_hour"]
+        )
+
     def as_dict(self) -> dict[str, Any]:
         """For the API."""
-        result: dict[str, Any] = {"key": self.key, "name": self.name, "source": self.source}
+        result: dict[str, Any] = {"key": self.key, "name": self.name, "source": self.source, "plannable": self.plannable}
         if self.missing:
             result["missing"] = self.missing
         if self.correction is not None:
