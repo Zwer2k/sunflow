@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -70,19 +71,36 @@ async def get_efficiency_history(
 INVENTORY_TTL = timedelta(hours=1)
 
 
+ENTITY_ID = re.compile(r"[a-z_]+\.[a-z0-9_]+")
+INVENTORY_MAX_EXTRA = 50
+
+
 @router.get("/data-inventory")
-async def get_data_inventory(request: Request, refresh: bool = False) -> dict[str, Any]:
-    """How far back Home Assistant keeps the measurements, the weather and the PV forecasts."""
+async def get_data_inventory(request: Request, refresh: bool = False, entities: str = "") -> dict[str, Any]:
+    """How far back Home Assistant keeps the measurements, the weather and the PV forecasts.
+
+    entities: further entity ids to check, comma separated (not cached).
+    """
+    extra = [e.strip() for e in entities.split(",") if e.strip()]
+    if len(extra) > INVENTORY_MAX_EXTRA or not all(ENTITY_ID.fullmatch(e) for e in extra):
+        raise HTTPException(status_code=422, detail=f"entities: up to {INVENTORY_MAX_EXTRA} entity ids, comma separated")
     cache = getattr(request.app.state, "inventory_cache", None)
     now = datetime.now(UTC)
-    if refresh or cache is None or now - cache[0] > INVENTORY_TTL:
+    if extra or refresh or cache is None or now - cache[0] > INVENTORY_TTL:
         config = request.app.state.store.load()
         try:
             inventory = await data_inventory(
-                request.app.state.ha, config, _library(request).profiles, await _snapshot(request), await _local_tz(request)
+                request.app.state.ha,
+                config,
+                _library(request).profiles,
+                await _snapshot(request),
+                await _local_tz(request),
+                extra,
             )
         except HAError as err:
             raise HTTPException(status_code=502, detail=str(err)) from err
+        if extra:
+            return inventory
         cache = (now, inventory)
         request.app.state.inventory_cache = cache
     return cache[1]
