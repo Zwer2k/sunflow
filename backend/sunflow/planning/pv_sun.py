@@ -9,11 +9,16 @@ diffuse light). Neighbouring cells smooth each other, and a cell with little dat
 close to the plane's overall factor. Runs in shadow mode: it is only compared, not planned.
 """
 
+import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any
 
+from sunflow.config.models import ForecastPlane, SunflowConfig
+from sunflow.devices.discovery import Snapshot
+from sunflow.devices.resolver import preview
+from sunflow.devices.site import pv_strings
 from sunflow.ha import HAClient, HACommandError
 
 from .sun import sun_position
@@ -55,16 +60,27 @@ def _clamp(factor: float) -> float:
     return min(max(factor, FACTOR_RANGE[0]), FACTOR_RANGE[1])
 
 
+def envelope(samples: list[Sample]) -> dict[tuple[int, int], float]:
+    """The most the forecast gives per sun cell (95th percentile): its clear-sky value."""
+    values: dict[tuple[int, int], list[float]] = defaultdict(list)
+    for s in samples:
+        values[_cell(s.elevation, s.azimuth)].append(s.forecast_wh)
+    return {cell: sorted(v)[int(0.95 * (len(v) - 1))] for cell, v in values.items()}
+
+
+def is_clear(forecast_wh: float, elevation: float, azimuth: float, top: dict[tuple[int, int], float]) -> bool:
+    """Forecast near the most it gives at that sun position; unknown positions count as cloudy."""
+    cell = _cell(elevation, azimuth)
+    return cell in top and forecast_wh >= CLEAR_SHARE * top[cell]
+
+
 def with_clearness(samples: list[Sample]) -> list[Sample]:
     """Mark clear hours: forecast near the most it ever gives at that sun position."""
-    envelope: dict[tuple[int, int], list[float]] = defaultdict(list)
-    for s in samples:
-        envelope[_cell(s.elevation, s.azimuth)].append(s.forecast_wh)
-    top = {cell: sorted(values)[int(0.95 * (len(values) - 1))] for cell, values in envelope.items()}
+    top = envelope(samples)
     return [
         Sample(
             start=s.start, forecast_wh=s.forecast_wh, actual_wh=s.actual_wh, elevation=s.elevation,
-            azimuth=s.azimuth, clear=s.forecast_wh >= CLEAR_SHARE * top[_cell(s.elevation, s.azimuth)],
+            azimuth=s.azimuth, clear=is_clear(s.forecast_wh, s.elevation, s.azimuth, top),
         )
         for s in samples
     ]
@@ -77,12 +93,21 @@ class SunCorrection:
     overall: float = 1.0
     by_class: dict[bool, float] = field(default_factory=dict)
     cells: dict[tuple[bool, int, int], float] = field(default_factory=dict)
+    # Clear-sky forecast (Wh per hour) per sun cell, to tell clear from cloudy ahead
+    top: dict[tuple[int, int], float] = field(default_factory=dict)
     hours: int = 0
     days: int = 0
 
     def factor(self, elevation: float, azimuth: float, clear: bool) -> float:
         """Correction for a sun position."""
         return self.cells.get((clear, *_cell(elevation, azimuth)), self.by_class.get(clear, self.overall))
+
+    def factor_at(self, moment: datetime, forecast_w: float, latitude: float, longitude: float) -> float:
+        """Correction for a slot starting at moment with this forecast power (its mean over the hour)."""
+        elevation, azimuth = sun_position(moment, latitude, longitude)
+        if elevation <= 0:
+            return 1.0
+        return self.factor(elevation, azimuth, is_clear(forecast_w, elevation, azimuth, self.top))
 
     def as_dict(self) -> dict[str, Any]:
         """Clear-sky cells for the shading map, with the overall factors."""
@@ -105,7 +130,7 @@ class SunCorrection:
 def fit(samples: list[Sample]) -> SunCorrection:
     """Learn the factors from hourly samples (clearness already marked)."""
     used = [s for s in samples if s.forecast_wh >= MIN_FORECAST_WH]
-    correction = SunCorrection(hours=len(used), days=len({s.start.date() for s in used}))
+    correction = SunCorrection(hours=len(used), days=len({s.start.date() for s in used}), top=envelope(samples))
     if not used:
         return correction
     total_f = sum(s.forecast_wh for s in used)
@@ -246,3 +271,85 @@ async def measured_hours(client: HAClient, entities: list[str], start: datetime,
     ]
     common = set.intersection(*(set(s) for s in per_string)) if per_string else set()
     return {hour: sum(s[hour] for s in per_string) for hour in common}
+
+
+@dataclass(kw_only=True)
+class PlaneSun:
+    """What was learned for one plane in use, or why nothing."""
+
+    key: str
+    name: str
+    source: str
+    correction: SunCorrection | None = None
+    backtest: dict[str, Any] | None = None
+    first: datetime | None = None
+    missing: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """For the API."""
+        result: dict[str, Any] = {"key": self.key, "name": self.name, "source": self.source}
+        if self.missing:
+            result["missing"] = self.missing
+        if self.correction is not None:
+            result |= {
+                "correction": self.correction.as_dict(),
+                "backtest": self.backtest,
+                "first": self.first.isoformat() if self.first else None,
+            }
+        return result
+
+
+def string_power_entities(
+    config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot, plane: ForecastPlane
+) -> list[str]:
+    """Power entities of the plane's strings; empty when one is only voltage times current."""
+    entities = []
+    for string in plane.strings:
+        device_id, _, index = string.partition(":")
+        device = next((d for d in config.devices if d.id == device_id), None)
+        if device is None:
+            return []
+        roles = {
+            r.role: r
+            for r in preview(
+                profiles[device.profile], snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()}
+            )
+        }
+        role = roles.get(f"pv{index}_power")
+        # A device with one string: its PV input power is that string
+        if (role is None or not role.entity_id) and len(pv_strings(roles)) == 1:
+            role = roles.get("pv_power")
+        if role is None or not role.entity_id:
+            return []
+        entities.append(role.entity_id)
+    return entities
+
+
+async def learn_planes(
+    client: HAClient, config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot, tz: tzinfo
+) -> list[PlaneSun]:
+    """Learn every plane in use from its history (minutes on a Raspberry Pi: run in the background)."""
+    ha_config = await client.command("get_config")
+    latitude, longitude = ha_config["latitude"], ha_config["longitude"]
+    now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    planes = []
+    for plane in config.forecast_planes:
+        if not plane.device_id:
+            continue
+        result = PlaneSun(key=plane.key, name=plane.display_name, source=plane.source)
+        planes.append(result)
+        entities = string_power_entities(config, profiles, snapshot, plane)
+        if plane.source != "solcast":
+            result.missing = "no_history"
+            continue
+        if not entities:
+            result.missing = "no_string_power"
+            continue
+        start = max(now - timedelta(days=HISTORY_DAYS), plane.learn_since or datetime.min.replace(tzinfo=UTC))
+        forecast = await solcast_hours(client, plane.ref, start, now)
+        measured = await measured_hours(client, entities, start, now)
+        samples = await asyncio.to_thread(samples_from, forecast, measured, latitude, longitude)
+        result.correction = await asyncio.to_thread(fit, samples)
+        result.backtest = await asyncio.to_thread(backtest, samples, tz)
+        result.first = min(s.start for s in samples) if samples else None
+    return planes

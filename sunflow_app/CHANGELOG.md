@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.30
+
+- Planning: new switch "correct by sun position (test)" under Settings → Planning → PV forecast (off by default). For planes with Solcast history the forecast is then corrected per sun elevation and direction, telling clear from cloudy slots by the forecast itself; other planes keep the correction by time of day. The model is learned once a day in the background and is also shown under Analysis.
+
 ## 0.75.29
 
 - Analysis: new section "PV by sun position (test)". Per roof plane, Sunflow learns from Solcast's past forecasts and the long-term statistics of the plane's strings how much of the forecast arrives per sun elevation and direction (clear and cloudy hours separately), shows it as a shading map and backtests it on the last 3 weeks against the raw forecast and the correction by time of day. Runs in shadow mode; planning is unchanged. Also available to the MCP server as `get_pv_sun`.

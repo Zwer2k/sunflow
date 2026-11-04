@@ -409,7 +409,10 @@ class SunflowAnalysis extends LitElement {
           <button class="secondary" ?disabled=${data.computing} @click=${() => this._loadPvSun(true)}>
             ${data.computing ? t("Lernt …") : t("Neu lernen")}</button>
         </div>
-        <p class="small muted">${t("Lernt aus den vergangenen Solcast-Prognosen und den gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt. Läuft im Schattenbetrieb: Die Planung nutzt es noch nicht. Der Backtest lernt ohne die letzten 3 Wochen und prüft auf diesen.")}</p>
+        <p class="small muted">${t("Lernt aus den vergangenen Solcast-Prognosen und den gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt. Der Backtest lernt ohne die letzten 3 Wochen und prüft auf diesen.")}
+          ${data.enabled
+            ? t("Die Planung nutzt es für diese Flächen.")
+            : t("Läuft im Schattenbetrieb; einschalten unter Einstellungen → Planung → PV-Prognose.")}</p>
         ${data.error ? html`<div class="alert error" role="alert">${data.error}</div>` : nothing}
         ${data.computing && !learned.length ? html`<p class="muted">${t("Lernt aus der Historie …")}</p>` : nothing}
         ${data.planes.map((plane) => html`
