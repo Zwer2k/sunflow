@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.27
+
+- Plausibility of learning sources: optimizers are judged only while the sun is at least 5° above the horizon, so their nights no longer count as outages. Sunflow now computes the sun's position from the location of Home Assistant (groundwork for learning PV by sun position).
+
 ## 0.75.26
 
 - Learning sources: a roof plane with module optimizers (found through the plane's strings) takes the mean of their temperatures as module temperature unless a sensor is chosen. Its plausibility is shown as the median over the optimizers.
