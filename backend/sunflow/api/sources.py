@@ -7,11 +7,18 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from sunflow.analysis.plausibility import (
+    check,
+    kind_of,
+    quiet_intervals,
+    recorder_offline,
+    source_changes,
+)
 from sunflow.config.models import ForecastPlane, LearningSources, TariffConfig
 from sunflow.config.store import ConfigStore
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.resolver import preview
-from sunflow.devices.site import pv_strings
+from sunflow.devices.site import pv_strings, site_status
 from sunflow.ha import HAClient, HAError
 from sunflow.planning.forecast_export import as_response, export_forecasts
 from sunflow.planning.learning_sources import learning_candidates
@@ -90,8 +97,62 @@ async def get_learning_sources(request: Request) -> dict[str, Any]:
     return {
         "sources": config.learning_sources.model_dump(),
         "candidates": learning_candidates(config, await _snapshot(request)),
-        "planes": [{"key": p.key, "name": p.display_name} for p in config.forecast_planes],
+        # Only planes in use: unassigned ones (e.g. a second provider for the same roof) are not planned
+        "planes": [{"key": p.key, "name": p.display_name} for p in config.forecast_planes if p.device_id],
     }
+
+
+QUALITY_DAYS = 100
+QUALITY_TTL = timedelta(hours=1)
+
+
+@router.get("/config/learning-sources/quality")
+async def get_learning_source_quality(request: Request) -> dict[str, Any]:
+    """Per chosen source: which share of its recorded values (up to 100 days) is plausible."""
+    config = request.app.state.store.load()
+    chosen = {
+        key: entity_id
+        for key, entity_id in config.learning_sources.model_dump(exclude={"module_temperature"}).items()
+        if entity_id
+    } | {f"module_temperature:{plane}": e for plane, e in config.learning_sources.module_temperature.items()}
+    now = datetime.now(UTC)
+    cache = getattr(request.app.state, "quality_cache", None)
+    if cache is not None and cache[1] == chosen and now - cache[0] <= QUALITY_TTL:
+        return cache[2]
+    snapshot = await _snapshot(request)
+    client: HAClient = request.app.state.ha
+    start = now - timedelta(days=QUALITY_DAYS)
+    try:
+        changes = {key: await source_changes(client, entity_id, start, now) for key, entity_id in chosen.items()}
+        # From the first recorded value on: before it the recorder kept nothing
+        first = min((m for c in changes.values() for m, _ in c), default=now)
+        reference = _reference_entity(request, config, snapshot)
+        quiet = quiet_intervals(list(changes.values()), first, now)
+        offline = await recorder_offline(client, reference, quiet) if reference else []
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    result = {}
+    for key, entity_id in chosen.items():
+        unit = snapshot.states.get(entity_id, {}).get("attributes", {}).get("unit_of_measurement")
+        kind = kind_of(key.split(":")[0], unit)
+        series = changes[key]
+        result[key] = {
+            "entity_id": entity_id,
+            "kind": kind,
+            "quality": check(series, kind, min(m for m, _ in series), now, offline).as_dict() if series else None,
+        }
+    request.app.state.quality_cache = (now, chosen, result)
+    return result
+
+
+def _reference_entity(request: Request, config: Any, snapshot: Snapshot) -> str | None:
+    """A frequently changing measurement (grid, else load power) that shows when Home Assistant recorded."""
+    site = site_status(config.devices, _library(request).profiles, snapshot, measured_by=config.measured_by)
+    for role in ("grid_power", "load_power"):
+        for device in site.devices:
+            if (entity_id := next((r.entity_id for r in device.roles if r.role == role and r.entity_id), None)):
+                return entity_id
+    return None
 
 
 @router.put("/config/learning-sources")

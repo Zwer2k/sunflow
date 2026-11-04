@@ -157,6 +157,7 @@ export const api = {
   },
   learningSources: () => request("GET", "/config/learning-sources"),
   setLearningSources: (sources) => request("PUT", "/config/learning-sources", sources),
+  learningSourceQuality: () => request("GET", "/config/learning-sources/quality"),
   restartPlaneLearning: (key) => request("POST", `/pv-learning/planes/${encodeURIComponent(key)}/restart`),
   weatherEntities: () => request("GET", "/weather/entities"),
   energy: (period) => request("GET", `/energy?period=${encodeURIComponent(period)}`),

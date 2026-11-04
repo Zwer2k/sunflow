@@ -116,6 +116,13 @@ is required. Sunflow suggests sensors by their device class or unit; the inverte
 own temperatures are left out. Below each choice you see how far back Home Assistant keeps its
 values. Sensors without a `state_class` have no long-term statistics, only the recorder history.
 
+Each chosen source is checked for plausibility (up to 100 days). Learning leaves out values outside
+the physically possible range, short spikes away from the neighbouring values and values that stay
+the same implausibly long (a hanging sensor); outages up to 30 minutes are bridged, longer ones stay
+gaps. Times Home Assistant itself did not record (recognised by the grid power) do not count. The
+plausible share is shown below the choice and highlighted below 80 %. Nothing changes in Home
+Assistant.
+
 | Source | Used for |
 |---|---|
 | Outdoor temperature | Measured in the shade; heating share of the house consumption and module temperature. Without it: the weather entity's temperature. |

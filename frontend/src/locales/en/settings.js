@@ -336,4 +336,10 @@ export default {
   "Modultemperatur {name}": "Module temperature {name}",
   "Modultemperatur je Dachfläche": "Module temperature per roof plane",
   "Ein Fühler an den Modulen der Fläche. Warme Module liefern weniger, etwa 0,4 % je Grad über 25 °C. Ohne: aus Außentemperatur und Einstrahlung geschätzt.": "A sensor on the plane's modules. Warm modules yield less, about 0.4 % per degree above 25 °C. Without it: estimated from outdoor temperature and irradiance.",
+  "Ausfälle: {count} ({hours} h)": "outages: {count} ({hours} h)",
+  "{hours} h unverändert": "{hours} h unchanged",
+  "Ausreißer: {count}": "outliers: {count}",
+  "unmögliche Werte: {count}": "impossible values: {count}",
+  "Geprüft über die aufgezeichneten Tage. Unplausible Werte und Ausfälle lässt das Lernen weg; Zeiten, in denen Home Assistant nicht aufgezeichnet hat, zählen nicht mit.": "Checked over the recorded days. Learning leaves out implausible values and outages; times Home Assistant did not record do not count.",
+  "{pct} % plausibel": "{pct} % plausible",
 };

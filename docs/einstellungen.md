@@ -114,6 +114,13 @@ Temperaturen von Wechselrichter und Speicher stehen nicht in der Liste. Unter je
 wie weit Home Assistant die Werte zurück aufhebt. Sensoren ohne `state_class` haben keine
 Langzeitstatistik, nur den Verlauf des Recorders.
 
+Jede gewählte Quelle wird auf Plausibilität geprüft (bis zu 100 Tage). Werte außerhalb des
+physikalisch Möglichen, kurze Ausreißer gegenüber den Nachbarwerten und Werte, die sich
+unplausibel lange nicht ändern (hängender Sensor), lässt das Lernen weg; Ausfälle bis 30 Minuten
+werden überbrückt, längere bleiben Lücken. Zeiten, in denen Home Assistant selbst nicht
+aufgezeichnet hat (erkannt an der Netzleistung), zählen nicht mit. Unter der Auswahl steht der
+plausible Anteil; unter 80 % ist er hervorgehoben. In Home Assistant ändert sich nichts.
+
 | Quelle | Wofür |
 |---|---|
 | Außentemperatur | Im Schatten gemessen; Heizanteil am Hausverbrauch und Modultemperatur. Ohne: Temperatur der Wetter-Entität. |

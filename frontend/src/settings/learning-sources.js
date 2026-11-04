@@ -3,6 +3,9 @@ import "../components/picker.js";
 import { api } from "../lib/api.js";
 import { locale, t } from "../lib/i18n.js";
 
+// Below this share of plausible values the source is shown as doubtful
+const QUALITY_WARN_PCT = 80;
+
 const KINDS = [
   {
     key: "outdoor_temperature", candidates: "temperature", label: t("Außentemperatur"),
@@ -27,6 +30,7 @@ class SunflowLearningSources extends LitElement {
   static properties = {
     _data: { state: true },
     _coverage: { state: true },
+    _quality: { state: true },
     _error: { state: true },
     _saving: { state: true },
   };
@@ -46,6 +50,7 @@ class SunflowLearningSources extends LitElement {
       this._data = await api.learningSources();
       this._error = null;
       this._loadCoverage();
+      this._loadQuality();
     } catch (err) {
       this._error = t("Lernquellen konnten nicht geladen werden: {error}", { error: err.message });
     }
@@ -68,6 +73,15 @@ class SunflowLearningSources extends LitElement {
     }
   }
 
+  async _loadQuality() {
+    try {
+      this._quality = await api.learningSourceQuality();
+    } catch {
+      // Only a hint; the choice works without it
+      this._quality = null;
+    }
+  }
+
   async _save(changes) {
     this._saving = true;
     try {
@@ -75,11 +89,27 @@ class SunflowLearningSources extends LitElement {
       this._data = { ...this._data, sources };
       this._error = null;
       this._loadCoverage();
+      this._loadQuality();
     } catch (err) {
       this._error = t("Lernquellen konnten nicht gespeichert werden: {error}", { error: err.message });
     } finally {
       this._saving = false;
     }
+  }
+
+  _qualityText(key) {
+    const q = this._quality?.[key]?.quality;
+    if (!q || q.valid_share === null) return nothing;
+    const pct = Math.round(q.valid_share * 100);
+    const details = [
+      q.gaps ? t("Ausfälle: {count} ({hours} h)", { count: q.gaps, hours: Math.round(q.gap_hours) }) : null,
+      q.stuck_hours >= 1 ? t("{hours} h unverändert", { hours: Math.round(q.stuck_hours) }) : null,
+      q.spikes ? t("Ausreißer: {count}", { count: q.spikes }) : null,
+      q.out_of_range ? t("unmögliche Werte: {count}", { count: q.out_of_range }) : null,
+    ].filter(Boolean);
+    return html`<span class="small ${pct < QUALITY_WARN_PCT ? "warn" : "muted"}"
+      title=${t("Geprüft über die aufgezeichneten Tage. Unplausible Werte und Ausfälle lässt das Lernen weg; Zeiten, in denen Home Assistant nicht aufgezeichnet hat, zählen nicht mit.")}>
+      ${t("{pct} % plausibel", { pct })}${details.length ? ` · ${details.join(" · ")}` : ""}</span>`;
   }
 
   _coverageText(entityId) {
@@ -116,7 +146,7 @@ class SunflowLearningSources extends LitElement {
           ${KINDS.map((kind) => html`<div class="field">
             <span class="field-label">${kind.label}</span>
             ${this._select(kind.label, candidates[kind.candidates], sources[kind.key], (value) => this._save({ [kind.key]: value }))}
-            ${sources[kind.key] ? this._coverageText(sources[kind.key]) : nothing}
+            ${sources[kind.key] ? html`${this._coverageText(sources[kind.key])}${this._qualityText(kind.key)}` : nothing}
             <span class="small muted">${kind.hint}</span>
           </div>`)}
         </div>
@@ -134,7 +164,7 @@ class SunflowLearningSources extends LitElement {
                       else delete modules[plane.key];
                       this._save({ module_temperature: modules });
                     })}
-                    ${value ? this._coverageText(value) : nothing}
+                    ${value ? html`${this._coverageText(value)}${this._qualityText(`module_temperature:${plane.key}`)}` : nothing}
                   </div>`;
                 })}
               </div>`
@@ -152,6 +182,7 @@ class SunflowLearningSources extends LitElement {
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
+    .warn { color: var(--sf-warn-text); }
     .alert { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
     .alert.error { background: var(--sf-error-bg); color: var(--sf-error-text); }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
