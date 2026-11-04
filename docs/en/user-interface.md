@@ -112,7 +112,8 @@ How well do forecasts and decisions match reality?
   strings how much of the forecast arrives per sun elevation and direction, separately for clear
   and cloudy hours. The shading map shows orange where less arrives (shade), blue where more. The
   backtest learns without the last 3 weeks and compares the deviation per hour on them with the raw
-  forecast and the correction by time of day. Runs in shadow mode; planning does not use it yet.
+  forecast and the correction by time of day. Planning uses it only once switched on under
+  Settings → Planning, and only for planes with at least 60 days and a better backtest.
   If a plane delivers far less than usual at this sun position for several days in a row (without
   a history of its own: less than half of the forecast), a hint points to leaves, snow or dirt;
   Sunflow does not learn from these days. "Relearn from today" also drops the history by sun

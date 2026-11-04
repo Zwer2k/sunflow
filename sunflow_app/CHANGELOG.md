@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.33
+
+- Custom loads: new type "not controllable – only measure" for consumers with a power sensor of their own (stove, washing machine, dryer …). Sunflow never switches them; from the hourly values of the last 8 weeks it learns their energy per day, on how many days they run and their usual hour on workdays and at weekends (Analysis → Learning, MCP tool `get_appliances`). Planning does not use this yet.
+
 ## 0.75.32
 
 - Leaves, snow or dirt on the modules are recognised: when a plane delivers far less than usual at this sun position for at least 4 days in a row (without a history of its own: less than half of the forecast), a recommendation says since when and how much, and the PV by sun position section shows it. These days are left out of learning by sun position.

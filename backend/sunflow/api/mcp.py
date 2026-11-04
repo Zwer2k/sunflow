@@ -108,6 +108,11 @@ TOOLS = [
         description="Plausibilität der Lernquellen über bis zu 100 Tage: Anteil brauchbar, Ausfälle, Ausreißer, hängende Werte.",
         path="/config/learning-sources/quality",
     ),
+    Tool(
+        name="get_appliances", area="history",
+        description="Verbraucher, die nur gemessen werden (Herd, Waschmaschine …): Verbrauch je Tag, aktive Tage, übliche Stunden.",
+        path="/appliances/usage",
+    ),
     Tool(name="get_recommendations", area="live", description="Empfehlungen von Sunflow.", path="/recommendations"),
     Tool(name="get_config", area="config", description="Konfiguration: Geräte, Tarif, Prognose, Fahrzeuge, Steuerung.", path="/config"),
     Tool(name="get_sources", area="live", description="Preis- und Prognosequellen mit ihrem Zustand.", path="/sources"),

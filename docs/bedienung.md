@@ -112,8 +112,8 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt, getrennt nach klar
   und bewölkt. Die Verschattungskarte zeigt orange, wo weniger ankommt (Schatten), blau, wo mehr.
   Der Backtest lernt ohne die letzten 3 Wochen und vergleicht auf diesen die Abweichung je Stunde
-  mit der Rohprognose und mit der Korrektur nach Uhrzeit. Läuft im Schattenbetrieb; die Planung
-  nutzt es noch nicht.
+  mit der Rohprognose und mit der Korrektur nach Uhrzeit. Die Planung nutzt es erst, wenn es unter Einstellungen →
+  Planung eingeschaltet ist, und nur für Flächen mit mindestens 60 Tagen und besserem Backtest.
   Liefert eine Fläche mehrere Tage am Stück deutlich weniger als sonst bei diesem Sonnenstand
   (ohne eigene Historie: weniger als die Hälfte der Prognose), erscheint ein Hinweis auf Laub,
   Schnee oder Schmutz; diese Tage lernt Sunflow nicht mit. „Neu lernen ab heute“ verwirft auch die

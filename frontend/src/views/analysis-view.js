@@ -32,6 +32,7 @@ class SunflowAnalysis extends LitElement {
     _pvLearning: { state: true },
     _inventory: { state: true },
     _pvSun: { state: true },
+    _appliances: { state: true },
     _inventoryError: { state: true },
     _recommendations: { state: true },
     _costs: { state: true },
@@ -55,6 +56,7 @@ class SunflowAnalysis extends LitElement {
     // Cached for an hour in the backend; not part of the polling
     this._loadInventory();
     this._loadPvSun();
+    api.appliances().then((list) => (this._appliances = list)).catch(() => (this._appliances = null));
     this._load();
     this._stopPolling = poll(() => this._load(), REFRESH_MS);
   }
@@ -367,6 +369,7 @@ class SunflowAnalysis extends LitElement {
                 )}
               </ul>`
           : html`<p class="small muted">${t("Tipp: Unter Einstellungen → Tarif & Prognose lassen sich Dachflächen ihren PV-Strings zuordnen; dann lernt Sunflow jede Fläche einzeln (z. B. Verschattung).")}</p>`}
+        ${this._renderAppliances()}
         <h3>${t("Hausverbrauch")}</h3>
         ${l.load_model
           ? html`<p class="small">
@@ -576,6 +579,30 @@ class SunflowAnalysis extends LitElement {
               </details>`
           : nothing}
       </section>
+    `;
+  }
+
+  _renderAppliances() {
+    const list = this._appliances ?? [];
+    if (!list.length) return nothing;
+    const kwh = (wh) => formatValue(wh, "Wh");
+    const hour = (h) => (h === null || h === undefined ? null : t("{hour} Uhr", { hour: h }));
+    return html`
+      <h3>${t("Gemessene Geräte")}</h3>
+      <ul class="small plane-list">
+        ${list.map((d) => {
+          const u = d.usage;
+          if (!u) return html`<li><strong>${d.name}</strong>: <span class="muted">${t("noch zu wenig Stundenwerte (mindestens eine Woche)")}</span></li>`;
+          const usual = [
+            hour(u.usual_workday_hour) ? t("werktags meist um {hour}", { hour: hour(u.usual_workday_hour) }) : null,
+            hour(u.usual_weekend_hour) ? t("am Wochenende meist um {hour}", { hour: hour(u.usual_weekend_hour) }) : null,
+          ].filter(Boolean);
+          return html`<li><strong>${d.name}</strong>: ${t("Ø {energy} am Tag, läuft an {pct} % der Tage", {
+            energy: kwh(u.daily_wh), pct: Math.round(u.active_share * 100),
+          })}${usual.length ? ` · ${usual.join(" · ")}` : ""} <span class="muted">(${t("{days} Tage", { days: u.days })})</span></li>`;
+        })}
+      </ul>
+      <p class="small muted">${t("Aus den Stundenwerten der letzten 8 Wochen. Sunflow schaltet diese Geräte nicht; die Planung nutzt das noch nicht.")}</p>
     `;
   }
 
