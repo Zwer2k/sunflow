@@ -98,6 +98,16 @@ TOOLS = [
         path="/data-inventory",
         params={"entities": {"type": "string", "description": "Weitere Entitäten, kommagetrennt (z. B. Wetterstation)"}},
     ),
+    Tool(
+        name="get_learning_sources", area="config",
+        description="Gewählte Lernquellen (Außenklima, Helligkeit, Niederschlag, Modultemperatur) mit Kandidaten.",
+        path="/config/learning-sources",
+    ),
+    Tool(
+        name="get_learning_source_quality", area="history",
+        description="Plausibilität der Lernquellen über bis zu 100 Tage: Anteil brauchbar, Ausfälle, Ausreißer, hängende Werte.",
+        path="/config/learning-sources/quality",
+    ),
     Tool(name="get_recommendations", area="live", description="Empfehlungen von Sunflow.", path="/recommendations"),
     Tool(name="get_config", area="config", description="Konfiguration: Geräte, Tarif, Prognose, Fahrzeuge, Steuerung.", path="/config"),
     Tool(name="get_sources", area="live", description="Preis- und Prognosequellen mit ihrem Zustand.", path="/sources"),

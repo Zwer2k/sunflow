@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.23
+
+- Learning sources are checked for plausibility over up to 100 days: values outside the physical range, short spikes, hanging sensors and outages longer than 30 minutes are left out of learning; times Home Assistant did not record do not count. The plausible share is shown below each source (highlighted below 80 %), and the MCP server has `get_learning_sources` and `get_learning_source_quality`.
+- Learning sources: module temperatures are offered only for roof planes in use, not for planes set to "do not use" (e.g. a second forecast provider for the same roof).
+
 ## 0.75.22
 
 - All choices from lists that come from Home Assistant or the configuration (entities, devices, plants, roof planes, vehicles, price source, weather, learning sources, optimizer strings, device filter of the control log) can now be filtered by typing. Short fixed choices such as language or strategy stay plain dropdowns.
