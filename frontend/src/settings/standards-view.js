@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 import { t } from "../lib/i18n.js";
+import "./learning-sources.js";
 
 
 /** Default planning settings (settings area "Planung"). */
@@ -66,6 +67,7 @@ class SunflowStandards extends LitElement {
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${this._settings ? this._renderSettings(this._settings) : html`<p class="muted">${t("Lade …")}</p>`}
+      ${this._settings ? html`<sunflow-learning-sources></sunflow-learning-sources>` : nothing}
     `;
   }
 

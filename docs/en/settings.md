@@ -111,6 +111,19 @@ How Sunflow plans the home battery. Background in [How Sunflow plans](planning.m
 
 Strategy and grid charging apply immediately. Numbers are applied with **Save and replan**.
 
+**Learning sources** (optional): additional sensors make the learned forecasts more precise. None
+is required. Sunflow suggests sensors by their device class or unit; the inverter's and battery's
+own temperatures are left out. Below each choice you see how far back Home Assistant keeps its
+values. Sensors without a `state_class` have no long-term statistics, only the recorder history.
+
+| Source | Used for |
+|---|---|
+| Outdoor temperature | Measured in the shade; heating share of the house consumption and module temperature. Without it: the weather entity's temperature. |
+| Outdoor humidity | With the temperature: dew and frost on the modules. |
+| Illuminance or irradiance | How bright it really was (lx or W/m²); tells clouds from shading, also retroactively. |
+| Precipitation | Detecting snow on the modules. |
+| Module temperature per roof plane | Warm modules yield less. Without it: estimated from outdoor temperature and irradiance. |
+
 ## Display
 
 ![Display](../images/en/settings-display.png)
