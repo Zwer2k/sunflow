@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.25
+
+- Learning sources: the temperatures of module optimizers (e.g. Huawei, which are sub-devices of the inverter) are offered as module temperature; only the inverter's and battery's own temperatures stay out.
+- Optimizers: the string and installation sums of Tigo RS485 1.1.0 are no longer taken for optimizers.
+
 ## 0.75.24
 
 - Filterable choices open upwards when there is not enough room below (e.g. at the bottom of the page or above the tab bar on phones), and their list is no higher than the room there is.

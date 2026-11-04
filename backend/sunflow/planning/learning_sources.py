@@ -4,6 +4,7 @@ from typing import Any
 
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.optimizers import discover as discover_optimizers
 
 DEVICE_CLASSES = {
     "temperature": ("temperature",),
@@ -26,9 +27,13 @@ OUTDOOR_HINTS = (
 
 
 def _sunflow_devices(config: SunflowConfig, snapshot: Snapshot) -> set[str]:
-    """HA devices of configured devices and their sub-devices (e.g. battery modules)."""
+    """HA devices of configured devices and their sub-devices (e.g. battery modules), but not optimizers.
+
+    An optimizer sits on its module: its temperature is the module temperature.
+    """
     own = {d.ha_device_id for d in config.devices}
-    return own | {d["id"] for d in snapshot.devices if d.get("via_device_id") in own}
+    optimizers = {o.id for o in discover_optimizers(snapshot)}
+    return (own | {d["id"] for d in snapshot.devices if d.get("via_device_id") in own}) - optimizers
 
 
 def learning_candidates(config: SunflowConfig, snapshot: Snapshot) -> dict[str, list[dict[str, Any]]]:

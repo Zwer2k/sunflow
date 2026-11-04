@@ -27,11 +27,13 @@ def _snapshot() -> Snapshot:
         {"id": "a2", "name": "Tigo Optimizer A2", "identifiers": [["tigo_rs485", "e_A2"]], "config_entries": [TIGO]},
         {"id": "b1", "name": "Tigo Optimizer B1", "identifiers": [["tigo_rs485", "e_B1"]], "config_entries": [TIGO]},
         {"id": "x", "name": "Tigo Optimizer Garage", "identifiers": [["tigo_rs485", "e_Garage"]], "config_entries": [TIGO]},
+        # Sum of string A (tigo_rs485 1.1.0), no optimizer
+        {"id": "sa", "name": "Tigo String A", "identifiers": [["tigo_rs485", "e_group_string:A"]], "config_entries": [TIGO]},
     ]
     entities, states = [], {}
     # The inverter has an input power but is no optimizer
     entities.append({"entity_id": "sensor.inv_input_power", "unique_id": "HV1_input_power", "device_id": "inv"})
-    for device, keys in (("o1", HUAWEI_KEYS), ("o2", HUAWEI_KEYS), ("a2", TIGO_KEYS), ("b1", TIGO_KEYS), ("x", TIGO_KEYS)):
+    for device, keys in (("o1", HUAWEI_KEYS), ("o2", HUAWEI_KEYS), ("a2", TIGO_KEYS), ("b1", TIGO_KEYS), ("x", TIGO_KEYS), ("sa", ("power", "energy_today"))):
         for key in keys:
             entity_id = f"sensor.{device}_{key}"
             entities.append({"entity_id": entity_id, "unique_id": f"{device.upper()}_{key}", "device_id": device})
