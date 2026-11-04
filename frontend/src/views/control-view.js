@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import "../components/picker.js";
 import { api } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
 import { poll } from "../lib/poll.js";
@@ -238,10 +239,9 @@ class SunflowControl extends LitElement {
           </div>
         </div>
         <div class="log-filters">
-          <select aria-label=${t("Gerät")} @change=${(e) => this._setLogFilter({ _logDevice: e.target.value })}>
-            <option value="" ?selected=${!this._logDevice}>${t("Alle Geräte")}</option>
-            ${devices.map((d) => html`<option value=${d.device_id} ?selected=${this._logDevice === d.device_id}>${d.name}</option>`)}
-          </select>
+          <sf-picker class="device-filter" label=${t("Gerät")} hide-values empty-label=${t("Alle Geräte")} .value=${this._logDevice ?? ""}
+            .options=${devices.map((d) => ({ value: d.device_id, label: d.name }))}
+            @change=${(e) => this._setLogFilter({ _logDevice: e.detail.value })}></sf-picker>
           <select aria-label=${t("Zeitraum")} @change=${(e) => this._setLogFilter({ _logHours: Number(e.target.value) })}>
             ${Object.entries(LOG_HOURS).map(
               ([hours, label]) => html`<option value=${hours} ?selected=${this._logHours === Number(hours)}>${label}</option>`,
@@ -423,11 +423,10 @@ class SunflowControl extends LitElement {
       <div class="row">
         <span class="small muted">${t("Fahrzeug")}</span>
         ${device.manual_choice
-          ? html`<select aria-label=${t("Fahrzeug an {name}", { name: device.name })} ?disabled=${this._busy}
-              @change=${(e) => this._apply(() => api.chooseVehicle(device.id, e.target.value || null))}>
-              <option value="" ?selected=${!device.selected_vehicle}>${t("automatisch erkennen")}</option>
-              ${device.vehicles.map((o) => html`<option value=${o.id} ?selected=${device.selected_vehicle === o.id}>${o.name}</option>`)}
-            </select>`
+          ? html`<sf-picker label=${t("Fahrzeug an {name}", { name: device.name })} hide-values ?disabled=${this._busy}
+              empty-label=${t("automatisch erkennen")} .value=${device.selected_vehicle ?? ""}
+              .options=${device.vehicles.map((o) => ({ value: o.id, label: o.name }))}
+              @change=${(e) => this._apply(() => api.chooseVehicle(device.id, e.detail.value || null))}></sf-picker>`
           : nothing}
         <span class="small">${v ? html`<strong>${v.name}</strong>` : html`<span class="muted">${t("nicht erkannt")}</span>`}${how
           ? html` <span class="muted">(${how})</span>`
@@ -644,6 +643,7 @@ class SunflowControl extends LitElement {
     .alert.info { padding: 10px 14px; border-radius: 8px; background: var(--sf-primary-bg); color: var(--sf-primary-text); }
     .warn-text { color: var(--sf-warn-text); }
     .log-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .log-filters .device-filter { flex: 1 1 200px; max-width: 320px; }
     .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 480px; overflow-y: auto; }
     .log li { display: grid; grid-template-columns: 5.5em 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--sf-border); }
     .log li.foreign { background: var(--sf-warn-bg); border-radius: 6px; padding: 4px 6px; }

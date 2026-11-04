@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import "../components/picker.js";
 import { api } from "../lib/api.js";
 import "../components/roof.js";
 import { t, tn } from "../lib/i18n.js";
@@ -116,10 +117,10 @@ class SunflowOptimizers extends LitElement {
       ${tigo?.count
         ? html`<label class="field">
             <span class="field-label">${t("Tigo-Optimierer hängen am Wechselrichter")}</span>
-            <select ?disabled=${this._saving} @change=${(e) => this._save({}, e.target.value)}>
-              <option value="" ?selected=${!data.tigo_plant_chosen}>${t("automatisch ({name})", { name: plants.find(([id]) => id === data.tigo_plant)?.[1] ?? t("keiner") })}</option>
-              ${plants.map(([id, name]) => html`<option value=${id} ?selected=${data.tigo_plant_chosen === id}>${name}</option>`)}
-            </select>
+            <sf-picker label=${t("Tigo-Optimierer hängen am Wechselrichter")} hide-values ?disabled=${this._saving}
+              empty-label=${t("automatisch ({name})", { name: plants.find(([id]) => id === data.tigo_plant)?.[1] ?? t("keiner") })}
+              .value=${data.tigo_plant_chosen ?? ""} .options=${plants.map(([id, name]) => ({ value: id, label: name }))}
+              @change=${(e) => this._save({}, e.detail.value)}></sf-picker>
             <span class="small muted">${t("String A ist dessen String 1, B String 2 usw.")}</span>
           </label>`
         : nothing}
@@ -157,14 +158,18 @@ class SunflowOptimizers extends LitElement {
               <td>${o.label}</td>
               <td class="small muted">${data.sources.find((s) => s.key === o.source)?.name ?? o.source}</td>
               <td>
-                <select ?disabled=${this._saving} aria-label=${t("String von {label}", { label: o.label })}
-                  @change=${(e) => this._save({ [o.id]: { string: e.target.value === "auto" ? null : e.target.value, row: null, col: null } })}>
-                  <option value="auto" ?selected=${o.string_auto}>${o.string_auto
-                    ? t("automatisch ({name})", { name: data.strings.find((s) => s.key === o.string)?.name ?? t("unbekannt") })
-                    : t("automatisch")}</option>
-                  <option value="" ?selected=${!o.string_auto && !o.string}>${t("keiner")}</option>
-                  ${data.strings.map((s) => html`<option value=${s.key} ?selected=${!o.string_auto && o.string === s.key}>${s.name}</option>`)}
-                </select>
+                <sf-picker inline hide-values ?disabled=${this._saving} label=${t("String von {label}", { label: o.label })}
+                  empty-label=${t("keiner")} .value=${o.string_auto ? "auto" : (o.string ?? "")}
+                  .options=${[
+                    {
+                      value: "auto",
+                      label: o.string_auto
+                        ? t("automatisch ({name})", { name: data.strings.find((s) => s.key === o.string)?.name ?? t("unbekannt") })
+                        : t("automatisch"),
+                    },
+                    ...data.strings.map((s) => ({ value: s.key, label: s.name })),
+                  ]}
+                  @change=${(e) => this._save({ [o.id]: { string: e.detail.value === "auto" ? null : e.detail.value, row: null, col: null } })}></sf-picker>
               </td>
               <td><input .value=${o.name} aria-label=${t("Name von {label}", { label: o.label })} ?disabled=${this._saving}
                 @change=${(e) => this._save({ [o.id]: { name: e.target.value.trim() && e.target.value.trim() !== o.label ? e.target.value.trim() : null } })}></td>

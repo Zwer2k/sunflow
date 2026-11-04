@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import "../components/picker.js";
 import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
@@ -476,14 +477,14 @@ class SunflowStandards extends LitElement {
           </div>
           <div class="field">
             <span class="field-label">${t("Wetter für die Bewölkung")}</span>
-            <select aria-label=${t("Wetter-Entität")} ?disabled=${this._saving}
-              @change=${(e) => this._saveSettings({ weather_entity: e.target.value || null })}>
-              <option value="" ?selected=${!settings.weather_entity}>${t("Automatisch (erste Wetter-Entität)")}</option>
-              ${(this._weather ?? []).map(
-                (w) => html`<option value=${w.entity_id} ?selected=${settings.weather_entity === w.entity_id}>
-                  ${w.name}${w.provider ? ` (${w.provider})` : ""}${w.cloud_coverage ? "" : ` – ${t("ohne Bewölkungsangabe")}`}</option>`,
-              )}
-            </select>
+            <sf-picker label=${t("Wetter-Entität")} ?disabled=${this._saving}
+              empty-label=${t("Automatisch (erste Wetter-Entität)")} .value=${settings.weather_entity ?? ""}
+              .options=${(this._weather ?? []).map((w) => ({
+                value: w.entity_id,
+                label: w.name,
+                detail: [w.provider, w.cloud_coverage ? null : t("ohne Bewölkungsangabe")].filter(Boolean).join(" · "),
+              }))}
+              @change=${(e) => this._saveSettings({ weather_entity: e.detail.value || null })}></sf-picker>
             <span class="small muted">${t("Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.")}</span>
           </div>
         </div>
