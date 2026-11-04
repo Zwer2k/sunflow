@@ -219,6 +219,19 @@ class ForecastPlane(BaseModel):
         return self.custom_name or self.name
 
 
+class LearningSources(BaseModel):
+    """Optional measurements that make the learned models more precise; none is required."""
+
+    # Measured in the shade; without it the weather entity's temperature is used
+    outdoor_temperature: str | None = None
+    outdoor_humidity: str | None = None
+    # Illuminance (lx) or irradiance (W/m²): how bright it really was, cloud or shade
+    irradiance: str | None = None
+    precipitation: str | None = None
+    # By forecast plane key: a temperature sensor on its modules
+    module_temperature: dict[str, str] = Field(default_factory=dict)
+
+
 class WearCalculation(BaseModel):
     """Battery wear from purchase price and the manufacturer's cycle rating."""
 
@@ -433,6 +446,7 @@ class SunflowConfig(BaseModel):
     display: DisplaySettings = Field(default_factory=DisplaySettings)
     optimizer_settings: OptimizerSettings = Field(default_factory=OptimizerSettings)
     vehicles: list[Vehicle] = Field(default_factory=list)
+    learning_sources: LearningSources = Field(default_factory=LearningSources)
     # Vehicle at wallbox: card, target, ready by
     charging: list[ChargingProfile] = Field(default_factory=list)
     # By device id: how a consumer is planned (missing: defaults)

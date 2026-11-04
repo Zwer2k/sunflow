@@ -108,6 +108,20 @@ Wie Sunflow den Hausspeicher plant. Hintergründe stehen unter [So plant Sunflow
 
 Strategie und Netzladen gelten sofort. Zahlenwerte übernimmt **Speichern und neu planen**.
 
+**Lernquellen** (optional): Zusätzliche Sensoren machen die gelernten Prognosen genauer. Keiner
+ist nötig. Sunflow schlägt Sensoren anhand ihrer Geräteklasse oder Einheit vor; die eigenen
+Temperaturen von Wechselrichter und Speicher stehen nicht in der Liste. Unter jeder Auswahl steht,
+wie weit Home Assistant die Werte zurück aufhebt. Sensoren ohne `state_class` haben keine
+Langzeitstatistik, nur den Verlauf des Recorders.
+
+| Quelle | Wofür |
+|---|---|
+| Außentemperatur | Im Schatten gemessen; Heizanteil am Hausverbrauch und Modultemperatur. Ohne: Temperatur der Wetter-Entität. |
+| Luftfeuchte draußen | Mit der Temperatur: Tau und Reif auf den Modulen. |
+| Helligkeit oder Einstrahlung | Wie hell es tatsächlich war (lx oder W/m²); trennt Wolken von Verschattung, auch rückwirkend. |
+| Niederschlag | Erkennung von Schnee auf den Modulen. |
+| Modultemperatur je Dachfläche | Warme Module liefern weniger. Ohne: aus Außentemperatur und Einstrahlung geschätzt. |
+
 ## Anzeige
 
 ![Anzeige](images/settings-display.png)

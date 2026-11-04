@@ -149,7 +149,14 @@ export const api = {
   restoreAfterTest: () => request("POST", "/device-test/restore?confirm=true"),
   efficiencyHistory: (days) => request("GET", `/efficiency/history?days=${days}`),
   pvLearning: () => request("GET", "/pv-learning"),
-  dataInventory: (refresh = false) => request("GET", `/data-inventory${refresh ? "?refresh=true" : ""}`),
+  dataInventory: (refresh = false, entities = []) => {
+    const query = new URLSearchParams();
+    if (refresh) query.set("refresh", "true");
+    if (entities.length) query.set("entities", entities.join(","));
+    return request("GET", `/data-inventory${query.size ? `?${query}` : ""}`);
+  },
+  learningSources: () => request("GET", "/config/learning-sources"),
+  setLearningSources: (sources) => request("PUT", "/config/learning-sources", sources),
   restartPlaneLearning: (key) => request("POST", `/pv-learning/planes/${encodeURIComponent(key)}/restart`),
   weatherEntities: () => request("GET", "/weather/entities"),
   energy: (period) => request("GET", `/energy?period=${encodeURIComponent(period)}`),

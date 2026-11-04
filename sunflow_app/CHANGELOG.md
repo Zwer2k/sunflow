@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.19
+
+- Settings → Planning: new optional "Learning sources": outdoor temperature and humidity, illuminance or irradiance, precipitation and a module temperature per roof plane. Sensors are suggested by device class or unit (also DIY sensors without a device class); the inverter's and battery's own temperatures are left out. Each choice shows how far back Home Assistant keeps its values. The learned models will use them step by step; nothing changes in the planning yet.
+
 ## 0.75.18
 
 - Data inventory: further entities can be checked as well (`entities`, comma separated; also in the MCP tool `get_data_inventory`), e.g. a weather station before using it for learning. Each entity also shows its `state_class`, without which Home Assistant keeps no long-term statistics.

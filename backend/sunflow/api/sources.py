@@ -7,13 +7,14 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from sunflow.config.models import ForecastPlane, TariffConfig
+from sunflow.config.models import ForecastPlane, LearningSources, TariffConfig
 from sunflow.config.store import ConfigStore
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import pv_strings
 from sunflow.ha import HAClient, HAError
 from sunflow.planning.forecast_export import as_response, export_forecasts
+from sunflow.planning.learning_sources import learning_candidates
 from sunflow.planning.plan import cloud_coverage, weather_entity
 from sunflow.planning.sources import (
     ForecastPoint,
@@ -80,6 +81,27 @@ async def get_sources(request: Request) -> dict[str, Any]:
         "pv_strings": strings,
         "tariff": config.tariff.model_dump(),
     }
+
+
+@router.get("/config/learning-sources")
+async def get_learning_sources(request: Request) -> dict[str, Any]:
+    """The chosen learning sources, candidates per kind and the planes for module temperatures."""
+    config = request.app.state.store.load()
+    return {
+        "sources": config.learning_sources.model_dump(),
+        "candidates": learning_candidates(config, await _snapshot(request)),
+        "planes": [{"key": p.key, "name": p.display_name} for p in config.forecast_planes],
+    }
+
+
+@router.put("/config/learning-sources")
+async def set_learning_sources(request: Request, sources: LearningSources) -> dict[str, Any]:
+    """Store the learning sources."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.learning_sources = sources
+    store.save(config)
+    return config.learning_sources.model_dump()
 
 
 @router.put("/config/tariff")
