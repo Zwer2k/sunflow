@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.24
+
+- Filterable choices open upwards when there is not enough room below (e.g. at the bottom of the page or above the tab bar on phones), and their list is no higher than the room there is.
+- Learning sources: current values in the list are rounded to two decimals.
+
 ## 0.75.23
 
 - Learning sources are checked for plausibility over up to 100 days: values outside the physical range, short spikes, hanging sensors and outages longer than 30 minutes are left out of learning; times Home Assistant did not record do not count. The plausible share is shown below each source (highlighted below 80 %), and the MCP server has `get_learning_sources` and `get_learning_source_quality`.
