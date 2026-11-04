@@ -52,3 +52,17 @@ def test_hours_without_measurement_or_sun_are_left_out() -> None:
     samples = samples_from({night: 0.0, noon: 1500.0, noon + timedelta(hours=1): 1400.0}, {night: 0.0, noon: 1200.0}, LAT, LON)
 
     assert [s.start for s in samples] == [noon]
+
+
+def test_factor_for_a_slot_ahead() -> None:
+    """A clear winter morning in the shade gets the shade factor, a cloudy one the cloudy factor, night none."""
+    forecast, measured = _history(200)
+    correction = fit(samples_from(forecast, measured, LAT, LON))
+    morning = datetime(2026, 12, 15, 8, 45, tzinfo=UTC)
+    elevation, azimuth = sun_position(morning, LAT, LON)
+    clear_sky = 2000 * math.sin(math.radians(elevation))
+
+    assert _shaded(elevation, azimuth)
+    assert correction.factor_at(morning, clear_sky, LAT, LON) == pytest.approx(0.3, abs=0.12)
+    assert correction.factor_at(morning, clear_sky / 4, LAT, LON) == correction.factor(elevation, azimuth, clear=False)
+    assert correction.factor_at(datetime(2026, 12, 15, 22, tzinfo=UTC), 0.0, LAT, LON) == 1.0

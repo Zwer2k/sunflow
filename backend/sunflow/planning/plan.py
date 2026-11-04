@@ -45,6 +45,7 @@ from .load_model import LoadModel
 from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
 from .price_estimate import extend_prices
 from .pv_learning import PvCorrection, cloud_class
+from .pv_sun import SunCorrection
 from .sources import (
     ForecastPoint,
     PricePoint,
@@ -1248,11 +1249,13 @@ async def compute_plan(
     consumer_hours: list[tuple[datetime, float]] | None = None,
     vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
     chargers: ChargerWatch | None = None,
+    sun_corrections: dict[str, SunCorrection] | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule.
 
     consumer_hours: hourly power of all controllable consumers from Sunflow's own samples;
-    vehicle_hours: hourly SoC per car from them.
+    vehicle_hours: hourly SoC per car from them; sun_corrections: correction by sun position
+    per plane, used instead of the hourly one when switched on.
     """
     warnings: list[str] = []
     battery_device = next(
@@ -1448,17 +1451,27 @@ async def compute_plan(
         ]
     own = {key: c for key, c in (plane_corrections or {}).items() if c.slots and key in plane_slots}
     site = pv_correction if pv_correction is not None and pv_correction.slots else None
-    if config.optimizer.pv_learning and (site or own):
+    if not config.optimizer.pv_learning:
+        own, site = {}, None
+    sun = {key: c for key, c in (sun_corrections or {}).items() if key in plane_slots} if config.optimizer.pv_sun else {}
+    if site or own or sun:
+        location = await client.command("get_config") if sun else {}
         corrected = []
         for index, (slot, cloud) in enumerate(zip(inputs, clouds, strict=True)):
             hour, kind = slot.start.astimezone(tz).hour, cloud_class(cloud)
             site_factor = site.factor(hour, kind) if site else 1.0
-            # Each plane with its own factor (e.g. shading of one roof), the rest with the site's
-            total = sum(powers[index] for powers in plane_slots.values())
-            weighted = sum(
-                powers[index] * (own[key].factor(hour, kind) if key in own else site_factor)
+            # Each plane with its own factor (e.g. shading of one roof), the rest with the site's;
+            # by sun position with the sun in the middle of the slot
+            factors = {
+                key: sun[key].factor_at(slot.start + SLOT / 2, powers[index], location["latitude"], location["longitude"])
+                if key in sun
+                else own[key].factor(hour, kind)
+                if key in own
+                else site_factor
                 for key, powers in plane_slots.items()
-            )
+            }
+            total = sum(powers[index] for powers in plane_slots.values())
+            weighted = sum(factors[key] * powers[index] for key, powers in plane_slots.items())
             factor = weighted / total if total > 0 else site_factor
             low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
             corrected.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))

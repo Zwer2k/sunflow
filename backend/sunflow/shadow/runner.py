@@ -30,6 +30,11 @@ from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import PlanResult, compute_plan
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
+from sunflow.planning.pv_sun import (
+    PlaneSun,
+    SunCorrection,
+    learn_planes as learn_sun_planes,
+)
 from sunflow.planning.vehicles import soc_of, unplugged_choices
 from sunflow.shadow.counters import EnergyCounters
 
@@ -49,6 +54,8 @@ async def local_timezone(client: HAClient) -> ZoneInfo:
 # PV correction: learned from this many days of shadow data, refreshed this often
 LEARNING_WINDOW = timedelta(days=120)
 CORRECTION_REFRESH = timedelta(hours=1)
+# The correction by sun position learns from up to two years of history: once a day
+SUN_REFRESH = timedelta(hours=24)
 # A failed replan runs every query again; not every minute while Home Assistant has a
 # problem. The pause doubles with each failure up to the maximum
 REPLAN_RETRY = timedelta(minutes=5)
@@ -80,6 +87,7 @@ async def current_plan(
     consumer_hours: list[tuple[datetime, float]] | None = None,
     vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
     chargers: ChargerWatch | None = None,
+    sun_corrections: dict[str, SunCorrection] | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -99,6 +107,7 @@ async def current_plan(
         consumer_hours,
         vehicle_hours,
         chargers,
+        sun_corrections,
     )
 
 
@@ -233,6 +242,11 @@ class ShadowRunner:
         self._correction: PvCorrection | None = None
         self.load_model: LoadModel | None = None
         self.plane_corrections: dict[str, PvCorrection] = {}
+        # PV correction by sun position per plane, learned in the background
+        self.sun_planes: list[PlaneSun] = []
+        self.sun_learned_at: datetime | None = None
+        self.sun_error: str | None = None
+        self._sun_task: asyncio.Task[None] | None = None
         # Energy per PV string for Home Assistant (set by the app)
         self.counters: EnergyCounters | None = None
         self._correction_at = datetime.min.replace(tzinfo=UTC)
@@ -464,6 +478,35 @@ class ShadowRunner:
         """Learn again with the next plan instead of within the hour."""
         self._correction_at = datetime.min.replace(tzinfo=UTC)
 
+    @property
+    def sun_learning(self) -> bool:
+        """The correction by sun position is being learned."""
+        return self._sun_task is not None and not self._sun_task.done()
+
+    def learn_sun(self, force: bool = False) -> None:
+        """Learn the correction by sun position in the background when it is a day old (or forced)."""
+        stale = self.sun_learned_at is None or datetime.now(UTC) - self.sun_learned_at > SUN_REFRESH
+        if (force or stale) and not self.sun_learning:
+            self._sun_task = asyncio.create_task(self._learn_sun())
+
+    async def _learn_sun(self) -> None:
+        try:
+            snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
+            config = self._store.load()
+            tz = await local_timezone(self._client)
+            self.sun_planes = await learn_sun_planes(self._client, config, self._library.profiles, snapshot, tz)
+            self.sun_error = None
+        except (HAError, KeyError, TypeError, ValueError) as err:
+            _LOGGER.warning("Learning PV by sun position failed: %s", err)
+            self.sun_error = str(err)
+        self.sun_learned_at = datetime.now(UTC)
+        if self._store.load().optimizer.pv_sun:
+            self.request_replan()
+
+    def sun_corrections(self) -> dict[str, SunCorrection]:
+        """The learned corrections by plane key."""
+        return {p.key: p.correction for p in self.sun_planes if p.correction is not None and p.correction.hours}
+
     async def pv_correction(self) -> PvCorrection | None:
         """Correction learned from the shadow data, refreshed hourly."""
         now = datetime.now(UTC)
@@ -487,6 +530,7 @@ class ShadowRunner:
     async def _replan(self, start: datetime) -> None:
         await i18n.update_language(self._client, self._store.load().display.language)
         correction = await self.pv_correction()
+        self.learn_sun()
         result = await current_plan(
             self._client,
             self._store,
@@ -499,6 +543,7 @@ class ShadowRunner:
             self.live_load(),
             *await asyncio.to_thread(self.own_hours),
             chargers=self.controller.chargers if self.controller is not None else None,
+            sun_corrections=self.sun_corrections(),
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)

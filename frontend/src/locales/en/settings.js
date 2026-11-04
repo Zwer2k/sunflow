@@ -345,4 +345,6 @@ export default {
   "unmögliche Werte: {count}": "impossible values: {count}",
   "Geprüft über die aufgezeichneten Tage. Unplausible Werte und Ausfälle lässt das Lernen weg; Zeiten, in denen Home Assistant nicht aufgezeichnet hat, zählen nicht mit.": "Checked over the recorded days. Learning leaves out implausible values and outages; times Home Assistant did not record do not count.",
   "{pct} % plausibel": "{pct} % plausible",
+  "nach Sonnenstand korrigieren (Test)": "correct by sun position (test)",
+  "Für Flächen mit Solcast-Historie: lernt aus bis zu zwei Jahren, wie viel je Sonnenhöhe und -richtung ankommt, und erkennt so Verschattung, die mit der Jahreszeit wandert. Ersetzt für diese Flächen die Korrektur nach Uhrzeit; Backtest und Verschattungskarte unter „Analyse“.": "For planes with Solcast history: learns from up to two years how much arrives per sun elevation and direction, and so recognises shading that moves with the seasons. Replaces the correction by time of day for these planes; backtest and shading map under \"Analysis\".",
 };

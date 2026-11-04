@@ -435,6 +435,12 @@ class SunflowStandards extends LitElement {
               ${t("an die Anlage anpassen (aus Messwerten lernen)")}
             </span>
             <span class="small muted">${t("Vergleicht Prognose und Messung je Stunde und Bewölkung, Details unter „Analyse“.")}</span>
+            <span class="inline">
+              <input type="checkbox" .checked=${settings.pv_sun} ?disabled=${this._saving}
+                @change=${(e) => this._saveSettings({ pv_sun: e.target.checked })}>
+              ${t("nach Sonnenstand korrigieren (Test)")}
+            </span>
+            <span class="small muted">${t("Für Flächen mit Solcast-Historie: lernt aus bis zu zwei Jahren, wie viel je Sonnenhöhe und -richtung ankommt, und erkennt so Verschattung, die mit der Jahreszeit wandert. Ersetzt für diese Flächen die Korrektur nach Uhrzeit; Backtest und Verschattungskarte unter „Analyse“.")}</span>
           </label>
           <div class="field wide">
             <span class="field-label">${t("Netzdienlich")}</span>
