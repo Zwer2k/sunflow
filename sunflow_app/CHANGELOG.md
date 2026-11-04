@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.20
+
+- Data inventory: the power and temperature of each module optimizer (Huawei, Tigo) are checked too, with a tile for how far back their history goes. Shading and heat can then be learned module by module.
+
 ## 0.75.19
 
 - Settings → Planning: new optional "Learning sources": outdoor temperature and humidity, illuminance or irradiance, precipitation and a module temperature per roof plane. Sensors are suggested by device class or unit (also DIY sensors without a device class); the inverter's and battery's own temperatures are left out. Each choice shows how far back Home Assistant keeps its values. The learned models will use them step by step; nothing changes in the planning yet.
