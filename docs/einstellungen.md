@@ -102,7 +102,7 @@ Wie Sunflow den Hausspeicher plant. Hintergründe stehen unter [So plant Sunflow
 | Verschleißkosten Speicher | Direkt in ct/kWh oder aus Anschaffungspreis, Zyklen, Entladetiefe und Restkapazität berechnet. Verhindert Zyklen für Kleinstbeträge. |
 | Laden aus dem Netz | Erlaubt, wenn es sich rechnet. |
 | PV-Prognose anpassen | Lernt aus Messwerten je Stunde und Bewölkung, Details unter Analyse. |
-| Nach Sonnenstand korrigieren (Test) | Für Flächen mit Solcast-Historie: Korrektur je Sonnenhöhe und -richtung, aus bis zu zwei Jahren gelernt (einmal am Tag); erkennt Verschattung, die mit der Jahreszeit wandert. Ersetzt für diese Flächen die Korrektur nach Uhrzeit. Backtest und Verschattungskarte unter Analyse. |
+| Nach Sonnenstand korrigieren (Test) | Für Flächen mit Solcast-Historie: Korrektur je Sonnenhöhe und -richtung, aus bis zu zwei Jahren gelernt (einmal am Tag); erkennt Verschattung, die mit der Jahreszeit wandert. Ersetzt die Korrektur nach Uhrzeit für Flächen, deren Modell aus mindestens 60 Tagen gelernt hat und im Backtest besser ist. Backtest und Verschattungskarte unter Analyse. |
 | Netzdienlich | Einspeise- und Bezugsspitzen über den eingestellten Grenzen vermeiden, wo es wenig kostet. Ein weiches Ziel, keine harte Grenze. |
 | Unsichere PV-Prognose | Vorsichtig plant mehr mit dem schlechten Fall der Prognose (Solcast p10). |
 | Wetter für die Bewölkung | Wetter-Entität für das Lernen je Bewölkung. |

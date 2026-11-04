@@ -504,8 +504,8 @@ class ShadowRunner:
             self.request_replan()
 
     def sun_corrections(self) -> dict[str, SunCorrection]:
-        """The learned corrections by plane key."""
-        return {p.key: p.correction for p in self.sun_planes if p.correction is not None and p.correction.hours}
+        """The learned corrections good enough to plan with, by plane key."""
+        return {p.key: p.correction for p in self.sun_planes if p.plannable and p.correction is not None}
 
     async def pv_correction(self) -> PvCorrection | None:
         """Correction learned from the shadow data, refreshed hourly."""

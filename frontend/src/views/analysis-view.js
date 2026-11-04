@@ -411,7 +411,7 @@ class SunflowAnalysis extends LitElement {
         </div>
         <p class="small muted">${t("Lernt aus den vergangenen Solcast-Prognosen und den gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt. Der Backtest lernt ohne die letzten 3 Wochen und prüft auf diesen.")}
           ${data.enabled
-            ? t("Die Planung nutzt es für diese Flächen.")
+            ? t("Die Planung nutzt es, wo es aus mindestens 60 Tagen gelernt hat und im Backtest besser ist.")
             : t("Läuft im Schattenbetrieb; einschalten unter Einstellungen → Planung → PV-Prognose.")}</p>
         ${data.error ? html`<div class="alert error" role="alert">${data.error}</div>` : nothing}
         ${data.computing && !learned.length ? html`<p class="muted">${t("Lernt aus der Historie …")}</p>` : nothing}
@@ -422,7 +422,13 @@ class SunflowAnalysis extends LitElement {
                 ? t("Diese Prognosequelle hebt keine vergangenen Prognosen auf.")
                 : t("Für diese Fläche fehlt die Leistung je String (z. B. keine Fläche zugeordnet oder nur Spannung und Strom).")}</p>`
             : nothing}
-          ${plane.correction ? this._renderPvSunPlane(plane) : nothing}
+          ${plane.correction
+            ? html`${data.enabled
+                ? html`<p class="small ${plane.plannable ? "" : "muted"}">${plane.plannable
+                    ? t("Die Planung nutzt diese Korrektur.")
+                    : t("Die Planung bleibt hier bei der Korrektur nach Uhrzeit: zu wenig Historie oder im Backtest nicht besser.")}</p>`
+                : nothing}${this._renderPvSunPlane(plane)}`
+            : nothing}
         `)}
         ${data.computed_at ? html`<p class="small muted">${t("Gelernt {time}", { time: dayTime.format(new Date(data.computed_at)) })}</p>` : nothing}
       </section>
