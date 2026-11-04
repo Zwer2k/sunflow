@@ -60,6 +60,11 @@ Sammlung sinnvoller Erweiterungen, grob nach Nutzen geordnet. Noch nichts davon 
 6. **Wärmepumpe**: Verbrauch aus Außentemperatur und Heizgradtagen, später ein einfaches
    Wärmemodell des Hauses, damit Sunflow die Wärmepumpe in günstige oder sonnige Stunden schieben
    kann.
+7. **Verbraucher, die nur gemessen werden**: Herd, Waschmaschine, Trockner, Spülmaschine mit
+   eigenem Leistungssensor als Typ „Nur messen“. Sunflow lernt je Gerät, wann und wie viel es
+   läuft, und den Grundverbrauch ohne diese Geräte; die Geräte gehen als eigene Erwartung in die
+   Prognose ein. Später Hinweise wie „Waschmaschine jetzt starten – die nächsten 2 h Überschuss“,
+   mit Fernstart (z. B. Home Connect) als verschiebbare Last.
 
 ## 3. Auto und Warmwasser
 
