@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.21
+
+- Optimizers: the roof view can also show each module's yield: today and total with Tigo RS485 from version 1.1.0, total with Huawei.
+
 ## 0.75.20
 
 - Data inventory: the power and temperature of each module optimizer (Huawei, Tigo) are checked too, with a tile for how far back their history goes. Shading and heat can then be learned module by module.

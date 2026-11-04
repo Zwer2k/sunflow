@@ -10,6 +10,9 @@ export const OPTIMIZER_VALUES = {
   current_out: { label: t("Strom Ausgang"), short: "I→", unit: "A", digits: 2 },
   temperature: { label: t("Temperatur"), short: "", unit: "°C", digits: 0 },
   pwm: { label: "PWM", short: "PWM", unit: "", digits: 0 },
+  // Energies arrive in Wh
+  energy_today: { label: t("Ertrag heute"), short: "", unit: "kWh", digits: 2, scale: 0.001 },
+  energy_total: { label: t("Ertrag gesamt"), short: "Σ", unit: "kWh", digits: 0, scale: 0.001 },
 };
 
 const number = (value, digits) =>
@@ -18,7 +21,7 @@ const number = (value, digits) =>
 export function optimizerValue(key, value) {
   const spec = OPTIMIZER_VALUES[key];
   if (value === null || value === undefined) return "–";
-  return `${spec.short ? `${spec.short} ` : ""}${number(value, spec.digits)}${spec.unit ? ` ${spec.unit}` : ""}`;
+  return `${spec.short ? `${spec.short} ` : ""}${number(value * (spec.scale ?? 1), spec.digits)}${spec.unit ? ` ${spec.unit}` : ""}`;
 }
 
 /**
