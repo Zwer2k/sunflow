@@ -43,6 +43,7 @@ Der Port ist im Heimnetz ohne Verschlüsselung (HTTP) erreichbar. Gib ihn nicht 
 | `get_history` | gemessene Werte aus der Statistik von Home Assistant |
 | `get_shadow`, `query_shadow_db` | Aufzeichnung geplant gegen tatsächlich; freie SQL-Abfrage darauf |
 | `get_energy`, `get_costs`, `get_efficiency` | Bilanzen, Kosten, Wirkungsgrad |
+| `get_data_inventory` | wie weit die HA-Historie und vergangene Solcast-Prognosen zurückreichen |
 | `get_config`, `get_vehicles`, `get_batteries`, `get_site` | Konfiguration |
 | `get_sources`, `get_tariff_series`, `get_forecast_series`, `get_pv_learning` | Preise und PV-Prognose |
 | `get_device_parameters`, `get_device_efficiency`, `get_direct_status` | einzelne Geräte |

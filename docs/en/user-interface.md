@@ -108,6 +108,10 @@ How well do forecasts and decisions match reality?
 - **Learning**: how much of the PV forecast actually arrives (overall, per cloud cover,
   per hour, per plane) and how far the house consumption model is. Per roof plane, "Relearn from
   today" resets learning, e.g. after trimming a tree.
+- **Data for learning**: how far back Home Assistant keeps what Sunflow can learn from: history at
+  full resolution (the recorder's retention), long-term statistics, weather with or without cloud
+  coverage, and Solcast's past forecasts. Below, per measurement, since when it is there and how
+  often it changes. Checked at most hourly; **Check again** asks right away.
 - **Shadow mode**: every 15 minutes Sunflow records what it would do and what
   actually happened. The tiles compare PV and load forecast with the measurement, the chart the
   planned with the actual state of charge. The table lists the sections where the decision
