@@ -111,7 +111,7 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
 - **Datenbestand fürs Lernen**: wie weit Home Assistant zurück aufhebt, woraus Sunflow lernen
   kann: Verlauf in voller Auflösung (Aufbewahrung des Recorders), Langzeitstatistik, Wetter mit
   oder ohne Bewölkung und die vergangenen Solcast-Prognosen. Darunter je Messwert, seit wann er
-  vorliegt und wie oft er sich ändert. Geprüft wird höchstens stündlich; **Neu prüfen** fragt sofort.
+  vorliegt und wie oft er sich ändert, auch je Optimierer (Leistung und Temperatur je Modul). Geprüft wird höchstens stündlich; **Neu prüfen** fragt sofort.
 - **Schattenbetrieb**: Sunflow zeichnet alle 15 Minuten auf, was es tun würde und was
   tatsächlich passiert ist. Die Kacheln vergleichen PV- und Lastprognose mit der Messung, das
   Diagramm den geplanten mit dem tatsächlichen Ladestand. Die Tabelle zeigt die Abschnitte, in

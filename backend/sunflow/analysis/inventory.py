@@ -14,6 +14,7 @@ from typing import Any
 
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.optimizers import optimizers as optimizer_list
 from sunflow.devices.site import site_status
 from sunflow.ha import HAClient, HACommandError, HAError
 from sunflow.planning.plan import weather_entity
@@ -27,6 +28,7 @@ SOLCAST_DAYS = 731
 DENSITY_WINDOW = timedelta(hours=1)
 WEATHER_ATTRIBUTES = ("cloud_coverage", "temperature")
 RECORDED_DOMAINS = ("sensor.", "binary_sensor.")
+OPTIMIZER_VALUES = ("power", "temperature")
 
 Recorded = Callable[[list[str], int], Awaitable[set[str]]]
 
@@ -185,6 +187,14 @@ async def data_inventory(
             if role.entity_id and role.entity_id.startswith(RECORDED_DOMAINS) and role.entity_id not in seen:
                 seen.add(role.entity_id)
                 rows.append({"device": device.name, "role": role.role, "entity_id": role.entity_id})
+    # Per module: shading and heat can be learned module by module
+    for optimizer in optimizer_list(config, profiles, snapshot)[0]:
+        for value in OPTIMIZER_VALUES:
+            if (entity_id := optimizer.entities.get(value)) and entity_id not in seen:
+                seen.add(entity_id)
+                rows.append(
+                    {"device": optimizer.label, "role": f"optimizer_{value}", "entity_id": entity_id, "optimizer": True}
+                )
     for entity_id in extra or []:
         if entity_id not in seen:
             seen.add(entity_id)
@@ -226,7 +236,7 @@ async def data_inventory(
         {"name": names.get((s.source, s.ref)) or s.name, "source": s.source, "days": forecast_days.get(s.ref), "error": forecast_error}
         for s in sites
     ]
-    usable = [d for d in (r["states_days"] for r in rows if r["device"]) if d]
+    usable = [d for d in (r["states_days"] for r in rows if r["device"] and not r.get("optimizer")) if d]
     return {
         "time": now.isoformat(),
         # The purge period is the same for all; the typical value stands for the recorder

@@ -76,6 +76,8 @@ export default {
   "Neu lernen ab heute": "Relearn from today",
   "Datenbestand nicht verfügbar: {error}": "Data inventory not available: {error}",
   "Datenbestand fürs Lernen": "Data for learning",
+  "Optimierer je Modul": "Optimizers per module",
+  "{count} Module · Statistik seit {date}": "{count} modules · statistics since {date}",
   "Neu prüfen": "Check again",
   "Wie weit Home Assistant zurück Messwerte, Wetter und Prognosen aufhebt. Daraus kann Sunflow rückwirkend lernen, statt erst Wochen zu sammeln.": "How far back Home Assistant keeps measurements, weather and forecasts. Sunflow can learn from them retroactively instead of collecting for weeks first.",
   "Verlauf in voller Auflösung": "History at full resolution",

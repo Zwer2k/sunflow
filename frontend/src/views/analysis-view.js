@@ -398,6 +398,8 @@ class SunflowAnalysis extends LitElement {
     const statistics = inv?.entities.map((e) => e.statistics_since).filter(Boolean).sort()[0];
     const weather = inv?.weather;
     const solcast = inv?.forecasts.filter((f) => f.source === "solcast") ?? [];
+    const modules = inv?.entities.filter((e) => e.role === "optimizer_power") ?? [];
+    const moduleDays = modules.map((e) => e.states_days).filter((d) => d !== null).sort((a, b) => a - b);
     return html`
       <section>
         <div class="section-head">
@@ -418,6 +420,14 @@ class SunflowAnalysis extends LitElement {
                       <div class="small muted">${weather.attributes.includes("cloud_coverage")
                         ? t("mit Bewölkung")
                         : t("ohne Bewölkung aufgezeichnet")}</div></div>`
+                  : nothing}
+                ${modules.length
+                  ? html`<div class="tile"><div class="small muted">${t("Optimierer je Modul")}</div>
+                      <div class="value">${moduleDays.length ? days(moduleDays[Math.floor(moduleDays.length / 2)]) : "–"}</div>
+                      <div class="small muted">${t("{count} Module · Statistik seit {date}", {
+                        count: modules.length,
+                        date: since(modules.map((e) => e.statistics_since).filter(Boolean).sort()[0]),
+                      })}</div></div>`
                   : nothing}
                 ${solcast.map((f) => html`<div class="tile"><div class="small muted">${t("Solcast-Prognose {name}", { name: f.name })}</div>
                   <div class="value">${f.error ? "–" : days(f.days)}</div>
