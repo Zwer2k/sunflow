@@ -25,13 +25,22 @@ def test_candidates_by_device_class_outdoor_first() -> None:
         _sensor("sensor.station_pv_temperatur_sud", "Wetterstation PV-Temperatur Süd", None, "°C"),
         _sensor("sensor.station_regen_stunde", "Wetterstation Regenmenge Stunde", None, "mm"),
         _sensor("sensor.station_akku", "Wetterstation Akku", None, "%"),
+        # An optimizer below the inverter: its temperature is the module's
+        _sensor("sensor.opt_temperatur", "JV Temperatur", "temperature", "°C", "measurement"),
     ]
     snapshot = Snapshot(
         entries=[],
-        devices=[{"id": "inverter"}, {"id": "pack", "via_device_id": "inverter"}],
+        devices=[
+            {"id": "inverter"},
+            {"id": "pack", "via_device_id": "inverter"},
+            {"id": "opt", "via_device_id": "inverter", "identifiers": [["huawei_solar", "JV1"]]},
+        ],
         entities=[
             {"entity_id": "sensor.sofar_module_temperature", "device_id": "inverter", "platform": "solax_modbus"},
             {"entity_id": "sensor.sofar_pack_temperature", "device_id": "pack", "platform": "solax_modbus"},
+            {"entity_id": "sensor.opt_temperatur", "unique_id": "JV1_temperature", "device_id": "opt", "platform": "huawei_solar"},
+            {"entity_id": "sensor.opt_output_power", "unique_id": "JV1_output_power", "device_id": "opt", "platform": "huawei_solar"},
+            {"entity_id": "sensor.opt_input_voltage", "unique_id": "JV1_input_voltage", "device_id": "opt", "platform": "huawei_solar"},
         ],
         states={s["entity_id"]: s for s in states},
         energy_prefs=None,
@@ -45,6 +54,7 @@ def test_candidates_by_device_class_outdoor_first() -> None:
     assert [c["entity_id"] for c in candidates["temperature"]] == [
         "sensor.garten_klima_temperature",
         "sensor.station_pv_temperatur_sud",
+        "sensor.opt_temperatur",
         "sensor.wohnzimmer_temperature",
     ]
     assert [c["entity_id"] for c in candidates["irradiance"]] == ["sensor.station_helligkeit"]

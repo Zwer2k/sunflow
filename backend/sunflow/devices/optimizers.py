@@ -31,6 +31,8 @@ class OptimizerSource:
     required: tuple[str, ...]
     # Optimizers are sub-devices of their inverter (which has values of the same names)
     sub_device: bool = False
+    # Part of the identifier of devices that sum up several optimizers
+    group_marker: str | None = None
 
 
 SOURCES = (
@@ -66,6 +68,7 @@ SOURCES = (
             "energy_total": "_energy_total",
         },
         required=("power",),
+        group_marker="_group_",
     ),
 )
 VALUE_UNITS = {
@@ -120,6 +123,9 @@ def discover(snapshot: Snapshot) -> list[Optimizer]:
         domains = {identifier[0] for identifier in device.get("identifiers", [])}
         for source in SOURCES:
             if source.domain not in domains or (source.sub_device and not device.get("via_device_id")):
+                continue
+            # Sums over a string or the installation (tigo_rs485 1.1.0) are no optimizer
+            if any(source.group_marker and source.group_marker in str(i[1]) for i in device.get("identifiers", [])):
                 continue
             entities = {}
             for value, suffix in source.values.items():
