@@ -138,6 +138,7 @@ async def get_recommendations(request: Request) -> list[dict[str, Any]]:
         days,
         await runner.pv_correction(),
         await get_weather_entities(request),
+        runner.sun_planes,
     )
 
 

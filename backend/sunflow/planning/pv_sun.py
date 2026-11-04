@@ -12,7 +12,7 @@ close to the plane's overall factor. Runs in shadow mode: it is only compared, n
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
 
 from sunflow.config.models import ForecastPlane, SunflowConfig
@@ -40,6 +40,15 @@ BACKTEST_DAYS = 21
 MIN_DAYS_TO_PLAN = 60
 SOLCAST_CHUNK = timedelta(days=30)
 HISTORY_DAYS = 730
+# Soiling (leaves, snow, dirt): the last days against what the plane delivered before them
+SOILING_RECENT_DAYS = 30
+SOILING_MIN_DAYS = 4
+# Below this share of the learned expectation; against the raw forecast (no history) far below only
+SOILING_RATIO = 0.7
+SOILING_RATIO_RAW = 0.5
+# Hours with a low sun say little (shade); days with little expected energy are left out
+SOILING_MIN_ELEVATION = 10.0
+SOILING_MIN_DAY_WH = 500.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -275,6 +284,32 @@ async def measured_hours(client: HAClient, entities: list[str], start: datetime,
     return {hour: sum(s[hour] for s in per_string) for hour in common}
 
 
+def daily_ratios(samples: list[Sample], reference: SunCorrection | None, tz: tzinfo) -> list[tuple[date, float]]:
+    """Measured / expected energy per local day; expected is the forecast corrected by the reference."""
+    days: dict[date, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for s in samples:
+        if s.elevation < SOILING_MIN_ELEVATION or s.forecast_wh < MIN_FORECAST_WH:
+            continue
+        factor = reference.factor(s.elevation, s.azimuth, s.clear) if reference is not None else 1.0
+        total = days[s.start.astimezone(tz).date()]
+        total[0] += s.actual_wh
+        total[1] += s.forecast_wh * factor
+    return [(day, actual / expected) for day, (actual, expected) in sorted(days.items()) if expected >= SOILING_MIN_DAY_WH]
+
+
+def soiled_run(ratios: list[tuple[date, float]], threshold: float) -> dict[str, Any] | None:
+    """The latest days in a row below the threshold, when there are enough of them."""
+    run = []
+    for day, ratio in reversed(ratios):
+        if ratio >= threshold:
+            break
+        run.append((day, ratio))
+    if len(run) < SOILING_MIN_DAYS:
+        return None
+    shares = sorted(r for _, r in run)
+    return {"since": run[-1][0].isoformat(), "days": len(run), "ratio": round(shares[len(shares) // 2], 3)}
+
+
 @dataclass(kw_only=True)
 class PlaneSun:
     """What was learned for one plane in use, or why nothing."""
@@ -286,6 +321,10 @@ class PlaneSun:
     backtest: dict[str, Any] | None = None
     first: datetime | None = None
     missing: str | None = None
+    # Days the plane delivered far less than expected (leaves, snow, dirt), the latest run
+    soiling: dict[str, Any] | None = None
+    # Compared with the plane's own history (else with the raw forecast)
+    soiling_learned: bool = False
 
     @property
     def plannable(self) -> bool:
@@ -302,6 +341,8 @@ class PlaneSun:
         result: dict[str, Any] = {"key": self.key, "name": self.name, "source": self.source, "plannable": self.plannable}
         if self.missing:
             result["missing"] = self.missing
+        if self.soiling is not None:
+            result["soiling"] = self.soiling | {"learned": self.soiling_learned}
         if self.correction is not None:
             result |= {
                 "correction": self.correction.as_dict(),
@@ -361,7 +402,22 @@ async def learn_planes(
         forecast = await solcast_hours(client, plane.ref, start, now)
         measured = await measured_hours(client, entities, start, now)
         samples = await asyncio.to_thread(samples_from, forecast, measured, latitude, longitude)
+        result.soiling, result.soiling_learned = await asyncio.to_thread(_soiling, samples, now, tz)
+        if result.soiling is not None:
+            # Leaves on the modules now are no shade the plane has in other years
+            since = date.fromisoformat(result.soiling["since"])
+            samples = [s for s in samples if s.start.astimezone(tz).date() < since]
         result.correction = await asyncio.to_thread(fit, samples)
         result.backtest = await asyncio.to_thread(backtest, samples, tz)
         result.first = min(s.start for s in samples) if samples else None
     return planes
+
+
+def _soiling(samples: list[Sample], now: datetime, tz: tzinfo) -> tuple[dict[str, Any] | None, bool]:
+    """The latest soiled run against the plane's history before the recent days, else the raw forecast."""
+    split = now - timedelta(days=SOILING_RECENT_DAYS)
+    older = [s for s in samples if s.start < split]
+    reference = fit(older) if len({s.start.date() for s in older}) >= MIN_DAYS_TO_PLAN else None
+    recent = [s for s in samples if s.start >= split]
+    ratios = daily_ratios(recent, reference, tz)
+    return soiled_run(ratios, SOILING_RATIO if reference is not None else SOILING_RATIO_RAW), reference is not None

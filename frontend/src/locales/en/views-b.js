@@ -77,6 +77,8 @@ export default {
   "Datenbestand nicht verfügbar: {error}": "Data inventory not available: {error}",
   "Datenbestand fürs Lernen": "Data for learning",
   "PV nach Sonnenstand (Test)": "PV by sun position (test)",
+  "Seit {date} nur {pct} % des Erwarteten – Laub, Schnee oder Schmutz? Diese Tage lernt Sunflow nicht mit.": "Only {pct} % of the expected since {date} – leaves, snow or dirt? Sunflow does not learn from these days.",
+  "Seit {date} nur {pct} % der Prognose – Laub, Schnee oder Schmutz? Diese Tage lernt Sunflow nicht mit.": "Only {pct} % of the forecast since {date} – leaves, snow or dirt? Sunflow does not learn from these days.",
   "Lernt …": "Learning …",
   "Lernt aus den vergangenen Solcast-Prognosen und den gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt. Der Backtest lernt ohne die letzten 3 Wochen und prüft auf diesen.": "Learns from Solcast's past forecasts and the measured strings how much of the forecast arrives per sun elevation and direction. The backtest learns without the last 3 weeks and checks on them.",
   "Die Planung nutzt es, wo es aus mindestens 60 Tagen gelernt hat und im Backtest besser ist.": "Planning uses it where it was learned from at least 60 days and is better in the backtest.",

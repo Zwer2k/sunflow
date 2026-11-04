@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.32
+
+- Leaves, snow or dirt on the modules are recognised: when a plane delivers far less than usual at this sun position for at least 4 days in a row (without a history of its own: less than half of the forecast), a recommendation says since when and how much, and the PV by sun position section shows it. These days are left out of learning by sun position.
+
 ## 0.75.31
 
 - PV correction by sun position: planning uses a plane's model only when it was learned from at least 60 days and beats the correction by time of day in the backtest. Before, a plane with only a few days of forecast history (e.g. a new Solcast site) was corrected by sun position as well. Analysis shows per plane whether planning uses it.

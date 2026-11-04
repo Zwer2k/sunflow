@@ -113,6 +113,10 @@ How well do forecasts and decisions match reality?
   and cloudy hours. The shading map shows orange where less arrives (shade), blue where more. The
   backtest learns without the last 3 weeks and compares the deviation per hour on them with the raw
   forecast and the correction by time of day. Runs in shadow mode; planning does not use it yet.
+  If a plane delivers far less than usual at this sun position for several days in a row (without
+  a history of its own: less than half of the forecast), a hint points to leaves, snow or dirt;
+  Sunflow does not learn from these days. "Relearn from today" also drops the history by sun
+  position, so use it after trimming a tree or replacing modules, not after cleaning.
 - **Data for learning**: how far back Home Assistant keeps what Sunflow can learn from: history at
   full resolution (the recorder's retention), long-term statistics, weather with or without cloud
   coverage, and Solcast's past forecasts. Below, per measurement, since when it is there and how

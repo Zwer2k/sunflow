@@ -87,3 +87,42 @@ def test_planning_uses_a_plane_only_when_proven(days: int, by_sun: float, planna
     )
 
     assert plane.plannable is plannable
+
+
+def test_leaves_on_the_modules_are_recognised() -> None:
+    """The last days far below the plane's own history: soiled since the first of them, left out of learning."""
+    from datetime import date
+
+    from sunflow.planning.pv_sun import daily_ratios, fit, soiled_run
+
+    forecast, measured = _history(200)
+    leaves_from = START + timedelta(days=192)
+    measured = {hour: value * (0.3 if hour >= leaves_from else 1.0) for hour, value in measured.items()}
+    samples = samples_from(forecast, measured, LAT, LON)
+    reference = fit([s for s in samples if s.start < START + timedelta(days=170)])
+
+    run = soiled_run(daily_ratios([s for s in samples if s.start >= START + timedelta(days=170)], reference, UTC), 0.7)
+
+    assert run is not None
+    assert run["since"] == leaves_from.date().isoformat()
+    assert run["ratio"] == pytest.approx(0.3, abs=0.05)
+    # Clean days give no hint
+    assert soiled_run(daily_ratios([s for s in samples if s.start < leaves_from], reference, UTC), 0.7) is None
+    assert date.fromisoformat(run["since"]) == leaves_from.date()
+
+
+def test_soiling_recommendation() -> None:
+    """With a history the text compares with it, without it with the forecast."""
+    from sunflow.analysis.recommendations import pv_soiling
+    from sunflow.planning.pv_sun import PlaneSun
+
+    planes = [
+        PlaneSun(key="solcast:c", name="Carport", source="solcast", soiling={"since": "2026-10-26", "days": 9, "ratio": 0.3}),
+        PlaneSun(key="solcast:s", name="Süd-Ost", source="solcast"),
+    ]
+
+    found = pv_soiling(planes)
+
+    assert [r.id for r in found] == ["pv_soiling:solcast:c"]
+    assert "30 %" in found[0].title
+    assert "Prognose" in found[0].title
