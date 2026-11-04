@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.28
+
+- Plausibility of learning sources: much faster with many sensors (e.g. ten optimizers over 100 days), and computed without blocking the App, so the check no longer runs into a timeout on a Raspberry Pi.
+
 ## 0.75.27
 
 - Plausibility of learning sources: optimizers are judged only while the sun is at least 5° above the horizon, so their nights no longer count as outages. Sunflow now computes the sun's position from the location of Home Assistant (groundwork for learning PV by sun position).
