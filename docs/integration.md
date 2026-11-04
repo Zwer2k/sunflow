@@ -10,9 +10,9 @@ Die Integration braucht die Sunflow-App; ohne sie tut sie nichts.
 
 ## Installation
 
-Mit HACS: „HACS → ⋮ → Benutzerdefinierte Repositories“, `https://github.com/Zwer2k/sunflow`
-mit Typ „Integration“ hinzufügen, „Sunflow“ herunterladen und Home Assistant neu starten.
-Updates bietet HACS dann mit jeder neuen Sunflow-Version an.
+Mit HACS: in HACS nach „Sunflow“ suchen, herunterladen und Home Assistant neu starten
+(oder direkt [in HACS öffnen](https://my.home-assistant.io/redirect/hacs_repository/?owner=Zwer2k&repository=sunflow&category=integration)). Updates bietet HACS dann mit jeder neuen
+Sunflow-Version an.
 
 Ohne HACS: den Ordner `custom_components/sunflow_ems` aus dem Repository nach
 `/config/custom_components/` kopieren und Home Assistant neu starten.

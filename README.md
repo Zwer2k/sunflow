@@ -86,9 +86,10 @@ switches, power levels and target currents. Test status per device in
 3. Start it and open the Sunflow panel; set up devices in the wizard
 
 The Home Assistant integration (optional: Energy dashboard forecast, entities, actions)
-is installed with HACS: HACS → ⋮ → Custom repositories → `https://github.com/Zwer2k/sunflow`,
-type "Integration" → download "Sunflow" → restart Home Assistant. It needs the App: on its own it
-does nothing.
+is installed with HACS: search for "Sunflow" in HACS → download → restart Home Assistant. It
+needs the App: on its own it does nothing.
+
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Zwer2k&repository=sunflow&category=integration)
 
 Step-by-step guide: [Installation and setup](docs/en/installation.md).
 

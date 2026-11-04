@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.16
+
+- Sunflow is in the HACS default list: the documentation now installs the integration by searching for "Sunflow" in HACS (with a link that opens it in HACS) instead of adding a custom repository.
+
 ## 0.75.15
 
 - Development: with `SUNFLOW_REQUIRE_TOKEN=1` the backend outside the Supervisor refuses a wrong integration token like the App does, so the integration's reauth can be tried out. The App itself is unchanged.
