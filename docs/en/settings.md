@@ -129,7 +129,7 @@ Assistant.
 | Outdoor humidity | With the temperature: dew and frost on the modules. |
 | Illuminance or irradiance | How bright it really was (lx or W/m²); tells clouds from shading, also retroactively. |
 | Precipitation | Detecting snow on the modules. |
-| Module temperature per roof plane | Warm modules yield less. Without it: estimated from outdoor temperature and irradiance. |
+| Module temperature per roof plane | Warm modules yield less. If the plane has optimizers (assigned through its strings) and nothing is chosen, Sunflow takes the mean of their temperatures; otherwise estimated from outdoor temperature and irradiance. |
 
 ## Display
 

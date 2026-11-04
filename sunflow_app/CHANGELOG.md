@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.26
+
+- Learning sources: a roof plane with module optimizers (found through the plane's strings) takes the mean of their temperatures as module temperature unless a sensor is chosen. Its plausibility is shown as the median over the optimizers.
+
 ## 0.75.25
 
 - Learning sources: the temperatures of module optimizers (e.g. Huawei, which are sub-devices of the inverter) are offered as module temperature; only the inverter's and battery's own temperatures stay out.

@@ -1,5 +1,6 @@
 """Tests for the candidates of the learning sources."""
 
+import pytest
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.devices.discovery import Snapshot
 from sunflow.planning.learning_sources import learning_candidates
@@ -61,3 +62,33 @@ def test_candidates_by_device_class_outdoor_first() -> None:
     assert candidates["irradiance"][0]["state_class"] is None
     assert [c["entity_id"] for c in candidates["humidity"]] == ["sensor.garten_klima_humidity"]
     assert [c["entity_id"] for c in candidates["precipitation"]] == ["sensor.station_regen_stunde"]
+
+
+def test_module_temperature_from_the_optimizers_of_a_plane(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without a chosen sensor a plane takes its optimizers' temperatures; a chosen sensor wins; unused planes are left out."""
+    from types import SimpleNamespace
+
+    from sunflow.config.models import ForecastPlane
+    from sunflow.planning import learning_sources
+
+    found = [
+        SimpleNamespace(string="sofar:1", entities={"power": "sensor.a1_power", "temperature": "sensor.a1_temperature"}),
+        SimpleNamespace(string="sofar:1", entities={"power": "sensor.a2_power", "temperature": "sensor.a2_temperature"}),
+        SimpleNamespace(string="huawei:1", entities={"power": "sensor.jv_power"}),
+    ]
+    monkeypatch.setattr(learning_sources, "optimizers", lambda *_: (found, []))
+    config = SunflowConfig(
+        forecast_planes=[
+            ForecastPlane(source="solcast", ref="so", name="Süd-Ost", device_id="sofar", strings=["sofar:1"]),
+            ForecastPlane(source="solcast", ref="no", name="Nord-Ost", device_id="sofar", strings=["sofar:2"]),
+            ForecastPlane(source="solcast", ref="cp", name="Carport", device_id="huawei", strings=["huawei:1"]),
+            ForecastPlane(source="forecast_solar", ref="x", name="Süd-Ost", strings=["sofar:1"]),
+        ]
+    )
+    config.learning_sources.module_temperature = {"solcast:no": "sensor.station_pv_nord", "forecast_solar:x": "sensor.y"}
+    snapshot = Snapshot(entries=[], devices=[], entities=[], states={}, energy_prefs=None)
+
+    assert learning_sources.module_temperature_sources(config, {}, snapshot) == {
+        "solcast:so": ["sensor.a1_temperature", "sensor.a2_temperature"],
+        "solcast:no": ["sensor.station_pv_nord"],
+    }

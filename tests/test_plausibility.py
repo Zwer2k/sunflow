@@ -111,3 +111,18 @@ def test_quiet_intervals_of_all_series() -> None:
         (START + timedelta(hours=1), START + timedelta(hours=3)),
         (START + timedelta(hours=3), START + timedelta(hours=4)),
     ]
+
+
+def test_several_sensors_are_judged_by_the_median() -> None:
+    """The optimizers of a plane: median share, findings added up."""
+    from sunflow.analysis.plausibility import combined_quality
+
+    judged = [
+        {"hours": 100.0, "offline_hours": 2.0, "valid_share": share, "out_of_range": 0, "spikes": 1, "stuck_hours": 0.0, "gaps": 3, "gap_hours": 30.0}
+        for share in (0.5, 0.6, 0.9)
+    ]
+
+    combined = combined_quality(judged)
+
+    assert combined["valid_share"] == pytest.approx(0.6)
+    assert (combined["spikes"], combined["sensors"]) == (3, 3)
