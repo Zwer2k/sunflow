@@ -200,5 +200,6 @@
   "Gemessen gegen das, was die Fläche sonst bei diesem Sonnenstand und Wetter liefert.": "Measured against what the plane otherwise delivers at this sun position and weather.",
   "Für diese Fläche gibt es noch keine eigene Vergleichsbasis; stimmen Leistung und Ausrichtung in der Prognosequelle, liegt es an der Anlage.": "There is no history of this plane to compare with yet; if capacity and orientation in the forecast source are right, the cause is on the modules.",
   "Laub, Schnee oder Schmutz auf den Modulen? Nach dem Säubern unter Analyse → Lernen bei der Fläche „Neu lernen ab heute“ wählen, damit diese Tage nicht weiter zählen.": "Leaves, snow or dirt on the modules? After cleaning, choose \"Relearn from today\" for the plane under Analysis → Learning, so these days no longer count.",
-  "Laub, Schnee oder Schmutz auf den Modulen? Diese Tage lässt Sunflow beim Lernen aus; nach dem Säubern geht es von selbst weiter.": "Leaves, snow or dirt on the modules? Sunflow leaves these days out of learning; after cleaning it carries on by itself."
+  "Laub, Schnee oder Schmutz auf den Modulen? Diese Tage lässt Sunflow beim Lernen aus; nach dem Säubern geht es von selbst weiter.": "Leaves, snow or dirt on the modules? Sunflow leaves these days out of learning; after cleaning it carries on by itself.",
+  "Bitte die Leistungsmessung wählen": "Please choose the power measurement"
 }

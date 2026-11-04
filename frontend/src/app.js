@@ -143,7 +143,12 @@ const ISSUE_STYLES = {
 const FIXED_PRICE = "__fixed__";
 // Own consumers: profile per way of control
 const MANUAL_PREFIX = "generic/";
-const MANUAL_TYPES = { switch: t("Schalter (ein/aus)"), stepped: t("Leistungsstufen (Auswahl)"), current: t("Stromstärke (Zahl)") };
+const MANUAL_TYPES = {
+  switch: t("Schalter (ein/aus)"),
+  stepped: t("Leistungsstufen (Auswahl)"),
+  current: t("Stromstärke (Zahl)"),
+  meter: t("nicht steuerbar – nur messen"),
+};
 const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
 
 const EMPTY_MANUAL = {
@@ -1558,12 +1563,13 @@ class SunflowApp extends LitElement {
       (this._manual = withSuggestedName({ ...this._manual, [field]: value }, (list ?? []).find((c) => c.entity_id === value)));
     const entity = (list, detail) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: detail(c) }));
     const unitDetail = (c) => `${c.state ?? "–"} ${c.unit ?? ""}`;
-    const control = { switch: form.switch_entity, stepped: form.level_entity, current: form.current_entity }[form.type];
+    const control = { switch: form.switch_entity, stepped: form.level_entity, current: form.current_entity, meter: form.power_entity }[form.type];
+    const measureOnly = form.type === "meter";
     const selected = (candidates?.selects ?? []).find((c) => c.entity_id === form.level_entity);
     return html`
       <section class="device">
         <div class="device-title">${t("Eigene Verbraucher")}</div>
-        <p class="small muted">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant.")}</p>
+        <p class="small muted">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant. Nicht steuerbare Geräte mit eigener Leistungsmessung (Herd, Waschmaschine …) lassen sich zum Lernen „nur messen“.")}</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
               (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
@@ -1578,7 +1584,7 @@ class SunflowApp extends LitElement {
                   <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>${t("Bearbeiten")}</button>
                   <button class="secondary danger" @click=${() => this._removeDevice(d)}>${t("Entfernen")}</button>
                 </span>
-                ${d.kind === "heater" || d.disabled ? nothing : this._renderCharger(d)}</li>`,
+                ${d.kind === "heater" || d.disabled || d.profile === "generic/meter" ? nothing : this._renderCharger(d)}</li>`,
             )}</ul>`
           : nothing}
         ${candidates === null
@@ -1598,13 +1604,15 @@ class SunflowApp extends LitElement {
                     ${Object.entries(MANUAL_TYPES).map(([value, label]) => html`<option value=${value} ?selected=${form.type === value}>${label}</option>`)}
                   </select>
                 </label>
-                <label class="field">
-                  <span class="field-label">${t("Art")}</span>
-                  <select @change=${(e) => set("kind", e.target.value)}>
-                    <option value="load" ?selected=${form.kind === "load"}>${t("Verbraucher (Energie pro Tag)")}</option>
-                    <option value="heater" ?selected=${form.kind === "heater"}>${t("Wärme (Speicher mit Temperatur)")}</option>
-                  </select>
-                </label>
+                ${measureOnly
+                  ? html`<p class="small muted field">${t("Sunflow schaltet das Gerät nie. Es lernt aus der Leistungsmessung, wann und wie viel es läuft (Analyse → Lernen).")}</p>`
+                  : html`<label class="field">
+                      <span class="field-label">${t("Art")}</span>
+                      <select @change=${(e) => set("kind", e.target.value)}>
+                        <option value="load" ?selected=${form.kind === "load"}>${t("Verbraucher (Energie pro Tag)")}</option>
+                        <option value="heater" ?selected=${form.kind === "heater"}>${t("Wärme (Speicher mit Temperatur)")}</option>
+                      </select>
+                    </label>`}
                 ${form.type === "switch" || form.type === "current"
                   ? html`<div class="field">
                       <span class="field-label">${form.type === "current" ? t("Schalter (optional)") : t("Schalter")}</span>
@@ -1630,8 +1638,8 @@ class SunflowApp extends LitElement {
                     </div>`
                   : nothing}
                 <div class="field">
-                  <span class="field-label">${t("Leistungsmessung (optional)")}</span>
-                  <sf-picker label=${t("Leistungsmessung")} empty-label=${t("keine")} placeholder=${t("Name oder Entität suchen …")}
+                  <span class="field-label">${measureOnly ? t("Leistungsmessung") : t("Leistungsmessung (optional)")}</span>
+                  <sf-picker label=${t("Leistungsmessung")} empty-label=${measureOnly ? nothing : t("keine")} placeholder=${t("Name oder Entität suchen …")}
                     .value=${form.power_entity} .options=${entity(candidates.power, unitDetail)}
                     @change=${(e) => setEntity("power_entity", e.detail.value, candidates?.power)}></sf-picker>
                 </div>
@@ -1641,14 +1649,16 @@ class SunflowApp extends LitElement {
                     .value=${form.energy_entity} .options=${entity(candidates.energy, unitDetail)}
                     @change=${(e) => setEntity("energy_entity", e.detail.value, candidates?.energy)}></sf-picker>
                 </div>
-                ${form.type !== "stepped"
+                ${form.type !== "stepped" && !measureOnly
                   ? html`<label class="field">
                       <span class="field-label">${t("Leistung")}</span>
                       <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
                         @input=${(e) => set("max_power", e.target.value)}><span class="muted">W</span></span>
                     </label>`
                   : nothing}
-                ${form.kind === "heater"
+                ${measureOnly
+                  ? nothing
+                  : form.kind === "heater"
                   ? html`
                       <div class="field">
                         <span class="field-label">${t("Temperatur im Speicher")}</span>
@@ -1760,8 +1770,8 @@ class SunflowApp extends LitElement {
       energy_entity: form.energy_entity || null,
       temperature_entity: form.kind === "heater" ? form.temperature_entity || null : null,
       tank_l: form.kind === "heater" ? tank : null,
-      max_power: form.type === "stepped" ? null : power ?? 500,
-      daily_energy_wh: daily === null || form.kind === "heater" ? null : daily * 1000,
+      max_power: form.type === "stepped" || form.type === "meter" ? null : power ?? 500,
+      daily_energy_wh: daily === null || form.kind === "heater" || form.type === "meter" ? null : daily * 1000,
       power_steps: form.type === "stepped" && Object.keys(form.steps).length ? form.steps : null,
     };
     try {

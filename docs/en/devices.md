@@ -103,6 +103,11 @@ loads". Power, meter and temperature are optional.
 | On/off | `generic/switch` | switch (switch, input_boolean) | Shelly, smart plug, e-bike charger | 🧪 |
 | Power levels | `generic/stepped` | select with levels in W/kW | ESPHome heating rod with levels | 🧪 |
 | Target current | `generic/current` | number in A, optional switch | wallbox or heating rod with adjustable current | 🧪 |
+| Only measure | `generic/meter` | none – power measurement (sensor), optional meter | stove, washing machine, dryer, dishwasher | – |
+
+Sunflow never switches "Only measure". From the hourly values of the last 8 weeks it learns how
+much the device uses per day, on how many days it runs and at which hour usually (workdays and
+weekends separately); shown under Analysis → Learning. It does not affect planning yet.
 
 ### Charge battery (e-bike, tool batteries)
 

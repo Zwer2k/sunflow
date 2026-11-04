@@ -20,6 +20,7 @@ from sunflow.analysis.recommendations import build as build_recommendations
 from sunflow.config.store import ConfigStore
 from sunflow.devices.profiles import controls_battery
 from sunflow.ha import HAError
+from sunflow.planning.appliances import learn_usage as learn_appliance_usage
 from sunflow.planning.plan import feed_in_price
 from sunflow.shadow.runner import ShadowRunner
 
@@ -104,6 +105,36 @@ async def get_data_inventory(request: Request, refresh: bool = False, entities: 
         cache = (now, inventory)
         request.app.state.inventory_cache = cache
     return cache[1]
+
+
+APPLIANCES_TTL = timedelta(hours=6)
+
+
+@router.get("/appliances/usage")
+async def get_appliance_usage(request: Request) -> list[dict[str, Any]]:
+    """Consumers that are only measured: what they use and when, learned from the statistics."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    measured = [d for d in config.devices if "appliance" in profiles[d.profile]["capabilities"]]
+    cache = getattr(request.app.state, "appliance_cache", None)
+    now = datetime.now(UTC)
+    key = [(d.id, d.role_overrides["power"].entity_id) for d in measured if "power" in d.role_overrides]
+    if cache is not None and cache[1] == key and now - cache[0] <= APPLIANCES_TTL:
+        return cache[2]
+    tz = await _local_tz(request)
+    result = []
+    for device_id, entity_id in key:
+        try:
+            usage = await learn_appliance_usage(request.app.state.ha, entity_id, tz)
+        except HAError as err:
+            raise HTTPException(status_code=502, detail=str(err)) from err
+        device = config.device(device_id)
+        result.append(
+            {"device_id": device_id, "name": device.name if device else device_id, "entity_id": entity_id}
+            | ({"usage": usage.as_dict()} if usage else {"usage": None})
+        )
+    request.app.state.appliance_cache = (now, key, result)
+    return result
 
 
 RECOMMENDATION_ESTIMATES_TTL = timedelta(hours=1)

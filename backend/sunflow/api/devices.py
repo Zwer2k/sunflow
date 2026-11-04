@@ -191,10 +191,10 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
 
 
 class ManualDevice(BaseModel):
-    """A consumer added by hand: switched (Shelly …), in power steps (select) or by current (number)."""
+    """A consumer added by hand: switched (Shelly …), in power steps (select), by current (number) or only measured."""
 
     name: str
-    type: Literal["switch", "stepped", "current"] = "switch"
+    type: Literal["switch", "stepped", "current", "meter"] = "switch"
     switch_entity: str | None = None
     level_entity: str | None = None
     current_entity: str | None = None
@@ -210,7 +210,12 @@ class ManualDevice(BaseModel):
     power_steps: dict[str, FiniteFloat] | None = None
 
 
-MANUAL_PROFILES = {"switch": "generic/switch", "stepped": "generic/stepped", "current": "generic/current"}
+MANUAL_PROFILES = {
+    "switch": "generic/switch",
+    "stepped": "generic/stepped",
+    "current": "generic/current",
+    "meter": "generic/meter",
+}
 MANUAL_PROFILE = MANUAL_PROFILES["switch"]
 SWITCH_DOMAINS = ("switch.", "input_boolean.")
 SELECT_DOMAINS = ("select.", "input_select.")
@@ -236,6 +241,14 @@ def power_steps_from_options(options: list[str]) -> dict[str, float]:
 
 def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, RoleOverride], dict[str, float], dict[str, float] | None]:
     """Role bindings, parameters and power steps of a consumer added by hand; 422 on missing or wrong entities."""
+    if body.type == "meter":
+        # Not switched: the power measurement is what it is about
+        if not body.power_entity or not body.power_entity.startswith("sensor."):
+            raise HTTPException(status_code=422, detail=t("Bitte die Leistungsmessung wählen"))
+        overrides = {"power": RoleOverride(entity_id=body.power_entity)}
+        if body.energy_entity:
+            overrides["energy"] = RoleOverride(entity_id=body.energy_entity)
+        return overrides, {}, None
     controls = {
         "switch": ("switch", body.switch_entity, SWITCH_DOMAINS, N_("Schalter (switch oder input_boolean)")),
         "stepped": ("level", body.level_entity, SELECT_DOMAINS, N_("Auswahl der Leistungsstufe (select)")),

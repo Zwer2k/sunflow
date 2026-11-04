@@ -1,0 +1,12 @@
+# A consumer that is only measured (stove, washing machine, dryer …), added by hand.
+# Sunflow does not switch it: it learns when and how much the consumer runs.
+profile: generic/meter
+version: 1
+match:
+  integration: manual
+
+capabilities: [appliance]
+
+roles:
+  power: {key: manual_power, unit: W}
+  energy: {key: manual_energy, unit: Wh, optional: true}

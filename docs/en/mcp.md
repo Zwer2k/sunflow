@@ -44,7 +44,8 @@ The port is reachable in the home network without encryption (HTTP). Do not expo
 | `get_energy`, `get_costs`, `get_efficiency` | balances, costs, efficiency |
 | `get_data_inventory` | how far back the HA history and past Solcast forecasts go |
 | `get_learning_sources`, `get_learning_source_quality` | chosen learning sources and how plausible their values are |
-| `get_pv_sun` | PV correction by sun position per plane with backtest (shadow mode) |
+| `get_pv_sun` | PV correction by sun position per plane with backtest |
+| `get_appliances` | consumers that are only measured: energy per day, active days, usual hours |
 | `get_config`, `get_vehicles`, `get_batteries`, `get_site` | configuration |
 | `get_sources`, `get_tariff_series`, `get_forecast_series`, `get_pv_learning` | prices and PV forecast |
 | `get_device_parameters`, `get_device_efficiency`, `get_direct_status` | single devices |
