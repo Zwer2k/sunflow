@@ -140,19 +140,22 @@ def _union(intervals: list[tuple[datetime, datetime]], start: datetime, end: dat
 
 
 def _cut(segments: list[Segment], offline: list[tuple[datetime, datetime]]) -> list[Segment]:
-    """The parts of the segments outside the offline intervals."""
-    for begin, finish in offline:
-        parts = []
-        for segment in segments:
-            if segment.end <= begin or segment.start >= finish:
-                parts.append(segment)
-                continue
-            if segment.start < begin:
-                parts.append(Segment(start=segment.start, end=begin, value=segment.value, reason=segment.reason))
-            if segment.end > finish:
-                parts.append(Segment(start=finish, end=segment.end, value=segment.value, reason=segment.reason))
-        segments = parts
-    return segments
+    """The parts of the segments outside the offline intervals (both sorted, intervals merged)."""
+    parts = []
+    first = 0
+    for segment in segments:
+        while first < len(offline) and offline[first][1] <= segment.start:
+            first += 1
+        begin = segment.start
+        index = first
+        while index < len(offline) and offline[index][0] < segment.end:
+            if offline[index][0] > begin:
+                parts.append(Segment(start=begin, end=offline[index][0], value=segment.value, reason=segment.reason))
+            begin = max(begin, offline[index][1])
+            index += 1
+        if begin < segment.end:
+            parts.append(Segment(start=begin, end=segment.end, value=segment.value, reason=segment.reason))
+    return parts
 
 
 def check(

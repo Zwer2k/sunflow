@@ -166,7 +166,9 @@ async def get_learning_source_quality(request: Request) -> dict[str, Any]:
             kind = kind_of(key.split(":")[0], unit)
             if series := changes[entity_id]:
                 ignore = dark if entity_id in from_optimizers else None
-                judged.append(check(series, kind, min(m for m, _ in series), now, offline, ignore).as_dict())
+                # Thousands of states per sensor: computed off the event loop (slow on a Raspberry Pi)
+                quality = await asyncio.to_thread(check, series, kind, min(m for m, _ in series), now, offline, ignore)
+                judged.append(quality.as_dict())
         result[key] = {
             "entity_ids": entities,
             "kind": kind,
