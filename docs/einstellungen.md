@@ -118,7 +118,8 @@ Jede gewählte Quelle wird auf Plausibilität geprüft (bis zu 100 Tage). Werte 
 physikalisch Möglichen, kurze Ausreißer gegenüber den Nachbarwerten und Werte, die sich
 unplausibel lange nicht ändern (hängender Sensor), lässt das Lernen weg; Ausfälle bis 30 Minuten
 werden überbrückt, längere bleiben Lücken. Zeiten, in denen Home Assistant selbst nicht
-aufgezeichnet hat (erkannt an der Netzleistung), zählen nicht mit. Unter der Auswahl steht der
+aufgezeichnet hat (erkannt an der Netzleistung), zählen nicht mit, bei Optimierern auch nicht die
+Zeit mit der Sonne unter 5° (sie schlafen ohne Licht). Unter der Auswahl steht der
 plausible Anteil; unter 80 % ist er hervorgehoben. In Home Assistant ändert sich nichts.
 
 | Quelle | Wofür |

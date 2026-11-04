@@ -119,7 +119,8 @@ values. Sensors without a `state_class` have no long-term statistics, only the r
 Each chosen source is checked for plausibility (up to 100 days). Learning leaves out values outside
 the physically possible range, short spikes away from the neighbouring values and values that stay
 the same implausibly long (a hanging sensor); outages up to 30 minutes are bridged, longer ones stay
-gaps. Times Home Assistant itself did not record (recognised by the grid power) do not count. The
+gaps. Times Home Assistant itself did not record (recognised by the grid power) do not count, nor, for
+optimizers, the time with the sun below 5° (they sleep without light). The
 plausible share is shown below the choice and highlighted below 80 %. Nothing changes in Home
 Assistant.
 

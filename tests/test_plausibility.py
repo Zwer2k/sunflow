@@ -126,3 +126,15 @@ def test_several_sensors_are_judged_by_the_median() -> None:
 
     assert combined["valid_share"] == pytest.approx(0.6)
     assert (combined["spikes"], combined["sensors"]) == (3, 3)
+
+
+def test_ignored_hours_are_not_judged() -> None:
+    """An optimizer is unavailable at night: no outage, the night does not count."""
+    night = (START + timedelta(hours=16), END)
+    changes = _every(10, _temperatures()[:96]) + [(START + timedelta(hours=16), None)]
+
+    quality = check(changes, "module_temperature", START, END, ignore=[night])
+
+    assert quality.gaps == 0
+    assert quality.hours == pytest.approx(16.0)
+    assert quality.share == pytest.approx(1.0)

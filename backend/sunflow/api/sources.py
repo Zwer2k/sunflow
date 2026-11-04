@@ -41,6 +41,7 @@ from sunflow.planning.sources import (
     solcast_sites,
     sum_forecasts,
 )
+from sunflow.planning.sun import nights
 from sunflow.shadow.runner import ShadowRunner
 
 from .common import FORECAST_HOURS, _library, _local_tz, _replan, _slot_start, _snapshot
@@ -114,6 +115,8 @@ async def get_learning_sources(request: Request) -> dict[str, Any]:
 
 
 QUALITY_DAYS = 100
+# Below this the optimizers often have too little light to run
+OPTIMIZER_MIN_ELEVATION = 5.0
 QUALITY_TTL = timedelta(hours=1)
 
 
@@ -134,6 +137,7 @@ async def get_learning_source_quality(request: Request) -> dict[str, Any]:
         f"module_temperature:{plane}": entities
         for plane, entities in module_temperature_sources(config, _library(request).profiles, snapshot).items()
     }
+    optimizer_sources = plane_optimizer_temperatures(config, _library(request).profiles, snapshot)
     now = datetime.now(UTC)
     cache = getattr(request.app.state, "quality_cache", None)
     if cache is not None and cache[1] == chosen and now - cache[0] <= QUALITY_TTL:
@@ -150,6 +154,10 @@ async def get_learning_source_quality(request: Request) -> dict[str, Any]:
         offline = await recorder_offline(client, reference, quiet) if reference else []
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
+    # Optimizers sleep without sun: their nights are no outages
+    ha_config = await client.command("get_config")
+    dark = nights(first, now, ha_config["latitude"], ha_config["longitude"], OPTIMIZER_MIN_ELEVATION)
+    from_optimizers = {e for entities in optimizer_sources.values() for e in entities}
     result = {}
     for key, entities in chosen.items():
         judged = []
@@ -157,7 +165,8 @@ async def get_learning_source_quality(request: Request) -> dict[str, Any]:
             unit = snapshot.states.get(entity_id, {}).get("attributes", {}).get("unit_of_measurement")
             kind = kind_of(key.split(":")[0], unit)
             if series := changes[entity_id]:
-                judged.append(check(series, kind, min(m for m, _ in series), now, offline).as_dict())
+                ignore = dark if entity_id in from_optimizers else None
+                judged.append(check(series, kind, min(m for m, _ in series), now, offline, ignore).as_dict())
         result[key] = {
             "entity_ids": entities,
             "kind": kind,

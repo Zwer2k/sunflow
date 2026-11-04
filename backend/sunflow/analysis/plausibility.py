@@ -128,6 +128,17 @@ def _spikes(values: list[tuple[datetime, float]], kind: str) -> set[int]:
     return found
 
 
+def _union(intervals: list[tuple[datetime, datetime]], start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    """Overlapping intervals merged, clipped to start and end."""
+    merged: list[tuple[datetime, datetime]] = []
+    for begin, finish in sorted((max(b, start), min(f, end)) for b, f in intervals if f > start and b < end):
+        if merged and begin <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], finish))
+        else:
+            merged.append((begin, finish))
+    return merged
+
+
 def _cut(segments: list[Segment], offline: list[tuple[datetime, datetime]]) -> list[Segment]:
     """The parts of the segments outside the offline intervals."""
     for begin, finish in offline:
@@ -150,17 +161,21 @@ def check(
     start: datetime,
     end: datetime,
     offline: list[tuple[datetime, datetime]] | None = None,
+    ignore: list[tuple[datetime, datetime]] | None = None,
 ) -> Quality:
     """Plausible segments of recorded changes (value None: unavailable) between start and end.
 
-    offline: intervals Home Assistant did not record; they are left out of the judgement.
+    offline: intervals Home Assistant did not record; ignore: intervals the sensor is not
+    expected to measure (e.g. optimizers at night). Both are left out of the judgement.
     """
-    offline = sorted((max(b, start), min(f, end)) for b, f in offline or [] if f > start and b < end)
+    offline = _union(offline or [], start, end)
+    left_out = _union([*offline, *(ignore or [])], start, end)
     quality = Quality(
         hours=(end - start) / timedelta(hours=1),
         offline_hours=sum((f - b) / timedelta(hours=1) for b, f in offline),
     )
-    quality.hours -= quality.offline_hours
+    quality.hours -= sum((f - b) / timedelta(hours=1) for b, f in left_out)
+    offline = left_out
     changes = sorted((max(m, start), v) for m, v in changes if m < end)
     known = [(m, v) for m, v in changes if v is not None]
     low, high = RANGES[kind]
