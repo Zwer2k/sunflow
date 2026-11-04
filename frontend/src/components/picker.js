@@ -2,6 +2,9 @@ import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { t } from "../lib/i18n.js";
 
 const MAX_RESULTS = 50;
+const LIST_HEIGHT = 280;
+// Keeps the list clear of the screen edge and the tab bar at the bottom on phones
+const EDGE = 80;
 
 /**
  * Searchable single choice (combobox) for long lists such as entities.
@@ -24,6 +27,8 @@ class SunflowPicker extends LitElement {
     _open: { state: true },
     _query: { state: true },
     _active: { state: true },
+    _up: { state: true },
+    _height: { state: true },
   };
 
   constructor() {
@@ -59,9 +64,20 @@ class SunflowPicker extends LitElement {
   }
 
   _openList() {
+    this._place();
     this._open = true;
     this._query = "";
     this._active = 0;
+  }
+
+  /** Open upwards when there is not enough room below, and no higher than the room there is. */
+  _place() {
+    const box = this.getBoundingClientRect();
+    const viewport = window.visualViewport?.height ?? window.innerHeight;
+    const below = viewport - box.bottom - EDGE;
+    const above = box.top - EDGE / 2;
+    this._up = below < LIST_HEIGHT && above > below;
+    this._height = Math.max(120, Math.min(LIST_HEIGHT, this._up ? above : below));
   }
 
   _choose(option) {
@@ -139,7 +155,8 @@ class SunflowPicker extends LitElement {
       </div>
       ${this._open
         ? html`
-            <ul class="list" role="listbox" id=${this._listId} aria-label=${this.label}>
+            <ul class="list ${this._up && !this.inline ? "up" : ""}" role="listbox" id=${this._listId} aria-label=${this.label}
+              style=${this.inline ? "" : `max-height: ${this._height}px`}>
               ${matches.length
                 ? matches.map(
                     (o, i) => html`
@@ -186,6 +203,7 @@ class SunflowPicker extends LitElement {
       max-height: 280px; overflow-y: auto; background: var(--sf-surface); border: 1px solid var(--sf-border-strong);
       border-radius: 8px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
     }
+    .list.up { top: auto; bottom: calc(100% + 4px); }
     li { padding: 8px 10px; border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
     li.active { background: var(--sf-primary-bg); }
     li[aria-selected="true"] .label { font-weight: 600; }

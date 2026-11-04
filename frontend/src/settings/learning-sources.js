@@ -129,7 +129,9 @@ class SunflowLearningSources extends LitElement {
       .options=${candidates.map((c) => ({
         value: c.entity_id,
         label: c.name,
-        detail: c.state && !Number.isNaN(Number(c.state)) ? `${c.state} ${c.unit ?? ""}`.trim() : null,
+        detail: c.state && !Number.isNaN(Number(c.state))
+          ? `${Number(c.state).toLocaleString(locale(), { maximumFractionDigits: 2 })} ${c.unit ?? ""}`.trim()
+          : null,
       }))}
       @change=${(e) => onChange(e.detail.value || null)}></sf-picker>`;
   }
