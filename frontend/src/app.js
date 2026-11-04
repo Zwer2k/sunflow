@@ -763,10 +763,9 @@ class SunflowApp extends LitElement {
           return html`
             <div class="field wide">
               <span class="field-label">${m.label}</span>
-              <select aria-label=${m.label} @change=${(e) => this._setMeasurement(quantity, e.target.value)}>
-                <option value="" ?selected=${!m.selected}>${auto}</option>
-                ${m.options.map((o) => html`<option value=${o.id} ?selected=${m.selected === o.id}>${o.name}</option>`)}
-              </select>
+              <sf-picker label=${m.label} hide-values empty-label=${auto} .value=${m.selected ?? ""}
+                .options=${m.options.map((o) => ({ value: o.id, label: o.name }))}
+                @change=${(e) => this._setMeasurement(quantity, e.detail.value)}></sf-picker>
             </div>
           `;
         })}
@@ -1394,11 +1393,9 @@ class SunflowApp extends LitElement {
         <div class="fields">
           <label class="field">
             <span class="field-label">${t("Gerät")}</span>
-            <select @change=${(e) => set("profile", e.target.value)}>
-              <option value="" ?selected=${!form.profile}>${t("bitte wählen …")}</option>
-              ${profiles.map((p) => html`<option value=${p.profile} ?selected=${form.profile === p.profile}>
-                ${[p.manufacturer, p.model].filter(Boolean).join(" ") || p.profile}</option>`)}
-            </select>
+            <sf-picker label=${t("Gerät")} hide-values empty-label=${t("bitte wählen …")} .value=${form.profile ?? ""}
+              .options=${profiles.map((p) => ({ value: p.profile, label: [p.manufacturer, p.model].filter(Boolean).join(" ") || p.profile }))}
+              @change=${(e) => set("profile", e.detail.value)}></sf-picker>
           </label>
           <label class="field">
             <span class="field-label">${t("Name")}</span>
@@ -2501,14 +2498,10 @@ class SunflowApp extends LitElement {
                 (d) => html`
                   <div class="field wide">
                     <span class="field-label">${t("{name} wird zusätzlich gemessen von", { name: d.name })}</span>
-                    <select aria-label=${t("{name} wird zusätzlich gemessen von", { name: d.name })} @change=${(e) => this._setMeasuredBy(d, e.target.value)}>
-                      <option value="" ?selected=${!d.measured_by}>${t("niemandem (eigene Einspeisung)")}</option>
-                      ${measuring.map(
-                        (m) => html`<option value=${m.id} ?selected=${d.measured_by?.device_id === m.id}>
-                          ${t("{name} als „PV extern“", { name: m.name })}
-                        </option>`,
-                      )}
-                    </select>
+                    <sf-picker label=${t("{name} wird zusätzlich gemessen von", { name: d.name })} hide-values
+                      empty-label=${t("niemandem (eigene Einspeisung)")} .value=${d.measured_by?.device_id ?? ""}
+                      .options=${measuring.map((m) => ({ value: m.id, label: t("{name} als „PV extern“", { name: m.name }) }))}
+                      @change=${(e) => this._setMeasuredBy(d, e.detail.value)}></sf-picker>
                   </div>
                 `,
               )}
@@ -2586,16 +2579,16 @@ class SunflowApp extends LitElement {
         ${html`
               <div class="field wide">
                 <span class="field-label">${t("Quelle")}</span>
-                <select aria-label=${t("Quelle Bezugspreis")} @change=${(e) => this._setTariff(e.target.value)}>
-                  <option value="" ?selected=${!selected}>${t("– keine (nur Eigenverbrauch) –")}</option>
-                  <option value=${FIXED_PRICE} ?selected=${selected === FIXED_PRICE}>${t("Fester Preis …")}</option>
-                  ${sources.prices.map(
-                    (p) => html`<option value=${p.entity_id} ?selected=${selected === p.entity_id}>
-                      ${p.name} · ${PRICE_ADAPTERS[p.adapter] ?? p.adapter}
-                      ${p.current !== null ? ` · ${formatCt(p.current)}` : ""}
-                    </option>`,
-                  )}
-                </select>
+                <sf-picker label=${t("Quelle Bezugspreis")} empty-label=${t("– keine (nur Eigenverbrauch) –")} .value=${selected ?? ""}
+                  .options=${[
+                    { value: FIXED_PRICE, label: t("Fester Preis …"), hideValue: true },
+                    ...sources.prices.map((p) => ({
+                      value: p.entity_id,
+                      label: p.name,
+                      detail: [PRICE_ADAPTERS[p.adapter] ?? p.adapter, p.current !== null ? formatCt(p.current) : null].filter(Boolean).join(" · "),
+                    })),
+                  ]}
+                  @change=${(e) => this._setTariff(e.detail.value)}></sf-picker>
               </div>
             `}
         ${fixed
@@ -2720,12 +2713,9 @@ class SunflowApp extends LitElement {
                         <input aria-label=${t("Name der Fläche")} placeholder=${plane.detected_name} .value=${plane.custom_name ?? ""}
                           @change=${(e) => this._renamePlane(plane, e.target.value)}>
                       </span>
-                      <select aria-label=${t("Anlage für {name}", { name: plane.name })} @change=${(e) => this._assignPlane(plane, e.target.value)}>
-                        <option value="" ?selected=${!plane.device_id}>${t("nicht verwenden")}</option>
-                        ${plants.map(
-                          (p) => html`<option value=${p.id} ?selected=${plane.device_id === p.id}>${p.name}</option>`,
-                        )}
-                      </select>
+                      <sf-picker label=${t("Anlage für {name}", { name: plane.name })} hide-values empty-label=${t("nicht verwenden")}
+                        .value=${plane.device_id ?? ""} .options=${plants.map((p) => ({ value: p.id, label: p.name }))}
+                        @change=${(e) => this._assignPlane(plane, e.detail.value)}></sf-picker>
                       ${this._renderPlaneStrings(plane, sources.pv_strings ?? [])}
                     </div>
                   `,

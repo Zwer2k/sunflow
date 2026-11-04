@@ -6,8 +6,9 @@ const MAX_RESULTS = 50;
 /**
  * Searchable single choice (combobox) for long lists such as entities.
  *
- * options: [{value, label, detail?}]; fires "change" with detail {value}.
+ * options: [{value, label, detail?, hideValue?}]; fires "change" with detail {value}.
  * An empty value is allowed when emptyLabel is set (e.g. "keine").
+ * hideValues: the values are internal ids (devices), not shown below the label.
  */
 class SunflowPicker extends LitElement {
   static properties = {
@@ -16,6 +17,8 @@ class SunflowPicker extends LitElement {
     label: {},
     placeholder: {},
     emptyLabel: { attribute: "empty-label" },
+    hideValues: { type: Boolean, attribute: "hide-values" },
+    disabled: { type: Boolean },
     // Inside scrolling containers (tables) the list takes space instead of floating
     inline: { type: Boolean, reflect: true },
     _open: { state: true },
@@ -31,6 +34,8 @@ class SunflowPicker extends LitElement {
     this.placeholder = t("Suchen …");
     this.emptyLabel = null;
     this.inline = false;
+    this.hideValues = false;
+    this.disabled = false;
     this._open = false;
     this._query = "";
     this._active = 0;
@@ -99,6 +104,12 @@ class SunflowPicker extends LitElement {
     }
   }
 
+  _detail(option) {
+    const value = option.value && option.value !== option.label && !this.hideValues && !option.hideValue ? option.value : null;
+    const text = [value, option.detail].filter(Boolean).join(" · ");
+    return text ? html`<span class="detail ${value ? "" : "plain"}">${text}</span>` : nothing;
+  }
+
   render() {
     const matches = this._open ? this._matches : [];
     const total = this._open ? (this.emptyLabel !== null ? 1 : 0) + this.options.length : 0;
@@ -111,6 +122,7 @@ class SunflowPicker extends LitElement {
           aria-controls=${this._listId}
           aria-activedescendant=${this._open && matches.length ? `${this._listId}-${this._active}` : ""}
           aria-autocomplete="list"
+          ?disabled=${this.disabled}
           placeholder=${this._open ? this.placeholder : ""}
           .value=${this._open ? this._query : this._selected}
           @focus=${() => this._openList()}
@@ -144,7 +156,7 @@ class SunflowPicker extends LitElement {
                         @mousemove=${() => (this._active = i)}
                       >
                         <span class="label">${o.label}</span>
-                        ${o.value && o.value !== o.label ? html`<span class="detail">${o.value}${o.detail ? ` · ${o.detail}` : ""}</span>` : nothing}
+                        ${this._detail(o)}
                       </li>
                     `,
                   )
@@ -179,6 +191,8 @@ class SunflowPicker extends LitElement {
     li[aria-selected="true"] .label { font-weight: 600; }
     .label { font-size: 14px; color: var(--sf-text); }
     .detail { font-size: 12px; color: var(--sf-muted); font-family: ui-monospace, monospace; word-break: break-all; }
+    .detail.plain { font-family: inherit; }
+    input:disabled { opacity: .6; cursor: not-allowed; }
     .empty { color: var(--sf-muted); cursor: default; font-size: 13px; }
   `;
 }

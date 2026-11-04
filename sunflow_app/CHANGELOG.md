@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.22
+
+- All choices from lists that come from Home Assistant or the configuration (entities, devices, plants, roof planes, vehicles, price source, weather, learning sources, optimizer strings, device filter of the control log) can now be filtered by typing. Short fixed choices such as language or strategy stay plain dropdowns.
+
 ## 0.75.21
 
 - Optimizers: the roof view can also show each module's yield: today and total with Tigo RS485 from version 1.1.0, total with Huawei.

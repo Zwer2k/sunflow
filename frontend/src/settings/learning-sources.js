@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import "../components/picker.js";
 import { api } from "../lib/api.js";
 import { locale, t } from "../lib/i18n.js";
 
@@ -94,11 +95,13 @@ class SunflowLearningSources extends LitElement {
   }
 
   _select(label, candidates, value, onChange) {
-    return html`<select aria-label=${label} ?disabled=${this._saving} @change=${(e) => onChange(e.target.value || null)}>
-      <option value="" ?selected=${!value}>${t("Keiner")}</option>
-      ${candidates.map((c) => html`<option value=${c.entity_id} ?selected=${value === c.entity_id}>
-        ${c.name}${c.state && !Number.isNaN(Number(c.state)) ? ` · ${c.state} ${c.unit ?? ""}` : ""}</option>`)}
-    </select>`;
+    return html`<sf-picker label=${label} ?disabled=${this._saving} empty-label=${t("Keiner")} .value=${value ?? ""}
+      .options=${candidates.map((c) => ({
+        value: c.entity_id,
+        label: c.name,
+        detail: c.state && !Number.isNaN(Number(c.state)) ? `${c.state} ${c.unit ?? ""}`.trim() : null,
+      }))}
+      @change=${(e) => onChange(e.detail.value || null)}></sf-picker>`;
   }
 
   render() {
