@@ -3,6 +3,7 @@ import { api } from "./lib/api.js";
 import { confirmDialog } from "./components/dialog.js";
 import { poll } from "./lib/poll.js";
 import "./components/picker.js";
+import { withSuggestedName } from "./lib/names.js";
 import "./views/live-view.js";
 import "./views/plan-view.js";
 import "./views/control-view.js";
@@ -1552,6 +1553,9 @@ class SunflowApp extends LitElement {
     const form = this._manual;
     const set = (field, value) => (this._manual = { ...this._manual, [field]: value });
     const candidates = this._candidates;
+    // An entity chosen for the consumer suggests its name
+    const setEntity = (field, value, list) =>
+      (this._manual = withSuggestedName({ ...this._manual, [field]: value }, (list ?? []).find((c) => c.entity_id === value)));
     const entity = (list, detail) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: detail(c) }));
     const unitDetail = (c) => `${c.state ?? "–"} ${c.unit ?? ""}`;
     const control = { switch: form.switch_entity, stepped: form.level_entity, current: form.current_entity }[form.type];
@@ -1606,7 +1610,7 @@ class SunflowApp extends LitElement {
                       <span class="field-label">${form.type === "current" ? t("Schalter (optional)") : t("Schalter")}</span>
                       <sf-picker label=${t("Schalter")} empty-label=${form.type === "current" ? t("keiner") : nothing} placeholder=${t("Name oder Entität suchen …")}
                         .value=${form.switch_entity} .options=${entity(candidates.switches, (c) => c.state)}
-                        @change=${(e) => set("switch_entity", e.detail.value)}></sf-picker>
+                        @change=${(e) => setEntity("switch_entity", e.detail.value, candidates?.switches)}></sf-picker>
                     </div>`
                   : nothing}
                 ${form.type === "stepped"
@@ -1622,20 +1626,20 @@ class SunflowApp extends LitElement {
                       <span class="field-label">${t("Ziel-Stromstärke (Zahl)")}</span>
                       <sf-picker label=${t("Stromstärke")} placeholder=${t("number-Entität in A …")}
                         .value=${form.current_entity} .options=${entity(candidates.numbers, unitDetail)}
-                        @change=${(e) => set("current_entity", e.detail.value)}></sf-picker>
+                        @change=${(e) => setEntity("current_entity", e.detail.value, candidates?.numbers)}></sf-picker>
                     </div>`
                   : nothing}
                 <div class="field">
                   <span class="field-label">${t("Leistungsmessung (optional)")}</span>
                   <sf-picker label=${t("Leistungsmessung")} empty-label=${t("keine")} placeholder=${t("Name oder Entität suchen …")}
                     .value=${form.power_entity} .options=${entity(candidates.power, unitDetail)}
-                    @change=${(e) => set("power_entity", e.detail.value)}></sf-picker>
+                    @change=${(e) => setEntity("power_entity", e.detail.value, candidates?.power)}></sf-picker>
                 </div>
                 <div class="field">
                   <span class="field-label">${t("Verbrauchsmessung (optional)")}</span>
                   <sf-picker label=${t("Verbrauchsmessung")} empty-label=${t("keine")} placeholder=${t("Energiezähler (kWh) …")}
                     .value=${form.energy_entity} .options=${entity(candidates.energy, unitDetail)}
-                    @change=${(e) => set("energy_entity", e.detail.value)}></sf-picker>
+                    @change=${(e) => setEntity("energy_entity", e.detail.value, candidates?.energy)}></sf-picker>
                 </div>
                 ${form.type !== "stepped"
                   ? html`<label class="field">
@@ -1696,7 +1700,8 @@ class SunflowApp extends LitElement {
       if (["off", "aus", "0", "none", "stop"].includes(option.trim().toLowerCase())) steps[option] = 0;
       else if (match) steps[option] = Number(match[1].replace(",", ".")) * (match[2].toLowerCase() === "kw" ? 1000 : 1);
     }
-    this._manual = { ...this._manual, level_entity: entityId, steps };
+    const chosen = (this._candidates?.selects ?? []).find((c) => c.entity_id === entityId);
+    this._manual = withSuggestedName({ ...this._manual, level_entity: entityId, steps }, chosen);
   }
 
   async _loadCandidates() {

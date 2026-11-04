@@ -108,6 +108,12 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
 - **Lernen**: wie gut die PV-Prognose ankommt (gesamt, je Bewölkung, je Stunde, je Fläche) und
   wie weit das Modell für den Hausverbrauch ist. Je Dachfläche setzt „Neu lernen ab heute“ das
   Lernen zurück, z. B. nach einem Baumschnitt.
+- **PV nach Sonnenstand (Test)**: lernt je Dachfläche aus den vergangenen Solcast-Prognosen und den
+  gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt, getrennt nach klar
+  und bewölkt. Die Verschattungskarte zeigt orange, wo weniger ankommt (Schatten), blau, wo mehr.
+  Der Backtest lernt ohne die letzten 3 Wochen und vergleicht auf diesen die Abweichung je Stunde
+  mit der Rohprognose und mit der Korrektur nach Uhrzeit. Läuft im Schattenbetrieb; die Planung
+  nutzt es noch nicht.
 - **Datenbestand fürs Lernen**: wie weit Home Assistant zurück aufhebt, woraus Sunflow lernen
   kann: Verlauf in voller Auflösung (Aufbewahrung des Recorders), Langzeitstatistik, Wetter mit
   oder ohne Bewölkung und die vergangenen Solcast-Prognosen. Darunter je Messwert, seit wann er
