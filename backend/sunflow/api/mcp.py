@@ -92,6 +92,11 @@ TOOLS = [
     ),
     Tool(name="get_costs", area="history", description="Kosten und Ersparnis je Tag.", path="/costs/history", params={"days": DAYS}),
     Tool(name="get_efficiency", area="history", description="Wirkungsgrad-Verlauf je Tag.", path="/efficiency/history", params={"days": DAYS}),
+    Tool(
+        name="get_data_inventory", area="history",
+        description="Wie weit die HA-Historie zurückreicht: Zustände, Langzeitstatistik, Wetterattribute, vergangene Solcast-Prognosen.",
+        path="/data-inventory",
+    ),
     Tool(name="get_recommendations", area="live", description="Empfehlungen von Sunflow.", path="/recommendations"),
     Tool(name="get_config", area="config", description="Konfiguration: Geräte, Tarif, Prognose, Fahrzeuge, Steuerung.", path="/config"),
     Tool(name="get_sources", area="live", description="Preis- und Prognosequellen mit ihrem Zustand.", path="/sources"),

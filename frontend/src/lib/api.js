@@ -149,6 +149,7 @@ export const api = {
   restoreAfterTest: () => request("POST", "/device-test/restore?confirm=true"),
   efficiencyHistory: (days) => request("GET", `/efficiency/history?days=${days}`),
   pvLearning: () => request("GET", "/pv-learning"),
+  dataInventory: (refresh = false) => request("GET", `/data-inventory${refresh ? "?refresh=true" : ""}`),
   restartPlaneLearning: (key) => request("POST", `/pv-learning/planes/${encodeURIComponent(key)}/restart`),
   weatherEntities: () => request("GET", "/weather/entities"),
   energy: (period) => request("GET", `/energy?period=${encodeURIComponent(period)}`),

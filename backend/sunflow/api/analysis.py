@@ -14,6 +14,7 @@ from sunflow.analysis.energy import (
     energy_balance,
     energy_sources,
 )
+from sunflow.analysis.inventory import data_inventory
 from sunflow.analysis.recommendations import build as build_recommendations
 from sunflow.config.store import ConfigStore
 from sunflow.devices.profiles import controls_battery
@@ -64,6 +65,27 @@ async def get_efficiency_history(
         days,
         await _local_tz(request),
     )
+
+
+INVENTORY_TTL = timedelta(hours=1)
+
+
+@router.get("/data-inventory")
+async def get_data_inventory(request: Request, refresh: bool = False) -> dict[str, Any]:
+    """How far back Home Assistant keeps the measurements, the weather and the PV forecasts."""
+    cache = getattr(request.app.state, "inventory_cache", None)
+    now = datetime.now(UTC)
+    if refresh or cache is None or now - cache[0] > INVENTORY_TTL:
+        config = request.app.state.store.load()
+        try:
+            inventory = await data_inventory(
+                request.app.state.ha, config, _library(request).profiles, await _snapshot(request), await _local_tz(request)
+            )
+        except HAError as err:
+            raise HTTPException(status_code=502, detail=str(err)) from err
+        cache = (now, inventory)
+        request.app.state.inventory_cache = cache
+    return cache[1]
 
 
 RECOMMENDATION_ESTIMATES_TTL = timedelta(hours=1)

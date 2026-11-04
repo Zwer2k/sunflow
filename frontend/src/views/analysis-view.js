@@ -29,6 +29,8 @@ class SunflowAnalysis extends LitElement {
     _efficiency: { state: true },
     _efficiencyDays: { state: true },
     _pvLearning: { state: true },
+    _inventory: { state: true },
+    _inventoryError: { state: true },
     _recommendations: { state: true },
     _costs: { state: true },
     _costDays: { state: true },
@@ -48,6 +50,8 @@ class SunflowAnalysis extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    // Cached for an hour in the backend; not part of the polling
+    this._loadInventory();
     this._load();
     this._stopPolling = poll(() => this._load(), REFRESH_MS);
   }
@@ -251,6 +255,7 @@ class SunflowAnalysis extends LitElement {
       ${this._renderCosts()}
       ${this._renderEfficiency()}
       ${this._renderPvLearning()}
+      ${this._renderInventory()}
       ${this._shadow === null && !this._error ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
       ${this._renderShadow()}
     `;
@@ -372,6 +377,71 @@ class SunflowAnalysis extends LitElement {
             </p>`
           : html`<p class="small muted">${t("Sammelt Daten: Das Modell startet nach 14 Tagen mit Temperatur und Verbraucherleistung im Schattenbetrieb.")}
               ${t("Bis dahin plant Sunflow mit den Stundenmitteln der Historie.")}</p>`}
+      </section>
+    `;
+  }
+
+  async _loadInventory(refresh = false) {
+    try {
+      this._inventory = await api.dataInventory(refresh);
+      this._inventoryError = null;
+    } catch (err) {
+      this._inventoryError = t("Datenbestand nicht verfügbar: {error}", { error: err.message });
+    }
+  }
+
+  _renderInventory() {
+    const inv = this._inventory;
+    if (!inv && !this._inventoryError) return nothing;
+    const days = (d) => (d === null || d === undefined ? "–" : t("{days} Tage", { days: d }));
+    const since = (iso) => (iso ? new Date(iso).toLocaleDateString(locale(), { month: "short", year: "numeric" }) : "–");
+    const statistics = inv?.entities.map((e) => e.statistics_since).filter(Boolean).sort()[0];
+    const weather = inv?.weather;
+    const solcast = inv?.forecasts.filter((f) => f.source === "solcast") ?? [];
+    return html`
+      <section>
+        <div class="section-head">
+          <h2>${t("Datenbestand fürs Lernen")}</h2>
+          <button class="secondary" @click=${() => this._loadInventory(true)}>${t("Neu prüfen")}</button>
+        </div>
+        <p class="small muted">${t("Wie weit Home Assistant zurück Messwerte, Wetter und Prognosen aufhebt. Daraus kann Sunflow rückwirkend lernen, statt erst Wochen zu sammeln.")}</p>
+        ${this._inventoryError ? html`<div class="alert error" role="alert">${this._inventoryError}</div>` : nothing}
+        ${inv
+          ? html`
+              <div class="tiles">
+                <div class="tile now"><div class="small muted">${t("Verlauf in voller Auflösung")}</div><div class="value">${days(inv.states_days)}</div>
+                  <div class="small muted">${t("Aufbewahrung des Recorders")}</div></div>
+                <div class="tile"><div class="small muted">${t("Langzeitstatistik (Stundenwerte)")}</div><div class="value">${since(statistics)}</div>
+                  <div class="small muted">${t("ältester Monat")}</div></div>
+                ${weather
+                  ? html`<div class="tile"><div class="small muted">${t("Wetter")}</div><div class="value">${days(weather.states_days)}</div>
+                      <div class="small muted">${weather.attributes.includes("cloud_coverage")
+                        ? t("mit Bewölkung")
+                        : t("ohne Bewölkung aufgezeichnet")}</div></div>`
+                  : nothing}
+                ${solcast.map((f) => html`<div class="tile"><div class="small muted">${t("Solcast-Prognose {name}", { name: f.name })}</div>
+                  <div class="value">${f.error ? "–" : days(f.days)}</div>
+                  <div class="small muted" title=${f.error ?? ""}>${f.error ? t("Abfrage fehlgeschlagen") : t("vergangene Prognosen")}</div></div>`)}
+              </div>
+              <details>
+                <summary class="small">${t("Je Messwert ({count})", { count: inv.entities.length })}</summary>
+                <div class="table-wrap">
+                  <table>
+                    <thead><tr><th>${t("Gerät")}</th><th>${t("Messwert")}</th><th>${t("Verlauf")}</th>
+                      <th title=${t("Aufgezeichnete Änderungen in der letzten Stunde")}>${t("Änderungen/h")}</th><th>${t("Statistik seit")}</th></tr></thead>
+                    <tbody>
+                      ${inv.entities.map((e) => html`<tr>
+                        <td>${e.device}</td>
+                        <td><code title=${e.entity_id}>${e.role}</code></td>
+                        <td>${days(e.states_days)}</td>
+                        <td>${Math.round(e.changes_per_hour)}</td>
+                        <td>${since(e.statistics_since)}</td>
+                      </tr>`)}
+                    </tbody>
+                  </table>
+                </div>
+              </details>`
+          : nothing}
       </section>
     `;
   }
@@ -647,6 +717,7 @@ class SunflowAnalysis extends LitElement {
     .line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--sf-text); }
     .line.dashed { border-top-style: dashed; }
     .chart .now { stroke: var(--sf-text); stroke-width: 1; stroke-dasharray: 2 3; }
+    details summary { cursor: pointer; margin-top: 12px; min-height: 32px; }
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; margin-top: 10px; }
     table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13px; }
     th { text-align: left; font-weight: 600; background: var(--sf-subtle); padding: 8px 10px; }

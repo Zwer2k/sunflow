@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.17
+
+- Analysis: new section "Data for learning". It shows how far back Home Assistant keeps the measurements (recorder history and long-term statistics per entity), whether the weather history includes cloud coverage, and how many days of past forecasts Solcast keeps. This is the groundwork for learning from the past instead of collecting for weeks. Also available to the MCP server as `get_data_inventory`.
+
 ## 0.75.16
 
 - Sunflow is in the HACS default list: the documentation now installs the integration by searching for "Sunflow" in HACS (with a link that opens it in HACS) instead of adding a custom repository.
