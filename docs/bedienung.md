@@ -114,6 +114,10 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   Der Backtest lernt ohne die letzten 3 Wochen und vergleicht auf diesen die Abweichung je Stunde
   mit der Rohprognose und mit der Korrektur nach Uhrzeit. Läuft im Schattenbetrieb; die Planung
   nutzt es noch nicht.
+  Liefert eine Fläche mehrere Tage am Stück deutlich weniger als sonst bei diesem Sonnenstand
+  (ohne eigene Historie: weniger als die Hälfte der Prognose), erscheint ein Hinweis auf Laub,
+  Schnee oder Schmutz; diese Tage lernt Sunflow nicht mit. „Neu lernen ab heute“ verwirft auch die
+  Historie nach Sonnenstand, deshalb nur nach Baumschnitt oder Modultausch, nicht nach dem Säubern.
 - **Datenbestand fürs Lernen**: wie weit Home Assistant zurück aufhebt, woraus Sunflow lernen
   kann: Verlauf in voller Auflösung (Aufbewahrung des Recorders), Langzeitstatistik, Wetter mit
   oder ohne Bewölkung und die vergangenen Solcast-Prognosen. Darunter je Messwert, seit wann er

@@ -417,6 +417,14 @@ class SunflowAnalysis extends LitElement {
         ${data.computing && !learned.length ? html`<p class="muted">${t("Lernt aus der Historie …")}</p>` : nothing}
         ${data.planes.map((plane) => html`
           <h3>${plane.name}</h3>
+          ${plane.soiling
+            ? html`<p class="small warn-text">${t(plane.soiling.learned
+                ? "Seit {date} nur {pct} % des Erwarteten – Laub, Schnee oder Schmutz? Diese Tage lernt Sunflow nicht mit."
+                : "Seit {date} nur {pct} % der Prognose – Laub, Schnee oder Schmutz? Diese Tage lernt Sunflow nicht mit.", {
+                date: new Date(plane.soiling.since).toLocaleDateString(locale()),
+                pct: Math.round(plane.soiling.ratio * 100),
+              })}</p>`
+            : nothing}
           ${plane.missing
             ? html`<p class="small muted">${plane.missing === "no_history"
                 ? t("Diese Prognosequelle hebt keine vergangenen Prognosen auf.")

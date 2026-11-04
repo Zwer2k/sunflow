@@ -6,13 +6,15 @@ hides it until the numbers change noticeably.
 """
 
 from dataclasses import asdict, dataclass, field
+from datetime import date
 import hashlib
 from typing import Any
 
 from sunflow.config.models import BATTERY_PRIORITY_ID, SunflowConfig
 from sunflow.i18n import number, t
-from sunflow.planning.plan import NO_DAILY_NEED, PlanResult
+from sunflow.planning.plan import NO_DAILY_NEED, PlanResult, short_date
 from sunflow.planning.pv_learning import PvCorrection
+from sunflow.planning.pv_sun import PlaneSun
 
 from .efficiency import EfficiencyEstimate
 
@@ -287,6 +289,41 @@ def pv_forecast(config: SunflowConfig, correction: PvCorrection | None, weather:
     return result
 
 
+def pv_soiling(planes: list[PlaneSun]) -> list[Recommendation]:
+    """A plane delivers far less than expected for days: leaves, snow or dirt on the modules."""
+    result = []
+    for plane in planes:
+        if plane.soiling is None:
+            continue
+        pct = plane.soiling["ratio"] * 100
+        since = short_date(date.fromisoformat(plane.soiling["since"]))
+        result.append(
+            Recommendation(
+                id=f"pv_soiling:{plane.key}",
+                severity="warn",
+                title=t("„{name}“ liefert seit {date} nur {pct} % des Erwarteten", name=plane.name, date=since, pct=f"{pct:.0f}")
+                if plane.soiling_learned
+                else t("„{name}“ liefert seit {date} nur {pct} % der Prognose", name=plane.name, date=since, pct=f"{pct:.0f}"),
+                text=(
+                    t("Gemessen gegen das, was die Fläche sonst bei diesem Sonnenstand und Wetter liefert.")
+                    if plane.soiling_learned
+                    else t("Für diese Fläche gibt es noch keine eigene Vergleichsbasis; stimmen Leistung und Ausrichtung in der Prognosequelle, liegt es an der Anlage.")
+                )
+                + " "
+                + (
+                    # Relearning would also drop the shading learned over the years
+                    t("Laub, Schnee oder Schmutz auf den Modulen? Diese Tage lässt Sunflow beim Lernen aus; nach dem Säubern geht es von selbst weiter.")
+                    if plane.soiling_learned
+                    else t("Laub, Schnee oder Schmutz auf den Modulen? Nach dem Säubern unter Analyse → Lernen bei der Fläche „Neu lernen ab heute“ wählen, damit diese Tage nicht weiter zählen.")
+                ),
+                action={"type": "navigate", "view": "analysis"},
+                # A new run or a step of 10 % shows it again
+                fingerprint=_fingerprint(plane.soiling["since"], float(round(pct / 10))),
+            )
+        )
+    return result
+
+
 def build(
     config: SunflowConfig,
     latest: PlanResult | None,
@@ -295,6 +332,7 @@ def build(
     shadow_days: int,
     correction: PvCorrection | None,
     weather: list[dict[str, Any]],
+    sun_planes: list[PlaneSun] | None = None,
 ) -> list[dict[str, Any]]:
     """All recommendations that are not dismissed, warnings first."""
     found = [
@@ -305,6 +343,7 @@ def build(
         *hot_water_demand(config),
         *consumer_usage(config, latest),
         *pv_forecast(config, correction, weather),
+        *pv_soiling(sun_planes or []),
     ]
     dismissed = set(config.dismissed_recommendations)
     visible = [r for r in found if f"{r.id}#{r.fingerprint}" not in dismissed]
