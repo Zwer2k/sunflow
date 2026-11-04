@@ -149,6 +149,7 @@ export const api = {
   restoreAfterTest: () => request("POST", "/device-test/restore?confirm=true"),
   efficiencyHistory: (days) => request("GET", `/efficiency/history?days=${days}`),
   pvLearning: () => request("GET", "/pv-learning"),
+  pvSun: (refresh = false) => request("GET", `/pv-learning/sun${refresh ? "?refresh=true" : ""}`),
   dataInventory: (refresh = false, entities = []) => {
     const query = new URLSearchParams();
     if (refresh) query.set("refresh", "true");

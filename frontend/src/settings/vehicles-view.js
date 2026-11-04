@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import { withSuggestedName } from "../lib/names.js";
 import { api } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
 import { formatValue, fromDisplay, toDisplay } from "../lib/format.js";
@@ -187,13 +188,13 @@ class SunflowVehicles extends LitElement {
             <span class="field-label">${t("Ladestand")}</span>
             <sf-picker label=${t("Ladestand")} empty-label=${t("keiner")} placeholder=${t("z. B. MQTT-Sensor des Autos …")} .value=${form.soc_entity}
               .options=${options(this._candidates?.percent, (c) => `${c.state ?? "–"} %`)}
-              @change=${(e) => set("soc_entity", e.detail.value)}></sf-picker>
+              @change=${(e) => (this._form = withSuggestedName({ ...this._form, soc_entity: e.detail.value }, (this._candidates?.percent ?? []).find((c) => c.entity_id === e.detail.value)))}></sf-picker>
           </div>
           <div class="field">
             <span class="field-label">${t("Angesteckt / zuhause (optional)")}</span>
             <sf-picker label=${t("Angesteckt")} empty-label=${t("keiner")} placeholder=${t("Sensor des Autos …")} .value=${form.plugged_entity}
               .options=${options(this._candidates?.presence, (c) => c.state ?? "–")}
-              @change=${(e) => set("plugged_entity", e.detail.value)}></sf-picker>
+              @change=${(e) => (this._form = withSuggestedName({ ...this._form, plugged_entity: e.detail.value }, (this._candidates?.presence ?? []).find((c) => c.entity_id === e.detail.value)))}></sf-picker>
             <span class="small muted">${t("Am besten die Anwesenheit (z. B. ein device_tracker des Autos): Sunflow lernt daraus, wann es nach Hause kommt, und meldet, wenn sich das Einstecken lohnt.")}</span>
           </div>
         </div>

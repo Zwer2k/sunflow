@@ -21,6 +21,7 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import pv_strings, site_status
 from sunflow.ha import HAClient, HAError
+from sunflow.planning import pv_sun
 from sunflow.planning.forecast_export import as_response, export_forecasts
 from sunflow.planning.learning_sources import (
     learning_candidates,
@@ -241,6 +242,95 @@ async def restart_plane_learning(request: Request, key: str) -> dict[str, Any]:
     runner.relearn()
     _replan(request)
     return {"key": key, "learn_since": plane.learn_since.isoformat()}
+
+
+PV_SUN_TTL = timedelta(hours=24)
+
+
+@router.get("/pv-learning/sun")
+async def get_pv_sun(request: Request, refresh: bool = False) -> dict[str, Any]:
+    """PV correction by the sun's position per plane, learned from the history (shadow mode).
+
+    Computed in the background (a few seconds to minutes on a Raspberry Pi) and kept a day.
+    """
+    state = getattr(request.app.state, "pv_sun", None)
+    now = datetime.now(UTC)
+    running = state is not None and state.get("task") is not None and not state["task"].done()
+    if not running and (refresh or state is None or now - state["at"] > PV_SUN_TTL):
+        state = {"at": now, "result": state.get("result") if state else None, "error": None}
+        state["task"] = asyncio.create_task(_learn_pv_sun(request, state))
+        request.app.state.pv_sun = state
+    return {
+        "computing": not state["task"].done(),
+        "computed_at": state["result"]["computed_at"] if state.get("result") else None,
+        "error": state["error"],
+        "planes": state["result"]["planes"] if state.get("result") else [],
+    }
+
+
+async def _learn_pv_sun(request: Request, state: dict[str, Any]) -> None:
+    try:
+        state["result"] = await _pv_sun_planes(request)
+    except (HAError, KeyError, TypeError, ValueError) as err:
+        state["error"] = str(err)
+
+
+async def _pv_sun_planes(request: Request) -> dict[str, Any]:
+    config = request.app.state.store.load()
+    snapshot = await _snapshot(request)
+    client: HAClient = request.app.state.ha
+    ha_config = await client.command("get_config")
+    tz = await _local_tz(request)
+    now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    planes = []
+    for plane in config.forecast_planes:
+        if not plane.device_id:
+            continue
+        entry: dict[str, Any] = {"key": plane.key, "name": plane.display_name, "source": plane.source}
+        planes.append(entry)
+        entities = _string_power_entities(request, config, snapshot, plane)
+        if plane.source != "solcast":
+            entry["missing"] = "no_history"
+            continue
+        if not entities:
+            entry["missing"] = "no_string_power"
+            continue
+        start = max(now - timedelta(days=pv_sun.HISTORY_DAYS), plane.learn_since or datetime.min.replace(tzinfo=UTC))
+        forecast = await pv_sun.solcast_hours(client, plane.ref, start, now)
+        measured = await pv_sun.measured_hours(client, entities, start, now)
+        samples = await asyncio.to_thread(
+            pv_sun.samples_from, forecast, measured, ha_config["latitude"], ha_config["longitude"]
+        )
+        correction = await asyncio.to_thread(pv_sun.fit, samples)
+        entry |= {
+            "correction": correction.as_dict(),
+            "backtest": await asyncio.to_thread(pv_sun.backtest, samples, tz),
+            "first": min(s.start for s in samples).isoformat() if samples else None,
+        }
+    return {"computed_at": datetime.now(UTC).isoformat(), "planes": planes}
+
+
+def _string_power_entities(request: Request, config: Any, snapshot: Snapshot, plane: ForecastPlane) -> list[str]:
+    """Power entities of the plane's strings; empty when one is only voltage times current."""
+    entities = []
+    for string in plane.strings:
+        device_id, _, index = string.partition(":")
+        device = next((d for d in config.devices if d.id == device_id), None)
+        if device is None:
+            return []
+        profile = _library(request).profiles[device.profile]
+        roles = {
+            r.role: r
+            for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
+        }
+        role = roles.get(f"pv{index}_power")
+        # A device with one string: its PV input power is that string
+        if (role is None or not role.entity_id) and len(pv_strings(roles)) == 1:
+            role = roles.get("pv_power")
+        if role is None or not role.entity_id:
+            return []
+        entities.append(role.entity_id)
+    return entities
 
 
 @router.get("/tariff/series")

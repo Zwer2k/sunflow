@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.75.29
+
+- Analysis: new section "PV by sun position (test)". Per roof plane, Sunflow learns from Solcast's past forecasts and the long-term statistics of the plane's strings how much of the forecast arrives per sun elevation and direction (clear and cloudy hours separately), shows it as a shading map and backtests it on the last 3 weeks against the raw forecast and the correction by time of day. Runs in shadow mode; planning is unchanged. Also available to the MCP server as `get_pv_sun`.
+- Consumers added by hand and vehicles: choosing an entity suggests the name from its Home Assistant device (else the entity's name), as long as the name was not typed.
+
 ## 0.75.28
 
 - Plausibility of learning sources: much faster with many sensors (e.g. ten optimizers over 100 days), and computed without blocking the App, so the check no longer runs into a timeout on a Raspberry Pi.

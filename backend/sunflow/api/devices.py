@@ -277,11 +277,15 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
     snapshot = await _snapshot(request)
     switches, power, percent, presence, voltage = [], [], [], [], []
     selects, numbers, temperature, energy, triggers = [], [], [], [], []
+    # The device's name is the natural name of a consumer or car (the entity's adds "Switch" etc.)
+    devices = {d["id"]: d.get("name_by_user") or d.get("name") for d in snapshot.devices}
+    device_of = {e["entity_id"]: devices.get(e.get("device_id")) for e in snapshot.entities}
     for entity_id, state in sorted(snapshot.states.items()):
         attributes = state.get("attributes", {})
         item = {
             "entity_id": entity_id,
             "name": attributes.get("friendly_name") or entity_id,
+            "device": device_of.get(entity_id),
             "state": state.get("state"),
             "unit": attributes.get("unit_of_measurement"),
         }

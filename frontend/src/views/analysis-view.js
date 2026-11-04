@@ -1,4 +1,4 @@
-import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import { LitElement, html, svg, css, nothing } from "../../vendor/lit-all.min.js";
 import { api, renewIngressSession } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
 import { poll } from "../lib/poll.js";
@@ -16,6 +16,7 @@ const ACTIONS = {
 };
 const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const REFRESH_MS = 5 * 60 * 1000;
+const PV_SUN_POLL_MS = 10_000;
 
 /** Shadow mode evaluation: forecasts and decisions against reality, export/import. */
 class SunflowAnalysis extends LitElement {
@@ -30,6 +31,7 @@ class SunflowAnalysis extends LitElement {
     _efficiencyDays: { state: true },
     _pvLearning: { state: true },
     _inventory: { state: true },
+    _pvSun: { state: true },
     _inventoryError: { state: true },
     _recommendations: { state: true },
     _costs: { state: true },
@@ -52,6 +54,7 @@ class SunflowAnalysis extends LitElement {
     super.connectedCallback();
     // Cached for an hour in the backend; not part of the polling
     this._loadInventory();
+    this._loadPvSun();
     this._load();
     this._stopPolling = poll(() => this._load(), REFRESH_MS);
   }
@@ -59,6 +62,7 @@ class SunflowAnalysis extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stopPolling();
+    clearTimeout(this._pvSunTimer);
   }
 
   async _loadEnergy() {
@@ -255,6 +259,7 @@ class SunflowAnalysis extends LitElement {
       ${this._renderCosts()}
       ${this._renderEfficiency()}
       ${this._renderPvLearning()}
+      ${this._renderPvSun()}
       ${this._renderInventory()}
       ${this._shadow === null && !this._error ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
       ${this._renderShadow()}
@@ -378,6 +383,107 @@ class SunflowAnalysis extends LitElement {
           : html`<p class="small muted">${t("Sammelt Daten: Das Modell startet nach 14 Tagen mit Temperatur und Verbraucherleistung im Schattenbetrieb.")}
               ${t("Bis dahin plant Sunflow mit den Stundenmitteln der Historie.")}</p>`}
       </section>
+    `;
+  }
+
+  async _loadPvSun(refresh = false) {
+    clearTimeout(this._pvSunTimer);
+    try {
+      this._pvSun = await api.pvSun(refresh);
+    } catch {
+      this._pvSun = null;
+      return;
+    }
+    // Learned in the background: ask again until it is done
+    if (this._pvSun.computing) this._pvSunTimer = setTimeout(() => this._loadPvSun(), PV_SUN_POLL_MS);
+  }
+
+  _renderPvSun() {
+    const data = this._pvSun;
+    if (!data) return nothing;
+    const learned = data.planes.filter((p) => p.correction);
+    return html`
+      <section>
+        <div class="section-head">
+          <h2>${t("PV nach Sonnenstand (Test)")}</h2>
+          <button class="secondary" ?disabled=${data.computing} @click=${() => this._loadPvSun(true)}>
+            ${data.computing ? t("Lernt …") : t("Neu lernen")}</button>
+        </div>
+        <p class="small muted">${t("Lernt aus den vergangenen Solcast-Prognosen und den gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt. Läuft im Schattenbetrieb: Die Planung nutzt es noch nicht. Der Backtest lernt ohne die letzten 3 Wochen und prüft auf diesen.")}</p>
+        ${data.error ? html`<div class="alert error" role="alert">${data.error}</div>` : nothing}
+        ${data.computing && !learned.length ? html`<p class="muted">${t("Lernt aus der Historie …")}</p>` : nothing}
+        ${data.planes.map((plane) => html`
+          <h3>${plane.name}</h3>
+          ${plane.missing
+            ? html`<p class="small muted">${plane.missing === "no_history"
+                ? t("Diese Prognosequelle hebt keine vergangenen Prognosen auf.")
+                : t("Für diese Fläche fehlt die Leistung je String (z. B. keine Fläche zugeordnet oder nur Spannung und Strom).")}</p>`
+            : nothing}
+          ${plane.correction ? this._renderPvSunPlane(plane) : nothing}
+        `)}
+        ${data.computed_at ? html`<p class="small muted">${t("Gelernt {time}", { time: dayTime.format(new Date(data.computed_at)) })}</p>` : nothing}
+      </section>
+    `;
+  }
+
+  _renderPvSunPlane(plane) {
+    const c = plane.correction;
+    const b = plane.backtest;
+    const pct = (v) => `${Math.round(v * 100)} %`;
+    const wh = (v) => formatValue(v, "Wh");
+    const better = b && b.by_sun < Math.min(b.raw, b.by_hour);
+    return html`
+      <div class="tiles">
+        <div class="tile"><div class="small muted">${t("Klar")}</div><div class="value">${pct(c.clear)}</div>
+          <div class="small muted">${t("{days} Tage seit {date}", { days: c.days, date: new Date(plane.first).toLocaleDateString(locale()) })}</div></div>
+        <div class="tile"><div class="small muted">${t("Bewölkt")}</div><div class="value">${pct(c.cloudy)}</div></div>
+        ${b
+          ? html`<div class="tile ${better ? "now" : ""}"><div class="small muted">${t("Abweichung je Stunde (Backtest)")}</div>
+              <div class="value">${wh(b.by_sun)}</div>
+              <div class="small muted">${t("Rohprognose {raw} · nach Uhrzeit {hour}", { raw: wh(b.raw), hour: wh(b.by_hour) })}</div></div>`
+          : nothing}
+      </div>
+      ${this._shadeMap(c)}
+    `;
+  }
+
+  /** Factor per sun cell (clear hours): orange where less arrives than forecast, blue where more. */
+  _shadeMap(c) {
+    if (!c.cells.length) return nothing;
+    const cellW = 14;
+    const cellH = 14;
+    const azimuths = c.cells.map((x) => x.azimuth);
+    const minA = Math.min(...azimuths);
+    const maxA = Math.max(...azimuths) + c.azimuth_step;
+    const maxE = Math.max(...c.cells.map((x) => x.elevation)) + c.elevation_step;
+    const left = 30;
+    const width = left + ((maxA - minA) / c.azimuth_step) * cellW;
+    const height = (maxE / c.elevation_step) * cellH + 18;
+    const x = (a) => left + ((a - minA) / c.azimuth_step) * cellW;
+    const y = (e) => (maxE - e - c.elevation_step) / c.elevation_step * cellH;
+    const color = (f) => {
+      const share = Math.round(Math.min(Math.abs(1 - f) / 0.6, 1) * 100);
+      return `color-mix(in oklab, ${f < 1 ? "var(--sf-shade-low)" : "var(--sf-shade-high)"} ${share}%, var(--sf-subtle))`;
+    };
+    const directions = [[90, t("O")], [135, t("SO")], [180, t("S")], [225, t("SW")], [270, t("W")]].filter(([a]) => a >= minA && a <= maxA);
+    return html`
+      <div class="shade-map">
+        <svg viewBox="0 0 ${width} ${height}" width=${width} height=${height} role="img"
+          aria-label=${t("Verschattungskarte: Anteil der Prognose je Sonnenhöhe und -richtung bei klarem Himmel")}>
+          ${c.cells.map((cell) => svg`<rect x=${x(cell.azimuth) + 1} y=${y(cell.elevation) + 1} width=${cellW - 2} height=${cellH - 2} rx="2"
+            fill=${color(cell.factor)}><title>${t("{elevation}° hoch, {azimuth}°: {factor} der Prognose", {
+              elevation: cell.elevation, azimuth: cell.azimuth, factor: `${Math.round(cell.factor * 100)} %`,
+            })}</title></rect>`)}
+          ${[0, 20, 40, 60].filter((e) => e < maxE).map((e) => svg`<text class="axis" x=${left - 4} y=${y(e) + cellH - 2} text-anchor="end">${e}°</text>`)}
+          ${directions.map(([a, label]) => svg`<text class="axis" x=${x(a)} y=${height - 4} text-anchor="middle">${label}</text>`)}
+        </svg>
+        <div class="legend small">
+          <span class="legend-item"><span class="swatch" style="background:${color(0.4)}"></span>${t("weniger als prognostiziert (Schatten)")}</span>
+          <span class="legend-item"><span class="swatch" style="background:${color(1)}"></span>${t("wie prognostiziert")}</span>
+          <span class="legend-item"><span class="swatch" style="background:${color(1.4)}"></span>${t("mehr")}</span>
+        </div>
+        <p class="small muted">${t("Nach rechts die Sonnenrichtung, nach oben die Sonnenhöhe; nur klare Stunden.")}</p>
+      </div>
     `;
   }
 
@@ -727,6 +833,11 @@ class SunflowAnalysis extends LitElement {
     .line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--sf-text); }
     .line.dashed { border-top-style: dashed; }
     .chart .now { stroke: var(--sf-text); stroke-width: 1; stroke-dasharray: 2 3; }
+    :host { --sf-shade-low: #c2410c; --sf-shade-high: #0b5cad; }
+    .shade-map { overflow-x: auto; margin-top: 10px; }
+    .shade-map .swatch { border: 1px solid var(--sf-border-strong); }
+    .shade-map svg { display: block; max-width: none; }
+    .shade-map .axis { fill: var(--sf-muted); font-size: 10px; }
     details summary { cursor: pointer; margin-top: 12px; min-height: 32px; }
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; margin-top: 10px; }
     table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13px; }
