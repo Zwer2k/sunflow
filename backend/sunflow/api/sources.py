@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from sunflow.analysis.plausibility import (
     check,
+    combined_quality,
     kind_of,
     quiet_intervals,
     recorder_offline,
@@ -21,7 +22,11 @@ from sunflow.devices.resolver import preview
 from sunflow.devices.site import pv_strings, site_status
 from sunflow.ha import HAClient, HAError
 from sunflow.planning.forecast_export import as_response, export_forecasts
-from sunflow.planning.learning_sources import learning_candidates
+from sunflow.planning.learning_sources import (
+    learning_candidates,
+    module_temperature_sources,
+    plane_optimizer_temperatures,
+)
 from sunflow.planning.plan import cloud_coverage, weather_entity
 from sunflow.planning.sources import (
     ForecastPoint,
@@ -94,11 +99,17 @@ async def get_sources(request: Request) -> dict[str, Any]:
 async def get_learning_sources(request: Request) -> dict[str, Any]:
     """The chosen learning sources, candidates per kind and the planes for module temperatures."""
     config = request.app.state.store.load()
+    snapshot = await _snapshot(request)
+    on_planes = plane_optimizer_temperatures(config, _library(request).profiles, snapshot)
     return {
         "sources": config.learning_sources.model_dump(),
-        "candidates": learning_candidates(config, await _snapshot(request)),
+        "candidates": learning_candidates(config, snapshot),
         # Only planes in use: unassigned ones (e.g. a second provider for the same roof) are not planned
-        "planes": [{"key": p.key, "name": p.display_name} for p in config.forecast_planes if p.device_id],
+        "planes": [
+            {"key": p.key, "name": p.display_name, "optimizers": len(on_planes.get(p.key, []))}
+            for p in config.forecast_planes
+            if p.device_id
+        ],
     }
 
 
@@ -108,22 +119,30 @@ QUALITY_TTL = timedelta(hours=1)
 
 @router.get("/config/learning-sources/quality")
 async def get_learning_source_quality(request: Request) -> dict[str, Any]:
-    """Per chosen source: which share of its recorded values (up to 100 days) is plausible."""
+    """Per source in use: which share of its recorded values (up to 100 days) is plausible.
+
+    A module temperature from several optimizers is judged per optimizer: the median share
+    and the summed findings.
+    """
     config = request.app.state.store.load()
-    chosen = {
-        key: entity_id
+    snapshot = await _snapshot(request)
+    chosen: dict[str, list[str]] = {
+        key: [entity_id]
         for key, entity_id in config.learning_sources.model_dump(exclude={"module_temperature"}).items()
         if entity_id
-    } | {f"module_temperature:{plane}": e for plane, e in config.learning_sources.module_temperature.items()}
+    } | {
+        f"module_temperature:{plane}": entities
+        for plane, entities in module_temperature_sources(config, _library(request).profiles, snapshot).items()
+    }
     now = datetime.now(UTC)
     cache = getattr(request.app.state, "quality_cache", None)
     if cache is not None and cache[1] == chosen and now - cache[0] <= QUALITY_TTL:
         return cache[2]
-    snapshot = await _snapshot(request)
     client: HAClient = request.app.state.ha
     start = now - timedelta(days=QUALITY_DAYS)
+    entity_ids = list(dict.fromkeys(e for entities in chosen.values() for e in entities))
     try:
-        changes = {key: await source_changes(client, entity_id, start, now) for key, entity_id in chosen.items()}
+        changes = {entity_id: await source_changes(client, entity_id, start, now) for entity_id in entity_ids}
         # From the first recorded value on: before it the recorder kept nothing
         first = min((m for c in changes.values() for m, _ in c), default=now)
         reference = _reference_entity(request, config, snapshot)
@@ -132,14 +151,17 @@ async def get_learning_source_quality(request: Request) -> dict[str, Any]:
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     result = {}
-    for key, entity_id in chosen.items():
-        unit = snapshot.states.get(entity_id, {}).get("attributes", {}).get("unit_of_measurement")
-        kind = kind_of(key.split(":")[0], unit)
-        series = changes[key]
+    for key, entities in chosen.items():
+        judged = []
+        for entity_id in entities:
+            unit = snapshot.states.get(entity_id, {}).get("attributes", {}).get("unit_of_measurement")
+            kind = kind_of(key.split(":")[0], unit)
+            if series := changes[entity_id]:
+                judged.append(check(series, kind, min(m for m, _ in series), now, offline).as_dict())
         result[key] = {
-            "entity_id": entity_id,
+            "entity_ids": entities,
             "kind": kind,
-            "quality": check(series, kind, min(m for m, _ in series), now, offline).as_dict() if series else None,
+            "quality": combined_quality(judged),
         }
     request.app.state.quality_cache = (now, chosen, result)
     return result

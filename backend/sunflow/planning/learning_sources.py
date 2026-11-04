@@ -4,7 +4,7 @@ from typing import Any
 
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
-from sunflow.devices.optimizers import discover as discover_optimizers
+from sunflow.devices.optimizers import discover as discover_optimizers, optimizers
 
 DEVICE_CLASSES = {
     "temperature": ("temperature",),
@@ -68,3 +68,29 @@ def learning_candidates(config: SunflowConfig, snapshot: Snapshot) -> dict[str, 
             )
         )
     return result
+
+
+def plane_optimizer_temperatures(
+    config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot
+) -> dict[str, list[str]]:
+    """Temperature entities of the optimizers on each plane in use, found by the plane's strings."""
+    found, _ = optimizers(config, profiles, snapshot)
+    result = {}
+    for plane in config.forecast_planes:
+        if not plane.device_id:
+            continue
+        entities = [o.entities["temperature"] for o in found if o.string in plane.strings and "temperature" in o.entities]
+        if entities:
+            result[plane.key] = entities
+    return result
+
+
+def module_temperature_sources(
+    config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot
+) -> dict[str, list[str]]:
+    """Per plane in use: the chosen sensor, else the mean of its optimizers' temperatures."""
+    chosen = config.learning_sources.module_temperature
+    in_use = {p.key for p in config.forecast_planes if p.device_id}
+    return plane_optimizer_temperatures(config, profiles, snapshot) | {
+        plane: [entity_id] for plane, entity_id in chosen.items() if plane in in_use
+    }

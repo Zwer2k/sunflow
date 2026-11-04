@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import "../components/picker.js";
 import { api } from "../lib/api.js";
-import { locale, t } from "../lib/i18n.js";
+import { locale, t, tn } from "../lib/i18n.js";
 
 // Below this share of plausible values the source is shown as doubtful
 const QUALITY_WARN_PCT = 80;
@@ -109,7 +109,7 @@ class SunflowLearningSources extends LitElement {
     ].filter(Boolean);
     return html`<span class="small ${pct < QUALITY_WARN_PCT ? "warn" : "muted"}"
       title=${t("Geprüft über die aufgezeichneten Tage. Unplausible Werte und Ausfälle lässt das Lernen weg; Zeiten, in denen Home Assistant nicht aufgezeichnet hat, zählen nicht mit.")}>
-      ${t("{pct} % plausibel", { pct })}${details.length ? ` · ${details.join(" · ")}` : ""}</span>`;
+      ${q.sensors ? t("{pct} % plausibel (Median über {count} Fühler)", { pct, count: q.sensors }) : t("{pct} % plausibel", { pct })}${details.length ? ` · ${details.join(" · ")}` : ""}</span>`;
   }
 
   _coverageText(entityId) {
@@ -124,8 +124,8 @@ class SunflowLearningSources extends LitElement {
     return html`<span class="small muted">${history} · ${statistics}</span>`;
   }
 
-  _select(label, candidates, value, onChange) {
-    return html`<sf-picker label=${label} ?disabled=${this._saving} empty-label=${t("Keiner")} .value=${value ?? ""}
+  _select(label, candidates, value, onChange, emptyLabel = t("Keiner")) {
+    return html`<sf-picker label=${label} ?disabled=${this._saving} empty-label=${emptyLabel} .value=${value ?? ""}
       .options=${candidates.map((c) => ({
         value: c.entity_id,
         label: c.name,
@@ -154,7 +154,7 @@ class SunflowLearningSources extends LitElement {
         </div>
         ${planes.length
           ? html`<h3>${t("Modultemperatur je Dachfläche")}</h3>
-              <p class="small muted">${t("Ein Fühler an den Modulen der Fläche. Warme Module liefern weniger, etwa 0,4 % je Grad über 25 °C. Ohne: aus Außentemperatur und Einstrahlung geschätzt.")}</p>
+              <p class="small muted">${t("Ein Fühler an den Modulen der Fläche. Warme Module liefern weniger, etwa 0,4 % je Grad über 25 °C. Hat die Fläche Optimierer, nimmt Sunflow ohne eigene Wahl das Mittel ihrer Temperaturen; sonst wird sie aus Außentemperatur und Einstrahlung geschätzt.")}</p>
               <div class="fields">
                 ${planes.map((plane) => {
                   const value = sources.module_temperature[plane.key];
@@ -165,8 +165,11 @@ class SunflowLearningSources extends LitElement {
                       if (entity) modules[plane.key] = entity;
                       else delete modules[plane.key];
                       this._save({ module_temperature: modules });
-                    })}
-                    ${value ? html`${this._coverageText(value)}${this._qualityText(`module_temperature:${plane.key}`)}` : nothing}
+                    }, plane.optimizers
+                      ? tn(plane.optimizers, "Automatisch: Mittel der {count} Optimierer", { count: plane.optimizers })
+                      : t("Keiner"))}
+                    ${value ? this._coverageText(value) : nothing}
+                    ${value || plane.optimizers ? this._qualityText(`module_temperature:${plane.key}`) : nothing}
                   </div>`;
                 })}
               </div>`

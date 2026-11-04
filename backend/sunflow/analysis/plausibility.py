@@ -265,3 +265,23 @@ async def recorder_offline(
         if not result.get(reference):
             offline.append((begin, finish))
     return offline
+
+
+def combined_quality(judged: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """One summary for several sensors of the same quantity (e.g. the optimizers of a plane)."""
+    if not judged:
+        return None
+    if len(judged) == 1:
+        return judged[0]
+    shares = [j["valid_share"] for j in judged if j["valid_share"] is not None]
+    return {
+        "hours": max(j["hours"] for j in judged),
+        "offline_hours": max(j["offline_hours"] for j in judged),
+        "valid_share": round(median(shares), 3) if shares else None,
+        "out_of_range": sum(j["out_of_range"] for j in judged),
+        "spikes": sum(j["spikes"] for j in judged),
+        "stuck_hours": round(median(j["stuck_hours"] for j in judged), 1),
+        "gaps": round(median(j["gaps"] for j in judged)),
+        "gap_hours": round(median(j["gap_hours"] for j in judged), 1),
+        "sensors": len(judged),
+    }

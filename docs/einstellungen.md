@@ -127,7 +127,7 @@ plausible Anteil; unter 80 % ist er hervorgehoben. In Home Assistant ändert sic
 | Luftfeuchte draußen | Mit der Temperatur: Tau und Reif auf den Modulen. |
 | Helligkeit oder Einstrahlung | Wie hell es tatsächlich war (lx oder W/m²); trennt Wolken von Verschattung, auch rückwirkend. |
 | Niederschlag | Erkennung von Schnee auf den Modulen. |
-| Modultemperatur je Dachfläche | Warme Module liefern weniger. Ohne: aus Außentemperatur und Einstrahlung geschätzt. |
+| Modultemperatur je Dachfläche | Warme Module liefern weniger. Hat die Fläche Optimierer (über ihre Strings zugeordnet), nimmt Sunflow ohne eigene Wahl das Mittel ihrer Temperaturen; sonst aus Außentemperatur und Einstrahlung geschätzt. |
 
 ## Anzeige
 
