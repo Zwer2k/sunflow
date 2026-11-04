@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.18
+
+- Data inventory: further entities can be checked as well (`entities`, comma separated; also in the MCP tool `get_data_inventory`), e.g. a weather station before using it for learning. Each entity also shows its `state_class`, without which Home Assistant keeps no long-term statistics.
+
 ## 0.75.17
 
 - Analysis: new section "Data for learning". It shows how far back Home Assistant keeps the measurements (recorder history and long-term statistics per entity), whether the weather history includes cloud coverage, and how many days of past forecasts Solcast keeps. This is the groundwork for learning from the past instead of collecting for weeks. Also available to the MCP server as `get_data_inventory`.

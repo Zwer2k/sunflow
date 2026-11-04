@@ -96,6 +96,7 @@ TOOLS = [
         name="get_data_inventory", area="history",
         description="Wie weit die HA-Historie zurückreicht: Zustände, Langzeitstatistik, Wetterattribute, vergangene Solcast-Prognosen.",
         path="/data-inventory",
+        params={"entities": {"type": "string", "description": "Weitere Entitäten, kommagetrennt (z. B. Wetterstation)"}},
     ),
     Tool(name="get_recommendations", area="live", description="Empfehlungen von Sunflow.", path="/recommendations"),
     Tool(name="get_config", area="config", description="Konfiguration: Geräte, Tarif, Prognose, Fahrzeuge, Steuerung.", path="/config"),

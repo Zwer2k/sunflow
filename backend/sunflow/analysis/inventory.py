@@ -168,9 +168,14 @@ async def solcast_days(client: HAClient, sites: list[str], now: datetime, tz: tz
 
 
 async def data_inventory(
-    client: HAClient, config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot, tz: tzinfo
+    client: HAClient,
+    config: SunflowConfig,
+    profiles: dict[str, Any],
+    snapshot: Snapshot,
+    tz: tzinfo,
+    extra: list[str] | None = None,
 ) -> dict[str, Any]:
-    """How far back the measurements, the weather and the PV forecasts go."""
+    """How far back the measurements, the weather and the PV forecasts go; extra: further entities to check."""
     now = datetime.now(UTC)
     site = site_status(config.devices, profiles, snapshot, measured_by=config.measured_by)
     rows: list[dict[str, Any]] = []
@@ -180,6 +185,10 @@ async def data_inventory(
             if role.entity_id and role.entity_id.startswith(RECORDED_DOMAINS) and role.entity_id not in seen:
                 seen.add(role.entity_id)
                 rows.append({"device": device.name, "role": role.role, "entity_id": role.entity_id})
+    for entity_id in extra or []:
+        if entity_id not in seen:
+            seen.add(entity_id)
+            rows.append({"device": None, "role": None, "entity_id": entity_id})
     weather = weather_entity(config, snapshot)
     entity_ids = [r["entity_id"] for r in rows] + ([weather] if weather else [])
     since = await states_days(client, entity_ids, now) if entity_ids else {}
@@ -190,6 +199,8 @@ async def data_inventory(
             "states_days": since[row["entity_id"]],
             "changes_per_hour": density[row["entity_id"]],
             "statistics_since": statistics[row["entity_id"]].isoformat() if row["entity_id"] in statistics else None,
+            # Without one Home Assistant keeps no long-term statistics
+            "state_class": snapshot.states.get(row["entity_id"], {}).get("attributes", {}).get("state_class"),
         }
     weather_info = None
     if weather:
@@ -215,7 +226,7 @@ async def data_inventory(
         {"name": names.get((s.source, s.ref)) or s.name, "source": s.source, "days": forecast_days.get(s.ref), "error": forecast_error}
         for s in sites
     ]
-    usable = [d for d in (r["states_days"] for r in rows) if d]
+    usable = [d for d in (r["states_days"] for r in rows if r["device"]) if d]
     return {
         "time": now.isoformat(),
         # The purge period is the same for all; the typical value stands for the recorder
