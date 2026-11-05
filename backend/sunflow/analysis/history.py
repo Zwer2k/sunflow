@@ -8,7 +8,7 @@ from typing import Any
 
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
-from sunflow.devices.profiles import planned_battery
+from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import CANONICAL_SIGNS, preview
 from sunflow.devices.site import PV_OUTPUT_ROLES, device_parameters, measurement_device
 from sunflow.devices.state_history import state_means
@@ -28,7 +28,7 @@ class Series:
     key: str  # soc_wh, battery_w, pv_w, load_w, grid_w, loadpoint_w, level (vehicle %, tank °C)
     statistic_id: str
     factor: float  # sign flip and unit conversion (e.g. % -> Wh)
-    # Controllable consumers are also returned one by one
+    # Controllable consumers and batteries are also returned one by one
     device_id: str | None = None
 
 
@@ -37,8 +37,6 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
     series: list[Series] = []
     grid_device = measurement_device(config, profiles, "grid")
     load_device = measurement_device(config, profiles, "load")
-    # SoC and power of the battery the plan is made for, as in the live values
-    battery_device = planned_battery(config.devices, profiles)
     for device in config.devices:
         profile = profiles[device.profile]
         roles = {
@@ -58,13 +56,14 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             sign = -1.0 if value.sign is not None and value.sign not in CANONICAL_SIGNS else 1.0
             series.append(Series(key=key, statistic_id=value.entity_id, factor=factor * sign, device_id=device_id))
 
-        if battery_device is not None and device.id == battery_device.id:
+        if controls_battery(profile):
             params = {
                 p["name"]: p["effective"]
                 for p in device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))
             }
+            # Summed over all batteries like the plan; each one also by itself
             if capacity := params.get("capacity_wh"):
-                add("soc_wh", "battery_soc", capacity / 100)
+                add("soc_wh", "battery_soc", capacity / 100, device_id=device.id)
             add("battery_w", "battery_power")
         if load_device is not None and device.id == load_device.id:
             add("load_w", "load_power")
@@ -116,6 +115,7 @@ async def fetch_history(
     buckets: dict[datetime, dict[str, dict[str, list[float]]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     consumers: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     levels: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    batteries: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for s in series:
         for row in result.get(s.statistic_id, []):
             if row.get("mean") is None:
@@ -126,7 +126,9 @@ async def fetch_history(
                 levels[start + offset * bucket][s.device_id or ""].append(row["mean"])
                 continue
             buckets[start + offset * bucket][s.key][s.statistic_id].append(row["mean"] * s.factor)
-            if s.device_id is not None:
+            if s.key == "soc_wh" and s.device_id is not None:
+                batteries[start + offset * bucket][s.device_id].append(row["mean"] * s.factor)
+            elif s.device_id is not None:
                 consumers[start + offset * bucket][s.device_id].append(max(row["mean"] * s.factor, 0.0))
 
     points = []
@@ -141,6 +143,7 @@ async def fetch_history(
             )
         point["consumers"] = {device_id: sum(v) / len(v) for device_id, v in consumers[bucket_start].items()}
         point["levels"] = {device_id: sum(v) / len(v) for device_id, v in levels.get(bucket_start, {}).items()}
+        point["batteries"] = {device_id: sum(v) / len(v) for device_id, v in batteries.get(bucket_start, {}).items()}
         points.append(point)
     return points
 

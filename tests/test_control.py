@@ -95,6 +95,25 @@ def test_desired_action(plan: SimpleNamespace | None, plan_at: datetime | None, 
     assert desired_action(plan, plan_at, NOW) == expected
 
 
+@pytest.mark.parametrize(
+    ("battery", "expected"),
+    [
+        pytest.param("house", ("hold", None, "nach Plan"), id="first"),
+        pytest.param("plug", ("limit_discharge", 400, "nach Plan"), id="second"),
+        pytest.param("gone", ("auto", None, "Speicher nicht im Plan – Eigenverbrauch"), id="not-planned"),
+    ],
+)
+def test_desired_action_per_battery(battery: str, expected: tuple) -> None:
+    """With several batteries each device carries out its own share of the slot."""
+    plan = _plan("hold", None)
+    plan.plan.slots[0].batteries = {
+        "house": SimpleNamespace(action="hold", action_power_w=None),
+        "plug": SimpleNamespace(action="limit_discharge", action_power_w=400),
+    }
+
+    assert desired_action(plan, NOW, NOW, battery=battery) == expected
+
+
 async def test_takes_over_writes_once_and_hands_back(tmp_path: Path) -> None:
     """Switching on sets the mode once; unchanged values are not written again; off restores both."""
     device = FakeDevice()

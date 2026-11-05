@@ -76,3 +76,29 @@ def test_indevolt_actions(library: ProfileLibrary) -> None:
         ("select", "select_option", {"option": "self_consumed_prioritized"}),
         ("number", "set_value", {"value": 800}),
     ]
+
+
+def test_ac_coupled_storage_converts_pv_as_well(library: ProfileLibrary) -> None:
+    """A plug-in storage stores roof PV through its own inverter: PV charging loses like grid charging."""
+    from types import SimpleNamespace
+
+    from sunflow.config.models import DeviceConfig
+    from sunflow.planning.plan import battery_spec
+
+    device = DeviceConfig(
+        id="plug", ha_device_id="dev", profile="indevolt/indevolt", profile_version=1, name="Indevolt",
+        parameters={"capacity_wh": 1790, "efficiency_pct": 92, "inverter_efficiency_pct": 95},
+    )
+    entities = dummy_entities("indevolt/indevolt")
+    snapshot = SimpleNamespace(
+        devices=[{"id": "dev"}],
+        entities=entities,
+        states={e["entity_id"]: {"state": "50", "attributes": {}} for e in entities},
+    )
+
+    spec, problem = battery_spec(library.profiles["indevolt/indevolt"], device, snapshot)
+
+    assert problem is None
+    assert spec.key == "plug"
+    assert spec.efficiency_charge == pytest.approx(spec.efficiency_charge_grid)
+    assert spec.efficiency_charge * spec.efficiency_discharge == pytest.approx(0.92 * 0.95**2)

@@ -5,6 +5,7 @@ import { dailyRatios, splitFlows } from "../components/flows.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "../components/optimizer-view.js";
 import { decimal, locale, t, tc } from "../lib/i18n.js";
+import { ACTIONS } from "../lib/actions.js";
 
 const REFRESH_MS = 5000;
 const TODAY_REFRESH_MS = 5 * 60 * 1000;
@@ -387,11 +388,7 @@ class SunflowLive extends LitElement {
       ${live.losses_w !== null && live.losses_w !== undefined
         ? html`<p class="small muted" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>${t("Verluste Wechselrichter/Speicher: {power} (Ø letzte Minuten)", { power: formatValue(live.losses_w, "W") })}</p>`
         : nothing}
-      ${battery?.parts?.length
-        ? html`<p class="small muted">${t("Speicher:")} ${battery.parts
-            .map((b) => `${b.name} ${b.soc_pct === null ? "–" : `${Math.round(b.soc_pct)} %`} · ${formatPower(b.power_w, b.display)}`)
-            .join(" · ")}</p>`
-        : nothing}
+      ${battery?.parts?.length ? this._batteryParts(battery.parts) : nothing}
       ${live.consumers.length > MAX_CONSUMERS
         ? html`<p class="small muted">${t("Weitere Verbraucher:")} ${live.consumers
             .slice(MAX_CONSUMERS)
@@ -526,7 +523,39 @@ class SunflowLive extends LitElement {
     `;
   }
 
+  /** Each battery of the combined node: level, power and what the plan wants from it now. */
+  _batteryParts(parts) {
+    return html`<ul class="battery-parts" aria-label=${t("Speicher einzeln")}>
+      ${parts.map((b) => {
+        const soc = b.soc_pct === null || b.soc_pct === undefined ? null : Math.round(b.soc_pct);
+        const state = b.power_w > ACTIVE_W ? t("lädt") : b.power_w < -ACTIVE_W ? t("entlädt") : t("ruht");
+        const action = ACTIONS[b.action];
+        return html`<li>
+          <span class="part-name">${b.name}</span>
+          <span class="part-bar" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${soc ?? 0}
+            aria-label=${t("Ladestand {name}", { name: b.name })}><span style="width:${soc ?? 0}%"></span></span>
+          <span class="part-value">${soc === null ? "–" : `${soc} %`}</span>
+          <span class="part-value">${state} ${formatPower(Math.abs(b.power_w ?? 0), b.display)}</span>
+          ${action ? html`<span class="part-action" title=${action.hint}>${action.label}</span>` : nothing}
+        </li>`;
+      })}
+    </ul>`;
+  }
+
   static styles = css`
+    .battery-parts { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+    .battery-parts li {
+      display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(60px, 1fr) auto auto; gap: 4px 10px; align-items: center;
+    }
+    .part-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .part-bar { height: 8px; border-radius: 4px; background: var(--sf-subtle); overflow: hidden; }
+    .part-bar span { display: block; height: 100%; background: var(--sf-series-3); }
+    .part-value { color: var(--sf-muted); white-space: nowrap; text-align: right; }
+    .part-action { grid-column: 1 / -1; font-size: 12px; color: var(--sf-muted); }
+    @media (min-width: 560px) {
+      .battery-parts li { grid-template-columns: minmax(0, 1.2fr) minmax(80px, 1fr) auto auto minmax(0, 1fr); }
+      .part-action { grid-column: auto; text-align: right; }
+    }
     /* Fills the screen: the diagram on top, today's figures at the bottom */
     :host { display: flex; flex-direction: column; gap: 16px; min-height: calc(100dvh - 110px); }
     .today { margin-top: auto; }

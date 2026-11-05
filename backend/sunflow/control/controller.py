@@ -149,9 +149,9 @@ class DischargeBudget:
 
 
 def desired_action(
-    plan: Any, plan_at: datetime | None, now: datetime, fallback: str = N_("Eigenverbrauch")
+    plan: Any, plan_at: datetime | None, now: datetime, fallback: str = N_("Eigenverbrauch"), battery: str | None = None
 ) -> tuple[str, float | None, str]:
-    """The action of the slot running now, or self-consumption with the reason why not."""
+    """The action of the slot running now (of one battery when several are planned), or self-consumption with the reason why not."""
     if plan is None or plan_at is None or not plan.plan.slots:
         return "auto", None, t("Kein Plan – {fallback}", fallback=t(fallback))
     if now - plan_at > MAX_PLAN_AGE:
@@ -159,6 +159,11 @@ def desired_action(
         return "auto", None, t("Plan älter als {minutes} min – {fallback}", minutes=minutes, fallback=t(fallback))
     for slot in plan.plan.slots:
         if datetime.fromisoformat(str(slot.start)) <= now < datetime.fromisoformat(str(slot.end)):
+            share = (getattr(slot, "batteries", None) or {}).get(battery) if battery is not None else None
+            if share is not None:
+                return share.action, share.action_power_w, t(ON_PLAN)
+            if battery is not None and getattr(slot, "batteries", None):
+                return "auto", None, t("Speicher nicht im Plan – {fallback}", fallback=t(fallback))
             return slot.action, slot.action_power_w, t(ON_PLAN)
     return "auto", None, t("Plan deckt die aktuelle Zeit nicht ab – {fallback}", fallback=t(fallback))
 
@@ -883,7 +888,7 @@ class PlanController:
         self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime,
         snapshot: Snapshot | None = None, live: Any = None,
     ) -> None:
-        action, power, reason = desired_action(plan, plan_at, now)
+        action, power, reason = desired_action(plan, plan_at, now, battery=device.id)
         access = self._access_for(device)
         await take_over(access, self._marker, device)
         profile = self._profiles()[device.profile]
@@ -932,7 +937,8 @@ class PlanController:
         if budget is None or budget.slot != start or budget.power_w != power:
             budget = DischargeBudget(slot=start, power_w=power, energy_wh=power * (end - now).total_seconds() / 3600, last=now)
             self._budgets[device_id] = budget
-        battery_w = getattr(live, "battery_w", None)
+        # This battery's own power; the site value is the sum of all batteries
+        battery_w = (getattr(live, "battery_powers", None) or {}).get(device_id, getattr(live, "battery_w", None))
         if battery_w is not None and battery_w < 0 and timedelta(0) < now - budget.last <= BUDGET_MAX_STEP:
             budget.used_wh += -battery_w * (now - budget.last).total_seconds() / 3600
         budget.last = now

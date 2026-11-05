@@ -17,7 +17,7 @@ from sunflow.config.store import ConfigStore
 from sunflow.control.charger import ChargerWatch
 from sunflow.control.controller import PlanController
 from sunflow.devices.discovery import Snapshot, SnapshotCache, fetch_snapshot
-from sunflow.devices.profiles import ProfileLibrary, planned_battery
+from sunflow.devices.profiles import ProfileLibrary, controls_battery, planned_battery
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import (
     device_parameters,
@@ -138,17 +138,23 @@ async def take_sample(
             )
         }
 
-    roles = values(device)
-    params = {
-        p["name"]: p["effective"]
-        for p in device_parameters(profiles[device.profile], device, snapshot, config.battery_modules.get(device.id))
-    }
-    capacity = params.get("capacity_wh")
-    soc = roles.get("battery_soc")
+    socs: dict[str, float] = {}
+    powers: dict[str, float] = {}
+    for battery in [d for d in config.devices if controls_battery(profiles[d.profile])]:
+        roles = values(battery)
+        params = {
+            p["name"]: p["effective"]
+            for p in device_parameters(profiles[battery.profile], battery, snapshot, config.battery_modules.get(battery.id))
+        }
+        if (capacity := params.get("capacity_wh")) and (soc := roles.get("battery_soc")) is not None:
+            socs[battery.id] = capacity * soc / 100
+        if (power := roles.get("battery_power")) is not None:
+            powers[battery.id] = power
     consumers = consumer_powers(config, profiles, values)
     return Sample(
-        soc_wh=capacity * soc / 100 if capacity and soc is not None else None,
-        battery_w=roles.get("battery_power"),
+        # All batteries as one, like the plan; unknown while the first one's SoC is
+        soc_wh=sum(socs.values()) if device.id in socs else None,
+        battery_w=sum(powers.values()) if device.id in powers else None,
         grid_w=values(measurement_device(config, profiles, "grid")).get("grid_power"),
         pv_w=site_status(config.devices, profiles, snapshot, measured_by=config.measured_by).pv_total,
         load_w=values(measurement_device(config, profiles, "load")).get("load_power"),
@@ -156,6 +162,8 @@ async def take_sample(
         consumers=consumers,
         levels=consumer_levels(config, profiles, snapshot),
         strings=string_powers(config, profiles, snapshot),
+        battery_socs=socs,
+        battery_powers=powers,
     )
 
 

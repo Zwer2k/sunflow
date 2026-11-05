@@ -23,7 +23,10 @@ type Action = Literal["auto", "hold", "force_charge", "force_discharge", "limit_
 
 @dataclass(frozen=True, kw_only=True)
 class BatterySpec:
-    """Battery characteristics in W, Wh and fractions."""
+    """Battery characteristics in W, Wh and fractions.
+
+    Several batteries are planned together; the values left at None take the Settings.
+    """
 
     capacity_wh: float
     soc_wh: float
@@ -35,6 +38,15 @@ class BatterySpec:
     efficiency_charge: float = 0.95
     efficiency_discharge: float = 0.95
     efficiency_charge_grid: float | None = None
+    # Id in PlanSlot.batteries (the Sunflow device id)
+    key: str = "battery"
+    wear_ct_per_kwh: float | None = None
+    reserve_wh: float | None = None
+    soc_limit_wh: float | None = None
+    high_soc_wh: float | None = None
+    # The device can be forced to charge (from the grid) and to discharge (into the grid)
+    force_charge: bool = True
+    force_discharge: bool = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -168,8 +180,23 @@ SMOOTHING_COST = 1e-8
 
 
 @dataclass(kw_only=True)
+class BatterySlot:
+    """One battery's share of a slot."""
+
+    charge_w: float
+    discharge_w: float
+    soc_wh: float
+    action: Action
+    action_power_w: float | None
+
+
+@dataclass(kw_only=True)
 class PlanSlot:
-    """Optimized values and the resulting control action for one slot."""
+    """Optimized values and the resulting control action for one slot.
+
+    Charge, discharge and SoC are the sums over all batteries, the action is the first
+    battery's; batteries holds each one by its key.
+    """
 
     start: datetime
     end: datetime
@@ -188,6 +215,7 @@ class PlanSlot:
     # PV the plan limits away (negative feed-in, above the grid friendly export limit)
     curtail_w: float = 0.0
     price_estimated: bool = False
+    batteries: dict[str, BatterySlot] = field(default_factory=dict)
 
 
 @dataclass(kw_only=True)
@@ -241,7 +269,7 @@ def choose_action(
     return "auto", None
 
 
-def smooth_actions(slots: list[PlanSlot], min_slots: int = 3) -> None:
+def smooth_actions(slots: list[PlanSlot] | list[BatterySlot], min_slots: int = 3) -> None:
     """Bridge short auto/hold blips between equal neighbours, in place.
 
     Partial discharges at low load sit on the auto/hold boundary; switching
@@ -274,31 +302,35 @@ def smooth_actions(slots: list[PlanSlot], min_slots: int = 3) -> None:
 
 
 def simulate_self_consumption(
-    inputs: list[SlotInput], battery: BatterySpec, per_slot: list[float] | None = None
-) -> tuple[float, float]:
-    """Cost in € and final SoC in Wh without Sunflow: the battery only follows surplus or deficit.
+    inputs: list[SlotInput], battery: BatterySpec | list[BatterySpec], per_slot: list[float] | None = None
+) -> tuple[float, list[float]]:
+    """Cost in € and final SoC per battery in Wh without Sunflow: batteries only follow surplus or deficit.
 
+    Several batteries take the surplus and cover the deficit one after the other.
     per_slot, if given, receives the cost of every slot.
     """
-    soc = battery.soc_wh
+    batteries = [battery] if isinstance(battery, BatterySpec) else battery
+    socs = [b.soc_wh for b in batteries]
     cost = 0.0
     for slot in inputs:
-        surplus = slot.pv_w - slot.load_w
-        if surplus >= 0:
-            room = (battery.capacity_wh - soc) / (battery.efficiency_charge * DT_H)
-            charge = min(surplus, battery.max_charge_w, max(room, 0))
-            soc += charge * battery.efficiency_charge * DT_H
-            export, imported = surplus - charge, 0.0
-        else:
-            available = (soc - battery.min_soc_wh) * battery.efficiency_discharge / DT_H
-            discharge = min(-surplus, battery.max_discharge_w, max(available, 0))
-            soc -= discharge / battery.efficiency_discharge * DT_H
-            imported, export = -surplus - discharge, 0.0
+        rest = slot.pv_w - slot.load_w
+        for k, b in enumerate(batteries):
+            if rest >= 0:
+                room = (b.capacity_wh - socs[k]) / (b.efficiency_charge * DT_H)
+                charge = min(rest, b.max_charge_w, max(room, 0))
+                socs[k] += charge * b.efficiency_charge * DT_H
+                rest -= charge
+            else:
+                available = (socs[k] - b.min_soc_wh) * b.efficiency_discharge / DT_H
+                discharge = min(-rest, b.max_discharge_w, max(available, 0))
+                socs[k] -= discharge / b.efficiency_discharge * DT_H
+                rest += discharge
+        export, imported = max(rest, 0.0), max(-rest, 0.0)
         slot_cost = (slot.price * imported - slot.feed_in * export) * DT_H / 1000
         cost += slot_cost
         if per_slot is not None:
             per_slot.append(slot_cost)
-    return cost, soc
+    return cost, socs
 
 
 def has_alternative(load: FlexLoad) -> bool:
@@ -337,33 +369,50 @@ def immediate_flex(inputs: list[SlotInput], flex: list[FlexLoad]) -> tuple[list[
 
 def optimize(
     inputs: list[SlotInput],
-    battery: BatterySpec,
+    battery: BatterySpec | list[BatterySpec],
     settings: Settings = Settings(),
     flex: list[FlexLoad] | tuple[FlexLoad, ...] = (),
 ) -> Plan:
-    """Compute the cost-optimal battery and flexible load schedule."""
+    """Compute the cost-optimal schedule of one or more batteries and the flexible loads.
+
+    The full charge of the settings applies to the first battery only.
+    """
     n = len(inputs)
     if n == 0:
         return Plan(status="no input")
+    batteries = [battery] if isinstance(battery, BatterySpec) else list(battery)
+    if not batteries:
+        return Plan(status="no battery")
+    batteries = [replace(b, soc_wh=min(max(b.soc_wh, 0), b.capacity_wh)) for b in batteries]
+    m = len(batteries)
     flex = list(flex)
-    # Variable layout: charge, discharge, import, export, soc (each n),
+    # Variable layout: import, export (each n); per battery charge, discharge, soc (each n);
     # then per flexible load its power per slot, then the unmet energy of every need
-    c, d, gi, ge, s = (np.arange(n) + k * n for k in range(5))
-    f = [5 * n + k * n + np.arange(n) for k in range(len(flex))]
+    gi, ge = np.arange(n), n + np.arange(n)
+    c = [2 * n + 3 * n * k + np.arange(n) for k in range(m)]
+    d = [index + n for index in c]
+    s = [index + 2 * n for index in c]
+    base = 2 * n + 3 * n * m
+    f = [base + k * n + np.arange(n) for k in range(len(flex))]
     needs = [load.needs(n) for load in flex]
     u: list[list[int]] = []
     for load_needs in needs:
-        first = 5 * n + len(flex) * n + sum(len(x) for x in u)
+        first = base + len(flex) * n + sum(len(x) for x in u)
         u.append(list(range(first, first + len(load_needs))))
-    count = 5 * n + len(flex) * n + sum(len(x) for x in u)
-    eta_c, eta_d = battery.efficiency_charge, battery.efficiency_discharge
-    eta_g = battery.efficiency_charge_grid or eta_c
+    count = base + len(flex) * n + sum(len(x) for x in u)
+    eta_c = [b.efficiency_charge for b in batteries]
+    eta_d = [b.efficiency_discharge for b in batteries]
+    eta_g = [b.efficiency_charge_grid or b.efficiency_charge for b in batteries]
     # Grid charging loses more than PV charging: the share of the charge coming from the
     # grid gets its own variable (only when the efficiencies differ)
-    split_grid = eta_g < eta_c - 1e-9
-    cg = count + np.arange(n) if split_grid else None
-    if split_grid:
-        count += n
+    cg: list[Any] = []
+    for k in range(m):
+        if eta_g[k] < eta_c[k] - 1e-9:
+            cg.append(count + np.arange(n))
+            count += n
+        else:
+            cg.append(None)
+    split_grid = any(x is not None for x in cg)
     # Power above the grid friendly limits per slot (export, import)
     over_export = count + np.arange(n) if settings.export_soft_limit_w is not None else None
     if over_export is not None:
@@ -371,23 +420,27 @@ def optimize(
     over_import = count + np.arange(n) if settings.import_soft_limit_w is not None else None
     if over_import is not None:
         count += n
-    # Shortfall (Wh) to a due full charge
+    # Shortfall (Wh) to a due full charge of the first battery
     full_short = count if settings.full_charge_slot is not None and 0 <= settings.full_charge_slot < n else None
     if full_short is not None:
         count += 1
-    # Energy above the high SoC threshold per slot
-    hs = count + np.arange(n) if settings.high_soc_wh is not None and settings.high_soc_ct_per_kwh_h > 0 else None
-    if hs is not None:
-        count += n
+    # Energy above the high SoC threshold per battery and slot
+    high = [b.high_soc_wh if b.high_soc_wh is not None else settings.high_soc_wh for b in batteries]
+    hs: list[Any] = []
+    for k in range(m):
+        if high[k] is not None and settings.high_soc_ct_per_kwh_h > 0:
+            hs.append(count + np.arange(n))
+            count += n
+        else:
+            hs.append(None)
     # PV limited away per slot, only where plants can be limited
     cu = count + np.arange(n) if any(i.curtailable_w > 0 for i in inputs) else None
     if cu is not None:
         count += n
-    battery = replace(battery, soc_wh=min(max(battery.soc_wh, 0), battery.capacity_wh))
-    wear = settings.wear_ct_per_kwh / 100
+    wear = [(b.wear_ct_per_kwh if b.wear_ct_per_kwh is not None else settings.wear_ct_per_kwh) / 100 for b in batteries]
     mean_price = float(np.mean([i.price for i in inputs]))
     # Energy left at the end is worth what it saves later, after losses and wear
-    terminal = max(mean_price * eta_d - wear, 0.0)
+    terminal = [max(mean_price * eta_d[k] - wear[k], 0.0) for k in range(m)]
 
     prices = [i.price for i in inputs]
     spread = max(prices) - min(prices)
@@ -404,19 +457,22 @@ def optimize(
         # between auto and hold every few minutes
         tie = 0.001 * (max(prices) - slot.price) / spread if spread > 0 else 0.0
         tie += 0.0001 * t / n
-        cost[d[t]] = (wear + tie) * DT_H / 1000
-    cost[s[-1]] -= terminal / 1000
+        for k in range(m):
+            cost[d[k][t]] = (wear[k] + tie) * DT_H / 1000
+    for k in range(m):
+        cost[s[k][-1]] -= terminal[k] / 1000
     if full_short is not None:
         cost[full_short] = settings.full_charge_penalty / 1000
     if cu is not None:
         cost[cu] = CURTAIL_COST * DT_H / 1000
-    if hs is not None:
-        cost[hs] = settings.high_soc_ct_per_kwh_h / 100 * DT_H / 1000
+    for k in range(m):
+        if hs[k] is not None:
+            cost[hs[k]] = settings.high_soc_ct_per_kwh_h / 100 * DT_H / 1000
     for over in (over_export, over_import):
         if over is not None:
             cost[over] = settings.peak_penalty_ct_per_kwh / 100 * DT_H / 1000
     # PV stored now is worth this much later; feed-in is what surplus earns otherwise
-    stored_value = terminal * eta_c
+    stored_value = max(terminal[k] * eta_c[k] for k in range(m))
     mean_feed_in = float(np.mean([i.feed_in for i in inputs]))
     for k, load in enumerate(flex):
         unmet = load.unmet_cost
@@ -429,32 +485,34 @@ def optimize(
         for t in range(n):
             cost[f[k][t]] += (load.urgency * t / n - load.priority_bonus) * DT_H / 1000
 
-    rows = 2 * n + sum(len(x) for x in u)
+    rows = n + m * n + sum(len(x) for x in u)
     a_eq = lil_matrix((rows, count))
     b_eq = np.zeros(rows)
     for t, slot in enumerate(inputs):
         # Power balance
         a_eq[t, gi[t]] = 1
-        a_eq[t, d[t]] = 1
-        a_eq[t, c[t]] = -1
         a_eq[t, ge[t]] = -1
+        for k in range(m):
+            a_eq[t, d[k][t]] = 1
+            a_eq[t, c[k][t]] = -1
         for k in range(len(flex)):
             a_eq[t, f[k][t]] = -1
         b_eq[t] = slot.load_w - slot.pv_w
         if cu is not None:
             a_eq[t, cu[t]] = -1
-        # State of charge
-        row = n + t
-        a_eq[row, s[t]] = 1
-        a_eq[row, c[t]] = -eta_c * DT_H
-        a_eq[row, d[t]] = DT_H / eta_d
-        if split_grid:
-            a_eq[row, cg[t]] = (eta_c - eta_g) * DT_H
-        if t == 0:
-            b_eq[row] = battery.soc_wh
-        else:
-            a_eq[row, s[t - 1]] = -1
-    row = 2 * n
+        # State of charge of every battery
+        for k, b in enumerate(batteries):
+            row = n + k * n + t
+            a_eq[row, s[k][t]] = 1
+            a_eq[row, c[k][t]] = -eta_c[k] * DT_H
+            a_eq[row, d[k][t]] = DT_H / eta_d[k]
+            if cg[k] is not None:
+                a_eq[row, cg[k][t]] = (eta_c[k] - eta_g[k]) * DT_H
+            if t == 0:
+                b_eq[row] = b.soc_wh
+            else:
+                a_eq[row, s[k][t - 1]] = -1
+    row = n + m * n
     for k in range(len(flex)):
         for (first, end, energy), unmet_index in zip(needs[k], u[k], strict=True):
             # Energy delivered in the need's window plus unmet rest equals the need
@@ -464,33 +522,40 @@ def optimize(
             b_eq[row] = energy
             row += 1
 
-    # A battery below its floor may stay there but must not be drained further
-    soc_min = min(max(battery.min_soc_wh, settings.reserve_wh), battery.soc_wh)
-    # Charge limit for battery care; lifted while a full charge is due. Above it already,
-    # the battery may stay there but not charge further
-    soc_upper = battery.capacity_wh
-    if settings.soc_limit_wh is not None and full_short is None:
-        soc_upper = min(battery.capacity_wh, max(settings.soc_limit_wh, battery.soc_wh, soc_min))
+    soc_upper: list[float] = []
+    soc_min: list[float] = []
+    grid_charge = [settings.allow_grid_charge and b.force_charge for b in batteries]
+    for k, b in enumerate(batteries):
+        reserve = b.reserve_wh if b.reserve_wh is not None else settings.reserve_wh
+        # A battery below its floor may stay there but must not be drained further
+        soc_min.append(min(max(b.min_soc_wh, reserve), b.soc_wh))
+        # Charge limit for battery care; lifted while a full charge is due. Above it already,
+        # the battery may stay there but not charge further
+        limit = b.soc_limit_wh if b.soc_limit_wh is not None else settings.soc_limit_wh
+        upper_k = b.capacity_wh
+        if limit is not None and not (k == 0 and full_short is not None):
+            upper_k = min(b.capacity_wh, max(limit, b.soc_wh, soc_min[k]))
+        soc_upper.append(upper_k)
     lower = np.zeros(count)
     upper = np.full(count, np.inf)
     for t, slot in enumerate(inputs):
-        # Without grid charging only the surplus over the house load may go into the battery
-        upper[c[t]] = battery.max_charge_w if settings.allow_grid_charge else min(
-            battery.max_charge_w, max(slot.pv_w - slot.load_w, 0)
-        )
-        upper[d[t]] = battery.max_discharge_w
-        if split_grid:
-            upper[cg[t]] = battery.max_charge_w if settings.allow_grid_charge else 0.0
-        # The grid only carries what the house, loads and battery can take or give
-        upper[gi[t]] = max(slot.load_w, 0) + battery.max_charge_w + sum(
+        surplus = max(slot.pv_w - slot.load_w, 0)
+        for k, b in enumerate(batteries):
+            # Without grid charging only the surplus over the house load may go into the battery
+            upper[c[k][t]] = b.max_charge_w if grid_charge[k] else min(b.max_charge_w, surplus)
+            upper[d[k][t]] = b.max_discharge_w
+            if cg[k] is not None:
+                upper[cg[k][t]] = b.max_charge_w if grid_charge[k] else 0.0
+            lower[s[k][t]] = soc_min[k]
+            upper[s[k][t]] = soc_upper[k]
+        # The grid only carries what the house, loads and batteries can take or give
+        upper[gi[t]] = max(slot.load_w, 0) + sum(b.max_charge_w for b in batteries) + sum(
             load.max_power_w for load in flex if load.available[t]
         )
         # Export beyond the PV surplus would be stored energy sold at the feed-in price
-        upper[ge[t]] = max(slot.pv_w - slot.load_w, 0) + (
-            battery.max_discharge_w if settings.allow_battery_export else 0.0
+        upper[ge[t]] = surplus + sum(
+            b.max_discharge_w for b in batteries if settings.allow_battery_export and b.force_discharge
         )
-        lower[s[t]] = soc_min
-        upper[s[t]] = soc_upper
         if cu is not None:
             upper[cu[t]] = min(max(slot.curtailable_w, 0.0), max(slot.pv_w, 0.0))
         for k, load in enumerate(flex):
@@ -504,7 +569,7 @@ def optimize(
     # prices that reward burning energy in losses. Only those slots get binaries.
     export_value = [i.feed_in - settings.export_penalty_ct_per_kwh / 100 for i in inputs]
     grid_binary = [t for t, i in enumerate(inputs) if i.price < export_value[t] and upper[ge[t]] > 0]
-    battery_binary = [t for t, i in enumerate(inputs) if i.price < 0 or export_value[t] < 0]
+    battery_binary = [(k, t) for t, i in enumerate(inputs) if i.price < 0 or export_value[t] < 0 for k in range(m)]
     z = count + np.arange(len(grid_binary))
     y = count + len(grid_binary) + np.arange(len(battery_binary))
     total = count + len(grid_binary) + len(battery_binary)
@@ -530,16 +595,16 @@ def optimize(
     # Rows as ({variable: coefficient}, upper bound), added to every solve
     gate_rows: list[tuple[dict[int, float], float]] = []
 
-    def add_gate(slots: list[tuple[int, int]], flow: Any, flow_max: float, soc_wh: float | None,
+    def add_gate(slots: list[tuple[int, int]], flows: list[Any], flow_max: float, soc_wh: float | None,
                  after: list[tuple[int, float, int]]) -> None:
         previous = None
         for t, b in slots:
-            gate_rows.append(({flow[t]: 1, gi[t]: -1, b: -flow_max}, 0.0))
+            gate_rows.append(({**{flow[t]: 1 for flow in flows}, gi[t]: -1, b: -flow_max}, 0.0))
             if soc_wh is not None:
-                # SoC at the slot end: the load may take what is left in the slot in which
-                # the battery reaches the level (often its charge limit); the gate closes
-                # again when the battery drops below
-                gate_rows.append(({b: soc_wh, s[t]: -1}, 0.0))
+                # Energy in the batteries at the slot end: the load may take what is left in
+                # the slot in which they reach the level (often the charge limit); the gate
+                # closes again when they drop below
+                gate_rows.append(({b: soc_wh, **{s[k][t]: -1 for k in range(m)}}, 0.0))
             for k, required, last in after:
                 if t > last:
                     continue  # the named load cannot receive more: no longer waiting for it
@@ -577,9 +642,9 @@ def optimize(
     upper = np.concatenate([upper, np.ones(total - count)])
     for k, slots in gate_slots:
         load = flex[k]
-        add_gate(slots, f[k], load.max_power_w, load.gate_battery_wh, waits_for(load.gate_after))
+        add_gate(slots, [f[k]], load.max_power_w, load.gate_battery_wh, waits_for(load.gate_after))
     if battery_slots:
-        add_gate(battery_slots, c, battery.max_charge_w, None, battery_after)
+        add_gate(battery_slots, c, sum(b.max_charge_w for b in batteries), None, battery_after)
     starts = iter(on_off_starts)
     for k, slots in on_off_slots:
         previous: tuple[int, int] | None = None
@@ -602,12 +667,23 @@ def optimize(
             for t in range(n):
                 # flow - over <= limit: only the part above the limit costs the penalty
                 gate_rows.append(({flow[t]: 1, over[t]: -1}, limit))
-    if hs is not None:
-        # soc - above <= threshold: only the energy above it costs
-        gate_rows.extend(({s[t]: 1, hs[t]: -1}, settings.high_soc_wh) for t in range(n))
+    for k in range(m):
+        if hs[k] is not None:
+            # soc - above <= threshold: only the energy above it costs
+            gate_rows.extend(({s[k][t]: 1, hs[k][t]: -1}, high[k]) for t in range(n))
     if full_short is not None:
         # soc at the target slot plus shortfall reaches (almost) full
-        gate_rows.append(({s[settings.full_charge_slot]: -1, full_short: -1}, -battery.capacity_wh * FULL_FRACTION))
+        gate_rows.append(({s[0][settings.full_charge_slot]: -1, full_short: -1}, -batteries[0].capacity_wh * FULL_FRACTION))
+    if m > 1:
+        for t, slot in enumerate(inputs):
+            surplus = max(slot.pv_w - slot.load_w, 0.0)
+            # Batteries charge from PV or the grid, not from each other (that only loses energy)
+            gate_rows.append(({**{c[k][t]: 1 for k in range(m)}, gi[t]: -1}, surplus))
+            if split_grid:
+                # Together, the PV shares cannot exceed the surplus
+                gate_rows.append(
+                    ({**{c[k][t]: 1 for k in range(m)}, **{cg[k][t]: -1 for k in range(m) if cg[k] is not None}}, surplus)
+                )
     integrality = np.zeros(total)
     integrality[count:] = 1
     # A start follows from the on/off binaries (minimized, it is 0 or 1 anyway): no branching on it
@@ -633,13 +709,14 @@ def optimize(
 
         restrict_battery = any(not load.uses_battery for load in flex)
         pv_only = [k for k, load in enumerate(flex) if load.pv_only]
+        split_rows = sum(2 * n for x in cg if x is not None) if m == 1 else sum(n for x in cg if x is not None)
         a_ub = lil_matrix(
             (
                 2 * (len(grid_binary) + len(battery_binary))
                 + 2 * (size - binary_total)
                 + (n if restrict_battery else 0)
                 + (n if len(pv_only) > 1 else 0)
-                + (2 * n if split_grid else 0)
+                + split_rows
                 + len(gate_rows),
                 size,
             )
@@ -652,15 +729,16 @@ def optimize(
             a_ub[row + 1, ge[t]], a_ub[row + 1, z[k]] = 1, upper[ge[t]]
             b_ub[row + 1] = upper[ge[t]]
             row += 2
-        for k, t in enumerate(battery_binary):
-            a_ub[row, c[t]], a_ub[row, y[k]] = 1, -upper[c[t]]
-            a_ub[row + 1, d[t]], a_ub[row + 1, y[k]] = 1, upper[d[t]]
-            b_ub[row + 1] = upper[d[t]]
+        for i, (k, t) in enumerate(battery_binary):
+            a_ub[row, c[k][t]], a_ub[row, y[i]] = 1, -upper[c[k][t]]
+            a_ub[row + 1, d[k][t]], a_ub[row + 1, y[i]] = 1, upper[d[k][t]]
+            b_ub[row + 1] = upper[d[k][t]]
             row += 2
         if restrict_battery:
-            # The battery only serves the house, allowed loads and export
+            # The batteries only serve the house, allowed loads and export
             for t, slot in enumerate(inputs):
-                a_ub[row, d[t]] = 1
+                for k in range(m):
+                    a_ub[row, d[k][t]] = 1
                 a_ub[row, ge[t]] = -1
                 for k, load in enumerate(flex):
                     if load.uses_battery:
@@ -674,13 +752,18 @@ def optimize(
                     a_ub[row, f[k][t]] = 1
                 b_ub[row] = max(slot.pv_w - slot.load_w, 0.0)
                 row += 1
-        if split_grid:
+        for k in range(m):
+            if cg[k] is None:
+                continue
             for t, slot in enumerate(inputs):
-                # The grid share is part of the charge; the rest cannot exceed the PV surplus
-                a_ub[row, cg[t]], a_ub[row, c[t]] = 1, -1
-                a_ub[row + 1, c[t]], a_ub[row + 1, cg[t]] = 1, -1
-                b_ub[row + 1] = max(slot.pv_w - slot.load_w, 0.0)
-                row += 2
+                # The grid share is part of the charge
+                a_ub[row, cg[k][t]], a_ub[row, c[k][t]] = 1, -1
+                row += 1
+                if m == 1:
+                    # The rest cannot exceed the PV surplus (several batteries: a joint row)
+                    a_ub[row, c[k][t]], a_ub[row, cg[k][t]] = 1, -1
+                    b_ub[row] = max(slot.pv_w - slot.load_w, 0.0)
+                    row += 1
         for coefficients, bound in gate_rows:
             for index, value in coefficients.items():
                 a_ub[row, index] = value
@@ -727,15 +810,36 @@ def optimize(
     for t, slot in enumerate(inputs):
         flex_now = sum(x[f[k][t]] for k in range(len(flex)))
         curtail = float(x[cu[t]]) if cu is not None else 0.0
-        action, power = choose_action(
-            slot.pv_w - curtail,
-            slot.load_w + flex_now,
-            x[c[t]],
-            x[d[t]],
-            settings.action_threshold_w,
-            # Only a really full battery stops by itself; at a care limit charging must be limited
-            full=soc_upper >= battery.capacity_wh and x[s[t]] >= battery.capacity_wh * FULL_FRACTION,
-        )
+        net = [float(x[d[k][t]] - x[c[k][t]]) for k in range(m)]
+        shares: dict[str, BatterySlot] = {}
+        for k, b in enumerate(batteries):
+            # What this battery sees: the house and loads after PV and the other batteries' plan
+            action, power = choose_action(
+                slot.pv_w - curtail + sum(net) - net[k],
+                slot.load_w + flex_now,
+                x[c[k][t]],
+                x[d[k][t]],
+                settings.action_threshold_w,
+                # Only a really full battery stops by itself; at a care limit charging must be limited
+                full=soc_upper[k] >= b.capacity_wh and x[s[k][t]] >= b.capacity_wh * FULL_FRACTION,
+            )
+            if m > 1 and action == "auto":
+                # Batteries in self-consumption share every deficit and surplus among them;
+                # one the plan leaves out must be told so
+                own = net[k]
+                house = slot.pv_w - curtail - slot.load_w - flex_now
+                threshold = settings.action_threshold_w
+                if house < -threshold and own < threshold:
+                    action, power = "hold", None
+                elif house > threshold and -own < threshold and x[s[k][t]] < b.capacity_wh * FULL_FRACTION:
+                    action, power = "limit_charge", round(max(-own, 0.0))
+            shares[b.key] = BatterySlot(
+                charge_w=float(x[c[k][t]]),
+                discharge_w=float(x[d[k][t]]),
+                soc_wh=float(x[s[k][t]]),
+                action=action,
+                action_power_w=power,
+            )
         plan.slots.append(
             PlanSlot(
                 start=slot.start,
@@ -744,16 +848,17 @@ def optimize(
                 load_w=slot.load_w,
                 price=slot.price,
                 feed_in=slot.feed_in,
-                charge_w=float(x[c[t]]),
-                discharge_w=float(x[d[t]]),
+                charge_w=sum(share.charge_w for share in shares.values()),
+                discharge_w=sum(share.discharge_w for share in shares.values()),
                 import_w=float(x[gi[t]]),
                 export_w=float(x[ge[t]]),
-                soc_wh=float(x[s[t]]),
-                action=action,
-                action_power_w=power,
+                soc_wh=sum(share.soc_wh for share in shares.values()),
+                action="auto",
+                action_power_w=None,
                 flex_w={load.name: float(x[f[k][t]]) for k, load in enumerate(flex)},
                 curtail_w=curtail,
                 price_estimated=slot.price_estimated,
+                batteries=shares,
             )
         )
     plan.flex = [
@@ -765,8 +870,12 @@ def optimize(
         )
         for k, load in enumerate(flex)
     ]
-    smooth_actions(plan.slots)
-    plan.terminal_value = terminal * plan.slots[-1].soc_wh / 1000
+    for b in batteries:
+        smooth_actions([p.batteries[b.key] for p in plan.slots])
+    first = batteries[0].key
+    for p in plan.slots:
+        p.action, p.action_power_w = p.batteries[first].action, p.batteries[first].action_power_w
+    plan.terminal_value = sum(terminal[k] * plan.slots[-1].batteries[b.key].soc_wh for k, b in enumerate(batteries)) / 1000
     plan.alternative_cost = sum(
         r.unmet_wh / 1000 * load.unmet_cost for r, load in zip(plan.flex, flex, strict=True) if has_alternative(load)
     )
@@ -774,7 +883,7 @@ def optimize(
         (p.price * p.import_w - p.feed_in * p.export_w) * DT_H / 1000 for p in plan.slots
     )
     baseline_inputs, plan.baseline_alternative_cost = immediate_flex(inputs, flex)
-    plan.baseline_cost, baseline_soc = simulate_self_consumption(baseline_inputs, battery, plan.baseline_slot_costs)
+    plan.baseline_cost, baseline_socs = simulate_self_consumption(baseline_inputs, batteries, plan.baseline_slot_costs)
     plan.baseline_cost += plan.baseline_alternative_cost
-    plan.baseline_terminal_value = terminal * baseline_soc / 1000
+    plan.baseline_terminal_value = sum(terminal[k] * baseline_socs[k] for k in range(m)) / 1000
     return plan

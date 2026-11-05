@@ -80,6 +80,9 @@ class Sample:
     levels: dict[str, float] = field(default_factory=dict)
     # DC power per PV string ("<device id>:<string>")
     strings: dict[str, float] = field(default_factory=dict)
+    # SoC and power of every battery (device id); soc_wh and battery_w are their sums
+    battery_socs: dict[str, float] = field(default_factory=dict)
+    battery_powers: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(kw_only=True)

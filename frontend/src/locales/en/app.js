@@ -439,4 +439,7 @@ export default {
   "an": "on",
   "Nicht verwendete ausblenden": "Hide unused",
   "Nicht verwendete anzeigen ({count})": "Show unused ({count})",
+  "Speicher gesamt": "All batteries",
+  "Speicher einzeln": "Batteries one by one",
+  "Ladestand {name}": "State of charge {name}",
 };

@@ -99,7 +99,7 @@ Wie Sunflow den Hausspeicher plant. Hintergründe stehen unter [So plant Sunflow
 | Notstrom-Reserve | Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand. |
 | Hausverbrauch pro Tag | Startwert, solange weniger als 7 Tage Verlauf vorliegen. |
 | Großverbraucher ausklammern ab | Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose. Steuerbare Verbraucher rechnet Sunflow ohnehin heraus. |
-| Verschleißkosten Speicher | Direkt in ct/kWh oder aus Anschaffungspreis, Zyklen, Entladetiefe und Restkapazität berechnet. Verhindert Zyklen für Kleinstbeträge. |
+| Verschleißkosten Speicher | Je Speicher unter Geräte → Speicher: direkt in ct/kWh oder aus Anschaffungspreis, Zyklen, Entladetiefe und Restkapazität berechnet; dazu der Schalter „In der Planung berücksichtigen“. Verhindert Zyklen für Kleinstbeträge. |
 | Laden aus dem Netz | Erlaubt, wenn es sich rechnet. |
 | PV-Prognose anpassen | Lernt aus Messwerten je Stunde und Bewölkung, Details unter Analyse. |
 | Nach Sonnenstand korrigieren (Test) | Für Flächen mit Solcast-Historie: Korrektur je Sonnenhöhe und -richtung, aus bis zu zwei Jahren gelernt (einmal am Tag); erkennt Verschattung, die mit der Jahreszeit wandert. Ersetzt die Korrektur nach Uhrzeit für Flächen, deren Modell aus mindestens 60 Tagen gelernt hat und im Backtest besser ist. Backtest und Verschattungskarte unter Analyse. |

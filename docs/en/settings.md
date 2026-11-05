@@ -102,7 +102,7 @@ How Sunflow plans the home battery. Background in [How Sunflow plans](planning.m
 | Backup reserve | Applies in every strategy: in everyday use Sunflow never plans the battery below this level. |
 | Home consumption per day (initial value) | Used while less than 7 days of history exist. |
 | Exclude large loads from | Hours with higher house consumption (e.g. oven, sauna) are left out of the load forecast. Controllable loads are subtracted anyway. |
-| Battery wear cost | Directly in ct/kWh, or calculated from purchase price, cycles, depth of discharge and remaining capacity. Prevents cycling for tiny gains. |
+| Battery wear cost | Per battery under Devices → Battery: directly in ct/kWh, or calculated from purchase price, cycles, depth of discharge and remaining capacity; plus the switch "Include in planning". Prevents cycling for tiny gains. |
 | Charge from grid | "allowed when it pays off". |
 | PV forecast | "adapt to the system (learn from measurements)": learns from measurements per hour and cloud cover; details under Analysis. |
 | Correct by sun position (test) | For planes with Solcast history: a correction per sun elevation and direction, learned from up to two years (once a day); recognises shading that moves with the seasons. Replaces the correction by time of day for planes whose model was learned from at least 60 days and is better in the backtest. Backtest and shading map under Analysis. |

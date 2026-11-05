@@ -261,8 +261,8 @@ def test_five_minute_points_take_their_recorded_quarter_hour() -> None:
     assert [p.get("price") for p in points] == [0.2262, 0.2262, 0.2262, None]
 
 
-def test_soc_only_of_the_planned_battery() -> None:
-    """With a second battery the SoC history is still the one the plan is made for (no sum over capacities)."""
+def test_soc_of_every_battery() -> None:
+    """Several batteries are planned together: the SoC history sums them and keeps each one by its device."""
     from sunflow.analysis.history import history_series
     from sunflow.config.models import DeviceConfig, SunflowConfig
     from sunflow.devices.discovery import Snapshot
@@ -286,7 +286,24 @@ def test_soc_only_of_the_planned_battery() -> None:
 
     series = history_series(config, {"bat": profile}, Snapshot(entries=[], devices=[], entities=entities, states={}, energy_prefs=None))
 
-    assert sorted((s.key, s.statistic_id, s.factor) for s in series) == [
-        ("battery_w", "sensor.big_power", 1.0),
-        ("soc_wh", "sensor.big_soc", 200.0),
+    assert sorted((s.key, s.statistic_id, s.factor, s.device_id) for s in series) == [
+        ("battery_w", "sensor.big_power", 1.0, None),
+        ("battery_w", "sensor.plug_power", 1.0, None),
+        ("soc_wh", "sensor.big_soc", 200.0, "big"),
+        ("soc_wh", "sensor.plug_soc", 17.9, "plug"),
     ]
+
+
+async def test_battery_socs_are_summed_and_kept_apart() -> None:
+    """The site SoC is the sum; each battery's SoC is not counted as a consumer."""
+    client = FakeClient({"sensor.big_soc": [(0, 50.0)], "sensor.plug_soc": [(0, 80.0)]})
+    series = [
+        Series(key="soc_wh", statistic_id="sensor.big_soc", factor=200.0, device_id="big"),
+        Series(key="soc_wh", statistic_id="sensor.plug_soc", factor=17.9, device_id="plug"),
+    ]
+
+    points = await fetch_history(client, series, START, START + timedelta(hours=1), timedelta(hours=1))
+
+    assert points[0]["soc_wh"] == pytest.approx(10000 + 1432)
+    assert points[0]["batteries"] == {"big": pytest.approx(10000), "plug": pytest.approx(1432)}
+    assert points[0]["consumers"] == {}

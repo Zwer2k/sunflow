@@ -49,6 +49,11 @@ async def get_live(request: Request) -> dict[str, Any]:
     load_w: float | None = None
     # Unit and decimals of the source entities, so values look like in Home Assistant
     displays: dict[str, dict[str, Any]] = {}
+    # What the plan wants from each battery now (several batteries get their own actions)
+    runner = getattr(request.app.state, "runner", None)
+    latest = getattr(runner, "latest", None)
+    now = datetime.now(UTC)
+    slot = next((s for s in latest.plan.slots if s.start <= now < s.end), None) if latest is not None else None
     for status in site.devices:
         device = by_id[status.device_id]
         profile = profiles[device.profile]
@@ -80,9 +85,13 @@ async def get_live(request: Request) -> dict[str, Any]:
                 p["name"]: p["effective"]
                 for p in device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))
             }
+            share = slot.batteries.get(device.id) if slot is not None else None
             batteries.append(
                 {
+                    "device_id": device.id,
                     "name": device.name,
+                    "action": share.action if share is not None else None,
+                    "action_power_w": share.action_power_w if share is not None else None,
                     "soc_pct": value("battery_soc"),
                     "capacity_wh": params.get("capacity_wh"),
                     "power_w": value("battery_power"),

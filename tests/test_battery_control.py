@@ -19,7 +19,7 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.executor import EepromGuard, ExecutorError, plan_battery
 from sunflow.devices.profiles import ProfileLibrary, battery_actions, supported_action
 from sunflow.direct.hub import DirectHub, direct_device_id
-from sunflow.planning.optimizer import PlanSlot, Settings
+from sunflow.planning.optimizer import BatterySpec, PlanSlot, Settings
 from sunflow.planning.plan import device_actions, restrict_to_device
 
 NOW = datetime(2026, 10, 29, 10, 5, tzinfo=UTC)
@@ -80,15 +80,18 @@ def test_plan_battery_uses_action_steps() -> None:
         plan_battery(PROFILE, "force_discharge", {}, {}, [])
 
 
+BATTERY_SPEC = BatterySpec(capacity_wh=10000, soc_wh=5000, min_soc_wh=1000, max_charge_w=3000, max_discharge_w=3000)
+
+
 def test_planner_only_plans_what_the_device_can() -> None:
     """Without forced charging no grid charging is planned; slot actions are the device's."""
     warnings: list[str] = []
-    settings = restrict_to_device(Settings(allow_grid_charge=True), battery_actions(PROFILE), warnings)
-    assert settings.allow_grid_charge
+    spec = restrict_to_device(BATTERY_SPEC, battery_actions(PROFILE), Settings(allow_grid_charge=True), warnings, "Speicher")
+    assert (spec.force_charge, spec.force_discharge) == (True, "force_discharge" in battery_actions(PROFILE))
     assert warnings == []
-    no_force = restrict_to_device(Settings(allow_grid_charge=True), {"auto", "hold"}, warnings)
-    assert not no_force.allow_grid_charge
-    assert len(warnings) == 1
+    no_force = restrict_to_device(BATTERY_SPEC, {"auto", "hold"}, Settings(allow_grid_charge=True), warnings, "Speicher")
+    assert (no_force.force_charge, no_force.force_discharge) == (False, False)
+    assert warnings == ["Speicher kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant."]
 
     slot = PlanSlot.__new__(PlanSlot)
     slot.action, slot.action_power_w = "limit_discharge", 700
