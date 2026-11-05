@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.2
+
+- Live view: the rows of several batteries share one grid, so their state of charge bars line up, and each battery takes a single compact line (on phones the planned action moves into the name's tooltip). The view no longer needs to scroll because of them.
+
 ## 0.77.1
 
 - Fix: devices whose integration disables its control entities by default (e.g. Homevolt's battery power, Marstek's RS485 control, force mode and power settings) were not offered under Devices. Profiles now match on disabled entities as well; the device card says how many needed entities are disabled, and Sunflow enables exactly those when the device is taken over (the integration reloads briefly afterwards).
