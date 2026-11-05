@@ -268,7 +268,10 @@ class SunflowBatteries extends LitElement {
     .inline input { width: 18px; height: 18px; margin: 0; }
     .field-label { font-weight: 500; font-size: 14px; }
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-    .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+    .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 12px; }
+    /* Label, input and hint share their rows across a line, however long a label wraps */
+    .fields .field { display: grid; grid-template-rows: subgrid; grid-row: span 3; align-items: end; padding-bottom: 6px; }
+    .fields .field .small { align-self: start; }
     .segmented { display: flex; flex-wrap: wrap; gap: 4px; background: var(--sf-surface); padding: 4px; border-radius: 10px; align-self: flex-start; }
     .segmented button {
       min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent;

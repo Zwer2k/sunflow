@@ -44,6 +44,7 @@ Laden aus dem Netz.
 | Kostal Plenticore plus / G3 | kostal_plenticore (Core) | `kostal_plenticore/plenticore` | PV je String, Speicher, Netz, Verbrauch | Automatik, Halten | ja | – | 🧪 | 🧪 |
 | Victron ESS (GX mit Multi/Quattro) | direkt, Modbus TCP | `modbus/victron_gx` | PV (MPPT und AC-gekoppelt), Speicher, Netz | Automatik, Halten, Laden (nur volle Leistung) | – | Modbus TCP im GX freigeben | 🧪 | 🧪 |
 | Indevolt SolidFlex / PowerFlex (Steckerspeicher mit PV-Eingängen) | indevolt (Core) | `indevolt/indevolt` | PV, PV je Eingang, Speicher, AC-Ausgang, Zähler | Automatik, Halten, Entladen begrenzen, Laden, Entladen | – | – | 🧪 | 🧪 |
+| Homevolt | homevolt (Core) | `homevolt/homevolt` | Speicher | Automatik, Halten, Laden, Entladen | – | Local Mode (setzt Sunflow selbst, wird nicht gespeichert) | 🧪 | 🧪 |
 
 Hinweise:
 

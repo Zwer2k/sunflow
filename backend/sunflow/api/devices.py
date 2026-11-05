@@ -546,16 +546,24 @@ async def get_batteries(request: Request) -> list[dict[str, Any]]:
     snapshot = await _snapshot(request)
     names = {d["id"]: d.get("name_by_user") or d.get("name") or d["id"] for d in snapshot.devices}
     batteries = [d for d in config.devices if "battery" in profiles[d.profile]["capabilities"]]
-    # Modules may move between inverters: the sub-devices of all of them are offered
-    candidates = {d["id"]: d for d in snapshot.devices if d.get("via_device_id") in {b.ha_device_id for b in batteries}}
     result = []
     for device in batteries:
         profile = profiles[device.profile]
         roles = {r.role: r for r in preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})}
         chosen = config.battery_modules.get(device.id)
         params = {p["name"]: p for p in device_parameters(profile, device, snapshot, chosen)}
-        assigned = battery_module_ids(snapshot, device, chosen)
         spec = profile.get("parameters", {}).get("capacity_wh")
+        # Modules may move between inverters of the same kind: their sub-devices are offered.
+        # Sub-devices without the capacity sensor (e.g. a tower controller) are no modules.
+        owners = {b.ha_device_id for b in batteries if b.profile == device.profile}
+        key = (spec or {}).get("derive", {}).get("sum_key")
+        candidates = {
+            d["id"]: d
+            for d in snapshot.devices
+            if d.get("via_device_id") in owners
+            and (key is None or any(e.get("device_id") == d["id"] and entity_has_key(e, key) for e in snapshot.entities))
+        }
+        assigned = [m for m in battery_module_ids(snapshot, device, chosen) if chosen is not None or m in candidates]
         result.append(
             {
                 "device_id": device.id,

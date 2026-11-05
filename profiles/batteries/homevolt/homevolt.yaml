@@ -1,0 +1,47 @@
+# Homevolt home battery via the core homevolt integration (local HTTP API). Unique ids are
+# "<ecu id>_<sensor name>", e.g. "40580137858664_State of Charge".
+# Control needs local mode (a switch, not stored: the device falls back to its own schedule
+# after a restart). In it a manual schedule runs: inverter charge or discharge at the setpoint,
+# solar charge only, or idle. Switching local mode off hands the battery back.
+# Battery power sign: assumed + = discharge. Not verified on hardware yet; tested against
+# tools/sim/homevolt.py.
+profile: homevolt/homevolt
+version: 1
+match:
+  integration: homevolt
+  requires: ["State of Charge", "Power", battery_mode, local_mode]
+
+capabilities: [battery, battery_control]
+# Connected to the house's AC side like any battery with its own inverter
+coupling: ac
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: "State of Charge", unit: "%"}
+  battery_power: {key: "Power", unit: W, sign: discharge_positive}
+
+parameters:
+  # Usable energy: what it can still take plus what it can give
+  capacity_wh: {unit: Wh, min: 1000, derive: {sum_key: "Available*Energy"}}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, default: 6000, min: 0}
+  max_discharge: {unit: W, default: 6000, min: 0}
+  efficiency_pct: {unit: "%", default: 92, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 97, min: 80, max: 100}
+
+battery_control:
+  auto:
+    - switch: {key: local_mode, state: "off", write: if_differs}
+  hold:
+    - switch: {key: local_mode, state: "on", write: if_differs}
+    - select: {key: battery_mode, option: solar_charge, write: if_differs}
+  force_charge:
+    - switch: {key: local_mode, state: "on", write: if_differs}
+    - select: {key: battery_mode, option: inverter_charge, write: if_differs}
+    - number: {key: setpoint, value: "{{ P }}", min: 0, write: if_differs, tolerance: 50}
+  force_discharge:
+    - switch: {key: local_mode, state: "on", write: if_differs}
+    - select: {key: battery_mode, option: inverter_discharge, write: if_differs}
+    - number: {key: setpoint, value: "{{ P }}", min: 0, write: if_differs, tolerance: 50}
+  refresh: 10min

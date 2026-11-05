@@ -30,7 +30,8 @@ roles:
   battery_discharge_energy: {key: "6007", unit: kWh, optional: true}
 
 parameters:
-  capacity_wh: {unit: Wh, min: 500, derive: {sum_key: "142", factor: 1000}}
+  # Reported in kWh, converted to Wh by its unit
+  capacity_wh: {unit: Wh, min: 500, derive: {sum_key: "142"}}
   # The API refuses targets below 5 %
   min_soc: {unit: "%", default: 10, min: 5, max: 100}
   max_charge: {unit: W, default: 2400, min: 0}
