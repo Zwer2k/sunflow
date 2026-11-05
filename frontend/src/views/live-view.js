@@ -531,30 +531,35 @@ class SunflowLive extends LitElement {
         const state = b.power_w > ACTIVE_W ? t("lädt") : b.power_w < -ACTIVE_W ? t("entlädt") : t("ruht");
         const action = ACTIONS[b.action];
         return html`<li>
-          <span class="part-name">${b.name}</span>
+          <span class="part-name" title=${action ? `${b.name}: ${action.label}` : b.name}>${b.name}</span>
           <span class="part-bar" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${soc ?? 0}
             aria-label=${t("Ladestand {name}", { name: b.name })}><span style="width:${soc ?? 0}%"></span></span>
           <span class="part-value">${soc === null ? "–" : `${soc} %`}</span>
           <span class="part-value">${state} ${formatPower(Math.abs(b.power_w ?? 0), b.display)}</span>
-          ${action ? html`<span class="part-action" title=${action.hint}>${action.label}</span>` : nothing}
+          <span class="part-action" title=${action?.hint ?? ""}>${action?.label ?? ""}</span>
         </li>`;
       })}
     </ul>`;
   }
 
   static styles = css`
-    .battery-parts { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
-    .battery-parts li {
-      display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(60px, 1fr) auto auto; gap: 4px 10px; align-items: center;
+    /* One grid for all rows: bars and values line up from battery to battery */
+    .battery-parts {
+      list-style: none; margin: 2px 0 0; padding: 0; font-size: 12px; line-height: 1.3;
+      display: grid; grid-template-columns: minmax(0, max-content) minmax(40px, 1fr) auto auto minmax(0, max-content);
+      align-items: center; column-gap: 8px; row-gap: 3px;
     }
-    .part-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-    .part-bar { height: 8px; border-radius: 4px; background: var(--sf-subtle); overflow: hidden; }
+    .battery-parts li { display: contents; }
+    .part-name, .part-action { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .part-name { font-weight: 500; max-width: 140px; }
+    .part-bar { height: 6px; border-radius: 3px; background: var(--sf-subtle); overflow: hidden; }
     .part-bar span { display: block; height: 100%; background: var(--sf-series-3); }
-    .part-value { color: var(--sf-muted); white-space: nowrap; text-align: right; }
-    .part-action { grid-column: 1 / -1; font-size: 12px; color: var(--sf-muted); }
-    @media (min-width: 560px) {
-      .battery-parts li { grid-template-columns: minmax(0, 1.2fr) minmax(80px, 1fr) auto auto minmax(0, 1fr); }
-      .part-action { grid-column: auto; text-align: right; }
+    .part-value { color: var(--sf-muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+    .part-action { color: var(--sf-muted); }
+    /* Narrow screens: the action goes into the name's tooltip, every battery stays one line */
+    @media (max-width: 559px) {
+      .battery-parts { grid-template-columns: minmax(0, max-content) minmax(40px, 1fr) auto auto; }
+      .part-action { display: none; }
     }
     /* Fills the screen: the diagram on top, today's figures at the bottom */
     :host { display: flex; flex-direction: column; gap: 16px; min-height: calc(100dvh - 110px); }
