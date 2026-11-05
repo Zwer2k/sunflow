@@ -437,4 +437,6 @@ export default {
   "Probeladung um {time}": "Test charge at {time}",
   "aus": "off",
   "an": "on",
+  "Nicht verwendete ausblenden": "Hide unused",
+  "Nicht verwendete anzeigen ({count})": "Show unused ({count})",
 };

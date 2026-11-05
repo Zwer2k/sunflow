@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.36
+
+- Setup → Integrations: integrations Sunflow does not use are hidden by default; "Show unused" lists them. An integration chosen or unchosen in this visit stays visible.
+
 ## 0.75.35
 
 - Battery wear is set per battery: under Settings → Devices → Battery each battery has its own wear cost (directly in ct/kWh or from purchase price and rated cycles) and a switch "Include in planning". Switched off, the battery's cycles count as free and it is used even for small price differences. Batteries without their own entry keep the value set so far under Planning, which no longer shows the wear editor.

@@ -236,6 +236,8 @@ class SunflowApp extends LitElement {
     _direct: { state: true },
     _directProfiles: { state: true },
     _link: { state: true },
+    // Integrations not used by Sunflow are hidden until asked for
+    _showUnusedIntegrations: { state: true },
     _mcp: { state: true },
     _integrationSettings: { state: true },
     _display: { state: true },
@@ -259,6 +261,9 @@ class SunflowApp extends LitElement {
     this._advanced = readSetting(ADVANCED_KEY) === "1";
     this._integrations = null;
     this._selected = new Set();
+    this._showUnusedIntegrations = false;
+    // Chosen or unchosen in this visit: stays visible while the user decides
+    this._touchedIntegrations = new Set();
     this._previews = {};
     // ha_device_id -> stored device config
     this._configDevices = {};
@@ -959,6 +964,7 @@ class SunflowApp extends LitElement {
     if (selected.has(integration.entry_id)) selected.delete(integration.entry_id);
     else selected.add(integration.entry_id);
     this._selected = selected;
+    this._touchedIntegrations = new Set([...this._touchedIntegrations, integration.entry_id]);
   }
 
   async _accept(device) {
@@ -1192,14 +1198,27 @@ class SunflowApp extends LitElement {
       </div>
       ${this._integrations.length === 0
         ? html`<p class="muted">${t("Keine unterstützte Integration gefunden.")}</p>`
-        : html`
-            <div class="cards">
-              ${this._integrations.map((i) => this._renderIntegration(i))}
-            </div>
-          `}
+        : this._renderIntegrationCards()}
       ${this._renderDirectForm()}
       ${this._renderIntegrationLink()}
       ${this._renderMcp()}
+    `;
+  }
+
+  _renderIntegrationCards() {
+    const used = (i) => this._selected.has(i.entry_id) || this._touchedIntegrations.has(i.entry_id);
+    const visible = this._showUnusedIntegrations ? this._integrations : this._integrations.filter(used);
+    const unused = this._integrations.filter((i) => !used(i)).length;
+    return html`
+      ${visible.length ? html`<div class="cards">${visible.map((i) => this._renderIntegration(i))}</div>` : nothing}
+      ${unused
+        ? html`<div><button class="secondary" aria-expanded=${this._showUnusedIntegrations}
+            @click=${() => (this._showUnusedIntegrations = !this._showUnusedIntegrations)}>
+            ${this._showUnusedIntegrations
+              ? t("Nicht verwendete ausblenden")
+              : t("Nicht verwendete anzeigen ({count})", { count: unused })}
+          </button></div>`
+        : nothing}
     `;
   }
 
