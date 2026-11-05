@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.37
+
+- New device profile `indevolt/indevolt` for Indevolt SolidFlex/PowerFlex storage (core integration indevolt, local): PV, battery, AC output and energy counters; charging and discharging at a set power through the integration's actions, holding and limiting the discharge through the maximum AC output. Tested against a simulated device (`tools/sim/indevolt.py`), not yet on hardware.
+
 ## 0.75.36
 
 - Setup → Integrations: integrations Sunflow does not use are hidden by default; "Show unused" lists them. An integration chosen or unchosen in this visit stays visible.
