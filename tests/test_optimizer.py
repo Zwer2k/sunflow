@@ -1038,3 +1038,4 @@ def test_on_off_load_charges_in_one_block() -> None:
     switched_on = sum(1 for t, running in enumerate(on) if running and (t == 0 or not on[t - 1]))
     assert switched_on == 1
     assert sum(on[:20]) == sum(on)
+

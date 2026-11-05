@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.4
+
+- Charge battery (e-bike …): a charge the plan switches off before the charger is full goes on with the rest of the energy instead of a whole charge, so later plans no longer push it further back. Without an SoC entity the planned time has a 25 % reserve in case a charge takes longer than the learned mean; the charger is switched off anyway once it draws no more power.
+
 ## 0.77.3
 
 - Live view: with several batteries each one is drawn as a small battery icon with its fill level next to the battery node in the energy flow diagram, with short name, state of charge and power (↑ charging, ↓ discharging); hovering shows the full name and the planned action. The rows below the diagram are gone, so "Today from energy meters" stays on screen.

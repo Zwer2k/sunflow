@@ -27,6 +27,8 @@ SWITCH_ON_GRACE = timedelta(minutes=2)
 MAX_CHARGES = 5
 # A charge below this is a test or an almost full battery, not a typical charge
 MIN_CHARGE_WH = 20.0
+# A charge that takes longer than usual keeps this share of the usual energy planned
+MIN_REMAINING_SHARE = 0.2
 # Gaps longer than this (App or Home Assistant away) are not counted as charged energy
 MAX_STEP = timedelta(minutes=5)
 
@@ -93,6 +95,17 @@ class ChargerWatch:
         charges = self._state(device.id).charges
         return fmean(charges) if charges else device.charger.energy_wh if device.charger else None
 
+    def remaining_wh(self, device: DeviceConfig) -> float | None:
+        """Energy still to charge: a charge interrupted by the plan goes on with the rest, not anew.
+
+        A charge that takes more than usual keeps a part of the usual energy planned until the
+        load is found full.
+        """
+        if (energy := self.energy_wh(device)) is None:
+            return None
+        charged = self._state(device.id).charge_wh
+        return max(energy - charged, MIN_REMAINING_SHARE * energy)
+
     def ready(self, device: DeviceConfig, states: dict[str, dict[str, Any]]) -> bool:
         """A plug entity decides where there is one, else the last test or charge."""
         if device.charger is None:
@@ -104,7 +117,7 @@ class ChargerWatch:
     def planning(self, config: SunflowConfig, states: dict[str, dict[str, Any]]) -> dict[str, ChargerReady]:
         """Readiness and energy per charger for the plan."""
         return {
-            d.id: ChargerReady(ready=self.ready(d, states), energy_wh=self.energy_wh(d))
+            d.id: ChargerReady(ready=self.ready(d, states), energy_wh=self.remaining_wh(d))
             for d in config.devices
             if d.charger is not None
         }
