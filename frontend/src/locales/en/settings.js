@@ -352,4 +352,7 @@ export default {
   "Ausgeschaltet zählen Zyklen dieses Speichers als kostenlos: er wird auch für kleine Preisunterschiede genutzt.": "When off, this battery's cycles count as free: it is used even for small price differences.",
   "Verschleißkosten nicht gespeichert: {error}": "Wear cost not saved: {error}",
   "Stellst du je Speicher ein: Einstellungen → Geräte → Speicher.": "Set per battery: Settings → Devices → Battery.",
+  "Kurzbezeichnung": "Short name",
+  "Bis 8 Zeichen, für die Live-Ansicht mit mehreren Speichern.": "Up to 8 characters, for the live view with several batteries.",
+  "Kurzbezeichnung nicht gespeichert: {error}": "Short name not saved: {error}",
 };

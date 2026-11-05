@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.77.3
+
+- Live view: with several batteries each one is drawn as a small battery icon with its fill level next to the battery node in the energy flow diagram, with short name, state of charge and power (↑ charging, ↓ discharging); hovering shows the full name and the planned action. The rows below the diagram are gone, so "Today from energy meters" stays on screen.
+- Batteries get a short name (up to 8 characters) under Settings → Devices → Battery; without one the first word of the name is used.
+
 ## 0.77.2
 
 - Live view: the rows of several batteries share one grid, so their state of charge bars line up, and each battery takes a single compact line (on phones the planned action moves into the name's tooltip). The view no longer needs to scroll because of them.

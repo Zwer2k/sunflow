@@ -146,3 +146,14 @@ def test_held_battery_does_not_discharge() -> None:
     plan = optimize(_slots(6), [HOUSE, with_override(PLUG, "hold")], Settings())
 
     assert all(s.batteries["plug"].discharge_w < 1 for s in plan.slots)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("Sofar Inverter", "Sofar"), ("INDEVOLT CMS-SF2000", "INDEVO"), ("Balkon", "Balkon")],
+)
+def test_default_short_name(name: str, expected: str) -> None:
+    """Without a short name of its own a battery shows its name's first word, cut to 6 characters."""
+    from sunflow.api.live import short_name
+
+    assert short_name(name) == expected

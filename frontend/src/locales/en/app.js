@@ -440,8 +440,7 @@ export default {
   "Nicht verwendete ausblenden": "Hide unused",
   "Nicht verwendete anzeigen ({count})": "Show unused ({count})",
   "Speicher gesamt": "All batteries",
-  "Speicher einzeln": "Batteries one by one",
-  "Ladestand {name}": "State of charge {name}",
   "{name} (+ laden, − entladen)": "{name} (+ charging, − discharging)",
   "{count} benötigte Entitäten sind in Home Assistant deaktiviert. Sunflow aktiviert sie beim Übernehmen; die Integration lädt danach kurz neu, bis dahin fehlen ihre Werte.": "{count} entities it needs are disabled in Home Assistant. Sunflow enables them when you take the device over; the integration then reloads briefly, until then their values are missing.",
+  "{name}: {soc}, {power}": "{name}: {soc}, {power}",
 };
