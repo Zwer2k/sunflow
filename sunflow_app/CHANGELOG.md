@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.76.1
+
+- Fix: the Indevolt capacity was taken 1000 times too large (the kWh sensor is already converted to Wh), which also made the state of charge in the plan chart far too high.
+- Batteries: only sub-devices of batteries of the same kind are offered as modules, and only those with the module capacity sensor. A plug-in storage no longer lists the hybrid inverter's modules, and the Sofar BDU and PCU devices are no longer counted as modules.
+- Wear cost: the inputs stay in line when a label wraps.
+- New device profile `homevolt/homevolt` (core integration homevolt, local): state of charge and power; charging and discharging at a set power and holding through the integration's local mode, which is not stored on the device. Tested against a simulated device (`tools/sim/homevolt.py`), not yet on hardware.
+
 ## 0.76.0
 
 - Several batteries are planned together, e.g. a hybrid inverter and a plug-in storage. Each battery has its own state of charge, power limits, efficiencies and wear cost; the one whose discharged kWh costs least covers the demand first, and energy is never moved from one battery into the other. Every battery gets its own action: when only one of them should cover the house, the other holds, so the two do not regulate against each other. The everyday charge limit and calendar aging apply to all batteries, the full charge and the backup reserve to the first one.

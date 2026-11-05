@@ -20,6 +20,19 @@ DUMMIES: dict[str, dict[str, Any]] = {
             "switch": ["grid_charging"],
         },
     },
+    "homevolt/homevolt": {
+        "integration": "homevolt",
+        "prefix": "40580137858664",
+        "keys": {
+            "sensor": [
+                "State of Charge", "Power", "Available Charging Energy", "Available Discharge Energy", "Power grid",
+                "Homevolt battery 0", "Homevolt battery 0 power",
+            ],
+            "select": ["battery_mode"],
+            "number": ["setpoint", "grid_import_limit", "grid_export_limit"],
+            "switch": ["local_mode"],
+        },
+    },
 }
 
 VARIABLES = {"P": 600, "max_charge": 2400, "max_discharge": 800, "min_soc": 10, "device_id": "ha-device"}
@@ -102,3 +115,52 @@ def test_ac_coupled_storage_converts_pv_as_well(library: ProfileLibrary) -> None
     assert spec.key == "plug"
     assert spec.efficiency_charge == pytest.approx(spec.efficiency_charge_grid)
     assert spec.efficiency_charge * spec.efficiency_discharge == pytest.approx(0.92 * 0.95**2)
+
+
+def test_homevolt_actions(library: ProfileLibrary) -> None:
+    """Local mode first, then the manual schedule; switching local mode off hands the battery back."""
+    profile = library.profiles["homevolt/homevolt"]
+    entities = dummy_entities("homevolt/homevolt")
+
+    def calls(action: str) -> list[tuple[str, str, dict[str, Any]]]:
+        return [(c.domain, c.service, c.data) for c in plan_battery(profile, action, {}, VARIABLES, entities)]
+
+    assert battery_actions(profile) == {"auto", "hold", "force_charge", "force_discharge"}
+    assert calls("force_discharge") == [
+        ("switch", "turn_on", {}),
+        ("select", "select_option", {"option": "inverter_discharge"}),
+        ("number", "set_value", {"value": 600}),
+    ]
+    assert calls("release") == [("switch", "turn_off", {})]
+
+
+def test_homevolt_capacity_from_available_energies(library: ProfileLibrary) -> None:
+    """Usable capacity is what the battery can still take plus what it can give."""
+    from types import SimpleNamespace
+
+    from sunflow.devices.site import derive_parameter
+
+    entities = dummy_entities("homevolt/homevolt")
+    values = {"Available Charging Energy": "5320", "Available Discharge Energy": "7980"}
+    states = {e["entity_id"]: {"state": values.get(e["unique_id"].split("_", 1)[1], "0")} for e in entities}
+    snapshot = SimpleNamespace(devices=[{"id": "dev"}], entities=entities, states=states)
+
+    spec = library.profiles["homevolt/homevolt"]["parameters"]["capacity_wh"]
+
+    assert derive_parameter(spec, snapshot, "dev") == 13300
+
+
+def test_indevolt_capacity_from_kwh(library: ProfileLibrary) -> None:
+    """The rated capacity comes in kWh; its unit alone turns it into Wh (no extra factor)."""
+    from types import SimpleNamespace
+
+    from sunflow.devices.site import derive_parameter
+
+    entities = dummy_entities("indevolt/indevolt")
+    states = {
+        e["entity_id"]: {"state": "1.79", "attributes": {"unit_of_measurement": "kWh"}} if e["unique_id"].endswith("_142") else {"state": "0"}
+        for e in entities
+    }
+    snapshot = SimpleNamespace(devices=[{"id": "dev"}], entities=entities, states=states)
+
+    assert derive_parameter(library.profiles["indevolt/indevolt"]["parameters"]["capacity_wh"], snapshot, "dev") == 1790
