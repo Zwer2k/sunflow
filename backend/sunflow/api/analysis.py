@@ -18,7 +18,7 @@ from sunflow.analysis.energy import (
 from sunflow.analysis.inventory import data_inventory
 from sunflow.analysis.recommendations import build as build_recommendations
 from sunflow.config.store import ConfigStore
-from sunflow.devices.profiles import controls_battery
+from sunflow.devices.profiles import controls_battery, planned_battery
 from sunflow.ha import HAError
 from sunflow.planning.appliances import learn_usage as learn_appliance_usage
 from sunflow.planning.plan import feed_in_price
@@ -200,9 +200,7 @@ async def get_cost_history(request: Request, days: Annotated[int, Query(ge=1, le
     config = request.app.state.store.load()
     profiles = _library(request).profiles
     snapshot = await _snapshot(request)
-    battery_device = next(
-        (d for d in config.devices if controls_battery(profiles[d.profile])), None
-    )
+    battery_device = planned_battery(config.devices, profiles)
     fixed = config.tariff.fixed_price_ct
     return await cost_history(
         request.app.state.ha,

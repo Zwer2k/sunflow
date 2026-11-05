@@ -8,7 +8,7 @@ from typing import Any
 
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
-from sunflow.devices.profiles import controls_battery
+from sunflow.devices.profiles import planned_battery
 from sunflow.devices.resolver import CANONICAL_SIGNS, preview
 from sunflow.devices.site import PV_OUTPUT_ROLES, device_parameters, measurement_device
 from sunflow.devices.state_history import state_means
@@ -37,6 +37,8 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
     series: list[Series] = []
     grid_device = measurement_device(config, profiles, "grid")
     load_device = measurement_device(config, profiles, "load")
+    # SoC and power of the battery the plan is made for, as in the live values
+    battery_device = planned_battery(config.devices, profiles)
     for device in config.devices:
         profile = profiles[device.profile]
         roles = {
@@ -56,7 +58,7 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             sign = -1.0 if value.sign is not None and value.sign not in CANONICAL_SIGNS else 1.0
             series.append(Series(key=key, statistic_id=value.entity_id, factor=factor * sign, device_id=device_id))
 
-        if controls_battery(profile):
+        if battery_device is not None and device.id == battery_device.id:
             params = {
                 p["name"]: p["effective"]
                 for p in device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))

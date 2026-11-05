@@ -259,3 +259,34 @@ def test_five_minute_points_take_their_recorded_quarter_hour() -> None:
 
     assert [p["consumers"].get("bike") for p in points] == [130.0, 130.0, 130.0, None]
     assert [p.get("price") for p in points] == [0.2262, 0.2262, 0.2262, None]
+
+
+def test_soc_only_of_the_planned_battery() -> None:
+    """With a second battery the SoC history is still the one the plan is made for (no sum over capacities)."""
+    from sunflow.analysis.history import history_series
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.devices.discovery import Snapshot
+
+    profile = {
+        "capabilities": ["battery", "battery_control"],
+        "roles": {"battery_soc": {"key": "soc"}, "battery_power": {"key": "power"}},
+        "parameters": {"capacity_wh": {"unit": "Wh"}},
+        "battery_control": {"auto": []},
+    }
+    entities = [
+        {"entity_id": f"sensor.{d}_{key}", "unique_id": f"{d}_{key}", "device_id": d}
+        for d in ("big", "plug") for key in ("soc", "power")
+    ]
+    config = SunflowConfig(
+        devices=[
+            DeviceConfig(id="big", ha_device_id="big", profile="bat", profile_version=1, name="Hausspeicher", parameters={"capacity_wh": 20000}),
+            DeviceConfig(id="plug", ha_device_id="plug", profile="bat", profile_version=1, name="Steckerspeicher", parameters={"capacity_wh": 1790}),
+        ],
+    )
+
+    series = history_series(config, {"bat": profile}, Snapshot(entries=[], devices=[], entities=entities, states={}, energy_prefs=None))
+
+    assert sorted((s.key, s.statistic_id, s.factor) for s in series) == [
+        ("battery_w", "sensor.big_power", 1.0),
+        ("soc_wh", "sensor.big_soc", 200.0),
+    ]

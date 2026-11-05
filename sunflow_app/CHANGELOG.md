@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.38
+
+- Fix: with a second controllable battery (e.g. a plug-in storage next to the hybrid inverter) the measured state of charge in the plan chart added up both batteries and divided by the planned one's capacity, showing values far above 100 %. History, live values and the plan now all use the battery the plan is made for; the plan warns that the other battery runs on its own (planning several batteries is not supported yet).
+
 ## 0.75.37
 
 - New device profile `indevolt/indevolt` for Indevolt SolidFlex/PowerFlex storage (core integration indevolt, local): PV, battery, AC output and energy counters; charging and discharging at a set power through the integration's actions, holding and limiting the discharge through the maximum AC output. Tested against a simulated device (`tools/sim/indevolt.py`), not yet on hardware.
