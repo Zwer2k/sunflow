@@ -90,6 +90,7 @@ async def get_live(request: Request) -> dict[str, Any]:
                 {
                     "device_id": device.id,
                     "name": device.name,
+                    "short_name": device.short_name or short_name(device.name),
                     "action": share.action if share is not None else None,
                     "action_power_w": share.action_power_w if share is not None else None,
                     "soc_pct": value("battery_soc"),
@@ -262,6 +263,11 @@ async def _live_weather(request: Request, config: SunflowConfig, snapshot: Snaps
             for f in daily[:WEATHER_DAYS]
         ],
     }
+
+
+def short_name(name: str) -> str:
+    """A battery's default short name: the first word of its name, at most 6 characters."""
+    return (name.split() or [name])[0][:6]
 
 
 def combine_batteries(batteries: list[dict[str, Any]]) -> dict[str, Any] | None:

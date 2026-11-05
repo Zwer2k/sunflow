@@ -180,6 +180,8 @@ class DeviceConfig(BaseModel):
     reload_after_min: int | None = Field(default=None, ge=10, le=240)
     # Own loads with a battery of their own; None: planned by their daily need
     charger: ChargerSettings | None = None
+    # Batteries: short name for the live diagram (e.g. "Haus", "Balk."); None: the name's first word
+    short_name: str | None = Field(default=None, max_length=8)
 
 
 class TariffConfig(BaseModel):

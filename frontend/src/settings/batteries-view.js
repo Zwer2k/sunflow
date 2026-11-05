@@ -68,6 +68,7 @@ class SunflowBatteries extends LitElement {
           b.power_w !== null ? t("Leistung {power}", { power: formatSigned(b.power_w, "W") }) : null,
           b.capacity_wh ? t("Kapazität {capacity}", { capacity: formatValue(b.capacity_wh, "Wh") }) : null,
         ].filter(Boolean).join(" · ")}</div>
+        ${open ? this._renderShortName(b) : nothing}
         ${open ? this._renderModules(b, sum) : nothing}
         ${open ? this._renderCost(b) : nothing}
       </section>
@@ -101,6 +102,29 @@ class SunflowBatteries extends LitElement {
           : nothing}
       </div>
     `;
+  }
+
+  _renderShortName(b) {
+    return html`
+      <label class="field short-name">
+        <span class="field-label">${t("Kurzbezeichnung")}</span>
+        <span class="input-unit"><input maxlength="8" .value=${b.short_name ?? ""} placeholder=${(b.inverter.split(" ")[0] ?? "").slice(0, 6)}
+          ?disabled=${this._busy} @change=${(e) => this._saveShortName(b, e.target.value)}></span>
+        <span class="small muted">${t("Bis 8 Zeichen, für die Live-Ansicht mit mehreren Speichern.")}</span>
+      </label>
+    `;
+  }
+
+  async _saveShortName(battery, value) {
+    this._busy = true;
+    try {
+      this._batteries = await api.setBatteryShortName(battery.device_id, value.trim() || null);
+      this._error = null;
+    } catch (err) {
+      this._error = t("Kurzbezeichnung nicht gespeichert: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+    }
   }
 
   _costInputs(b) {
@@ -279,6 +303,8 @@ class SunflowBatteries extends LitElement {
     }
     .segmented button.on { background: var(--sf-subtle); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
     .input-unit { display: flex; align-items: center; gap: 8px; max-width: 320px; }
+    .short-name { padding: 0 14px; }
+    .short-name .input-unit { max-width: 160px; }
     .input-unit input {
       flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; font-size: 15px;
       border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);

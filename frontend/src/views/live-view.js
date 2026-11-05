@@ -380,6 +380,7 @@ class SunflowLive extends LitElement {
         ${battery
           ? this._batteryNode(battery)
           : nothing}
+        ${battery?.parts?.length ? this._batteryParts(battery.parts) : nothing}
         ${this._node("home", NODE.home, COLOR.home, t("Haus"), formatPower(homeBase, displays.load),
           consumers.length ? t("gesamt {power}", { power: formatPower(flows.house, displays.load) }) : null)}
         ${consumers.map((c, i) => this._consumerNode(c, [CONSUMER_X, consumerY(i)], COLOR.consumers[i]))}
@@ -388,7 +389,6 @@ class SunflowLive extends LitElement {
       ${live.losses_w !== null && live.losses_w !== undefined
         ? html`<p class="small muted" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>${t("Verluste Wechselrichter/Speicher: {power} (Ø letzte Minuten)", { power: formatValue(live.losses_w, "W") })}</p>`
         : nothing}
-      ${battery?.parts?.length ? this._batteryParts(battery.parts) : nothing}
       ${live.consumers.length > MAX_CONSUMERS
         ? html`<p class="small muted">${t("Weitere Verbraucher:")} ${live.consumers
             .slice(MAX_CONSUMERS)
@@ -523,44 +523,36 @@ class SunflowLive extends LitElement {
     `;
   }
 
-  /** Each battery of the combined node: level, power and what the plan wants from it now. */
+  /** Each battery of the combined node as a small battery beside it: short name, level, power; the plan's action as tooltip. */
   _batteryParts(parts) {
-    return html`<ul class="battery-parts" aria-label=${t("Speicher einzeln")}>
-      ${parts.map((b) => {
-        const soc = b.soc_pct === null || b.soc_pct === undefined ? null : Math.round(b.soc_pct);
-        const state = b.power_w > ACTIVE_W ? t("lädt") : b.power_w < -ACTIVE_W ? t("entlädt") : t("ruht");
-        const action = ACTIONS[b.action];
-        return html`<li>
-          <span class="part-name" title=${action ? `${b.name}: ${action.label}` : b.name}>${b.name}</span>
-          <span class="part-bar" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${soc ?? 0}
-            aria-label=${t("Ladestand {name}", { name: b.name })}><span style="width:${soc ?? 0}%"></span></span>
-          <span class="part-value">${soc === null ? "–" : `${soc} %`}</span>
-          <span class="part-value">${state} ${formatPower(Math.abs(b.power_w ?? 0), b.display)}</span>
-          <span class="part-action" title=${action?.hint ?? ""}>${action?.label ?? ""}</span>
-        </li>`;
-      })}
-    </ul>`;
+    const [x, y] = NODE.battery;
+    return parts.map((b, i) => {
+      // Up to four on the right, further ones on the left of the node
+      const right = i < 4;
+      const row = right ? i : i - 4;
+      const left = right ? x + R + 20 : x - R - 130;
+      const top = y - 38 + row * 25;
+      const soc = Math.min(Math.max((b.soc_pct ?? 0) / 100, 0), 1);
+      const power = b.power_w ?? 0;
+      const arrow = power > ACTIVE_W ? "↑" : power < -ACTIVE_W ? "↓" : "";
+      const action = ACTIONS[b.action];
+      return svg`<g class="part" role="img" aria-label=${t("{name}: {soc}, {power}", {
+        name: b.name, soc: b.soc_pct === null ? "–" : `${Math.round(b.soc_pct)} %`, power: formatPower(power, b.display) })}>
+        <title>${b.name}${action ? ` – ${action.label}` : ""}</title>
+        <rect x=${left + 3} y=${top - 1} width="4" height="2" class="part-cap"></rect>
+        <rect x=${left} y=${top + 1} width="10" height="18" rx="2" class="part-shell" style="stroke: ${COLOR.battery}"></rect>
+        <rect x=${left + 2} y=${top + 3 + 14 * (1 - soc)} width="6" height=${14 * soc} style="fill: ${COLOR.battery}"></rect>
+        <text x=${left + 16} y=${top + 9} class="part-label">${b.short_name} ${b.soc_pct === null ? "–" : `${Math.round(b.soc_pct)} %`}</text>
+        <text x=${left + 16} y=${top + 21} class="part-power">${arrow}${formatPower(Math.abs(power), b.display)}</text>
+      </g>`;
+    });
   }
 
   static styles = css`
-    /* One grid for all rows: bars and values line up from battery to battery */
-    .battery-parts {
-      list-style: none; margin: 2px 0 0; padding: 0; font-size: 12px; line-height: 1.3;
-      display: grid; grid-template-columns: minmax(0, max-content) minmax(40px, 1fr) auto auto minmax(0, max-content);
-      align-items: center; column-gap: 8px; row-gap: 3px;
-    }
-    .battery-parts li { display: contents; }
-    .part-name, .part-action { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .part-name { font-weight: 500; max-width: 140px; }
-    .part-bar { height: 6px; border-radius: 3px; background: var(--sf-subtle); overflow: hidden; }
-    .part-bar span { display: block; height: 100%; background: var(--sf-series-3); }
-    .part-value { color: var(--sf-muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
-    .part-action { color: var(--sf-muted); }
-    /* Narrow screens: the action goes into the name's tooltip, every battery stays one line */
-    @media (max-width: 559px) {
-      .battery-parts { grid-template-columns: minmax(0, max-content) minmax(40px, 1fr) auto auto; }
-      .part-action { display: none; }
-    }
+    .part-shell { fill: none; stroke-width: 1.5; }
+    .part-cap { fill: var(--sf-muted); }
+    .part-label { font-size: 11px; font-weight: 600; fill: var(--sf-text); }
+    .part-power { font-size: 10px; fill: var(--sf-muted); font-variant-numeric: tabular-nums; }
     /* Fills the screen: the diagram on top, today's figures at the bottom */
     :host { display: flex; flex-direction: column; gap: 16px; min-height: calc(100dvh - 110px); }
     .today { margin-top: auto; }

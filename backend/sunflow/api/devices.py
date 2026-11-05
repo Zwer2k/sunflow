@@ -596,6 +596,7 @@ async def get_batteries(request: Request) -> list[dict[str, Any]]:
                 "power_w": roles["battery_power"].value if "battery_power" in roles else None,
                 "capacity_wh": params.get("capacity_wh", {}).get("effective"),
                 "cost": config.battery_cost(device.id).model_dump(),
+                "short_name": device.short_name,
                 "modules": [
                     {
                         "ha_device_id": module_id,
@@ -635,6 +636,24 @@ async def set_battery_modules(request: Request, device_id: str, body: BatteryMod
         config.battery_modules[device.id] = body.modules
     store.save(config)
     _replan(request)
+    return await get_batteries(request)
+
+
+class BatteryShortName(BaseModel):
+    """Short name of a battery in the live diagram; None: the name's first word."""
+
+    short_name: str | None = Field(default=None, max_length=8)
+
+
+@router.put("/config/devices/{device_id}/short-name")
+async def set_battery_short_name(request: Request, device_id: str, body: BatteryShortName) -> list[dict[str, Any]]:
+    """Set the short name a battery is shown with in the live diagram."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if (device := config.device(device_id)) is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    device.short_name = (body.short_name or "").strip() or None
+    store.save(config)
     return await get_batteries(request)
 
 
