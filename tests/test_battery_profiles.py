@@ -46,6 +46,15 @@ DUMMIES: dict[str, dict[str, Any]] = {
             "switch": ["rs485_control_mode", "backup_function"],
         },
     },
+    "zendure_ha/manager": {
+        "integration": "zendure_ha",
+        "prefix": "zendure_manager",
+        "keys": {
+            "sensor": ["global_soc", "power", "total_kwh", "available_kwh", "operation_state"],
+            "select": ["operation"],
+            "number": ["manual_power"],
+        },
+    },
 }
 
 VARIABLES = {"P": 600, "max_charge": 2400, "max_discharge": 800, "min_soc": 10, "device_id": "ha-device"}
@@ -194,3 +203,20 @@ def test_marstek_actions(library: ProfileLibrary) -> None:
     ]
     assert calls("hold")[1] == ("select", "select.d_force_mode", {"option": "standby"})
     assert calls("release") == [("switch", "switch.d_rs485_control_mode", {})]
+
+
+def test_zendure_manager_actions(library: ProfileLibrary) -> None:
+    """Manual operation with a signed power; the battery power is the sensor, not the manual power."""
+    profile = library.profiles["zendure_ha/manager"]
+    entities = dummy_entities("zendure_ha/manager")
+
+    def calls(action: str) -> list[tuple[str, str, dict[str, Any]]]:
+        return [(c.domain, c.service, c.data) for c in plan_battery(profile, action, {}, VARIABLES, entities)]
+
+    assert bind_roles(profile, entities)["battery_power"] == "sensor.d_power"
+    assert calls("force_charge") == [
+        ("number", "set_value", {"value": -600}),
+        ("select", "select_option", {"option": "manual"}),
+    ]
+    assert calls("hold") == [("select", "select_option", {"option": "store_solar"})]
+    assert calls("release") == [("select", "select_option", {"option": "smart"})]
