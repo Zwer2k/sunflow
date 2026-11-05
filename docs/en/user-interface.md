@@ -116,8 +116,11 @@ How well do forecasts and decisions match reality?
   Settings → Planning, and only for planes with at least 60 days and a better backtest.
   If a plane delivers far less than usual at this sun position for several days in a row (without
   a history of its own: less than half of the forecast), a hint points to leaves, snow or dirt;
-  Sunflow does not learn from these days. "Relearn from today" also drops the history by sun
-  position, so use it after trimming a tree or replacing modules, not after cleaning.
+  Sunflow does not learn from these days. If a plane with a model delivered less than 90 % of the
+  learned yield in the last days (e.g. autumn leaves), Sunflow plans with this lower yield and goes
+  back by itself as soon as it delivers more (checked every 3 hours). "Relearn from today" also
+  drops the history by sun position, so use it after trimming a tree or replacing modules, not
+  after cleaning.
 - **Data for learning**: how far back Home Assistant keeps what Sunflow can learn from: history at
   full resolution (the recorder's retention), long-term statistics, weather with or without cloud
   coverage, and Solcast's past forecasts. Below, per measurement, since when it is there and how

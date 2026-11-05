@@ -116,8 +116,11 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   Planung eingeschaltet ist, und nur für Flächen mit mindestens 60 Tagen und besserem Backtest.
   Liefert eine Fläche mehrere Tage am Stück deutlich weniger als sonst bei diesem Sonnenstand
   (ohne eigene Historie: weniger als die Hälfte der Prognose), erscheint ein Hinweis auf Laub,
-  Schnee oder Schmutz; diese Tage lernt Sunflow nicht mit. „Neu lernen ab heute“ verwirft auch die
-  Historie nach Sonnenstand, deshalb nur nach Baumschnitt oder Modultausch, nicht nach dem Säubern.
+  Schnee oder Schmutz; diese Tage lernt Sunflow nicht mit. Liefert eine Fläche mit Modell in den
+  letzten Tagen unter 90 % des Gelernten (z. B. Herbstlaub), plant Sunflow mit dieser geringeren
+  Leistung und stellt sich von selbst wieder um, sobald sie mehr liefert (alle 3 Stunden geprüft).
+  „Neu lernen ab heute“ verwirft auch die Historie nach Sonnenstand, deshalb nur nach Baumschnitt
+  oder Modultausch, nicht nach dem Säubern.
 - **Datenbestand fürs Lernen**: wie weit Home Assistant zurück aufhebt, woraus Sunflow lernen
   kann: Verlauf in voller Auflösung (Aufbewahrung des Recorders), Langzeitstatistik, Wetter mit
   oder ohne Bewölkung und die vergangenen Solcast-Prognosen. Darunter je Messwert, seit wann er

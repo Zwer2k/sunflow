@@ -428,6 +428,9 @@ class SunflowAnalysis extends LitElement {
                 pct: Math.round(plane.soiling.ratio * 100),
               })}</p>`
             : nothing}
+          ${plane.level
+            ? html`<p class="small warn-text">${t("Liefert in den letzten Tagen {pct} % des Gelernten – die Planung rechnet mit dieser Leistung, bis die Fläche wieder mehr liefert.", { pct: Math.round(plane.level * 100) })}</p>`
+            : nothing}
           ${plane.missing
             ? html`<p class="small muted">${plane.missing === "no_history"
                 ? t("Diese Prognosequelle hebt keine vergangenen Prognosen auf.")

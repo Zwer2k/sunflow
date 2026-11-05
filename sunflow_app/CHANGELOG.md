@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.34
+
+- PV by sun position: the current state of each plane (e.g. autumn leaves that come and go) is taken from the last 3 days, the latest counting most, and checked every 3 hours. Below 90 % of the learned yield planning uses this lower yield and goes back by itself once the plane delivers more. The soiling hint appears once per episode and no longer asks to clean the modules.
+
 ## 0.75.33
 
 - Custom loads: new type "not controllable – only measure" for consumers with a power sensor of their own (stove, washing machine, dryer …). Sunflow never switches them; from the hourly values of the last 8 weeks it learns their energy per day, on how many days they run and their usual hour on workdays and at weekends (Analysis → Learning, MCP tool `get_appliances`). Planning does not use this yet.

@@ -312,13 +312,13 @@ def pv_soiling(planes: list[PlaneSun]) -> list[Recommendation]:
                 + " "
                 + (
                     # Relearning would also drop the shading learned over the years
-                    t("Laub, Schnee oder Schmutz auf den Modulen? Diese Tage lässt Sunflow beim Lernen aus; nach dem Säubern geht es von selbst weiter.")
+                    t("Laub, Schnee oder Schmutz auf den Modulen? Sunflow plant so lange mit der geringeren Leistung und lernt diese Tage nicht mit; liefert die Fläche wieder mehr (Wind, Regen, gesäubert), stellt es sich von selbst darauf ein.")
                     if plane.soiling_learned
-                    else t("Laub, Schnee oder Schmutz auf den Modulen? Nach dem Säubern unter Analyse → Lernen bei der Fläche „Neu lernen ab heute“ wählen, damit diese Tage nicht weiter zählen.")
+                    else t("Laub, Schnee oder Schmutz auf den Modulen? Die Korrektur nach Uhrzeit stellt sich nach und nach darauf ein. Wurde die Fläche gesäubert, beschleunigt „Neu lernen ab heute“ unter Analyse → Lernen das.")
                 ),
                 action={"type": "navigate", "view": "analysis"},
-                # A new run or a step of 10 % shows it again
-                fingerprint=_fingerprint(plane.soiling["since"], float(round(pct / 10))),
+                # Once per episode: leaves come and go in autumn
+                fingerprint=_fingerprint(plane.soiling["since"]),
             )
         )
     return result
