@@ -19,7 +19,7 @@ from sunflow.config.models import (
 )
 from sunflow.control.charger import ChargerReady, ChargerWatch
 from sunflow.devices.discovery import Snapshot
-from sunflow.devices.profiles import battery_actions, controls_battery, supported_action
+from sunflow.devices.profiles import battery_actions, controls_battery, planned_battery, supported_action
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_kind, device_parameters
 from sunflow.ha import HAClient, HACommandError, HAError
@@ -1259,12 +1259,15 @@ async def compute_plan(
     per plane, used instead of the hourly one when switched on.
     """
     warnings: list[str] = []
-    battery_device = next(
-        (d for d in config.devices if controls_battery(profiles[d.profile])),
-        None,
-    )
+    battery_device = planned_battery(config.devices, profiles)
     if battery_device is None:
         return PlanResult(plan=Plan(status="no battery"), warnings=[t("Kein steuerbarer Speicher übernommen.")])
+    others = [d.name for d in config.devices if d is not battery_device and controls_battery(profiles[d.profile])]
+    if others:
+        warnings.append(t(
+            "Sunflow plant bisher nur einen Speicher ({name}). {others} regelt sich selbst und zählt nicht zum Ladestand des Plans.",
+            name=battery_device.name, others=", ".join(others),
+        ))
     profile = profiles[battery_device.profile]
     modules = config.battery_modules.get(battery_device.id)
     battery, problem = battery_spec(profile, battery_device, snapshot, modules=modules)

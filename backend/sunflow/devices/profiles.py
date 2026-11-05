@@ -28,6 +28,11 @@ def controls_battery(profile: dict[str, Any]) -> bool:
     return bool({"battery_window", "battery_control"} & set(profile["capabilities"]))
 
 
+def planned_battery[D](devices: list[D], profiles: dict[str, dict[str, Any]]) -> D | None:
+    """The battery Sunflow plans: the first device that controls one (one battery for now)."""
+    return next((d for d in devices if controls_battery(profiles[d.profile])), None)  # type: ignore[attr-defined]
+
+
 def battery_actions(profile: dict[str, Any]) -> set[str]:
     """Actions the device supports; a power window supports all."""
     if "battery_control" in profile:
