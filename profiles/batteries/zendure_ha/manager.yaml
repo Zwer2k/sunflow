@@ -1,0 +1,43 @@
+# Zendure SolarFlow / Hyper / AIO via the official Zendure-HA integration (zendure_ha), controlled
+# through its "Zendure Manager" device, which splits a power over all Zendure devices and writes
+# with smartMode 1 (not stored in flash). Unique ids are snake case of "<device name>_<key>",
+# e.g. "zendure_manager_global_soc".
+# Manual operation runs the manual power (+ = discharge into the house, - = charge); store_solar
+# only charges from the surplus; smart follows the house meter configured in the integration.
+# Power sign: + = into the house. Not verified on hardware yet; tested against dummy entities.
+profile: zendure_ha/manager
+version: 1
+match:
+  integration: zendure_ha
+  requires: [global_soc, operation, manual_power]
+
+capabilities: [battery, battery_control]
+# Plug-in storage on the house's AC side
+coupling: ac
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: global_soc, unit: "%"}
+  battery_power: {key: power, unit: W, sign: discharge_positive}
+
+parameters:
+  # Of all devices the manager controls; reported in kWh, converted by its unit
+  capacity_wh: {unit: Wh, min: 500, derive: {sum_key: total_kwh}}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, default: 1200, min: 0}
+  max_discharge: {unit: W, default: 800, min: 0}
+  efficiency_pct: {unit: "%", default: 90, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 95, min: 80, max: 100}
+
+battery_control:
+  auto:
+    - select: {key: operation, option: smart, write: if_differs}
+  hold:
+    - select: {key: operation, option: store_solar, write: if_differs}
+  force_charge:
+    - number: {key: manual_power, value: "{{ -P }}", write: if_differs, tolerance: 25}
+    - select: {key: operation, option: manual, write: if_differs}
+  force_discharge:
+    - number: {key: manual_power, value: "{{ P }}", write: if_differs, tolerance: 25}
+    - select: {key: operation, option: manual, write: if_differs}
