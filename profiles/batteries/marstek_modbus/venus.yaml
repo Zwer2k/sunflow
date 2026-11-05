@@ -1,0 +1,51 @@
+# Marstek Venus (E, D, A) via the marstek_modbus custom integration (Modbus TCP through an RS485
+# gateway or the E3's Ethernet port). Unique ids are "<config entry id>_<key>"; the keys are the
+# same for every model, only the registers differ.
+# Control by RS485 control mode: in it the battery follows the force mode (standby, charge,
+# discharge) at the set charge or discharge power; switched off, it is back in its own work mode.
+# Signs assumed: battery power + = charging. Not verified on hardware yet; tested against
+# tools/sim/marstek.py (Venus E v1/v2 registers).
+profile: marstek_modbus/venus
+version: 1
+match:
+  integration: marstek_modbus
+  requires: [battery_soc, battery_power, rs485_control_mode, force_mode]
+
+capabilities: [battery, battery_control]
+# A plug-in storage on the house's AC side
+coupling: ac
+watchdog: none
+fallback: auto
+
+roles:
+  battery_soc: {key: battery_soc, unit: "%"}
+  battery_power: {key: battery_power, unit: W, sign: charge_positive}
+  inverter_power: {key: ac_power, unit: W, optional: true}
+  battery_charge_energy: {key: total_charging_energy, unit: kWh, optional: true}
+  battery_discharge_energy: {key: total_discharging_energy, unit: kWh, optional: true}
+
+parameters:
+  # Reported in kWh, converted to Wh by its unit
+  capacity_wh: {unit: Wh, min: 1000, derive: {sum_key: battery_total_energy}}
+  min_soc: {unit: "%", default: 12, min: 0, max: 100}
+  # Venus E: 2500 W, Venus A: 1500 W; plug-in operation is often limited to 800 W
+  max_charge: {unit: W, default: 2500, min: 0, max: 2500}
+  max_discharge: {unit: W, default: 800, min: 0, max: 2500}
+  efficiency_pct: {unit: "%", default: 90, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 95, min: 80, max: 100}
+
+battery_control:
+  auto:
+    - switch: {key: rs485_control_mode, state: "off", write: if_differs}
+  hold:
+    - switch: {key: rs485_control_mode, state: "on", write: if_differs}
+    - select: {key: force_mode, option: standby, write: if_differs}
+  force_charge:
+    - switch: {key: rs485_control_mode, state: "on", write: if_differs}
+    - number: {key: set_charge_power, value: "{{ P }}", min: 0, max: 2500, write: if_differs, tolerance: 25}
+    - select: {key: force_mode, option: charge, write: if_differs}
+  force_discharge:
+    - switch: {key: rs485_control_mode, state: "on", write: if_differs}
+    - number: {key: set_discharge_power, value: "{{ P }}", min: 0, max: 2500, write: if_differs, tolerance: 25}
+    - select: {key: force_mode, option: discharge, write: if_differs}
+  refresh: 10min
