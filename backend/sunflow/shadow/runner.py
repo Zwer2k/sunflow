@@ -34,6 +34,7 @@ from sunflow.planning.pv_sun import (
     PlaneSun,
     SunCorrection,
     learn_planes as learn_sun_planes,
+    refresh_levels,
 )
 from sunflow.planning.vehicles import soc_of, unplugged_choices
 from sunflow.shadow.counters import EnergyCounters
@@ -56,6 +57,8 @@ LEARNING_WINDOW = timedelta(days=120)
 CORRECTION_REFRESH = timedelta(hours=1)
 # The correction by sun position learns from up to two years of history: once a day
 SUN_REFRESH = timedelta(hours=24)
+# The state of the modules (leaves blown away by the wind) from the last days: more often
+SUN_LEVEL_REFRESH = timedelta(hours=3)
 # A failed replan runs every query again; not every minute while Home Assistant has a
 # problem. The pause doubles with each failure up to the maximum
 REPLAN_RETRY = timedelta(minutes=5)
@@ -245,6 +248,7 @@ class ShadowRunner:
         # PV correction by sun position per plane, learned in the background
         self.sun_planes: list[PlaneSun] = []
         self.sun_learned_at: datetime | None = None
+        self._sun_level_at: datetime | None = None
         self.sun_error: str | None = None
         self._sun_task: asyncio.Task[None] | None = None
         # Energy per PV string for Home Assistant (set by the app)
@@ -485,9 +489,24 @@ class ShadowRunner:
 
     def learn_sun(self, force: bool = False) -> None:
         """Learn the correction by sun position in the background when it is a day old (or forced)."""
-        stale = self.sun_learned_at is None or datetime.now(UTC) - self.sun_learned_at > SUN_REFRESH
-        if (force or stale) and not self.sun_learning:
+        now = datetime.now(UTC)
+        stale = self.sun_learned_at is None or now - self.sun_learned_at > SUN_REFRESH
+        if self.sun_learning:
+            return
+        if force or stale:
             self._sun_task = asyncio.create_task(self._learn_sun())
+        elif self.sun_planes and (self._sun_level_at is None or now - self._sun_level_at > SUN_LEVEL_REFRESH):
+            self._sun_task = asyncio.create_task(self._refresh_sun_levels())
+
+    async def _refresh_sun_levels(self) -> None:
+        try:
+            snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
+            await refresh_levels(
+                self._client, self._store.load(), self._library.profiles, snapshot, self.sun_planes, await local_timezone(self._client)
+            )
+        except (HAError, KeyError, TypeError, ValueError) as err:
+            _LOGGER.warning("Updating the state of the PV planes failed: %s", err)
+        self._sun_level_at = datetime.now(UTC)
 
     async def _learn_sun(self) -> None:
         try:
@@ -496,6 +515,7 @@ class ShadowRunner:
             tz = await local_timezone(self._client)
             self.sun_planes = await learn_sun_planes(self._client, config, self._library.profiles, snapshot, tz)
             self.sun_error = None
+            self._sun_level_at = datetime.now(UTC)
         except (HAError, KeyError, TypeError, ValueError) as err:
             _LOGGER.warning("Learning PV by sun position failed: %s", err)
             self.sun_error = str(err)

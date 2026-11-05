@@ -126,3 +126,36 @@ def test_soiling_recommendation() -> None:
     assert [r.id for r in found] == ["pv_soiling:solcast:c"]
     assert "30 %" in found[0].title
     assert "Prognose" in found[0].title
+
+
+@pytest.mark.parametrize(
+    ("ratios", "expected"),
+    [
+        pytest.param([1.0, 0.98, 1.02, 0.95], 1.0, id="clean"),
+        pytest.param([1.0, 1.0, 0.4, 0.35, 0.3], 0.33, id="leaves-since-three-days"),
+        # The wind blew the leaves away yesterday: the latest days count most
+        pytest.param([0.3, 0.3, 0.3, 1.0, 1.0], 1.0, id="blown-away"),
+    ],
+)
+def test_current_level_follows_the_last_days(ratios: list[float], expected: float) -> None:
+    """Weighted towards the latest days; clean is 1 so planning keeps the learned yield."""
+    from datetime import date
+
+    from sunflow.planning.pv_sun import current_level
+
+    today = date(2026, 11, 5)
+    days = [(today - timedelta(days=len(ratios) - 1 - i), r) for i, r in enumerate(ratios)]
+
+    assert current_level(days, today) == pytest.approx(expected, abs=0.05)
+
+
+def test_planning_uses_the_current_level() -> None:
+    """The factor for a slot ahead is the learned one times the current state."""
+    forecast, measured = _history(200)
+    correction = fit(samples_from(forecast, measured, LAT, LON))
+    noon = datetime(2026, 6, 21, 11, 20, tzinfo=UTC)
+    clean = correction.factor_at(noon, 1800, LAT, LON)
+
+    correction.level = 0.4
+
+    assert correction.factor_at(noon, 1800, LAT, LON) == pytest.approx(clean * 0.4)

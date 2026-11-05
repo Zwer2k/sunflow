@@ -49,6 +49,11 @@ SOILING_RATIO_RAW = 0.5
 # Hours with a low sun say little (shade); days with little expected energy are left out
 SOILING_MIN_ELEVATION = 10.0
 SOILING_MIN_DAY_WH = 500.0
+# The current state (e.g. autumn leaves come and go): the last days, the latest counting most
+LEVEL_DAYS = 3
+LEVEL_HALF_LIFE_DAYS = 1.0
+# Above this the plane counts as clean; below it planning uses the lower level
+LEVEL_APPLY = 0.9
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -108,6 +113,8 @@ class SunCorrection:
     top: dict[tuple[int, int], float] = field(default_factory=dict)
     hours: int = 0
     days: int = 0
+    # Current state of the modules (leaves, snow, dirt): share of the learned yield
+    level: float = 1.0
 
     def factor(self, elevation: float, azimuth: float, clear: bool) -> float:
         """Correction for a sun position."""
@@ -118,7 +125,7 @@ class SunCorrection:
         elevation, azimuth = sun_position(moment, latitude, longitude)
         if elevation <= 0:
             return 1.0
-        return self.factor(elevation, azimuth, is_clear(forecast_w, elevation, azimuth, self.top))
+        return self.factor(elevation, azimuth, is_clear(forecast_w, elevation, azimuth, self.top)) * self.level
 
     def as_dict(self) -> dict[str, Any]:
         """Clear-sky cells for the shading map, with the overall factors."""
@@ -310,6 +317,16 @@ def soiled_run(ratios: list[tuple[date, float]], threshold: float) -> dict[str, 
     return {"since": run[-1][0].isoformat(), "days": len(run), "ratio": round(shares[len(shares) // 2], 3)}
 
 
+def current_level(ratios: list[tuple[date, float]], today: date) -> float:
+    """Share of the learned yield the plane delivers now; 1 when it is clean."""
+    recent = [(day, ratio) for day, ratio in ratios if (today - day).days < LEVEL_DAYS]
+    if not recent:
+        return 1.0
+    weights = [0.5 ** ((today - day).days / LEVEL_HALF_LIFE_DAYS) for day, _ in recent]
+    level = sum(w * r for w, (_, r) in zip(weights, recent, strict=True)) / sum(weights)
+    return 1.0 if level >= LEVEL_APPLY else max(level, 0.1)
+
+
 @dataclass(kw_only=True)
 class PlaneSun:
     """What was learned for one plane in use, or why nothing."""
@@ -343,6 +360,8 @@ class PlaneSun:
             result["missing"] = self.missing
         if self.soiling is not None:
             result["soiling"] = self.soiling | {"learned": self.soiling_learned}
+        if self.correction is not None and self.correction.level < 1:
+            result["level"] = round(self.correction.level, 3)
         if self.correction is not None:
             result |= {
                 "correction": self.correction.as_dict(),
@@ -402,12 +421,17 @@ async def learn_planes(
         forecast = await solcast_hours(client, plane.ref, start, now)
         measured = await measured_hours(client, entities, start, now)
         samples = await asyncio.to_thread(samples_from, forecast, measured, latitude, longitude)
+        recent = samples
         result.soiling, result.soiling_learned = await asyncio.to_thread(_soiling, samples, now, tz)
         if result.soiling is not None:
             # Leaves on the modules now are no shade the plane has in other years
             since = date.fromisoformat(result.soiling["since"])
             samples = [s for s in samples if s.start.astimezone(tz).date() < since]
         result.correction = await asyncio.to_thread(fit, samples)
+        result.correction.level = current_level(
+            daily_ratios([s for s in recent if s.start >= now - timedelta(days=LEVEL_DAYS)], result.correction, tz),
+            now.astimezone(tz).date(),
+        )
         result.backtest = await asyncio.to_thread(backtest, samples, tz)
         result.first = min(s.start for s in samples) if samples else None
     return planes
@@ -421,3 +445,31 @@ def _soiling(samples: list[Sample], now: datetime, tz: tzinfo) -> tuple[dict[str
     recent = [s for s in samples if s.start >= split]
     ratios = daily_ratios(recent, reference, tz)
     return soiled_run(ratios, SOILING_RATIO if reference is not None else SOILING_RATIO_RAW), reference is not None
+
+
+async def refresh_levels(
+    client: HAClient, config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot, planes: list[PlaneSun], tz: tzinfo
+) -> None:
+    """Update the current state of the learned planes from the last days (cheap, every few hours)."""
+    ha_config = await client.command("get_config")
+    now = datetime.now(UTC)
+    start = now.replace(minute=0, second=0, microsecond=0) - timedelta(days=LEVEL_DAYS)
+    by_key = {p.key: p for p in config.forecast_planes}
+    for plane in planes:
+        if plane.correction is None or (forecast_plane := by_key.get(plane.key)) is None:
+            continue
+        entities = string_power_entities(config, profiles, snapshot, forecast_plane)
+        if not entities:
+            continue
+        forecast = await solcast_hours(client, forecast_plane.ref, start, now)
+        measured = await measured_hours(client, entities, start, now)
+        samples = samples_from(forecast, measured, ha_config["latitude"], ha_config["longitude"])
+        # Clear or cloudy by the learned clear-sky values, not by these few days
+        samples = [
+            Sample(
+                start=s.start, forecast_wh=s.forecast_wh, actual_wh=s.actual_wh, elevation=s.elevation, azimuth=s.azimuth,
+                clear=is_clear(s.forecast_wh, s.elevation, s.azimuth, plane.correction.top),
+            )
+            for s in samples
+        ]
+        plane.correction.level = current_level(daily_ratios(samples, plane.correction, tz), now.astimezone(tz).date())

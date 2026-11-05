@@ -78,6 +78,7 @@ export default {
   "Datenbestand fürs Lernen": "Data for learning",
   "PV nach Sonnenstand (Test)": "PV by sun position (test)",
   "Gemessene Geräte": "Measured devices",
+  "Liefert in den letzten Tagen {pct} % des Gelernten – die Planung rechnet mit dieser Leistung, bis die Fläche wieder mehr liefert.": "Delivers {pct} % of the learned yield in the last days – planning uses this yield until the plane delivers more again.",
   "noch zu wenig Stundenwerte (mindestens eine Woche)": "too few hourly values yet (at least a week)",
   "{hour} Uhr": "{hour}:00",
   "werktags meist um {hour}": "on workdays mostly at {hour}",

@@ -199,7 +199,7 @@
   "„{name}“ liefert seit {date} nur {pct} % der Prognose": "\"{name}\" has delivered only {pct} % of the forecast since {date}",
   "Gemessen gegen das, was die Fläche sonst bei diesem Sonnenstand und Wetter liefert.": "Measured against what the plane otherwise delivers at this sun position and weather.",
   "Für diese Fläche gibt es noch keine eigene Vergleichsbasis; stimmen Leistung und Ausrichtung in der Prognosequelle, liegt es an der Anlage.": "There is no history of this plane to compare with yet; if capacity and orientation in the forecast source are right, the cause is on the modules.",
-  "Laub, Schnee oder Schmutz auf den Modulen? Nach dem Säubern unter Analyse → Lernen bei der Fläche „Neu lernen ab heute“ wählen, damit diese Tage nicht weiter zählen.": "Leaves, snow or dirt on the modules? After cleaning, choose \"Relearn from today\" for the plane under Analysis → Learning, so these days no longer count.",
-  "Laub, Schnee oder Schmutz auf den Modulen? Diese Tage lässt Sunflow beim Lernen aus; nach dem Säubern geht es von selbst weiter.": "Leaves, snow or dirt on the modules? Sunflow leaves these days out of learning; after cleaning it carries on by itself.",
-  "Bitte die Leistungsmessung wählen": "Please choose the power measurement"
+  "Bitte die Leistungsmessung wählen": "Please choose the power measurement",
+  "Laub, Schnee oder Schmutz auf den Modulen? Sunflow plant so lange mit der geringeren Leistung und lernt diese Tage nicht mit; liefert die Fläche wieder mehr (Wind, Regen, gesäubert), stellt es sich von selbst darauf ein.": "Leaves, snow or dirt on the modules? Sunflow plans with the lower yield meanwhile and does not learn from these days; once the plane delivers more again (wind, rain, cleaned), it adapts by itself.",
+  "Laub, Schnee oder Schmutz auf den Modulen? Die Korrektur nach Uhrzeit stellt sich nach und nach darauf ein. Wurde die Fläche gesäubert, beschleunigt „Neu lernen ab heute“ unter Analyse → Lernen das.": "Leaves, snow or dirt on the modules? The correction by time of day adapts gradually. After cleaning the plane, \"Relearn from today\" under Analysis → Learning speeds this up."
 }
