@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.1
+
+- Fix: devices whose integration disables its control entities by default (e.g. Homevolt's battery power, Marstek's RS485 control, force mode and power settings) were not offered under Devices. Profiles now match on disabled entities as well; the device card says how many needed entities are disabled, and Sunflow enables exactly those when the device is taken over (the integration reloads briefly afterwards).
+
 ## 0.77.0
 
 - New device profiles for plug-in and home storage: `marstek_modbus/venus` (Marstek Venus E/D/A via the marstek_modbus custom integration, RS485 control mode with force mode and charge/discharge power) and `zendure_ha/manager` (Zendure SolarFlow/Hyper/AIO through the official integration's manager device: manual power, store solar, smart). Both are tested against simulated devices or entities, not yet on hardware. A Modbus simulator for the Marstek Venus E is in `tools/sim/marstek.py`.

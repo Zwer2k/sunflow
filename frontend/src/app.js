@@ -1860,6 +1860,9 @@ class SunflowApp extends LitElement {
         ${device.components.length
           ? html`<span class="chip neutral">${t("{count} Komponenten", { count: device.components.length })}</span>`
           : nothing}
+        ${device.disabled_entities?.length && !configured
+          ? html`<p class="small muted" title=${device.disabled_entities.join(", ")}>${t("{count} benötigte Entitäten sind in Home Assistant deaktiviert. Sunflow aktiviert sie beim Übernehmen; die Integration lädt danach kurz neu, bis dahin fehlen ihre Werte.", { count: device.disabled_entities.length })}</p>`
+          : nothing}
         ${preview === undefined ? html`<p class="muted">${t("Lade Live-Werte …")}</p>` : nothing}
         ${preview?.error ? html`<div class="alert error">${preview.error}</div>` : nothing}
         ${preview?.roles ? this._renderTiles(preview) : nothing}

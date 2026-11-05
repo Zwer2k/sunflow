@@ -213,3 +213,37 @@ async def test_snapshot_cache_bridges_short_gaps() -> None:
 
     cache._last_good["sensor.soc"] = (cache._last_good["sensor.soc"][0], datetime.now(UTC) - discovery.GAP_BRIDGE * 2)
     assert (await cache.get()).states["sensor.soc"]["state"] == "unknown"
+
+
+def test_disabled_control_entities_still_match(library: ProfileLibrary) -> None:
+    """Integrations disable their control entities by default: the profile matches and lists them for enabling."""
+    entry = "e_marstek"
+    prefix = "01M6PXNG5T04ZWSYBR9X06R8EA"
+    entities = [
+        _entity(f"sensor.venus_{key}", f"{prefix}_{key}", "d_venus", entry)
+        for key in ("battery_soc", "battery_power", "battery_total_energy")
+    ] + [
+        {**_entity(f"{domain}.venus_{key}", f"{prefix}_{key}", "d_venus", entry), "disabled_by": "integration"}
+        for domain, key in (
+            ("switch", "rs485_control_mode"), ("select", "force_mode"), ("number", "set_charge_power"),
+            ("number", "set_discharge_power"), ("sensor", "max_cell_voltage"),
+        )
+    ]
+    snapshot = Snapshot(
+        entries=[{"entry_id": entry, "domain": "marstek_modbus", "title": "Venus", "state": "loaded"}],
+        devices=[{"id": "d_venus", "config_entries": [entry], "name": "Marstek Venus Modbus"}],
+        entities=entities,
+        states={},
+        energy_prefs=None,
+    )
+
+    (integration,) = discover(snapshot, library)
+    (device,) = integration.devices
+
+    assert device.profile == "marstek_modbus/venus"
+    assert device.entity_count == 3
+    # Only what the profile needs, not every disabled entity
+    assert device.disabled_entities == [
+        "number.venus_set_charge_power", "number.venus_set_discharge_power", "select.venus_force_mode",
+        "switch.venus_rs485_control_mode",
+    ]
