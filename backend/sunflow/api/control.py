@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from sunflow.config.models import (
     BATTERY_PRIORITY_ID,
+    BatteryOverride,
     DeviceOverride,
     PriorityCondition,
     StrategyOverride,
@@ -133,6 +134,18 @@ async def get_control(request: Request) -> dict[str, Any]:
             "effective": config.effective_strategy(now),
             "available": has_battery,
         },
+        # Each controllable battery with its temporary mode
+        "batteries": [
+            {
+                "id": d.id,
+                "name": d.name,
+                "override": override.model_dump(mode="json")
+                if (override := config.battery_overrides.get(d.id)) is not None and override.active(now)
+                else None,
+            }
+            for d in config.devices
+            if controls_battery(profiles[d.profile])
+        ],
         "devices": devices,
         "priorities": [
             {
@@ -286,6 +299,29 @@ async def clear_strategy_override(request: Request) -> None:
     store: ConfigStore = request.app.state.store
     config = store.load()
     config.strategy_override = None
+    store.save(config)
+    _replan(request)
+
+
+@router.put("/control/batteries/{device_id}")
+async def set_battery_override(request: Request, device_id: str, body: BatteryOverride) -> dict[str, Any]:
+    """Temporarily hold a battery or let it run on its own."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if config.device(device_id) is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    config.battery_overrides[device_id] = body
+    store.save(config)
+    _replan(request)
+    return body.model_dump(mode="json")
+
+
+@router.delete("/control/batteries/{device_id}")
+async def clear_battery_override(request: Request, device_id: str) -> None:
+    """Let the plan use the battery again."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.battery_overrides.pop(device_id, None)
     store.save(config)
     _replan(request)
 

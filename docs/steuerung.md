@@ -73,3 +73,7 @@ Datenexport enthalten.
 Strategie, Betriebsart und Ziel der Verbraucher lassen sich in der [Steuerung](bedienung.md#steuerung)
 für eine Weile ändern, ohne die Einstellungen anzufassen. Aus Home Assistant geht das mit den
 Aktionen `sunflow_ems.set_strategy` und `sunflow_ems.set_consumer`.
+
+Jeden Speicher kannst du dort für die gewählte Dauer **halten** (er gibt nichts ab, PV darf ihn
+weiter laden) oder **selbst regeln** lassen (Sunflow schickt nur „Automatik“, der Speicher arbeitet
+im eigenen Eigenverbrauch). „Nach Plan“ hebt das wieder auf.

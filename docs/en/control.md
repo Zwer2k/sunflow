@@ -69,3 +69,7 @@ trigger. The log covers 14 days and is part of the data export.
 Strategy, mode and target of loads can be changed for a while under
 [Control](user-interface.md#control) without touching the settings. From Home Assistant
 use the actions `sunflow_ems.set_strategy` and `sunflow_ems.set_consumer`.
+
+There, each battery can be **held** for the chosen time (it gives nothing, PV may still charge it)
+or left to run **on its own** (Sunflow only sends "auto", the battery runs its own
+self-consumption). "As planned" ends that again.

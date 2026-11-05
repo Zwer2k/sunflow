@@ -367,6 +367,19 @@ class StrategyOverride(BaseModel):
         return self.until is None or self.until > now
 
 
+class BatteryOverride(BaseModel):
+    """Temporary use of one battery from the control tab: hold its energy or let it run on its own."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    mode: Literal["hold", "self"]
+    until: datetime | None = None
+
+    def active(self, now: datetime) -> bool:
+        """Return True while the override applies."""
+        return self.until is None or self.until > now
+
+
 ForecastKind = Literal["total", "plant", "plane"]
 
 
@@ -478,6 +491,8 @@ class SunflowConfig(BaseModel):
     battery_modules: dict[str, list[str]] = Field(default_factory=dict)
     # By battery device id: its wear (missing: the planning-wide value in optimizer)
     battery_costs: dict[str, BatteryCost] = Field(default_factory=dict)
+    # By battery device id: temporary hold or self-regulation from the control tab
+    battery_overrides: dict[str, BatteryOverride] = Field(default_factory=dict)
     # By plant id: what its feed-in earns
     feed_in: dict[str, FeedIn] = Field(default_factory=dict)
     # By device id: another device whose sensors measure it
@@ -491,6 +506,11 @@ class SunflowConfig(BaseModel):
     def flex_of(self, device_id: str) -> FlexSettings:
         """How a consumer is planned (defaults when nothing was set)."""
         return self.planning.get(device_id) or FlexSettings()
+
+    def battery_mode(self, device_id: str, now: datetime) -> str | None:
+        """The active temporary mode of a battery ("hold", "self"), None when it follows the plan."""
+        override = self.battery_overrides.get(device_id)
+        return override.mode if override is not None and override.active(now) else None
 
     def battery_cost(self, device_id: str) -> BatteryCost:
         """Wear of a battery; without its own entry the planning-wide value."""
@@ -508,7 +528,10 @@ class SunflowConfig(BaseModel):
 
     def forget_device(self, device_id: str) -> None:
         """Drop everything that refers to a removed device."""
-        for relation in (self.planning, self.vehicle_detection, self.battery_modules, self.battery_costs, self.feed_in, self.measured_by):
+        for relation in (
+            self.planning, self.vehicle_detection, self.battery_modules, self.battery_costs, self.battery_overrides,
+            self.feed_in, self.measured_by,
+        ):
             relation.pop(device_id, None)
         self.measured_by = {k: v for k, v in self.measured_by.items() if v.device_id != device_id}
         self.charging = [c for c in self.charging if c.wallbox_id != device_id]

@@ -589,5 +589,8 @@ class ShadowRunner:
             "cloud": result.clouds[0] if result.clouds else None,
             "temp": result.temperatures[0] if result.temperatures else None,
             "planes": json.dumps(result.plane_forecasts_now),
+            "batteries": json.dumps(
+                {key: {"soc_wh": share.soc_wh, "action": share.action} for key, share in first.batteries.items()}
+            ),
         }
         await asyncio.to_thread(self.shadow.store_planned, start, planned)

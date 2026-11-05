@@ -45,16 +45,18 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
     1: ["ALTER TABLE slots ADD COLUMN actual_consumers TEXT"],
     # Level per controllable consumer (vehicle %, tank °C)
     2: ["ALTER TABLE slots ADD COLUMN actual_levels TEXT"],
+    # Per battery (device id -> {"soc_wh", "action"} planned, {"soc_wh", "battery_w"} measured)
+    3: ["ALTER TABLE slots ADD COLUMN planned_batteries TEXT", "ALTER TABLE slots ADD COLUMN actual_batteries TEXT"],
 }
 # Stored as JSON objects (key -> W)
-JSON_COLUMNS = ("plane_forecasts", "actual_strings", "actual_consumers", "actual_levels")
+JSON_COLUMNS = ("plane_forecasts", "actual_strings", "actual_consumers", "actual_levels", "planned_batteries", "actual_batteries")
 
 
 def slot_start(moment: datetime) -> datetime:
@@ -123,6 +125,16 @@ class SlotRecorder:
                 {
                     key: fmean(s.levels[key] for s in self.samples if key in s.levels)
                     for key in {k for s in self.samples for k in s.levels}
+                }
+            ),
+            "actual_batteries": json.dumps(
+                {
+                    key: {
+                        # The SoC at the slot end, like the site's; the power as mean
+                        "soc_wh": next((s.battery_socs[key] for s in reversed(self.samples) if key in s.battery_socs), None),
+                        "battery_w": fmean(values) if (values := [s.battery_powers[key] for s in self.samples if key in s.battery_powers]) else None,
+                    }
+                    for key in {k for s in self.samples for k in (*s.battery_socs, *s.battery_powers)}
                 }
             ),
             "samples": len(self.samples),
@@ -195,9 +207,10 @@ class ShadowStore:
                 """
                 INSERT INTO slots (start, planned_action, planned_power_w, planned_soc_wh,
                                    planned_pv_w, planned_load_w, planned_price, forecast_pv_w, weather_cloud,
-                                   weather_temp, plane_forecasts)
-                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud, :temp, :planes)
+                                   weather_temp, plane_forecasts, planned_batteries)
+                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud, :temp, :planes, :batteries)
                 ON CONFLICT(start) DO UPDATE SET
+                    planned_batteries = excluded.planned_batteries,
                     forecast_pv_w = excluded.forecast_pv_w,
                     weather_cloud = excluded.weather_cloud,
                     weather_temp = excluded.weather_temp,
@@ -209,7 +222,7 @@ class ShadowStore:
                     planned_load_w = excluded.planned_load_w,
                     planned_price = excluded.planned_price
                 """,
-                {"start": start.isoformat(), "forecast_pv": None, "cloud": None, "temp": None, "planes": None, **planned},
+                {"start": start.isoformat(), "forecast_pv": None, "cloud": None, "temp": None, "planes": None, "batteries": None, **planned},
             )
             self._db.commit()
 

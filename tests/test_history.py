@@ -287,8 +287,8 @@ def test_soc_of_every_battery() -> None:
     series = history_series(config, {"bat": profile}, Snapshot(entries=[], devices=[], entities=entities, states={}, energy_prefs=None))
 
     assert sorted((s.key, s.statistic_id, s.factor, s.device_id) for s in series) == [
-        ("battery_w", "sensor.big_power", 1.0, None),
-        ("battery_w", "sensor.plug_power", 1.0, None),
+        ("battery_w", "sensor.big_power", 1.0, "big"),
+        ("battery_w", "sensor.plug_power", 1.0, "plug"),
         ("soc_wh", "sensor.big_soc", 200.0, "big"),
         ("soc_wh", "sensor.plug_soc", 17.9, "plug"),
     ]

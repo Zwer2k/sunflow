@@ -220,4 +220,9 @@ export default {
   "Sunflow setzt den Plan bei {devices} um; Geräte mit „nur Plan“ zeigen nur, was es tun würde.": "Sunflow carries out the plan for {devices}; devices marked \"plan only\" only show what it would do.",
   "wird umgesetzt": "carried out",
   "nur Plan": "plan only",
+  "Je Speicher": "Per battery",
+  "durchgezogen Ist, gestrichelt Plan": "solid actual, dashed plan",
+  "{name} Ist": "{name} actual",
+  "{name} Plan": "{name} plan",
+  "Ladestand je Speicher, Plan gegen Ist": "State of charge per battery, plan against actual",
 };

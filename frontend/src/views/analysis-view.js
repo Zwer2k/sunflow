@@ -2,7 +2,7 @@ import { LitElement, html, svg, css, nothing } from "../../vendor/lit-all.min.js
 import { api, renewIngressSession } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
 import { poll } from "../lib/poll.js";
-import { lineChart, SERIES_COLORS } from "../components/charts.js";
+import { lineChart, SERIES_COLORS, UNASSIGNED_COLOR } from "../components/charts.js";
 import { formatValue } from "../lib/format.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
@@ -15,6 +15,8 @@ const PV_SUN_POLL_MS = 10_000;
 class SunflowAnalysis extends LitElement {
   static properties = {
     _shadow: { state: true },
+    // Battery device id -> name, for the plan against actual per battery
+    _batteryNames: { state: true },
     _error: { state: true },
     _importResult: { state: true },
     _energy: { state: true },
@@ -232,6 +234,7 @@ class SunflowAnalysis extends LitElement {
     api.pvLearning().then((data) => (this._pvLearning = data)).catch(() => (this._pvLearning = null));
     this._loadEnergy();
     this._loadEfficiency();
+    api.batteries().then((list) => (this._batteryNames = Object.fromEntries(list.map((b) => [b.device_id, b.inverter])))).catch(() => {});
     try {
       this._shadow = await api.shadow();
       this._error = null;
@@ -737,6 +740,7 @@ class SunflowAnalysis extends LitElement {
                 ],
                 { label: t("Ladestand Plan gegen Ist"), formatY: (v) => formatValue(v, "Wh") },
               )}
+              ${this._renderBatteries(rows)}
               ${this._renderDifferences(rows)}
             `}
       </section>
@@ -778,6 +782,36 @@ class SunflowAnalysis extends LitElement {
     event.target.value = "";
   }
 
+
+  /** Plan against actual for each battery, when several are planned together. */
+  _renderBatteries(rows) {
+    const ids = [...new Set(rows.flatMap((r) => Object.keys(r.planned_batteries ?? {})))];
+    if (ids.length < 2) return nothing;
+    const name = (id) => this._batteryNames?.[id] ?? id;
+    const soc = (row, column, id) => row[column]?.[id]?.soc_wh ?? null;
+    const point = (row, value) => {
+      const start = new Date(row.start);
+      return { start: start.toISOString(), end: new Date(start.getTime() + 15 * 60_000).toISOString(), value };
+    };
+    const deviation = (id) => {
+      const pairs = rows.map((r) => [soc(r, "planned_batteries", id), soc(r, "actual_batteries", id)]).filter(([a, b]) => a !== null && b !== null);
+      return pairs.length ? pairs.reduce((sum, [a, b]) => sum + Math.abs(a - b), 0) / pairs.length : null;
+    };
+    return html`
+      <h3>${t("Je Speicher")}</h3>
+      <div class="legend">
+        ${ids.map((id, i) => html`<span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[i] ?? UNASSIGNED_COLOR}"></span>${name(id)}: ${t("Abweichung {value}", { value: deviation(id) === null ? "–" : formatValue(deviation(id), "Wh") })}</span>`)}
+        <span class="legend-item muted">${t("durchgezogen Ist, gestrichelt Plan")}</span>
+      </div>
+      ${lineChart(
+        ids.flatMap((id, i) => [
+          { name: t("{name} Ist", { name: name(id) }), color: SERIES_COLORS[i] ?? UNASSIGNED_COLOR, points: rows.map((r) => point(r, soc(r, "actual_batteries", id))) },
+          { name: t("{name} Plan", { name: name(id) }), color: SERIES_COLORS[i] ?? UNASSIGNED_COLOR, dashed: true, points: rows.map((r) => point(r, soc(r, "planned_batteries", id))) },
+        ]),
+        { label: t("Ladestand je Speicher, Plan gegen Ist"), formatY: (v) => formatValue(v, "Wh") },
+      )}
+    `;
+  }
 
   _point(row, key) {
     const start = new Date(row.start);

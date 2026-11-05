@@ -1075,6 +1075,15 @@ def optimizer_settings(config: SunflowConfig, battery: BatterySpec, battery_devi
     )
 
 
+def with_override(battery: BatterySpec, mode: str | None) -> BatterySpec:
+    """A battery held from the control tab gives nothing; one running on its own is never forced."""
+    if mode == "hold":
+        return replace(battery, max_discharge_w=0.0)
+    if mode == "self":
+        return replace(battery, force_charge=False, force_discharge=False)
+    return battery
+
+
 def further_battery(config: SunflowConfig, battery: BatterySpec, limit_share: float | None) -> BatterySpec:
     """Planning values of a battery besides the first: its own wear, calendar aging and charge limit.
 
@@ -1559,6 +1568,8 @@ async def compute_plan(
     for device, spec in others:
         spec = further_battery(config, spec, care.limit_wh / battery.capacity_wh if care.limit_wh is not None else None)
         batteries.append(restrict_to_device(spec, battery_actions(profiles[device.profile]), settings, warnings, device.name))
+    now = datetime.now(UTC)
+    batteries = [with_override(spec, config.battery_mode(spec.key, now)) for spec in batteries]
     shares = curtailable_shares(config, profiles, used_planes, plane_slots, len(inputs))
     inputs = [replace(slot, curtailable_w=slot.pv_w * share) for slot, share in zip(inputs, shares, strict=True)]
     # A car only expected back may come later or not at all: charged where cheaper than the median price
@@ -1570,6 +1581,10 @@ async def compute_plan(
     for device, _ in others:
         device_actions(plan, profiles[device.profile], device.id)
     for slot in plan.slots:
+        for key, share in slot.batteries.items():
+            if config.battery_mode(key, now) == "self":
+                # Runs on its own: Sunflow only hands it back
+                share.action, share.action_power_w = "auto", None
         if (first := slot.batteries.get(battery_device.id)) is not None:
             slot.action, slot.action_power_w = first.action, first.action_power_w
     return PlanResult(
