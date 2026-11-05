@@ -12,6 +12,8 @@ match:
   requires: ["6002", "6000", energy_mode]
 
 capabilities: [pv, battery, battery_control]
+# On the house's AC side: PV from the roof is converted to AC and back when stored
+coupling: ac
 watchdog: none
 fallback: auto
 

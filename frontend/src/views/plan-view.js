@@ -6,15 +6,8 @@ import { formatValue, toDisplay } from "../lib/format.js";
 import { plugInHints } from "../lib/plug-in.js";
 import { decimal, locale, t, tn } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
+import { ACTIONS } from "../lib/actions.js";
 
-const ACTIONS = {
-  auto: { label: t("Eigenverbrauch"), hint: t("Speicher lädt aus PV-Überschuss und deckt den Bedarf") },
-  hold: { label: t("Speicher halten"), hint: t("Speicher wird geschont, Bedarf kommt aus dem Netz") },
-  force_charge: { label: t("Laden aus dem Netz"), hint: t("Speicher wird gezielt geladen") },
-  force_discharge: { label: t("Entladen ins Netz"), hint: t("Speicher speist gezielt ein") },
-  limit_discharge: { label: t("Entladen begrenzt"), hint: t("Speicher entlädt höchstens die geplante Leistung, darüber hinaus kommt der Bedarf aus dem Netz") },
-  limit_charge: { label: t("Laden begrenzt"), hint: t("Speicher lädt höchstens die geplante Leistung aus PV, der übrige Überschuss wird eingespeist") },
-};
 const LOAD_QUALITY = {
   day_type: t("nach Wochentag"),
   all_days: t("Mittel aller Tage"),
@@ -106,18 +99,38 @@ function socLimits(battery) {
   return limits;
 }
 
-function segments(slots) {
+/** Runs of equal actions; with several batteries a run ends when any battery's action changes. */
+function segments(slots, batteries = []) {
+  const several = batteries.length > 1;
+  const key = (slot) => (several ? batteries.map((b) => slot.batteries?.[b.id]?.action).join("|") : slot.action);
   const result = [];
   for (const slot of slots) {
     const last = result.at(-1);
-    if (last && last.action === slot.action) {
+    if (last && last.key === key(slot)) {
       last.end = slot.end;
       last.slots.push(slot);
     } else {
-      result.push({ action: slot.action, start: slot.start, end: slot.end, slots: [slot] });
+      result.push({
+        key: key(slot),
+        action: slot.action,
+        start: slot.start,
+        end: slot.end,
+        slots: [slot],
+        batteries: several
+          ? batteries.map((b) => ({ name: b.name, action: slot.batteries?.[b.id]?.action ?? "auto", power: slot.batteries?.[b.id]?.action_power_w }))
+          : [],
+      });
     }
   }
   return result;
+}
+
+/** "Label · power" of a segment, per battery when several are planned. */
+function segmentLabel(segment) {
+  const one = (action, power) => `${ACTIONS[action].label}${power ? ` · ${formatValue(Math.abs(power), "W")}` : ""}`;
+  return segment.batteries.length
+    ? segment.batteries.map((b) => `${b.name}: ${one(b.action, b.power)}`).join(" · ")
+    : one(segment.action, segment.slots[0].action_power_w);
 }
 
 class SunflowPlan extends LitElement {
@@ -275,7 +288,7 @@ class SunflowPlan extends LitElement {
       return html`${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
         <p class="muted">${t("Kein Plan möglich ({status}).", { status: plan.status })}</p>`;
     }
-    const segs = segments(slots);
+    const segs = segments(slots, plan.batteries ?? []);
     const now = segs[0];
     const history = this._history?.points ?? [];
     const capacity =
@@ -301,8 +314,13 @@ class SunflowPlan extends LitElement {
       <div class="tiles">
         <div class="tile now">
           <div class="small muted">${t("Geplante Steuerung jetzt (bis {time})", { time: time.format(new Date(now.end)) })}</div>
-          <div class="value">${ACTIONS[now.action].label}</div>
-          <div class="small muted">${this._actionHint(now, plan)}</div>
+          ${now.batteries.length
+            ? html`<ul class="now-batteries">${now.batteries.map((b) => html`<li>
+                <span class="small muted">${b.name}</span>
+                <span class="value-small" title=${ACTIONS[b.action].hint}>${ACTIONS[b.action].label}${b.power ? ` · ${formatValue(Math.abs(b.power), "W")}` : ""}</span>
+              </li>`)}</ul>`
+            : html`<div class="value">${ACTIONS[now.action].label}</div>
+              <div class="small muted">${this._actionHint(now, plan)}</div>`}
           ${this._renderActual(plan, now)}
         </div>
         <div class="tile">
@@ -334,16 +352,14 @@ class SunflowPlan extends LitElement {
         ${this._segmentsOpen
           ? nothing
           : html`<p class="small muted">${tn(segs.length, "{count} Abschnitte", { count: segs.length })}${segs[1]
-            ? ` · ${t("als Nächstes ab {time}: {action}", { time: dayTime.format(new Date(segs[1].start)), action: ACTIONS[segs[1].action].label })}`
+            ? ` · ${t("als Nächstes ab {time}: {action}", { time: dayTime.format(new Date(segs[1].start)), action: segmentLabel(segs[1]) })}`
             : ""}</p>`}
         ${this._segmentsOpen ? html`<ol class="timeline">
           ${segs.map(
             (s) => html`
               <li class="seg ${s.action}">
                 <span class="when">${dayTime.format(new Date(s.start))} – ${time.format(new Date(s.end))}</span>
-                <span class="what">${ACTIONS[s.action].label}${s.slots[0].action_power_w
-                  ? html` · ${formatValue(s.slots[0].action_power_w, "W")}`
-                  : nothing}</span>
+                <span class="what">${segmentLabel(s)}</span>
                 <span class="soc small muted">${t("Speicher {from} → {to}", { from: formatValue(s.slots[0].soc_wh, "Wh"), to: formatValue(s.slots.at(-1).soc_wh, "Wh") })}</span>
               </li>
             `,
@@ -805,18 +821,37 @@ class SunflowPlan extends LitElement {
       };
     };
     const flex = plan.flex ?? [];
+    const batteries = plan.batteries ?? [];
+    const several = batteries.length > 1;
+    // Several batteries: their sum and each one; care limits and reserve belong to the first
+    const each = several
+      ? batteries.map((b, i) => ({
+          key: `battery:${b.id}`,
+          name: b.name,
+          past: history.map((p) => ({ start: p.start, end: p.end, value: p.batteries?.[b.id] ?? null })),
+          future: slots.map((slot) => ({ start: slot.start, end: slot.end, value: slot.batteries?.[b.id]?.soc_wh ?? null })),
+          pct: (wh) => (wh / b.capacity_wh) * 100,
+          native: (wh) => wh,
+          format: (wh) => formatValue(wh, "Wh"),
+          scale: {
+            yMax: b.capacity_wh * 1.05,
+            limits: i === 0 ? socLimits({ ...plan.battery, capacity_wh: b.capacity_wh, min_soc_wh: b.min_soc_wh }) : socLimits(b),
+          },
+        }))
+      : [];
     const levels = [
       {
         key: "battery",
-        name: t("Hausspeicher"),
+        name: several ? t("Speicher gesamt") : t("Hausspeicher"),
         past: this._past("soc_wh"),
         future: this._future(slots, "soc_wh"),
         pct: (wh) => (wh / capacity) * 100,
         native: (wh) => wh,
         format: (wh) => formatValue(wh, "Wh"),
         // Charge limit, reserve and discharge limit belong to the battery only
-        scale: { yMax: capacity * 1.05, limits: socLimits(plan.battery) },
+        scale: { yMax: capacity * 1.05, limits: several ? [] : socLimits(plan.battery) },
       },
+      ...each,
       ...(plan.vehicles ?? []).map((v) => car(v.key, v.name, v.capacity_wh, flex.find((f) => f.vehicle_id === v.id))),
       // A wallbox without assigned cars shows the SoC it knows
       ...flex.filter((f) => f.kind === "vehicle" && f.level_range && !f.vehicle_id).map((f) => car(f.device_id, f.name, f.capacity_wh, f)),
@@ -993,6 +1028,9 @@ class SunflowPlan extends LitElement {
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; }
     .tile.now { background: var(--sf-primary-bg); }
     .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .now-batteries { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+    .now-batteries li { display: flex; flex-direction: column; }
+    .value-small { font-size: 15px; font-weight: 600; }
     .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
     .seg {
       display: grid; grid-template-columns: minmax(150px, auto) 1fr auto; gap: 4px 12px; align-items: baseline;

@@ -51,6 +51,11 @@
         "enum": ["pv", "pv_ext", "battery", "grid_meter", "battery_window", "battery_control", "curtail", "switch_off", "ev_charger", "load", "loadpoint", "appliance"]
       }
     },
+    "coupling": {
+      "description": "Where the battery sits: dc behind a hybrid inverter (PV charges without AC conversion) or ac on the house's AC side, e.g. plug-in storage (PV is converted as well). Default dc.",
+      "enum": ["dc", "ac"],
+      "default": "dc"
+    },
     "watchdog": {
       "description": "Device-side fallback when control stops: none, on communication loss, or on missing commands.",
       "enum": ["none", "comm_loss", "command"],

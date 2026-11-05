@@ -577,6 +577,8 @@ class PlanResult:
     flex: list[FlexInfo] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     battery: BatterySpec | None = None
+    # Every planned battery as (device id, name, spec), the first one is battery
+    batteries: list[tuple[str, str, BatterySpec]] = field(default_factory=list)
     reserve_wh: float = 0.0
     care: BatteryCare | None = None
     # Uncorrected PV forecast and forecast cloud coverage per slot (for learning)
@@ -1011,14 +1013,17 @@ def battery_spec(
     # the inverter's AC/DC conversion applies to grid charging and to every discharge
     battery_way = math.sqrt((params.get("efficiency_pct") or 90) / 100)
     inverter = (params.get("inverter_efficiency_pct") or 100) / 100
+    # A plug-in storage on the house's AC side converts PV as well, not only grid energy
+    ac_coupled = profile.get("coupling") == "ac"
     return (
         BatterySpec(
+            key=device.id,
             capacity_wh=capacity,
             soc_wh=capacity * soc / 100,
             min_soc_wh=capacity * (params.get("min_soc") or 0) / 100,
             max_charge_w=params.get("max_charge") or 0,
             max_discharge_w=params.get("max_discharge") or 0,
-            efficiency_charge=battery_way,
+            efficiency_charge=battery_way * inverter if ac_coupled else battery_way,
             efficiency_charge_grid=battery_way * inverter,
             efficiency_discharge=battery_way * inverter,
         ),
@@ -1070,21 +1075,39 @@ def optimizer_settings(config: SunflowConfig, battery: BatterySpec, battery_devi
     )
 
 
-def restrict_to_device(settings: Settings, actions: set[str], warnings: list[str]) -> Settings:
-    """Only plan what the battery can be told: grid charging needs force_charge."""
+def further_battery(config: SunflowConfig, battery: BatterySpec, limit_share: float | None) -> BatterySpec:
+    """Planning values of a battery besides the first: its own wear, calendar aging and charge limit.
+
+    The backup reserve stays with the first battery (the one on the backup output).
+    """
+    options = config.optimizer
+    cost = config.battery_cost(battery.key)
+    return replace(
+        battery,
+        wear_ct_per_kwh=cost.wear_ct_per_kwh if cost.include else 0.0,
+        reserve_wh=0.0,
+        # Nothing above the capacity costs: switched off without a threshold
+        high_soc_wh=battery.capacity_wh * (options.high_soc_threshold_pct / 100 if options.high_soc_aging else 1),
+        soc_limit_wh=battery.capacity_wh * (limit_share if limit_share is not None else 1),
+    )
+
+
+def restrict_to_device(
+    battery: BatterySpec, actions: set[str], settings: Settings, warnings: list[str], name: str
+) -> BatterySpec:
+    """Only plan what the battery can be told: grid charging needs force_charge, export force_discharge."""
     if "force_charge" not in actions and settings.allow_grid_charge:
-        settings = replace(settings, allow_grid_charge=False)
-        warnings.append(t("Der Speicher kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant."))
-    if "force_discharge" not in actions:
-        settings = replace(settings, allow_battery_export=False)
-    return settings
+        warnings.append(t("{name} kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant.", name=name))
+    return replace(battery, force_charge="force_charge" in actions, force_discharge="force_discharge" in actions)
 
 
-def device_actions(plan: Plan, profile: dict[str, Any]) -> None:
-    """Slot actions as the device carries them out (the closest supported one), in place."""
+def device_actions(plan: Plan, profile: dict[str, Any], key: str | None = None) -> None:
+    """A battery's slot actions as the device carries them out (the closest supported one), in place."""
     for slot in plan.slots:
-        if (action := supported_action(profile, slot.action, slot.action_power_w))[0] != slot.action:
-            slot.action, slot.action_power_w = action
+        share = slot.batteries.get(key) if key is not None else None
+        target: Any = share if share is not None else slot
+        if (action := supported_action(profile, target.action, target.action_power_w))[0] != target.action:
+            target.action, target.action_power_w = action
 
 
 def feed_in_of(config: SunflowConfig, battery_device: DeviceConfig | None) -> FeedIn | None:
@@ -1262,36 +1285,46 @@ async def compute_plan(
     battery_device = planned_battery(config.devices, profiles)
     if battery_device is None:
         return PlanResult(plan=Plan(status="no battery"), warnings=[t("Kein steuerbarer Speicher übernommen.")])
-    others = [d.name for d in config.devices if d is not battery_device and controls_battery(profiles[d.profile])]
-    if others:
-        warnings.append(t(
-            "Sunflow plant bisher nur einen Speicher ({name}). {others} regelt sich selbst und zählt nicht zum Ladestand des Plans.",
-            name=battery_device.name, others=", ".join(others),
-        ))
     profile = profiles[battery_device.profile]
-    modules = config.battery_modules.get(battery_device.id)
-    battery, problem = battery_spec(profile, battery_device, snapshot, modules=modules)
-    if battery is None and problem == t(SOC_UNREADABLE, name=battery_device.name):
-        # Inverter integrations drop single reads ("unknown"); the last valid value from
-        # the history is good enough, the SoC changes slowly
-        try:
-            fallback = await last_valid_value(client, soc_entity(profile, battery_device, snapshot), SOC_FALLBACK_AGE)
-        except HACommandError:
-            fallback = None
-        if fallback is not None:
-            value, since = fallback
-            battery, problem = battery_spec(profile, battery_device, snapshot, soc_fallback=value, modules=modules)
-            if since < datetime.now(UTC) - timedelta(minutes=30):
-                warnings.append(
-                    t(
-                        "{name}: Ladestand seit {time} nicht lesbar – geplant mit dem letzten Wert {value} %.",
-                        name=battery_device.name, time=since.astimezone(tz).strftime("%H:%M"), value=f"{value:.0f}",
+
+    async def spec_of(device: DeviceConfig) -> tuple[BatterySpec | None, str | None]:
+        device_profile = profiles[device.profile]
+        modules = config.battery_modules.get(device.id)
+        spec, problem = battery_spec(device_profile, device, snapshot, modules=modules)
+        if spec is None and problem == t(SOC_UNREADABLE, name=device.name):
+            # Inverter integrations drop single reads ("unknown"); the last valid value from
+            # the history is good enough, the SoC changes slowly
+            try:
+                fallback = await last_valid_value(client, soc_entity(device_profile, device, snapshot), SOC_FALLBACK_AGE)
+            except HACommandError:
+                fallback = None
+            if fallback is not None:
+                value, since = fallback
+                spec, problem = battery_spec(device_profile, device, snapshot, soc_fallback=value, modules=modules)
+                if since < datetime.now(UTC) - timedelta(minutes=30):
+                    warnings.append(
+                        t(
+                            "{name}: Ladestand seit {time} nicht lesbar – geplant mit dem letzten Wert {value} %.",
+                            name=device.name, time=since.astimezone(tz).strftime("%H:%M"), value=f"{value:.0f}",
+                        )
                     )
-                )
+        if spec is not None and (not spec.max_charge_w or not spec.max_discharge_w):
+            warnings.append(t("{name}: Lade- oder Entladeleistung ist 0 – der Speicher kann so nicht genutzt werden.", name=device.name))
+        return spec, problem
+
+    battery, problem = await spec_of(battery_device)
     if battery is None:
         return PlanResult(plan=Plan(status="no battery data"), warnings=[problem or ""])
-    if not battery.max_charge_w or not battery.max_discharge_w:
-        warnings.append(t("Lade- oder Entladeleistung ist 0 – der Speicher kann so nicht genutzt werden."))
+    # Further batteries (e.g. a plug-in storage) are planned together with the first one
+    others: list[tuple[DeviceConfig, BatterySpec]] = []
+    for device in config.devices:
+        if device is battery_device or not controls_battery(profiles[device.profile]):
+            continue
+        spec, problem = await spec_of(device)
+        if spec is None:
+            warnings.append(t("{problem} {name} wird nicht eingeplant.", problem=problem or "", name=device.name))
+        else:
+            others.append((device, spec))
 
     # Prices
     price_source = "none"
@@ -1506,7 +1539,7 @@ async def compute_plan(
         snapshot,
         [i.start for i in inputs],
         tz,
-        battery_capacity_wh=battery.capacity_wh,
+        battery_capacity_wh=battery.capacity_wh + sum(spec.capacity_wh for _, spec in others),
         departures=departures,
         usages=usages,
         hot_water=hot_water,
@@ -1522,15 +1555,23 @@ async def compute_plan(
         # Explicitly wanted by the user: grid charging for the overdue full charge
         settings = replace(settings, allow_grid_charge=True, full_charge_penalty=OVERDUE_FULL_CHARGE_PENALTY)
     warnings += care.notes
-    settings = restrict_to_device(settings, battery_actions(profile), warnings)
+    batteries = [restrict_to_device(battery, battery_actions(profile), settings, warnings, battery_device.name)]
+    for device, spec in others:
+        spec = further_battery(config, spec, care.limit_wh / battery.capacity_wh if care.limit_wh is not None else None)
+        batteries.append(restrict_to_device(spec, battery_actions(profiles[device.profile]), settings, warnings, device.name))
     shares = curtailable_shares(config, profiles, used_planes, plane_slots, len(inputs))
     inputs = [replace(slot, curtailable_w=slot.pv_w * share) for slot, share in zip(inputs, shares, strict=True)]
     # A car only expected back may come later or not at all: charged where cheaper than the median price
     worth = median(slot.price for slot in inputs) if inputs else MUST_HAVE_COST
     loads = [replace(load, unmet_cost=worth) if load.expected else load for load in loads]
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
-    plan = await asyncio.to_thread(optimize, inputs, battery, settings, loads)
-    device_actions(plan, profile)
+    plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads)
+    device_actions(plan, profile, battery_device.id)
+    for device, _ in others:
+        device_actions(plan, profiles[device.profile], device.id)
+    for slot in plan.slots:
+        if (first := slot.batteries.get(battery_device.id)) is not None:
+            slot.action, slot.action_power_w = first.action, first.action_power_w
     return PlanResult(
         raw_pv=raw_pv,
         plane_forecasts_now={key: powers[0] for key, powers in plane_slots.items() if powers},
@@ -1550,6 +1591,16 @@ async def compute_plan(
         pv_planes=len(series),
         flex=flex_infos,
         warnings=warnings,
-        battery=battery,
+        # All batteries as one: plan slots hold their summed SoC
+        battery=replace(
+            battery,
+            capacity_wh=sum(b.capacity_wh for b in batteries),
+            soc_wh=sum(b.soc_wh for b in batteries),
+            min_soc_wh=sum(b.min_soc_wh for b in batteries),
+            max_charge_w=sum(b.max_charge_w for b in batteries),
+            max_discharge_w=sum(b.max_discharge_w for b in batteries),
+        ),
+        batteries=[(battery_device.id, battery_device.name, spec) for spec in batteries[:1]]
+        + [(device.id, device.name, spec) for (device, _), spec in zip(others, batteries[1:], strict=True)],
         reserve_wh=settings.reserve_wh,
     )

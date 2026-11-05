@@ -67,6 +67,11 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         }
         if result.battery
         else None,
+        # Each planned battery; slots hold their shares under the same id
+        "batteries": [
+            {"id": device_id, "name": name, "capacity_wh": spec.capacity_wh, "min_soc_wh": spec.min_soc_wh}
+            for device_id, name, spec in getattr(result, "batteries", [])
+        ],
         "flex": [
             asdict(info) | next(
                 ({"planned_wh": r.planned_wh, "unmet_wh": r.unmet_wh} for r in plan.flex if r.name == info.name),

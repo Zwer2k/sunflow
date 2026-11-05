@@ -20,7 +20,7 @@ with the lowest cost that meets all constraints.
 
 - Grid import at the price of the quarter hour, minus feed-in tariff.
 - Losses when charging and discharging (efficiency of battery and inverter).
-- Wear per discharged kWh (Settings → Planning → Battery wear cost).
+- Wear per discharged kWh, per battery (Settings → Devices → Battery → Wear cost).
 - Optionally, aging at high state of charge.
 - Strategy surcharges and soft goals such as "grid-friendly". They steer the plan but do not show
   up in the displayed costs.
@@ -64,6 +64,24 @@ differences. This is intended, not a bug.
   as possible before the demand, e.g. at the end of the cheap night window instead of from
   midnight. Example: 4 kWh above 80 % for 10 hours cost about 4 ct at 0.1 ct.
 - **Backup reserve**: in every strategy this state of charge stays free for power outages.
+
+## Several batteries
+
+With several controllable batteries, say a hybrid inverter and a plug-in storage, Sunflow plans
+them together. Each battery has its own state of charge, power limits, efficiencies and wear cost.
+
+- The battery whose discharged kWh costs least covers the demand first. With "Include in
+  planning" switched off for a battery, its cycles count as free.
+- Energy is not moved from one battery into the other; that would only lose energy.
+- Each battery gets its own action. When only one of them should cover the demand, the other one
+  holds, so the two do not get in each other's way.
+- The everyday charge limit and aging at a high state of charge apply to all batteries. The full
+  charge and the backup reserve apply to the first one (usually the battery on the backup output).
+- A plug-in storage on the house's AC side converts PV power twice and loses more than a battery
+  on a hybrid inverter. The profile knows the coupling.
+
+The plan shows the state of charge of all batteries together and of each one; the live view shows
+each battery's state of charge, power and current planned action.
 
 ## Loads
 

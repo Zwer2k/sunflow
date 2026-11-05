@@ -140,8 +140,6 @@
   "Vollladung überfällig (zuletzt voll: {since}) – wird bis {time} zum günstigsten Preis aus dem Netz nachgeholt, falls PV nicht reicht.": "Full charge overdue (last full: {since}) – will be done from the grid at the cheapest price by {time} if PV is not enough.",
   "Vollladung fällig (zuletzt voll: {since}) – im Planungszeitraum ist kein PV-Überschuss in Sicht.": "Full charge due (last full: {since}) – no PV surplus in sight within the planning period.",
   "{name}: Kapazität unbekannt – bitte in den Kenndaten angeben.": "{name}: capacity unknown – please enter it in the parameters.",
-  "Der Speicher kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant.": "The battery cannot be forced to charge – no charging from the grid planned.",
-  "Lade- oder Entladeleistung ist 0 – der Speicher kann so nicht genutzt werden.": "Charge or discharge power is 0 – the battery cannot be used like this.",
   "Keine PV-Prognose – geplant wird ohne PV-Ertrag.": "No PV forecast – planning without PV yield.",
   "Erst {hours} h Verbrauchshistorie – gib deinen durchschnittlichen Tagesverbrauch in den Einstellungen an, damit die Lastprognose stimmt.": "Only {hours} h of consumption history – enter your average daily consumption in the settings so the load forecast is right.",
   "Preise reichen nur wenige Stunden in die Zukunft.": "Prices only reach a few hours into the future.",
@@ -202,5 +200,8 @@
   "Bitte die Leistungsmessung wählen": "Please choose the power measurement",
   "Laub, Schnee oder Schmutz auf den Modulen? Sunflow plant so lange mit der geringeren Leistung und lernt diese Tage nicht mit; liefert die Fläche wieder mehr (Wind, Regen, gesäubert), stellt es sich von selbst darauf ein.": "Leaves, snow or dirt on the modules? Sunflow plans with the lower yield meanwhile and does not learn from these days; once the plane delivers more again (wind, rain, cleaned), it adapts by itself.",
   "Laub, Schnee oder Schmutz auf den Modulen? Die Korrektur nach Uhrzeit stellt sich nach und nach darauf ein. Wurde die Fläche gesäubert, beschleunigt „Neu lernen ab heute“ unter Analyse → Lernen das.": "Leaves, snow or dirt on the modules? The correction by time of day adapts gradually. After cleaning the plane, \"Relearn from today\" under Analysis → Learning speeds this up.",
-  "Sunflow plant bisher nur einen Speicher ({name}). {others} regelt sich selbst und zählt nicht zum Ladestand des Plans.": "Sunflow plans only one battery so far ({name}). {others} runs on its own and is not part of the plan's state of charge."
+  "{name} kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant.": "{name} cannot be forced to charge – no grid charging planned.",
+  "{name}: Lade- oder Entladeleistung ist 0 – der Speicher kann so nicht genutzt werden.": "{name}: charge or discharge power is 0 – the battery cannot be used like this.",
+  "{problem} {name} wird nicht eingeplant.": "{problem} {name} is left out of the plan.",
+  "Speicher nicht im Plan – {fallback}": "Battery not in the plan – {fallback}"
 }

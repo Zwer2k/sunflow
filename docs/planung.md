@@ -20,7 +20,7 @@ ganzzahlig): Es sucht den Plan mit den geringsten Kosten, der alle Bedingungen e
 
 - Netzbezug zum Preis der Viertelstunde, abzüglich Einspeisevergütung.
 - Verluste beim Laden und Entladen (Wirkungsgrad des Speichers und des Wechselrichters).
-- Verschleiß je entladener kWh (Einstellungen → Planung → Verschleißkosten).
+- Verschleiß je entladener kWh, je Speicher (Einstellungen → Geräte → Speicher → Verschleißkosten).
 - Optional die Alterung bei hohem Ladestand.
 - Aufschläge der Strategie und weiche Ziele wie „Netzdienlich“. Sie lenken den Plan, erscheinen
   aber nicht in den angezeigten Kosten.
@@ -64,6 +64,25 @@ Preisunterschieden nicht aus dem Netz. Das ist Absicht und kein Fehler.
   dann möglichst kurz vor dem Bedarf, z. B. am Ende des günstigen Nachtfensters statt ab
   Mitternacht. Beispiel: 4 kWh über 80 % für 10 Stunden kosten bei 0,1 ct rund 4 ct.
 - **Notstrom-Reserve**: In jeder Strategie bleibt dieser Ladestand für Stromausfälle frei.
+
+## Mehrere Speicher
+
+Hast du mehrere steuerbare Speicher, etwa einen Hybrid-Wechselrichter und einen Steckerspeicher,
+plant Sunflow sie gemeinsam. Jeder Speicher hat seinen eigenen Ladestand, seine Leistungsgrenzen,
+Wirkungsgrade und Verschleißkosten.
+
+- Den Bedarf deckt zuerst der Speicher, bei dem eine entladene kWh am wenigsten kostet. Ist für
+  einen Speicher „In der Planung berücksichtigen“ aus, zählen seine Zyklen als kostenlos.
+- Energie wird nicht von einem Speicher in den anderen geschoben; das brächte nur Verluste.
+- Jeder Speicher bekommt seine eigene Aktion. Soll nur einer den Bedarf decken, hält der andere,
+  damit sich die beiden nicht gegenseitig in die Quere kommen.
+- Ladegrenze im Alltag und Alterung bei hohem Ladestand gelten für alle Speicher. Vollladung und
+  Notstrom-Reserve gelten für den ersten (in der Regel der Speicher am Notstromausgang).
+- Ein Steckerspeicher am Hausnetz (AC-gekoppelt) wandelt auch PV-Strom zweimal um und verliert
+  dabei mehr als ein Speicher am Hybrid-Wechselrichter. Das Profil kennt die Kopplung.
+
+Der Plan zeigt den Ladestand aller Speicher zusammen und jeden einzeln; die Live-Ansicht zeigt je
+Speicher Ladestand, Leistung und die gerade geplante Aktion.
 
 ## Verbraucher
 

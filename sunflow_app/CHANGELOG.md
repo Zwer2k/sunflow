@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.76.0
+
+- Several batteries are planned together, e.g. a hybrid inverter and a plug-in storage. Each battery has its own state of charge, power limits, efficiencies and wear cost; the one whose discharged kWh costs least covers the demand first, and energy is never moved from one battery into the other. Every battery gets its own action: when only one of them should cover the house, the other holds, so the two do not regulate against each other. The everyday charge limit and calendar aging apply to all batteries, the full charge and the backup reserve to the first one.
+- Plan: the state of charge chart shows all batteries together and each one (a legend click shows one in kWh); "Planned control now" and the list of planned control name each battery's action.
+- Live view: below the battery node every battery has a row with its state of charge, power and current planned action.
+- Profiles can declare `coupling: ac` for storage on the house's AC side, which also converts PV power; the Indevolt profile does.
+- Live values, history and the Home Assistant integration's state of charge are the sum over all batteries, matching the plan.
+
 ## 0.75.38
 
 - Fix: with a second controllable battery (e.g. a plug-in storage next to the hybrid inverter) the measured state of charge in the plan chart added up both batteries and divided by the planned one's capacity, showing values far above 100 %. History, live values and the plan now all use the battery the plan is made for; the plan warns that the other battery runs on its own (planning several batteries is not supported yet).
