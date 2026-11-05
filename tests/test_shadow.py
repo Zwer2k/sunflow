@@ -212,3 +212,32 @@ def test_same_decision(planned: str, power: float | None, actual: str, battery: 
     from sunflow.shadow.store import same_decision
 
     assert same_decision(planned, power, actual, battery) is same
+
+
+def test_batteries_one_by_one(tmp_path: Path) -> None:
+    """Several batteries: the plan and the measurement of each one are kept next to the sums."""
+    import json
+
+    recorder = SlotRecorder(start=START)
+    recorder.samples = [
+        Sample(soc_wh=11000, battery_w=-300, grid_w=0, pv_w=0, load_w=300,
+               battery_socs={"house": 10000, "plug": 1000}, battery_powers={"house": 0, "plug": -300}),
+        Sample(soc_wh=10900, battery_w=-500, grid_w=0, pv_w=0, load_w=500,
+               battery_socs={"house": 10000, "plug": 900}, battery_powers={"house": -200, "plug": -300}),
+    ]
+    store = ShadowStore(tmp_path)
+    try:
+        store.store_planned(START, {
+            "action": "hold", "power": None, "soc": 10900, "pv": 0, "load": 400, "price": 0.3,
+            "batteries": json.dumps({"house": {"soc_wh": 10000, "action": "hold"}, "plug": {"soc_wh": 900, "action": "auto"}}),
+        })
+        store.store_actual(START, recorder.summary())
+        row = store.rows(START)[0]
+    finally:
+        store.close()
+
+    assert row["planned_batteries"]["plug"] == {"soc_wh": 900, "action": "auto"}
+    assert row["actual_batteries"] == {
+        "house": {"soc_wh": 10000, "battery_w": -100},
+        "plug": {"soc_wh": 900, "battery_w": -300},
+    }

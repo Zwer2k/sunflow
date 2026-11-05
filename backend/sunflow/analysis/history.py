@@ -64,7 +64,7 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             # Summed over all batteries like the plan; each one also by itself
             if capacity := params.get("capacity_wh"):
                 add("soc_wh", "battery_soc", capacity / 100, device_id=device.id)
-            add("battery_w", "battery_power")
+            add("battery_w", "battery_power", device_id=device.id)
         if load_device is not None and device.id == load_device.id:
             add("load_w", "load_power")
         if grid_device is not None and device.id == grid_device.id:
@@ -116,6 +116,7 @@ async def fetch_history(
     consumers: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     levels: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     batteries: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    battery_powers: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for s in series:
         for row in result.get(s.statistic_id, []):
             if row.get("mean") is None:
@@ -128,6 +129,8 @@ async def fetch_history(
             buckets[start + offset * bucket][s.key][s.statistic_id].append(row["mean"] * s.factor)
             if s.key == "soc_wh" and s.device_id is not None:
                 batteries[start + offset * bucket][s.device_id].append(row["mean"] * s.factor)
+            elif s.key == "battery_w" and s.device_id is not None:
+                battery_powers[start + offset * bucket][s.device_id].append(row["mean"] * s.factor)
             elif s.device_id is not None:
                 consumers[start + offset * bucket][s.device_id].append(max(row["mean"] * s.factor, 0.0))
 
@@ -144,6 +147,7 @@ async def fetch_history(
         point["consumers"] = {device_id: sum(v) / len(v) for device_id, v in consumers[bucket_start].items()}
         point["levels"] = {device_id: sum(v) / len(v) for device_id, v in levels.get(bucket_start, {}).items()}
         point["batteries"] = {device_id: sum(v) / len(v) for device_id, v in batteries.get(bucket_start, {}).items()}
+        point["battery_powers"] = {device_id: sum(v) / len(v) for device_id, v in battery_powers.get(bucket_start, {}).items()}
         points.append(point)
     return points
 

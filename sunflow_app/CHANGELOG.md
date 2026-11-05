@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.0
+
+- New device profiles for plug-in and home storage: `marstek_modbus/venus` (Marstek Venus E/D/A via the marstek_modbus custom integration, RS485 control mode with force mode and charge/discharge power) and `zendure_ha/manager` (Zendure SolarFlow/Hyper/AIO through the official integration's manager device: manual power, store solar, smart). Both are tested against simulated devices or entities, not yet on hardware. A Modbus simulator for the Marstek Venus E is in `tools/sim/marstek.py`.
+- Plan: with several batteries the battery power chart shows each battery, measured and planned, in its own colour.
+- Analysis: "Plan against actual" also shows each battery's state of charge with its mean deviation; the shadow recording keeps planned and measured values per battery.
+- Control: each battery can be held (gives nothing, PV may still charge it) or left to run on its own for the chosen time; "As planned" ends it.
+
 ## 0.76.1
 
 - Fix: the Indevolt capacity was taken 1000 times too large (the kWh sensor is already converted to Wh), which also made the state of charge in the plan chart far too high.

@@ -297,13 +297,32 @@ class SunflowPlan extends LitElement {
     const measuredEnd = history.length ? new Date(history.at(-1).end) : null;
     const nowDate = measuredEnd && measuredEnd > new Date(slots[0].start) ? measuredEnd : new Date(slots[0].start);
     const curtailed = slots.some((s) => (s.curtail_w ?? 0) > 0);
-    // Battery power in the grid chart: + charging, − discharging
-    const battery = plan.battery
-      ? [
-          { name: t("Speicher gemessen"), color: SERIES_COLORS[3], points: this._past("battery_w") },
-          { name: t("Speicher geplant"), color: SERIES_COLORS[3], dashed: true, points: slots.map((s) => ({ start: s.start, end: s.end, value: s.charge_w - s.discharge_w })) },
-        ]
-      : [];
+    // Battery power in the grid chart: + charging, − discharging; several batteries one by one
+    const batteryList = plan.batteries ?? [];
+    const batteryColor = (i) => SERIES_COLORS[3 + i] ?? UNASSIGNED_COLOR;
+    const battery = !plan.battery
+      ? []
+      : batteryList.length > 1
+        ? batteryList.flatMap((b, i) => [
+            {
+              name: t("{name} gemessen", { name: b.name }),
+              color: batteryColor(i),
+              points: history.map((p) => ({ start: p.start, end: p.end, value: p.battery_powers?.[b.id] ?? null })),
+            },
+            {
+              name: t("{name} geplant", { name: b.name }),
+              color: batteryColor(i),
+              dashed: true,
+              points: slots.map((s) => {
+                const share = s.batteries?.[b.id];
+                return { start: s.start, end: s.end, value: share ? share.charge_w - share.discharge_w : null };
+              }),
+            },
+          ])
+        : [
+            { name: t("Speicher gemessen"), color: SERIES_COLORS[3], points: this._past("battery_w") },
+            { name: t("Speicher geplant"), color: SERIES_COLORS[3], dashed: true, points: slots.map((s) => ({ start: s.start, end: s.end, value: s.charge_w - s.discharge_w })) },
+          ];
     const hasLoadpoints =
       history.some((p) => p.loadpoint_w !== null && p.loadpoint_w !== undefined) || Boolean(plan.flex?.length);
     const colors = consumerColors(plan.flex);
@@ -502,9 +521,11 @@ class SunflowPlan extends LitElement {
           ${curtailed
             ? html`<span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[2]}"></span>${t("PV abgeregelt")}</span>`
             : nothing}
-          ${battery.length
-            ? html`<span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[3]}"></span>${t("Speicher (+ laden, − entladen)")}</span>`
-            : nothing}
+          ${battery.length && batteryList.length > 1
+            ? batteryList.map((b, i) => html`<span class="legend-item"><span class="swatch" style="background:${batteryColor(i)}"></span>${t("{name} (+ laden, − entladen)", { name: b.name })}</span>`)
+            : battery.length
+              ? html`<span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[3]}"></span>${t("Speicher (+ laden, − entladen)")}</span>`
+              : nothing}
           <span class="legend-item muted">${t("erwartet: Bezug {import}, Einspeisung {export}", { import: formatValue(energy(slots, "import_w"), "Wh"), export: formatValue(energy(slots, "export_w"), "Wh") })}${curtailed
               ? `, ${t("abgeregelt {energy}", { energy: formatValue(energy(slots, "curtail_w"), "Wh") })}`
               : ""}</span>

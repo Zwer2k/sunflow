@@ -442,4 +442,5 @@ export default {
   "Speicher gesamt": "All batteries",
   "Speicher einzeln": "Batteries one by one",
   "Ladestand {name}": "State of charge {name}",
+  "{name} (+ laden, − entladen)": "{name} (+ charging, − discharging)",
 };

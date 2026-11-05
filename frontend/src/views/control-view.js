@@ -210,7 +210,7 @@ class SunflowControl extends LitElement {
       ${plugInHints(data?.plug_in_hints)}
       ${this._takeover?.devices.length ? this._renderTakeover(this._takeover) : nothing}
       ${data ? html`
-          ${data.strategy.available ? this._renderBattery(data.strategy) : nothing}
+          ${data.strategy.available ? this._renderBattery(data.strategy, data.batteries ?? []) : nothing}
           ${data.devices.length
             ? html`<section>
                 <h2>${t("Verbraucher")}</h2>
@@ -387,7 +387,7 @@ class SunflowControl extends LitElement {
     return [...data.devices].sort((a, b) => (rank[a.id] ?? 99) - (rank[b.id] ?? 99));
   }
 
-  _renderBattery(strategy) {
+  _renderBattery(strategy, batteries) {
     return html`
       <section class="card">
         <div class="card-head">
@@ -409,8 +409,41 @@ class SunflowControl extends LitElement {
         ${strategy.override
           ? html`<button class="link" @click=${() => this._apply(() => api.clearStrategyOverride())}>${t("Zurück zum Standard")}</button>`
           : nothing}
+        ${this._renderBatteryModes(batteries)}
       </section>
     `;
+  }
+
+  /** Per battery: follow the plan, hold its energy or let it run on its own, for the chosen time. */
+  _renderBatteryModes(batteries) {
+    const modes = [
+      [null, t("Nach Plan")],
+      ["hold", t("Halten")],
+      ["self", t("Selbst regeln")],
+    ];
+    const hints = {
+      hold: t("Gibt nichts ab, PV darf ihn weiter laden – z. B. Energie für später aufheben."),
+      self: t("Sunflow steuert ihn nicht, er regelt im Eigenverbrauch selbst; der Plan rechnet mit ihm, ohne ihn zu zwingen."),
+    };
+    return html`<div class="battery-modes">
+      ${batteries.map((b) => {
+        const mode = b.override?.mode ?? null;
+        return html`<div class="battery-mode">
+          <div class="battery-mode-head">
+            <strong>${b.name}</strong>
+            ${b.override ? html`<span class="chip">${modes.find(([m]) => m === mode)[1]} · ${untilText(b.override.until)}</span>` : nothing}
+          </div>
+          <div class="segmented" role="group" aria-label=${t("Nutzung von {name}", { name: b.name })}>
+            ${modes.map(([value, label]) => html`<button aria-pressed=${mode === value} ?disabled=${this._busy}
+              class=${mode === value ? "on" : ""}
+              @click=${() => this._apply(() => (value === null
+                ? api.clearBatteryOverride(b.id)
+                : api.setBatteryOverride(b.id, { mode: value, until: untilFor(this._duration) })))}>${label}</button>`)}
+          </div>
+          ${mode ? html`<span class="small muted">${hints[mode]}</span>` : nothing}
+        </div>`;
+      })}
+    </div>`;
   }
 
   /** Wallbox with several vehicles: which one is plugged in, and the choice by hand. */
@@ -654,6 +687,9 @@ class SunflowControl extends LitElement {
       background: var(--sf-warn-bg); color: var(--sf-warn-text);
     }
     .segmented { display: flex; flex-wrap: wrap; gap: 4px; background: var(--sf-subtle); padding: 4px; border-radius: 10px; }
+    .battery-modes { display: grid; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--sf-border); }
+    .battery-mode { display: grid; gap: 6px; }
+    .battery-mode-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
     .segmented button {
       flex: 1 1 auto; min-height: 40px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent;
       cursor: pointer; font-size: 14px; color: var(--sf-muted);

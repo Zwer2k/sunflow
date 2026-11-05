@@ -101,3 +101,48 @@ def test_plan_response_lists_the_batteries() -> None:
     ]
     assert set(response["slots"][0]["batteries"]) == {"house", "plug"}
     assert response["slots"][0]["batteries"]["plug"]["action"] == "auto"
+
+
+@pytest.mark.parametrize(
+    ("mode", "discharge", "forced"),
+    [
+        pytest.param(None, 5000, True, id="plan"),
+        pytest.param("hold", 0, True, id="hold"),
+        pytest.param("self", 5000, False, id="self"),
+    ],
+)
+def test_battery_override(mode: str | None, discharge: float, forced: bool) -> None:
+    """Held from the control tab a battery gives nothing; running on its own it is never forced."""
+    from sunflow.planning.plan import with_override
+
+    spec = with_override(HOUSE, mode)
+
+    assert spec.max_discharge_w == discharge
+    assert (spec.force_charge, spec.force_discharge) == (forced, forced)
+
+
+def test_battery_mode_until() -> None:
+    """A temporary mode ends at its time and goes with the device."""
+    from datetime import UTC
+
+    from sunflow.config.models import BatteryOverride, SunflowConfig
+
+    now = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+    config = SunflowConfig(battery_overrides={
+        "house": BatteryOverride(mode="hold", until=now + SLOT),
+        "plug": BatteryOverride(mode="self", until=now - SLOT),
+    })
+
+    assert config.battery_mode("house", now) == "hold"
+    assert config.battery_mode("plug", now) is None
+    config.forget_device("house")
+    assert config.battery_mode("house", now) is None
+
+
+def test_held_battery_does_not_discharge() -> None:
+    """The held battery keeps its energy; the other one covers what it can."""
+    from sunflow.planning.plan import with_override
+
+    plan = optimize(_slots(6), [HOUSE, with_override(PLUG, "hold")], Settings())
+
+    assert all(s.batteries["plug"].discharge_w < 1 for s in plan.slots)

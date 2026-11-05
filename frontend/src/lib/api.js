@@ -105,6 +105,8 @@ export const api = {
   clearDeviceOverride: (id) => request("DELETE", `/control/devices/${encodeURIComponent(id)}`),
   setStrategyOverride: (body) => request("PUT", "/control/strategy", body),
   clearStrategyOverride: () => request("DELETE", "/control/strategy"),
+  setBatteryOverride: (id, body) => request("PUT", `/control/batteries/${encodeURIComponent(id)}`, body),
+  clearBatteryOverride: (id) => request("DELETE", `/control/batteries/${encodeURIComponent(id)}`),
   setPriorities: (order) => request("PUT", "/control/priorities", order),
   setPriorityConditions: (deviceId, conditions) =>
     request("PUT", `/control/priorities/${encodeURIComponent(deviceId)}/conditions`, conditions),
