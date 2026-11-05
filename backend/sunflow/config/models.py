@@ -252,11 +252,30 @@ class WearCalculation(BaseModel):
         return self.price_eur * 100 / lifetime_kwh
 
 
+class BatteryCost(BaseModel):
+    """Wear of one battery: what a discharged kWh costs and whether planning counts it."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    # Off: the plan treats the battery's cycles as free
+    include: bool = True
+    wear_ct_per_kwh: float = Field(default=3.0, ge=0, le=100)
+    # When set, wear_ct_per_kwh is derived from it
+    calculation: WearCalculation | None = None
+
+    @model_validator(mode="after")
+    def _derive_wear(self) -> "BatteryCost":
+        if self.calculation is not None:
+            self.wear_ct_per_kwh = round(self.calculation.ct_per_kwh(), 2)
+        return self
+
+
 class OptimizerConfig(BaseModel):
     """User settings for planning."""
 
     model_config = ConfigDict(allow_inf_nan=False)
 
+    # Wear of batteries without their own entry in SunflowConfig.battery_costs
     wear_ct_per_kwh: float = 3.0
     # When set, wear_ct_per_kwh is derived from it
     wear_calculation: WearCalculation | None = None
@@ -457,6 +476,8 @@ class SunflowConfig(BaseModel):
     vehicle_detection: dict[str, VehicleDetection] = Field(default_factory=dict)
     # By inverter id: HA devices of its battery modules (missing: its sub-devices in HA)
     battery_modules: dict[str, list[str]] = Field(default_factory=dict)
+    # By battery device id: its wear (missing: the planning-wide value in optimizer)
+    battery_costs: dict[str, BatteryCost] = Field(default_factory=dict)
     # By plant id: what its feed-in earns
     feed_in: dict[str, FeedIn] = Field(default_factory=dict)
     # By device id: another device whose sensors measure it
@@ -471,6 +492,12 @@ class SunflowConfig(BaseModel):
         """How a consumer is planned (defaults when nothing was set)."""
         return self.planning.get(device_id) or FlexSettings()
 
+    def battery_cost(self, device_id: str) -> BatteryCost:
+        """Wear of a battery; without its own entry the planning-wide value."""
+        return self.battery_costs.get(device_id) or BatteryCost(
+            wear_ct_per_kwh=self.optimizer.wear_ct_per_kwh, calculation=self.optimizer.wear_calculation
+        )
+
     def detection_of(self, wallbox_id: str) -> VehicleDetection:
         """How a wallbox recognizes the connected vehicle."""
         return self.vehicle_detection.get(wallbox_id) or VehicleDetection()
@@ -481,7 +508,7 @@ class SunflowConfig(BaseModel):
 
     def forget_device(self, device_id: str) -> None:
         """Drop everything that refers to a removed device."""
-        for relation in (self.planning, self.vehicle_detection, self.battery_modules, self.feed_in, self.measured_by):
+        for relation in (self.planning, self.vehicle_detection, self.battery_modules, self.battery_costs, self.feed_in, self.measured_by):
             relation.pop(device_id, None)
         self.measured_by = {k: v for k, v in self.measured_by.items() if v.device_id != device_id}
         self.charging = [c for c in self.charging if c.wallbox_id != device_id]

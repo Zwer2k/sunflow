@@ -347,4 +347,9 @@ export default {
   "{pct} % plausibel": "{pct} % plausible",
   "nach Sonnenstand korrigieren (Test)": "correct by sun position (test)",
   "Für Flächen mit Solcast-Historie: lernt aus bis zu zwei Jahren, wie viel je Sonnenhöhe und -richtung ankommt, und erkennt so Verschattung, die mit der Jahreszeit wandert. Ersetzt für diese Flächen die Korrektur nach Uhrzeit; Backtest und Verschattungskarte unter „Analyse“.": "For planes with Solcast history: learns from up to two years how much arrives per sun elevation and direction, and so recognises shading that moves with the seasons. Replaces the correction by time of day for these planes; backtest and shading map under \"Analysis\".",
+  "Verschleißkosten": "Wear cost",
+  "In der Planung berücksichtigen": "Include in planning",
+  "Ausgeschaltet zählen Zyklen dieses Speichers als kostenlos: er wird auch für kleine Preisunterschiede genutzt.": "When off, this battery's cycles count as free: it is used even for small price differences.",
+  "Verschleißkosten nicht gespeichert: {error}": "Wear cost not saved: {error}",
+  "Stellst du je Speicher ein: Einstellungen → Geräte → Speicher.": "Set per battery: Settings → Devices → Battery.",
 };

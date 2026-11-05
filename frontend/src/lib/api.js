@@ -115,6 +115,7 @@ export const api = {
   categories: () => request("GET", "/config/categories"),
   setDeviceKind: (id, kind) => request("PUT", `/config/devices/${encodeURIComponent(id)}/kind`, { kind }),
   setBatteryModules: (id, modules) => request("PUT", `/config/devices/${encodeURIComponent(id)}/battery-modules`, { modules }),
+  setBatteryCost: (id, cost) => request("PUT", `/config/devices/${encodeURIComponent(id)}/battery-cost`, cost),
   setDeviceEnabled: (id, enabled) => request("PUT", `/config/devices/${encodeURIComponent(id)}/enabled`, { enabled }),
   setDeviceReload: (id, minutes) => request("PUT", `/config/devices/${encodeURIComponent(id)}/reload`, { minutes }),
   integrationReloads: () => request("GET", "/integration-reloads"),

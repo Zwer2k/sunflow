@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.75.35
+
+- Battery wear is set per battery: under Settings → Devices → Battery each battery has its own wear cost (directly in ct/kWh or from purchase price and rated cycles) and a switch "Include in planning". Switched off, the battery's cycles count as free and it is used even for small price differences. Batteries without their own entry keep the value set so far under Planning, which no longer shows the wear editor.
+
 ## 0.75.34
 
 - PV by sun position: the current state of each plane (e.g. autumn leaves that come and go) is taken from the last 3 days, the latest counting most, and checked every 3 hours. Below 90 % of the learned yield planning uses this lower yield and goes back by itself once the plane delivers more. The soiling hint appears once per episode and no longer asks to clean the modules.
