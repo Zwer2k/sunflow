@@ -131,7 +131,10 @@ eines E-Bikes an einer schaltbaren Steckdose. Unter „Eigene Verbraucher“ lä
   wie gewohnt bis „Fertig bis“. Bis dahin ist er ausgeschaltet.
 - **Wie viel**: mit Ladestand-Entität und Akkukapazität aus dem Ladestand, sonst mit der Energie je
   Ladung. Den Startwert ersetzt Sunflow durch das Mittel der letzten Ladungen, sobald es sie gemessen
-  hat.
+  hat. Ohne Ladestand plant es 25 % Zeit als Reserve ein, falls eine Ladung länger dauert.
+- **Fenster zu Ende, aber nicht voll**: Sunflow schaltet am Ende des geplanten Fensters ab, der
+  Verbraucher bleibt aber ladebereit. Eingeplant wird dann nur noch der Rest der Ladung (mindestens
+  ein Fünftel), bis „Fertig bis“ bzw. im nächsten günstigen Fenster.
 - **Voll oder abgesteckt**: Bleibt die Leistung beim Laden für die eingestellte Zeit unter der
   Schwelle, schaltet Sunflow ab. Erst der nächste Auslöser bzw. das nächste Anstecken macht ihn wieder
   ladebereit.

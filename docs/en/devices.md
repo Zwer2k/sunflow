@@ -124,7 +124,10 @@ needs a power measurement.
   Until then it is switched off.
 - **How much**: from the state of charge with an SoC entity and the battery capacity, else with the
   energy per charge. Sunflow replaces the starting value with the mean of the last charges once it
-  has measured them.
+  has measured them. Without an SoC it plans 25 % more time as a reserve in case a charge takes longer.
+- **Window over, but not full**: Sunflow switches off at the end of the planned window, but the load
+  stays ready. Only the rest of the charge (at least a fifth) is planned then, by "Ready by" or in
+  the next cheap window.
 - **Full or unplugged**: if the power stays below the threshold for the set time while charging,
   Sunflow switches off. Only the next trigger or plugging in makes it ready again.
 - Switching only happens while Sunflow controls the load (Control → Sunflow controls).

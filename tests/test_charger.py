@@ -100,7 +100,8 @@ def test_plug_entity_decides_and_full_waits_for_unplugging(tmp_path: Path) -> No
 @pytest.mark.parametrize(
     ("charger", "states", "need", "reason"),
     [
-        pytest.param(ChargerReady(ready=True, energy_wh=400.0), {}, 400.0, None, id="ready-energy-per-charge"),
+        # Without a SoC with a reserve: the charge may take longer than the learned mean
+        pytest.param(ChargerReady(ready=True, energy_wh=400.0), {}, 500.0, None, id="ready-energy-per-charge"),
         pytest.param(ChargerReady(ready=False, energy_wh=400.0), {}, None, "Nicht ladebereit (nicht angesteckt oder voll)", id="not-ready"),
         pytest.param(
             ChargerReady(ready=True, energy_wh=None), {"sensor.bike_soc": {"state": "40"}},
@@ -198,3 +199,27 @@ def test_plugged_by_hand(tmp_path: Path, plugged: bool) -> None:
     assert watch.ready(bike, UNLOCKED) is plugged
     assert watch.changed
     assert (watch.step(bike, False, 0.0, UNLOCKED, NOW + timedelta(minutes=2)) is None) is plugged
+
+
+@pytest.mark.parametrize(
+    ("minutes", "remaining"),
+    [
+        pytest.param(0, 400.0, id="not-started"),
+        pytest.param(60, 250.0, id="window-ended-halfway"),
+        # Longer than usual: a part stays planned until the charger is found full
+        pytest.param(200, 80.0, id="more-than-usual"),
+    ],
+)
+def test_interrupted_charge_plans_the_rest(tmp_path: Path, minutes: int, remaining: float) -> None:
+    """A charge the plan switched off before full goes on with the rest, not with a whole charge."""
+    watch, bike = ChargerWatch(tmp_path), _bike()
+    watch.set_plugged(bike, True, NOW)
+    watch.step(bike, True, 150.0, LOCKED, NOW)
+    _minutes(watch, bike, LOCKED, 1, minutes, True, 150.0)
+    # The plan switches off at the end of its window
+    watch.step(bike, False, 0.0, LOCKED, NOW + timedelta(minutes=minutes + 1))
+
+    planning = watch.planning(SunflowConfig(devices=[bike]), LOCKED)
+
+    assert planning["bike"].ready
+    assert planning["bike"].energy_wh == pytest.approx(remaining, abs=3)

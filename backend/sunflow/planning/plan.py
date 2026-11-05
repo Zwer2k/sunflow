@@ -19,7 +19,12 @@ from sunflow.config.models import (
 )
 from sunflow.control.charger import ChargerReady, ChargerWatch
 from sunflow.devices.discovery import Snapshot
-from sunflow.devices.profiles import battery_actions, controls_battery, planned_battery, supported_action
+from sunflow.devices.profiles import (
+    battery_actions,
+    controls_battery,
+    planned_battery,
+    supported_action,
+)
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_kind, device_parameters
 from sunflow.ha import HAClient, HACommandError, HAError
@@ -96,6 +101,7 @@ PRIORITY_STEP = 0.001
 # €/kWh for needs that must be met (above any price) and for "as fast as possible"
 MUST_HAVE_COST = 2.0
 FAST_URGENCY = 1.0
+CHARGE_RESERVE = 1.25
 # Heating 1 litre of water by 1 K takes 1.163 Wh
 WATER_WH_PER_LITRE_KELVIN = 1.163
 # Target of a heating own consumer when none is set (evcc loadpoints report their own)
@@ -280,7 +286,9 @@ def charger_need(
         info.target = target if target is not None else 100.0
         info.need_wh = max(info.target - soc, 0.0) / 100 * device.charger.capacity_wh / CHARGER_EFFICIENCY
     elif charger.energy_wh:
-        info.need_wh = charger.energy_wh
+        # Without a SoC the charge may take longer than the learned mean: the planned time has a
+        # reserve, and the charger is switched off anyway once it draws no more power
+        info.need_wh = charger.energy_wh * CHARGE_RESERVE
     else:
         return t("Energie je Ladung fehlt (Einstellungen → Geräte → Akku laden)")
     return None
