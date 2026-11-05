@@ -33,6 +33,19 @@ DUMMIES: dict[str, dict[str, Any]] = {
             "switch": ["local_mode"],
         },
     },
+    "marstek_modbus/venus": {
+        "integration": "marstek_modbus",
+        "prefix": "01JC9ENTRY",
+        "keys": {
+            "sensor": [
+                "battery_soc", "battery_power", "ac_power", "battery_total_energy", "total_charging_energy",
+                "total_discharging_energy", "max_cell_voltage",
+            ],
+            "select": ["force_mode", "user_work_mode"],
+            "number": ["set_charge_power", "set_discharge_power", "max_charge_power", "max_discharge_power", "charge_to_soc"],
+            "switch": ["rs485_control_mode", "backup_function"],
+        },
+    },
 }
 
 VARIABLES = {"P": 600, "max_charge": 2400, "max_discharge": 800, "min_soc": 10, "device_id": "ha-device"}
@@ -164,3 +177,20 @@ def test_indevolt_capacity_from_kwh(library: ProfileLibrary) -> None:
     snapshot = SimpleNamespace(devices=[{"id": "dev"}], entities=entities, states=states)
 
     assert derive_parameter(library.profiles["indevolt/indevolt"]["parameters"]["capacity_wh"], snapshot, "dev") == 1790
+
+
+def test_marstek_actions(library: ProfileLibrary) -> None:
+    """RS485 control first, then power and force mode; switching it off hands the battery back."""
+    profile = library.profiles["marstek_modbus/venus"]
+    entities = dummy_entities("marstek_modbus/venus")
+
+    def calls(action: str) -> list[tuple[str, str | None, dict[str, Any]]]:
+        return [(c.domain, c.entity_id, c.data) for c in plan_battery(profile, action, {}, VARIABLES, entities)]
+
+    assert calls("force_charge") == [
+        ("switch", "switch.d_rs485_control_mode", {}),
+        ("number", "number.d_set_charge_power", {"value": 600}),
+        ("select", "select.d_force_mode", {"option": "charge"}),
+    ]
+    assert calls("hold")[1] == ("select", "select.d_force_mode", {"option": "standby"})
+    assert calls("release") == [("switch", "switch.d_rs485_control_mode", {})]

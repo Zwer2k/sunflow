@@ -45,6 +45,7 @@ Laden aus dem Netz.
 | Victron ESS (GX mit Multi/Quattro) | direkt, Modbus TCP | `modbus/victron_gx` | PV (MPPT und AC-gekoppelt), Speicher, Netz | Automatik, Halten, Laden (nur volle Leistung) | – | Modbus TCP im GX freigeben | 🧪 | 🧪 |
 | Indevolt SolidFlex / PowerFlex (Steckerspeicher mit PV-Eingängen) | indevolt (Core) | `indevolt/indevolt` | PV, PV je Eingang, Speicher, AC-Ausgang, Zähler | Automatik, Halten, Entladen begrenzen, Laden, Entladen | – | – | 🧪 | 🧪 |
 | Homevolt | homevolt (Core) | `homevolt/homevolt` | Speicher | Automatik, Halten, Laden, Entladen | – | Local Mode (setzt Sunflow selbst, wird nicht gespeichert) | 🧪 | 🧪 |
+| Marstek Venus E / D / A (Steckerspeicher) | marstek_modbus (HACS, Modbus über RS485-Gateway oder Ethernet) | `marstek_modbus/venus` | Speicher, AC-Leistung, Zähler | Automatik, Halten, Laden, Entladen | – | RS485-Steuerung (setzt Sunflow selbst) | 🧪 | 🧪 |
 
 Hinweise:
 
