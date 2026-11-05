@@ -23,6 +23,8 @@ class DiscoveredDevice:
     profile: str | None
     capabilities: list[str] = field(default_factory=list)
     components: list[DiscoveredDevice] = field(default_factory=list)
+    # Entities the profile needs that are disabled in Home Assistant (enabled when taken over)
+    disabled_entities: list[str] = field(default_factory=list)
 
 
 @dataclass(kw_only=True)
@@ -211,6 +213,31 @@ def match_profile(
     return None
 
 
+# Profile sections whose steps write entities
+WRITING_SECTIONS = ("primitive", "battery_control", "setup", "pv_limit", "charge_control", "phase_switch", "control_mode")
+
+
+def needed_keys(profile: dict[str, Any]) -> set[str]:
+    """Entity keys a profile cannot work without: matching, required roles and everything it writes."""
+    keys = set(profile.get("match", {}).get("requires", []))
+    keys |= {spec["key"] for spec in profile.get("roles", {}).values() if "key" in spec and not spec.get("optional")}
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for name, value in node.items():
+                if name == "key" and isinstance(value, str):
+                    keys.add(value)
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    for section in WRITING_SECTIONS:
+        walk(profile.get(section))
+    return keys
+
+
 # Pseudo integration of the devices Sunflow talks to itself (sunflow.direct); their model is the profile id
 DIRECT_DOMAIN = "sunflow_direct"
 
@@ -224,7 +251,11 @@ def discover(
 
     entities_by_device: dict[str, list[dict[str, Any]]] = {}
     entities_by_entry: dict[str, list[dict[str, Any]]] = {}
+    # Integrations disable control entities by default; profiles match on them as well
+    all_by_device: dict[str, list[dict[str, Any]]] = {}
     for entity in snapshot.entities:
+        if device_id := entity.get("device_id"):
+            all_by_device.setdefault(device_id, []).append(entity)
         if entity.get("disabled_by"):
             continue
         if device_id := entity.get("device_id"):
@@ -262,12 +293,12 @@ def discover(
             d
             for d in snapshot.devices
             if entry_id in d.get("config_entries", [])
-            and entities_by_device.get(d["id"])
+            and all_by_device.get(d["id"])
         ]
         entry_device_ids = {d["id"] for d in entry_devices}
         by_id: dict[str, DiscoveredDevice] = {}
         for device in entry_devices:
-            device_entities = entities_by_device[device["id"]]
+            device_entities = all_by_device[device["id"]]
             # Sub-devices such as battery modules are matched as part of their parent
             is_component = device.get("via_device_id") in entry_device_ids
             if domain == DIRECT_DOMAIN:
@@ -280,12 +311,18 @@ def discover(
                         library, domain, device, device_entities, entry_has_battery
                     )
                 )
+            needed = needed_keys(library.profiles[profile_id]) if profile_id else set()
             by_id[device["id"]] = DiscoveredDevice(
                 device_id=device["id"],
                 name=device.get("name_by_user") or device.get("name") or device["id"],
                 manufacturer=device.get("manufacturer"),
                 model=device.get("model"),
-                entity_count=len(device_entities),
+                entity_count=len(entities_by_device.get(device["id"], [])),
+                disabled_entities=sorted(
+                    e["entity_id"]
+                    for e in device_entities
+                    if e.get("disabled_by") and any(entity_has_key(e, key) for key in needed)
+                ),
                 profile=profile_id,
                 capabilities=library.profiles[profile_id]["capabilities"]
                 if profile_id

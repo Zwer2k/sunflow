@@ -2,6 +2,7 @@
 
 from contextlib import suppress
 from dataclasses import asdict
+import logging
 import re
 from typing import Any, Literal
 import uuid
@@ -44,6 +45,8 @@ from sunflow.ha import HAError
 from sunflow.i18n import N_, t
 
 from .common import _configured_device, _library, _replan, _snapshot, display_name
+
+_LOGGER = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -140,11 +143,21 @@ async def _preview(
         {role: o.model_dump() for role, o in overrides.items()},
     )
     balance = check_balance(roles)
+    # A role whose entity is disabled in Home Assistant is enabled when the device is taken over
+    specs = library.profiles[profile]["roles"]
+    disabled = [e for e in snapshot.entities if e.get("device_id") == device_id and e.get("disabled_by")]
+
+    def enabled_later(role: Any) -> str | None:
+        if not role.missing or "key" not in specs.get(role.role, {}):
+            return None
+        return next((e["entity_id"] for e in disabled if entity_has_key(e, specs[role.role]["key"])), None)
+
+    later = {r.role: entity_id for r in roles if (entity_id := enabled_later(r))}
     return {
         "device_id": device_id,
         "profile": profile,
-        "complete": not any(r.missing and not r.optional for r in roles),
-        "roles": [asdict(r) | {"missing": r.missing} for r in roles],
+        "complete": not any(r.missing and not r.optional and r.role not in later for r in roles),
+        "roles": [asdict(r) | {"missing": r.missing and r.role not in later, "enabled_later": later.get(r.role)} for r in roles],
         "balance": asdict(balance) if balance else None,
     }
 
@@ -187,8 +200,18 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
             device.kind = "heater" if soc.raw_unit in ("°C", "°F", "K") else "vehicle"
     config.devices.append(device)
     store.save(config)
+    # Control entities many integrations disable by default; Home Assistant reloads the integration
+    # by itself shortly after they are enabled
+    enabled = []
+    for entity_id in discovered.disabled_entities:
+        try:
+            await request.app.state.ha.command("config/entity_registry/update", entity_id=entity_id, disabled_by=None)
+        except HAError as err:
+            _LOGGER.warning("Could not enable %s: %s", entity_id, err)
+        else:
+            enabled.append(entity_id)
     _replan(request)
-    return device.model_dump()
+    return device.model_dump() | {"enabled_entities": enabled}
 
 
 class ManualDevice(BaseModel):
