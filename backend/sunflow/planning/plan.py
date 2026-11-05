@@ -1050,13 +1050,14 @@ AUTARKY_IMPORT_PENALTY_CT = 100.0
 PV_ABSORPTION_PENALTY_CT = 5.0
 
 
-def optimizer_settings(config: SunflowConfig, battery: BatterySpec) -> Settings:
+def optimizer_settings(config: SunflowConfig, battery: BatterySpec, battery_device_id: str = "") -> Settings:
     """Translate the user's planning settings and strategy into optimizer settings."""
     options = config.optimizer
     strategy = config.effective_strategy(datetime.now(UTC))
     autarky = strategy == "autarky"
+    cost = config.battery_cost(battery_device_id)
     return Settings(
-        wear_ct_per_kwh=options.wear_ct_per_kwh,
+        wear_ct_per_kwh=cost.wear_ct_per_kwh if cost.include else 0.0,
         # Autarky never charges from the grid
         allow_grid_charge=options.allow_grid_charge and not autarky,
         import_penalty_ct_per_kwh=AUTARKY_IMPORT_PENALTY_CT if autarky else 0.0,
@@ -1426,7 +1427,7 @@ async def compute_plan(
     if notice := large_load_notice(load, config.optimizer.large_load_threshold_w):
         warnings.append(notice)
 
-    settings = optimizer_settings(config, battery)
+    settings = optimizer_settings(config, battery, battery_device.id)
     inputs = slot_feed_in(build_inputs(start, prices, pv, load, feed_in_price(config, battery_device)), feed_in_of(config, battery_device))
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append(t("Preise reichen nur wenige Stunden in die Zukunft."))

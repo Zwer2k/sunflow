@@ -86,6 +86,36 @@ def test_wear_from_purchase_price() -> None:
     assert OptimizerConfig(wear_ct_per_kwh=4).wear_ct_per_kwh == 4
 
 
+@pytest.mark.parametrize(
+    ("costs", "expected"),
+    [
+        pytest.param({}, 4.0, id="planning-wide-default"),
+        pytest.param({"bat": {"wear_ct_per_kwh": 6.5}}, 6.5, id="own-value"),
+        pytest.param({"bat": {"calculation": {"price_eur": 8000, "cycles": 6000, "capacity_kwh": 20}}}, 8.71, id="calculated"),
+        pytest.param({"bat": {"include": False, "wear_ct_per_kwh": 6.5}}, 0.0, id="not-counted"),
+        pytest.param({"other": {"wear_ct_per_kwh": 9}}, 4.0, id="other-battery"),
+    ],
+)
+def test_wear_per_battery(costs: dict, expected: float) -> None:
+    """Each battery has its own wear; switched off, planning treats its cycles as free."""
+    from sunflow.config.models import OptimizerConfig
+    from sunflow.planning.optimizer import BatterySpec
+    from sunflow.planning.plan import optimizer_settings
+
+    battery = BatterySpec(capacity_wh=20_000, soc_wh=10_000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+    config = SunflowConfig.model_validate({"optimizer": OptimizerConfig(wear_ct_per_kwh=4).model_dump(), "battery_costs": costs})
+
+    assert optimizer_settings(config, battery, "bat").wear_ct_per_kwh == pytest.approx(expected)
+
+
+def test_battery_cost_dropped_with_device() -> None:
+    config = SunflowConfig.model_validate({"battery_costs": {"bat": {"wear_ct_per_kwh": 5}}})
+
+    config.forget_device("bat")
+
+    assert config.battery_costs == {}
+
+
 def test_migrates_older_version_and_keeps_original(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Steps run in order on the raw JSON; the original stays next to the migrated file."""
     import json

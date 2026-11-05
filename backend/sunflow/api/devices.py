@@ -15,6 +15,7 @@ from sunflow.analysis.efficiency import (
     estimate_from_history,
 )
 from sunflow.config.models import (
+    BatteryCost,
     ChargerSettings,
     DeviceConfig,
     FeedIn,
@@ -563,6 +564,7 @@ async def get_batteries(request: Request) -> list[dict[str, Any]]:
                 "soc_pct": roles["battery_soc"].value if "battery_soc" in roles else None,
                 "power_w": roles["battery_power"].value if "battery_power" in roles else None,
                 "capacity_wh": params.get("capacity_wh", {}).get("effective"),
+                "cost": config.battery_cost(device.id).model_dump(),
                 "modules": [
                     {
                         "ha_device_id": module_id,
@@ -600,6 +602,19 @@ async def set_battery_modules(request: Request, device_id: str, body: BatteryMod
         if taken & set(body.modules):
             raise HTTPException(status_code=422, detail=t("Ein Modul ist schon einem anderen Wechselrichter zugeordnet"))
         config.battery_modules[device.id] = body.modules
+    store.save(config)
+    _replan(request)
+    return await get_batteries(request)
+
+
+@router.put("/config/devices/{device_id}/battery-cost")
+async def set_battery_cost(request: Request, device_id: str, body: BatteryCost) -> list[dict[str, Any]]:
+    """Set a battery's wear and whether planning counts it."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if config.device(device_id) is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    config.battery_costs[device_id] = body
     store.save(config)
     _replan(request)
     return await get_batteries(request)
