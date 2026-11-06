@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.8
+
+- Plan a battery: instead of one "price optimized" run, each scenario is run as Sunflow does with the strategies picked above the table – Balanced, Absorb PV, Self-sufficiency and Battery use, with their grid charging, surcharges and buffers – next to plain self-consumption.
+
 ## 0.78.7
 
 - Plan a battery: the measured row shows the payback of today's battery against no battery at all, from the purchase price entered for its wear.

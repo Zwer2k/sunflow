@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import { decimal, locale, t } from "../lib/i18n.js";
+import { STRATEGIES } from "../lib/strategies.js";
 
 // Numeric fields of a scenario: key, label, unit shown, optional
 const FIELDS = [
@@ -16,7 +17,22 @@ const FIELDS = [
   ["wear_ct", t("Verschleiß (optional, sonst aus Preis)"), "ct/kWh", true],
 ];
 const DAYS = [[30, t("30 Tage")], [90, t("90 Tage")], [365, t("1 Jahr")]];
-const RUNS = { self_consumption: t("Eigenverbrauch"), optimized: t("mit Preisoptimierung") };
+// Remembered per browser; storage may be unavailable (private mode, previews)
+const STRATEGIES_KEY = "sunflow.batteryPlanner.strategies";
+
+function savedStrategies() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STRATEGIES_KEY));
+    if (Array.isArray(saved) && saved.length && saved.every((s) => s in STRATEGIES)) return saved;
+  } catch {
+    // Falls back to the default
+  }
+  return ["balanced"];
+}
+
+function runLabel(key) {
+  return key === "self_consumption" ? t("Eigenverbrauch (ohne Steuerung)") : STRATEGIES[key].short;
+}
 
 function newScenario() {
   return {
@@ -33,6 +49,7 @@ class SunflowBatteryPlanner extends LitElement {
     _edits: { state: true },
     _result: { state: true },
     _days: { state: true },
+    _strategies: { state: true },
     _busy: { state: true },
     _error: { state: true },
   };
@@ -43,6 +60,7 @@ class SunflowBatteryPlanner extends LitElement {
     this._edits = null;
     this._result = null;
     this._days = 30;
+    this._strategies = savedStrategies();
     this._busy = false;
     this._error = null;
   }
@@ -65,16 +83,29 @@ class SunflowBatteryPlanner extends LitElement {
 
   async _simulate() {
     const days = this._days;
+    const strategies = this._strategies;
     this._busy = true;
     try {
-      const result = await api.batterySimulation(days);
-      if (days === this._days) this._result = result;
+      const result = await api.batterySimulation(days, strategies);
+      if (days === this._days && strategies === this._strategies) this._result = result;
       this._error = null;
     } catch (err) {
       this._error = t("Simulation fehlgeschlagen: {error}", { error: err.message });
     } finally {
       this._busy = false;
     }
+  }
+
+  _toggleStrategy(key) {
+    const chosen = this._strategies.includes(key) ? this._strategies.filter((s) => s !== key) : [...this._strategies, key];
+    if (!chosen.length) return;
+    this._strategies = Object.keys(STRATEGIES).filter((s) => chosen.includes(s));
+    try {
+      localStorage.setItem(STRATEGIES_KEY, JSON.stringify(this._strategies));
+    } catch {
+      // Not remembered, the choice still works for this visit
+    }
+    this._simulate();
   }
 
   _startEditing() {
@@ -158,7 +189,15 @@ class SunflowBatteryPlanner extends LitElement {
     // Without an existing battery "today" already is the house without one
     const none = result?.has_battery ? result.without_battery : null;
     return html`
-      ${this._busy ? html`<p class="small muted">${t("Rechnet … (bei einem Jahr bis zu einer Minute)")}</p>` : nothing}
+      <div class="strategies" role="group" aria-label=${t("Strategien der Simulation")}>
+        <span class="small muted">${t("Gesteuert wie Sunflow mit:")}</span>
+        ${Object.entries(STRATEGIES).map(([key, strategy]) => {
+          const on = this._strategies.includes(key);
+          return html`<button class="chip ${on ? "on" : ""}" aria-pressed=${on} title=${strategy.hint}
+            ?disabled=${this._busy || (on && this._strategies.length === 1)} @click=${() => this._toggleStrategy(key)}>${strategy.short}</button>`;
+        })}
+      </div>
+      ${this._busy ? html`<p class="small muted">${t("Rechnet … (bei einem Jahr bis zu einer Minute je Strategie)")}</p>` : nothing}
       ${result
         ? html`<div class="table-wrap"><table>
             <thead><tr>
@@ -178,8 +217,9 @@ class SunflowBatteryPlanner extends LitElement {
                 <td title=${none ? t("Kaufpreis aus dem Verschleiß des Speichers gegenüber gar keinem Speicher") : ""}>${result.measured.payback_years
                   ? t("{years} Jahre", { years: decimal(result.measured.payback_years.toFixed(1)) })
                   : none ? "–" : ""}</td></tr>
-              ${result.scenarios.flatMap((s) => Object.entries(RUNS).map(([key, label], i) => {
-                const run = s[key];
+              ${result.scenarios.flatMap((s) => Object.keys(s.runs).map((key, i) => {
+                const run = s.runs[key];
+                const label = runLabel(key);
                 return html`<tr>
                   <td>${i === 0 ? html`<strong>${s.name}</strong><div class="small muted">${s.mode === "replace" ? t("statt des vorhandenen") : t("zusätzlich")}</div>` : ""}</td>
                   <td>${label}</td><td>${kwh(run.imported_kwh)}</td><td>${kwh(run.exported_kwh)}</td><td>${euro.format(run.cost)}</td>
@@ -191,7 +231,7 @@ class SunflowBatteryPlanner extends LitElement {
               }))}
             </tbody>
           </table></div>
-          <p class="small muted">${t("{days} Tage mit Zählerwerten und Preis. Hochgerechnet aufs Jahr ohne Jahreszeiten – im Winter nutzt ein Speicher weniger PV als im Sommer. Stundenwerte gleichen Bezug und Einspeisung innerhalb einer Stunde aus, die Ersparnis ist daher etwas zu hoch. „Mit Preisoptimierung“ kennt die Preise und den Verbrauch im Voraus – so gut wird keine Planung.", { days: decimal(result.days.toFixed(0)) })}</p>`
+          <p class="small muted">${t("{days} Tage mit Zählerwerten und Preis. Hochgerechnet aufs Jahr ohne Jahreszeiten – im Winter nutzt ein Speicher weniger PV als im Sommer. Stundenwerte gleichen Bezug und Einspeisung innerhalb einer Stunde aus, die Ersparnis ist daher etwas zu hoch. Die Strategien kennen Preise und Verbrauch im Voraus – so gut wird keine Planung.", { days: decimal(result.days.toFixed(0)) })}</p>`
         : nothing}
       <div class="actions"><button class="secondary" ?disabled=${this._busy} @click=${() => this._startEditing()}>${t("Varianten bearbeiten")}</button></div>
     `;
@@ -252,6 +292,13 @@ class SunflowBatteryPlanner extends LitElement {
     td { padding: 6px 10px; border-top: 1px solid var(--sf-border); vertical-align: top; }
     tr.measured td { background: var(--sf-primary-bg); }
     tr.reference td { background: var(--sf-subtle); }
+    .strategies { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+    .chip {
+      font: inherit; font-size: 13px; min-height: 30px; padding: 0 12px; border-radius: 15px; cursor: pointer;
+      border: 1px solid var(--sf-border); background: transparent; color: var(--sf-muted);
+    }
+    .chip.on { background: var(--sf-primary-bg); border-color: var(--sf-primary); color: var(--sf-text); font-weight: 600; }
+    .chip:disabled { cursor: default; }
     td.worse { color: var(--sf-error-text); }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .spacer { flex: 1; }

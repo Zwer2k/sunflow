@@ -6,7 +6,7 @@ what the existing one left to the grid), "replace" takes the existing one out fi
 net out import and export within an hour, so the result is a little optimistic.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, tzinfo
 import math
 from typing import Any
@@ -14,6 +14,17 @@ from typing import Any
 from sunflow.config.models import BatteryScenario
 from sunflow.ha import HAClient
 from sunflow.planning.optimizer import BatterySpec, Settings, SlotInput, optimize
+from sunflow.planning.plan import (
+    AUTARKY_IMPORT_PENALTY_CT,
+    BUFFER_PENALTY_SHARE,
+    BUFFER_Z,
+    DEFAULT_LOAD_SPREAD,
+    MAX_BUFFER_SHARE,
+    PV_ABSORPTION_PENALTY_CT,
+    STORAGE_PREMIUM,
+    cheap_slots,
+    storage_buffers,
+)
 
 from .costs import hourly_changes, hourly_prices
 from .energy import EnergySources
@@ -22,6 +33,8 @@ from .energy import EnergySources
 WINDOW_HOURS = 48
 STEP_HOURS = 24
 QUARTERS = 4
+# Planned as Sunflow does with each of its strategies; "self_consumption" runs without control
+STRATEGIES = ("balanced", "pv_absorption", "autarky", "storage")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -143,8 +156,33 @@ def self_consumption(hours: list[Hour], scenario: BatteryScenario) -> Run:
     return _credit_rest(run, hours, soc, floor, eta_d)
 
 
-def optimized(hours: list[Hour], scenario: BatteryScenario) -> Run:
-    """Planned with the prices known in advance (as Sunflow would with a perfect forecast).
+def _strategy(
+    inputs: list[SlotInput], scenario: BatteryScenario, strategy: str, round_trip: float
+) -> tuple[list[SlotInput], Settings]:
+    """The window's slots and optimizer settings as the strategy plans them (see plan.compute_plan)."""
+    autarky = strategy == "autarky"
+    settings = Settings(
+        wear_ct_per_kwh=scenario.wear_ct_per_kwh(),
+        allow_grid_charge=scenario.grid_charge and not autarky,
+        import_penalty_ct_per_kwh=AUTARKY_IMPORT_PENALTY_CT if autarky else 0.0,
+        export_penalty_ct_per_kwh=PV_ABSORPTION_PENALTY_CT if strategy == "pv_absorption" else 0.0,
+    )
+    premium = STORAGE_PREMIUM if strategy == "storage" else 0.0
+    if premium:
+        cheap = cheap_slots([slot.price for slot in inputs])
+        inputs = [replace(slot, import_penalty=0.0 if c else premium) for slot, c in zip(inputs, cheap, strict=True)]
+    if settings.allow_grid_charge and strategy in BUFFER_Z:
+        capacity, floor = _bounds(scenario)
+        buffers = storage_buffers(
+            inputs, BUFFER_Z[strategy], DEFAULT_LOAD_SPREAD, round_trip, BUFFER_PENALTY_SHARE,
+            MAX_BUFFER_SHARE * (capacity - floor), premium,
+        )
+        settings = replace(settings, buffer=tuple((b.slot, b.wh, b.penalty) for b in buffers))
+    return inputs, settings
+
+
+def optimized(hours: list[Hour], scenario: BatteryScenario, strategy: str = "balanced") -> Run:
+    """Planned with prices and consumption known in advance, as Sunflow would with a perfect forecast.
 
     Each window of two days is optimized and its first day kept, starting where the last ended.
     """
@@ -152,7 +190,6 @@ def optimized(hours: list[Hour], scenario: BatteryScenario) -> Run:
     capacity, floor = _bounds(scenario)
     soc = floor
     run = Run()
-    settings = Settings(wear_ct_per_kwh=scenario.wear_ct_per_kwh(), allow_grid_charge=scenario.grid_charge)
     for first in range(0, len(hours), STEP_HOURS):
         window = hours[first : first + WINDOW_HOURS]
         inputs = [
@@ -171,6 +208,7 @@ def optimized(hours: list[Hour], scenario: BatteryScenario) -> Run:
             max_charge_w=scenario.max_charge_kw * 1000, max_discharge_w=scenario.max_discharge_kw * 1000,
             efficiency_charge=eta_c, efficiency_discharge=eta_d,
         )
+        inputs, settings = _strategy(inputs, scenario, strategy, eta_c * eta_d)
         plan = optimize(inputs, battery, settings)
         kept = min(STEP_HOURS, len(window))
         if len(plan.slots) < kept * QUARTERS:
@@ -207,7 +245,10 @@ def _payback(price: float | None, saving_per_year: float) -> float | None:
 
 
 def simulate(
-    hours: list[Hour], scenarios: list[BatteryScenario], existing_price: float | None = None
+    hours: list[Hour],
+    scenarios: list[BatteryScenario],
+    existing_price: float | None = None,
+    strategies: tuple[str, ...] = ("balanced",),
 ) -> dict[str, Any]:
     """Measured operation, the house without any battery and, per scenario, both ways of running the battery.
 
@@ -221,12 +262,13 @@ def simulate(
     year = 365 / days if days else 0.0
     results = []
     for scenario in scenarios:
-        runs = {"self_consumption": self_consumption(hours, scenario), "optimized": optimized(hours, scenario)}
+        runs = {"self_consumption": self_consumption(hours, scenario)}
+        runs |= {strategy: optimized(hours, scenario, strategy) for strategy in strategies}
         usable = scenario.capacity_kwh * scenario.usable_pct / 100
-        entry: dict[str, Any] = {"id": scenario.id, "name": scenario.name, "mode": scenario.mode}
+        entry: dict[str, Any] = {"id": scenario.id, "name": scenario.name, "mode": scenario.mode, "runs": {}}
         for key, run in runs.items():
             saving = measured.cost - run.cost
-            entry[key] = run.as_dict() | {
+            entry["runs"][key] = run.as_dict() | {
                 "saving": saving,
                 "saving_per_year": saving * year,
                 "saving_vs_none_per_year": (none.cost - run.cost) * year,

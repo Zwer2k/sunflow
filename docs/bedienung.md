@@ -131,9 +131,12 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   Wechselrichter, Kaufpreis und Zyklen (daraus der Verschleiß) an und ob er **zusätzlich** zum
   vorhandenen oder **statt** seiner arbeiten soll. **Vorhandenen Speicher übernehmen** legt deinen
   Speicher mit seinen Werten an, so kannst du andere Einstellungen (Netzladen, Verschleiß,
-  Leistung) rückblickend durchrechnen. Jede Variante wird zweimal gerechnet: als reiner
-  Eigenverbrauch und mit Preisoptimierung, die Preise und Verbrauch im Voraus kennt (eine
-  Obergrenze, die keine Planung erreicht). Die Tabelle zeigt Bezug, Einspeisung, Stromkosten,
+  Leistung) rückblickend durchrechnen. Jede Variante wird als reiner
+  Eigenverbrauch ohne Steuerung gerechnet und gesteuert wie Sunflow mit den Strategien, die du
+  über der Tabelle wählst (Ausgewogen, PV aufnehmen, Autarkie, Speichernutzung; jeder Browser
+  merkt sich die Auswahl). Die Strategien kennen Preise und Verbrauch im Voraus – eine Obergrenze,
+  die keine Planung erreicht. Verschleiß steckt nicht in den Stromkosten; eine Strategie mit mehr
+  Zyklen pro Jahr nutzt den Speicher entsprechend stärker ab. Die Tabelle zeigt Bezug, Einspeisung, Stromkosten,
   Ersparnis gegenüber heute, aufs Jahr hochgerechnet (ohne Jahreszeiten), Zyklen pro Jahr und mit
   Kaufpreis die Amortisation. Mit vorhandenem Speicher steht oben zusätzlich **Ohne Speicher**: das
   Haus, wenn es gar keinen Speicher gäbe. Die Spalte „ggü. ohne Speicher pro Jahr“ zeigt, was dein

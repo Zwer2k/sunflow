@@ -84,7 +84,7 @@ def test_simulation_reports_savings_per_year_and_payback() -> None:
     """Savings against the measured operation, scaled to a year; payback from the price."""
     result = simulate(_days(14), [_scenario(price_eur=5000)])
 
-    scenario = result["scenarios"][0]["self_consumption"]
+    scenario = result["scenarios"][0]["runs"]["self_consumption"]
     assert result["days"] == 14
     assert scenario["saving"] > 0
     assert scenario["saving_per_year"] == pytest.approx(scenario["saving"] * 365 / 14)
@@ -102,7 +102,7 @@ def test_without_battery_takes_out_the_existing_one() -> None:
     assert none.imported_wh == pytest.approx(2 * (4000 + 2700))
     assert result["has_battery"] is True
     assert result["measured"]["saving_vs_none_per_year"] == pytest.approx((none.cost - result["measured"]["cost"]) * 365 / 2)
-    run = result["scenarios"][0]["self_consumption"]
+    run = result["scenarios"][0]["runs"]["self_consumption"]
     assert run["saving_vs_none_per_year"] == pytest.approx((none.cost - run["cost"]) * 365 / 2)
 
 
@@ -117,3 +117,23 @@ def test_existing_battery_pays_back_against_none(price: float | None, has_paybac
     assert measured["saving_vs_none_per_year"] > 0
     assert (measured["payback_years"] is not None) is has_payback
     assert measured["payback_years"] == (pytest.approx(6000 / measured["saving_vs_none_per_year"]) if has_payback else None)
+
+
+@pytest.mark.parametrize(
+    ("strategy", "charges_at_night"),
+    [
+        pytest.param("balanced", True, id="balanced"),
+        pytest.param("storage", True, id="storage"),
+        pytest.param("pv_absorption", True, id="pv-absorption"),
+        pytest.param("autarky", False, id="autarky"),
+    ],
+)
+def test_strategies_plan_as_sunflow_does(strategy: str, charges_at_night: bool) -> None:
+    """Without a noon surplus every strategy but autarky stores cheap night power for the evening."""
+    hours = [h if not 11 <= h.start.hour < 14 else Hour(**{**h.__dict__, "exported": 0.0}) for h in _days(4)]
+
+    result = simulate(hours, [_scenario()], strategies=(strategy,))
+
+    runs = result["scenarios"][0]["runs"]
+    assert set(runs) == {"self_consumption", strategy}
+    assert (runs[strategy]["saving"] > 0.1) is charges_at_night
