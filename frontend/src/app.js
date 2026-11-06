@@ -2512,7 +2512,8 @@ class SunflowApp extends LitElement {
     if (param.name === "phase_mode") return this._renderPhaseMode(device, param, edits);
     const edited = edits[param.name];
     const value = edited ?? toDisplay(param.stored, param.unit);
-    const placeholder = toDisplay(param.effective, param.unit);
+    // Empty (reset) means the value from the sensors or the profile, not the one stored so far
+    const placeholder = toDisplay(param.derived ?? param.default ?? param.effective, param.unit);
     let source;
     if (param.stored !== null && edited === undefined) source = html`<span class="muted">${t("eigener Wert")}</span>`;
     else if (param.derived !== null)
