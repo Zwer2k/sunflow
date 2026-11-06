@@ -17,6 +17,9 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
 DT_H = 0.25
+# €/kWh per hour below the backup reserve: above any price difference, so a battery below
+# it is refilled right away (from the grid if allowed) and never planned below it again
+RESERVE_PENALTY = 1.0
 
 type Action = Literal["auto", "hold", "force_charge", "force_discharge", "limit_charge", "limit_discharge"]
 
@@ -100,6 +103,8 @@ class SlotInput:
     feed_in: float  # export €/kWh
     # Pessimistic PV (p10), when the forecast has a range
     pv_low_w: float | None = None
+    # €/kWh added to the import price (e.g. "storage": the battery covers expensive periods)
+    import_penalty: float = 0.0
     # Part of pv_w from plants whose output Sunflow can limit
     curtailable_w: float = 0.0
     # The price is not published yet but estimated
@@ -434,6 +439,12 @@ def optimize(
     buffers = [(t, wh, penalty) for t, wh, penalty in settings.buffer if 0 <= t < n and wh > 0]
     buffer_short = count + np.arange(len(buffers))
     count += len(buffers)
+    # Discharge limit or backup reserve, whichever is higher, also while a battery is below it
+    soc_floor = [max(b.min_soc_wh, b.reserve_wh if b.reserve_wh is not None else settings.reserve_wh) for b in batteries]
+    # Below it (at the start, after an outage) every slot short of it costs: refilled first
+    reserve_short = count + np.arange(n) if any(b.soc_wh < f - 1 for b, f in zip(batteries, soc_floor, strict=True)) else None
+    if reserve_short is not None:
+        count += n
     # Energy above the high SoC threshold per battery and slot
     high = [b.high_soc_wh if b.high_soc_wh is not None else settings.high_soc_wh for b in batteries]
     hs: list[Any] = []
@@ -456,7 +467,7 @@ def optimize(
     spread = max(prices) - min(prices)
     cost = np.zeros(count)
     for t, slot in enumerate(inputs):
-        cost[gi[t]] = (slot.price + settings.import_penalty_ct_per_kwh / 100) * DT_H / 1000
+        cost[gi[t]] = (slot.price + slot.import_penalty + settings.import_penalty_ct_per_kwh / 100) * DT_H / 1000
         # Risk premium (max 0.5 ct/kWh): export late, after the battery is full. Equally
         # cheap if the forecast holds, but robust when PV falls short and like
         # self-consumption mode; must outweigh the smoothing of a flat export
@@ -475,6 +486,8 @@ def optimize(
         cost[full_short] = settings.full_charge_penalty / 1000
     for index, (_, _, penalty) in zip(buffer_short, buffers, strict=True):
         cost[index] = penalty / 1000
+    if reserve_short is not None:
+        cost[reserve_short] = RESERVE_PENALTY * DT_H / 1000
     if cu is not None:
         cost[cu] = CURTAIL_COST * DT_H / 1000
     for k in range(m):
@@ -536,12 +549,8 @@ def optimize(
 
     soc_upper: list[float] = []
     soc_min: list[float] = []
-    # Discharge limit or backup reserve, whichever is higher, even while the battery is below it
-    soc_floor: list[float] = []
     grid_charge = [settings.allow_grid_charge and b.force_charge for b in batteries]
     for k, b in enumerate(batteries):
-        reserve = b.reserve_wh if b.reserve_wh is not None else settings.reserve_wh
-        soc_floor.append(max(b.min_soc_wh, reserve))
         # A battery below its floor may stay there but must not be drained further
         soc_min.append(min(soc_floor[k], b.soc_wh))
         # Charge limit for battery care; lifted while a full charge is due. Above it already,
@@ -691,6 +700,11 @@ def optimize(
     if full_short is not None:
         # soc at the target slot plus shortfall reaches (almost) full
         gate_rows.append(({s[0][settings.full_charge_slot]: -1, full_short: -1}, -batteries[0].capacity_wh * FULL_FRACTION))
+    if reserve_short is not None:
+        # soc of all batteries plus shortfall reaches their floors in every slot
+        gate_rows.extend(
+            ({**{s[k][t]: -1 for k in range(m)}, reserve_short[t]: -1}, -sum(soc_floor)) for t in range(n)
+        )
     # soc of all batteries plus shortfall reaches the floor plus the buffer; the buffer lies
     # above the backup reserve, also while the battery is below the reserve now
     gate_rows.extend(

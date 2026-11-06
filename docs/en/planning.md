@@ -34,7 +34,7 @@ under Control or in the settings.
 |---|---|---|---|---|
 | Goal | lowest electricity cost | like Balanced, room for PV | as little grid import as possible | like Balanced, battery lasts on heavy days too |
 | Charging from the grid | when the price difference exceeds losses and wear | rarely before sunny days | never (except an overdue full charge) | like Balanced, with a larger buffer |
-| In the plan | cost, buffer for 4 days in 5 | every exported kWh counts 5 ct less | every kWh from the grid counts €1 extra | cost, buffer for 19 days in 20 |
+| In the plan | cost, buffer for 4 days in 5 | every exported kWh counts 5 ct less | every kWh from the grid counts €1 extra | grid power in expensive periods counts 10 ct extra, buffer for 19 days in 20 |
 | Suits | dynamic and time-of-use tariffs | lots of PV, small battery | fixed price, independence | time-of-use tariffs, varying consumption |
 
 - **Balanced** keeps energy for expensive hours and discharges there.
@@ -43,7 +43,9 @@ under Control or in the settings.
 - **Self-sufficient** covers every demand from the battery immediately and gives loads PV surplus
   first. With time-of-use tariffs it costs more, because cheap night power is not stored.
 - **Battery use** charges enough in cheap hours that the battery lasts until the next cheap charge
-  even on a day with clearly more consumption or less sun.
+  even on a day with clearly more consumption or less sun. Cost comes second: grid power in
+  expensive periods counts 10 ct extra, so Sunflow charges at night and covers the day from the
+  battery even when losses and wear eat up the price advantage.
 
 ### Buffer for a day above the forecast
 
@@ -87,7 +89,8 @@ differences. This is intended, not a bug.
   full. Every kWh above the threshold costs a small amount per hour. Sunflow then charges as late
   as possible before the demand, e.g. at the end of the cheap night window instead of from
   midnight. Example: 4 kWh above 80 % for 10 hours cost about 4 ct at 0.1 ct.
-- **Backup reserve**: in every strategy this state of charge stays free for power outages.
+- **Backup reserve**: in every strategy this state of charge stays free for power outages. If the
+  battery is below it, Sunflow refills it first, from the grid if allowed.
 
 ## Several batteries
 

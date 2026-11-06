@@ -840,6 +840,9 @@ BUFFER_Z = {"balanced": 0.84, "pv_absorption": 0.84, "storage": 1.64}
 # A missing kWh of buffer costs this share of what cheap charging saves per kWh: below the
 # saving, so a day above the forecast uses the buffer, above the losses, so it is charged
 BUFFER_PENALTY_SHARE = 0.5
+# "storage": grid power in expensive periods counts this much more (€/kWh), so charging in cheap
+# hours and covering the day from the battery pays even with high losses and wear
+STORAGE_PREMIUM = 0.10
 # Day to day deviation of the consumption until enough history is there
 DEFAULT_LOAD_SPREAD = 0.15
 # A slot is cheap when it is within this much of the lowest price 12 h around it
@@ -852,8 +855,24 @@ MAX_BUFFER_SHARE = 0.5
 P10_Z = 1.2816
 
 
+def cheap_slots(prices: list[float]) -> list[bool]:
+    """Slots within reach of the lowest price 12 h around them; none where the price hardly changes."""
+    cheap = []
+    for index in range(len(prices)):
+        around = prices[max(index - CHEAP_AROUND, 0) : index + CHEAP_AROUND + 1]
+        low, high = min(around), max(around)
+        cheap.append(high - low >= MIN_PRICE_SPREAD and prices[index] <= low + CHEAP_TOLERANCE * (high - low))
+    return cheap
+
+
 def storage_buffers(
-    inputs: list[SlotInput], z: float, load_spread: float, round_trip: float, penalty_share: float, max_wh: float
+    inputs: list[SlotInput],
+    z: float,
+    load_spread: float,
+    round_trip: float,
+    penalty_share: float,
+    max_wh: float,
+    premium: float = 0.0,
 ) -> list[Buffer]:
     """A buffer for every expensive period between two cheap ones.
 
@@ -864,12 +883,7 @@ def storage_buffers(
     """
     n = len(inputs)
     prices = [slot.price for slot in inputs]
-    cheap = []
-    for index in range(n):
-        around = prices[max(index - CHEAP_AROUND, 0) : index + CHEAP_AROUND + 1]
-        low, high = min(around), max(around)
-        # Where the price hardly changes, no slot is cheaper than the others
-        cheap.append(high - low >= MIN_PRICE_SPREAD and prices[index] <= low + CHEAP_TOLERANCE * (high - low))
+    cheap = cheap_slots(prices)
     buffers = []
     end = 0
     while end < n:
@@ -884,7 +898,8 @@ def storage_buffers(
             break
         period = inputs[first:end]
         low = min(prices[max(first - CHEAP_AROUND, 0) : end + CHEAP_AROUND])
-        saving = fmean(slot.price for slot in period) - low / round_trip
+        # premium: what the strategy adds to grid power in expensive periods ("storage")
+        saving = fmean(slot.price for slot in period) + premium - low / round_trip
         if saving <= 0:
             continue
         load = sum(slot.load_w for slot in period) * DT_H
@@ -1681,6 +1696,12 @@ async def compute_plan(
     loads = [replace(load, unmet_cost=worth) if load.expected else load for load in loads]
     buffers = []
     strategy = config.effective_strategy(now)
+    premium = STORAGE_PREMIUM if strategy == "storage" else 0.0
+    if premium:
+        inputs = [
+            replace(slot, import_penalty=0.0 if cheap else premium)
+            for slot, cheap in zip(inputs, cheap_slots([slot.price for slot in inputs]), strict=True)
+        ]
     if settings.allow_grid_charge and strategy in BUFFER_Z:
         first = batteries[0]
         buffers = storage_buffers(
@@ -1690,6 +1711,7 @@ async def compute_plan(
             (first.efficiency_charge_grid or first.efficiency_charge) * first.efficiency_discharge,
             BUFFER_PENALTY_SHARE,
             MAX_BUFFER_SHARE * sum(b.capacity_wh - max(b.min_soc_wh, settings.reserve_wh if b.reserve_wh is None else b.reserve_wh) for b in batteries),
+            premium,
         )
         settings = replace(settings, buffer=tuple((b.slot, b.wh, b.penalty) for b in buffers))
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
