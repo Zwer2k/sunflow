@@ -27,6 +27,10 @@ where energy is going.
   </details>
 - **Weather**: current conditions and forecast, switchable between **Hours** and **Days**;
   swipe or use the arrows. It can be hidden under [Settings → Display](settings.md#display).
+- **Quick controls** (below the energy flow): one row per load you pinned under Control, with
+  power, state of charge and next charging window, and the modes as small buttons: € Cost-optimal,
+  PV PV only, ⚡ Now, ⏸ Pause. A change applies until midnight. For "Charge battery" without a plug
+  sensor, 🔌 switches "plugged in now". Without pinned loads the block is not shown.
 - **Today** sums up the energy meters: PV generated, consumed, grid import, exported,
   inverter/battery losses, self-sufficiency and self-consumption.
 - **Inverter/battery losses** (below the energy flow, average of the last minutes): the balance
@@ -55,6 +59,8 @@ further notice. Sunflow replans immediately after every change.
   temperature). For the wallbox you choose the vehicle or let it be detected; the scanned card is
   shown in brackets, e.g. "Fiat 500e (Card 1)". With a sensor set up you also see the voltage of
   the car's 12 V battery. Below it says what the plan intends, or why nothing is planned.
+  The **pin** at the top right puts the load's modes on Live as quick controls; for all browsers
+  and devices.
 - **Priority**: if PV surplus is not enough for everyone, the top entry gets it
   first. With **Limits** a load waits until storages ranked higher reach a level,
   e.g. hot water only above 90 % home battery.

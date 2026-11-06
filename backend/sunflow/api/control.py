@@ -116,6 +116,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "need_wh": info.need_wh if info else None,
                 "reason": info.reason if info else None,
                 "windows": _flex_windows(latest.plan.slots, device.name) if latest else [],
+                "live": device.id in config.display.live_controls,
                 # A battery of its own without a plug entity: the user can say it is plugged in
                 "charger": controller.chargers.status(device, snapshot.states) | {"manual": not device.charger.connected_entity}
                 if controller is not None and device.charger is not None
@@ -204,6 +205,25 @@ async def clear_device_override(request: Request, device_id: str) -> None:
     config.overrides.pop(device_id, None)
     store.save(config)
     _replan(request)
+
+
+class LiveControl(BaseModel):
+    """Whether a consumer has quick controls in the live view."""
+
+    shown: bool
+
+
+@router.put("/control/devices/{device_id}/live")
+async def set_live_control(request: Request, device_id: str, body: LiveControl) -> dict[str, Any]:
+    """Show or hide a consumer's quick controls in the live view."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    if config.device(device_id) is None:
+        raise HTTPException(status_code=404, detail="Device not configured")
+    shown = [d for d in config.display.live_controls if d != device_id]
+    config.display.live_controls = [*shown, device_id] if body.shown else shown
+    store.save(config)
+    return {"live_controls": config.display.live_controls}
 
 
 class ControlSwitch(BaseModel):

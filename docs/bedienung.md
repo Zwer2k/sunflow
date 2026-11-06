@@ -28,6 +28,11 @@ zeigen, wohin die Energie gerade fließt.
 - **Wetter**: aktuelle Bedingungen und Vorhersage, umschaltbar zwischen Stunden und Tagen;
   wischen oder mit den Pfeilen blättern. Unter [Einstellungen → Anzeige](einstellungen.md#anzeige)
   lässt es sich ausblenden.
+- **Schnellsteuerung** (unter dem Energiefluss): je Verbraucher, den du unter Steuerung mit der
+  Stecknadel angeheftet hast, eine Zeile mit Leistung, Ladestand und nächstem Ladefenster und den
+  Betriebsarten als kleine Knöpfe: € Kostenoptimal, PV Nur PV, ⚡ Sofort, ⏸ Pause. Ein Wechsel gilt
+  bis Mitternacht. Bei „Akku laden“ ohne Steckersensor schaltet 🔌 „jetzt eingesteckt“. Ohne
+  angeheftete Verbraucher erscheint der Block nicht.
 - **Heute** fasst die Energiezähler zusammen: PV erzeugt, verbraucht, Netzbezug, eingespeist,
   Verluste von Wechselrichter und Speicher, Autarkie und Eigenverbrauch.
 - **Verluste Wechselrichter/Speicher** (unter dem Energiefluss, Mittel der letzten Minuten):
@@ -56,6 +61,8 @@ auf Weiteres. Nach jeder Änderung plant Sunflow sofort neu.
   Wallbox wählst du das Fahrzeug oder lässt es erkennen; die gescannte Karte steht in Klammern,
   z. B. „Fiat 500e (Karte 1)“. Mit eingerichtetem Sensor siehst du auch die Spannung der
   12-V-Batterie des Autos. Darunter steht, was der Plan vorsieht oder warum nichts eingeplant ist.
+  Die **Stecknadel** oben rechts legt die Betriebsarten des Verbrauchers als Schnellsteuerung auf
+  Live; für alle Browser und Geräte.
 - **Priorität**: Reicht der PV-Überschuss nicht für alle, bekommt der obere Eintrag zuerst.
   Mit **Grenzen** wartet ein Verbraucher, bis höher stehende Speicher einen Stand erreicht haben,
   z. B. Warmwasser erst ab 90 % Hausspeicher.
