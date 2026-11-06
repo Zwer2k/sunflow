@@ -5,12 +5,12 @@ from datetime import UTC, datetime, timedelta
 import logging
 import re
 from types import SimpleNamespace
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from sunflow.analysis.battery_sim import history_hours, simulate
+from sunflow.analysis.battery_sim import STRATEGIES, history_hours, simulate
 from sunflow.analysis.costs import cost_history
 from sunflow.analysis.energy import (
     battery_counters,
@@ -300,10 +300,18 @@ async def get_existing_battery_scenario(request: Request) -> dict[str, Any] | No
 
 
 @router.get("/analysis/battery-scenarios")
-async def get_battery_simulation(request: Request, days: Annotated[int, Query(ge=7, le=365)] = 30) -> dict[str, Any]:
-    """What each scenario would have changed over the last days, with the measured operation."""
+async def get_battery_simulation(
+    request: Request,
+    days: Annotated[int, Query(ge=7, le=365)] = 30,
+    strategy: Annotated[list[Literal["balanced", "pv_absorption", "autarky", "storage"]] | None, Query()] = None,
+) -> dict[str, Any]:
+    """What each scenario would have changed over the last days, with the measured operation.
+
+    Each scenario runs without control and planned with each strategy asked for.
+    """
     config = request.app.state.store.load()
     scenarios = config.battery_scenarios
+    strategies = tuple(s for s in STRATEGIES if s in (strategy or ["balanced"]))
 
     async def compute() -> dict[str, Any]:
         profiles = _library(request).profiles
@@ -322,9 +330,9 @@ async def get_battery_simulation(request: Request, days: Annotated[int, Query(ge
         costs = [config.battery_cost(d.id) for d in config.devices if controls_battery(profiles[d.profile])]
         prices = [c.calculation.price_eur for c in costs if c.calculation]
         # Optimizing day by day takes seconds: off the event loop
-        return await asyncio.to_thread(simulate, hours, scenarios, sum(prices) or None)
+        return await asyncio.to_thread(simulate, hours, scenarios, sum(prices) or None, strategies)
 
-    key = ("battery-scenarios", days, tuple(s.model_dump_json() for s in scenarios))
+    key = ("battery-scenarios", days, strategies, tuple(s.model_dump_json() for s in scenarios))
     try:
         return await kept_fresh(request, key, SCENARIOS_FRESH, compute)
     except HAError as err:

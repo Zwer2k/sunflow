@@ -177,7 +177,8 @@ export const api = {
   batteryScenarios: () => request("GET", "/config/battery-scenarios"),
   setBatteryScenarios: (scenarios) => request("PUT", "/config/battery-scenarios", scenarios),
   existingBatteryScenario: () => request("GET", "/analysis/battery-scenarios/existing"),
-  batterySimulation: (days) => request("GET", `/analysis/battery-scenarios?days=${days}`),
+  batterySimulation: (days, strategies) =>
+    request("GET", `/analysis/battery-scenarios?days=${days}${strategies.map((s) => `&strategy=${s}`).join("")}`),
   recommendations: () => request("GET", "/recommendations"),
   dismissRecommendation: (id, fingerprint) => request("POST", "/recommendations/dismiss", { id, fingerprint }),
   setOverrides: (configDeviceId, overrides) =>

@@ -128,8 +128,11 @@ How well do forecasts and decisions match reality?
   price and cycles (giving the wear) and whether it works **in addition** to the existing battery
   or **instead** of it. **Use the existing battery** adds your battery with its values, so you can
   work out other settings (grid charging, wear, power) in hindsight. Each scenario is calculated
-  twice: as plain self-consumption and price optimized, knowing prices and consumption in advance
-  (an upper bound no planning reaches). The table shows import, export, electricity cost, saving
+  as plain self-consumption without control and run as Sunflow does with the strategies you pick
+  above the table (Balanced, Absorb PV, Self-sufficiency, Battery use; each browser remembers the
+  choice). The strategies know prices and consumption in advance – an upper bound no planning
+  reaches. Wear is not part of the electricity cost; a strategy with more cycles per year wears
+  the battery more. The table shows import, export, electricity cost, saving
   against today, scaled to a year (without seasons), cycles per year and, with a price, the
   payback. With an existing battery, **No battery** at the top is the house without any battery;
   the column "vs. no battery per year" shows what your battery today and each scenario save
