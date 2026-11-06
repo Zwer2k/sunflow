@@ -536,11 +536,14 @@ def optimize(
 
     soc_upper: list[float] = []
     soc_min: list[float] = []
+    # Discharge limit or backup reserve, whichever is higher, even while the battery is below it
+    soc_floor: list[float] = []
     grid_charge = [settings.allow_grid_charge and b.force_charge for b in batteries]
     for k, b in enumerate(batteries):
         reserve = b.reserve_wh if b.reserve_wh is not None else settings.reserve_wh
+        soc_floor.append(max(b.min_soc_wh, reserve))
         # A battery below its floor may stay there but must not be drained further
-        soc_min.append(min(max(b.min_soc_wh, reserve), b.soc_wh))
+        soc_min.append(min(soc_floor[k], b.soc_wh))
         # Charge limit for battery care; lifted while a full charge is due. Above it already,
         # the battery may stay there but not charge further
         limit = b.soc_limit_wh if b.soc_limit_wh is not None else settings.soc_limit_wh
@@ -688,9 +691,10 @@ def optimize(
     if full_short is not None:
         # soc at the target slot plus shortfall reaches (almost) full
         gate_rows.append(({s[0][settings.full_charge_slot]: -1, full_short: -1}, -batteries[0].capacity_wh * FULL_FRACTION))
-    # soc of all batteries plus shortfall reaches the floor plus the buffer
+    # soc of all batteries plus shortfall reaches the floor plus the buffer; the buffer lies
+    # above the backup reserve, also while the battery is below the reserve now
     gate_rows.extend(
-        ({**{s[k][t]: -1 for k in range(m)}, index: -1}, -(sum(soc_min) + wh))
+        ({**{s[k][t]: -1 for k in range(m)}, index: -1}, -(sum(soc_floor) + wh))
         for index, (t, wh, _) in zip(buffer_short, buffers, strict=True)
     )
     if m > 1:

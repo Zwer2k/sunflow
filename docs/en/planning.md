@@ -58,7 +58,7 @@ the discharge limit at the end of each expensive period (before the next cheap o
 - **Size**: from how much your daily consumption varies (per weekday/weekend, learned from the
   history; 15 % without history) and the range of the PV forecast down to p10, as far as that PV
   would cover the house. "Balanced" is then enough on about 4 days in 5, "Battery use" on about
-  19 in 20. At most half the usable capacity.
+  19 in 20. At most half the usable capacity. The buffer lies above the backup reserve, not in it.
 - **Soft**: a missing buffer counts half of what cheap charging saves per kWh in the plan. On a
   day above the forecast the battery uses the buffer rather than buying expensive power, and
   Sunflow never buys at the expensive price for the buffer.

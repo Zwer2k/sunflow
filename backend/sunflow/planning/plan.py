@@ -1689,7 +1689,7 @@ async def compute_plan(
             load.daily_spread if load.daily_spread is not None else DEFAULT_LOAD_SPREAD,
             (first.efficiency_charge_grid or first.efficiency_charge) * first.efficiency_discharge,
             BUFFER_PENALTY_SHARE,
-            MAX_BUFFER_SHARE * sum(b.capacity_wh - b.min_soc_wh for b in batteries),
+            MAX_BUFFER_SHARE * sum(b.capacity_wh - max(b.min_soc_wh, settings.reserve_wh if b.reserve_wh is None else b.reserve_wh) for b in batteries),
         )
         settings = replace(settings, buffer=tuple((b.slot, b.wh, b.penalty) for b in buffers))
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive

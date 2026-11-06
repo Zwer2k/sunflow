@@ -97,6 +97,20 @@ def test_buffer_is_used_rather_than_bought_at_the_expensive_price() -> None:
     assert plan.slots[0].discharge_w > 0
 
 
+def test_buffer_lies_above_the_backup_reserve() -> None:
+    """Also while the battery is below the reserve now: the reserve is no buffer for the day."""
+    inputs = _slots()
+    buffers = _buffers(inputs)
+
+    plan = optimize(
+        inputs,
+        BATTERY,
+        Settings(wear_ct_per_kwh=0, reserve_wh=6000, buffer=tuple((b.slot, b.wh, b.penalty) for b in buffers)),
+    )
+
+    assert plan.slots[DAY_END].soc_wh == pytest.approx(6000 + buffers[1].wh, abs=50)
+
+
 def test_daily_spread_of_the_consumption() -> None:
     """Deviation of whole days from their day type's mean; too few days give none."""
     start = datetime(2026, 10, 1, tzinfo=UTC)
