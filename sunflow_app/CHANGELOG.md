@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.16
+
+- Devices → parameters: after "reset" the empty field showed the value stored so far (e.g. 10000 W) instead of what applies once saved – the value from the sensors or the profile's default (e.g. 20000 W).
+
 ## 0.77.15
 
 - Fix: when Sunflow stopped, handed a battery back or restored it after the device test, a Sofar inverter kept "Passive: Desired Grid Power" at the profile's buffer of -200 W instead of 0. In passive mode the battery then fed 200 W into the grid around the clock, also at night. Releasing now regulates the grid to zero, as the fallback stored in the integration already did.
