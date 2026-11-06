@@ -102,6 +102,8 @@ PRIORITY_STEP = 0.001
 MUST_HAVE_COST = 2.0
 FAST_URGENCY = 1.0
 CHARGE_RESERVE = 1.25
+# € per start of a battery charger: well above the solver's tolerance and small price steps
+CHARGER_START_COST = 0.05
 # Heating 1 litre of water by 1 K takes 1.163 Wh
 WATER_WH_PER_LITRE_KELVIN = 1.163
 # Target of a heating own consumer when none is set (evcc loadpoints report their own)
@@ -497,6 +499,9 @@ def flex_loads(
                 expected=info.expected_arrival is not None,
                 # Switched on and off only (a socket, no power steps or current): off or nearly full power
                 on_off="switch" in profile.get("roles", {}) and "current" not in profile.get("roles", {}) and not device.power_steps,
+                running="switch" in roles and roles["switch"].raw_state == "on",
+                # Charging a battery in pieces strains it (in the cold even more): one block if at all possible
+                start_cost=CHARGER_START_COST if device.charger is not None else None,
             )
         )
         loads.append(load)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.77.6
+
+- On/off loads: a load that is switched on goes on at an equal price instead of being stopped and restarted later; before, replanning every 15 minutes could cut a charge at equal night prices into pieces and push the rest into a more expensive tariff.
+- Charge battery (e-bike …): starting a charger costs more in planning, so a charge is one block if at all possible – easier on the battery, especially in the cold.
+
 ## 0.77.5
 
 - PV by sun position: Sunflow also learns per plane how far the measurement lies towards Solcast's cautious case (p10) when Solcast itself is uncertain (p10 far below the mean, e.g. low stratus in November), and plans with it where this is better in the backtest. The soiling check uses the same expectation, so a grey week is not taken for leaves.
