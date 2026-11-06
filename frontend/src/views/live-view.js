@@ -4,6 +4,7 @@ import { poll } from "../lib/poll.js";
 import { dailyRatios, splitFlows } from "../components/flows.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "../components/optimizer-view.js";
+import "../components/quick-controls.js";
 import { decimal, locale, t, tc } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
 
@@ -211,6 +212,7 @@ class SunflowLive extends LitElement {
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${live === null && !this._error ? html`<p class="muted">${t("Lade Live-Werte …")}</p>` : nothing}
       ${live ? this._renderFlow(live) : nothing}
+      <sf-quick-controls></sf-quick-controls>
       ${this._renderToday()}
       ${this._optimizers
         ? html`<sf-optimizer-view .string=${this._optimizers.key} .heading=${t("Optimierer · {name}", { name: this._optimizers.name })}

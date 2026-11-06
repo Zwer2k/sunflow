@@ -8,6 +8,7 @@ import { plugInHints } from "../lib/plug-in.js";
 import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
+import { MODES, currentMode, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -40,12 +41,6 @@ const LOG_ACTIONS = {
 const LOG_HOURS = { 24: t("24 Stunden"), 72: t("3 Tage"), 336: t("14 Tage") };
 // More rows make the page slow and say nothing more
 const LOG_ROWS = 300;
-const MODES = {
-  cost: t("Kostenoptimal"),
-  pv_only: t("Nur PV"),
-  fast: t("Sofort"),
-  pause: t("Pause"),
-};
 const KIND_LABELS = { vehicle: t("Wallbox"), heater: t("Wärme"), load: t("Verbraucher") };
 const TARGETS = { vehicle: [50, 80, 100], heater: [45, 55, 60] };
 const DURATIONS = {
@@ -57,22 +52,6 @@ const DURATIONS = {
 const time = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
 const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const andList = new Intl.ListFormat(locale(), { type: "conjunction" });
-
-function untilFor(duration) {
-  if (duration === "open") return null;
-  const until = new Date();
-  if (duration === "hours4") until.setHours(until.getHours() + 4);
-  else until.setHours(24, 0, 0, 0);
-  return until.toISOString();
-}
-
-function untilText(until) {
-  if (!until) return t("bis auf Weiteres");
-  const date = new Date(until);
-  return date.toDateString() === new Date().toDateString() || date.getHours() === 0
-    ? date.getHours() === 0 && date.getMinutes() === 0 ? t("bis Mitternacht") : t("bis {time}", { time: time.format(date) })
-    : t("bis {time}", { time: dayTime.format(date) });
-}
 
 /** Quick control: battery strategy, per-consumer mode and target, priorities. */
 class SunflowControl extends LitElement {
@@ -165,18 +144,13 @@ class SunflowControl extends LitElement {
   }
 
   _setDevice(device, changes) {
-    const current = device.override ?? { strategy: null, target: null, paused: false };
-    const next = { ...current, ...changes };
-    if (next.strategy === null && next.target === null && !next.paused) {
-      return this._apply(() => api.clearDeviceOverride(device.id));
-    }
+    const next = overrideFor(device, changes);
+    if (next === null) return this._apply(() => api.clearDeviceOverride(device.id));
     return this._apply(() => api.setDeviceOverride(device.id, { ...next, until: untilFor(this._duration) }));
   }
 
   _setMode(device, mode) {
-    if (mode === "pause") return this._setDevice(device, { paused: true, strategy: null });
-    // Choosing the default strategy drops the strategy override instead of storing a copy
-    return this._setDevice(device, { paused: false, strategy: mode === device.default.strategy ? null : mode });
+    return this._setDevice(device, modeChanges(device, mode));
   }
 
   _move(index, step) {
@@ -499,7 +473,7 @@ class SunflowControl extends LitElement {
   }
 
   _renderDevice(device) {
-    const mode = device.paused ? "pause" : device.override?.strategy ?? device.default.strategy;
+    const mode = currentMode(device);
     const unit = device.kind === "heater" ? "°C" : "%";
     const targets = TARGETS[device.kind];
     const targetOverride = device.override?.target ?? null;
@@ -515,7 +489,15 @@ class SunflowControl extends LitElement {
             <h3>${device.name}</h3>
             <span class="small muted">${CATEGORY_LABELS[device.category] ?? KIND_LABELS[device.kind] ?? t("Verbraucher")} · ${status.join(" · ")}</span>
           </div>
-          ${device.override ? html`<span class="chip">${t("angepasst")} · ${untilText(device.override.until)}</span>` : nothing}
+          <div class="head-actions">
+            ${device.override ? html`<span class="chip">${t("angepasst")} · ${untilText(device.override.until)}</span>` : nothing}
+            <button class="pin ${device.live ? "on" : ""}" aria-pressed=${Boolean(device.live)} ?disabled=${this._busy}
+              title=${device.live ? t("Nicht mehr in Live zeigen") : t("Schnellsteuerung in Live zeigen")}
+              aria-label=${t("Schnellsteuerung von {name} in Live zeigen", { name: device.name })}
+              @click=${() => this._apply(() => api.setLiveControl(device.id, !device.live))}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3zM12 14v7"></path></svg>
+            </button>
+          </div>
         </div>
         ${device.vehicles?.length ? this._renderVehicle(device) : nothing}
         ${device.charger ? this._renderCharger(device) : nothing}
@@ -682,6 +664,14 @@ class SunflowControl extends LitElement {
     .log li.foreign { background: var(--sf-warn-bg); border-radius: 6px; padding: 4px 6px; }
     .log .calls { display: block; overflow-wrap: anywhere; }
     .card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: flex-start; }
+    .head-actions { display: flex; gap: 6px; align-items: center; }
+    .pin {
+      width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+      border: 1px solid var(--sf-border); border-radius: 8px; background: transparent; cursor: pointer; color: var(--sf-muted);
+    }
+    .pin svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .pin.on { background: var(--sf-primary-bg); border-color: var(--sf-primary); color: var(--sf-primary-text); }
+    .pin.on svg { fill: currentColor; }
     .chip {
       font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px;
       background: var(--sf-warn-bg); color: var(--sf-warn-text);

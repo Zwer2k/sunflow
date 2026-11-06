@@ -103,6 +103,7 @@ export const api = {
   setTakeover: (body, confirm = false) => request("PUT", `/control/takeover${confirm ? "?confirm=true" : ""}`, body),
   setDeviceOverride: (id, body) => request("PUT", `/control/devices/${encodeURIComponent(id)}`, body),
   clearDeviceOverride: (id) => request("DELETE", `/control/devices/${encodeURIComponent(id)}`),
+  setLiveControl: (id, shown) => request("PUT", `/control/devices/${encodeURIComponent(id)}/live`, { shown }),
   setStrategyOverride: (body) => request("PUT", "/control/strategy", body),
   clearStrategyOverride: () => request("DELETE", "/control/strategy"),
   setBatteryOverride: (id, body) => request("PUT", `/control/batteries/${encodeURIComponent(id)}`, body),

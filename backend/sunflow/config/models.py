@@ -444,6 +444,8 @@ class DisplaySettings(BaseModel):
     weather_desktop: bool = True
     # "auto" follows the language of Home Assistant
     language: Literal["auto", "de", "en"] = "auto"
+    # Consumers with quick controls in the live view, in this order
+    live_controls: list[str] = Field(default_factory=list)
 
 
 class ControlSettings(BaseModel):
@@ -537,6 +539,7 @@ class SunflowConfig(BaseModel):
             relation.pop(device_id, None)
         self.measured_by = {k: v for k, v in self.measured_by.items() if v.device_id != device_id}
         self.charging = [c for c in self.charging if c.wallbox_id != device_id]
+        self.display.live_controls = [d for d in self.display.live_controls if d != device_id]
 
     def vehicles_at(self, wallbox_id: str) -> list[Vehicle]:
         """Vehicles that may charge at a wallbox."""

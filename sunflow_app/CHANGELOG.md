@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.12
+
+- Quick controls in the live view: a pin on each load under Control puts it below the energy flow as one compact row with power, state of charge, next window and the modes as small buttons (cost-optimal, PV only, now, pause; a change applies until midnight), plus "plugged in now" for a charge battery without a plug sensor. Stored in the configuration, so it applies on every device.
+
 ## 0.77.11
 
 - Settings → Planning: numbers are saved like the switches, as soon as you leave the field or press Enter, instead of with a separate "Save and replan" button; a short "Saved" confirms it. An invalid value stays in the field with a message.

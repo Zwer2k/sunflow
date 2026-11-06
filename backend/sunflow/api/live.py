@@ -170,6 +170,9 @@ async def set_display(request: Request, body: DisplaySettings) -> dict[str, Any]
     store = request.app.state.store
     config = store.load()
     language_changed = config.display.language != body.language
+    # Pinned in the control tab; the display settings page does not send them
+    if "live_controls" not in body.model_fields_set:
+        body.live_controls = config.display.live_controls
     config.display = body
     store.save(config)
     if language_changed:

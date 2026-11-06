@@ -161,6 +161,30 @@ def test_control_overrides_and_priorities(tmp_path: Path) -> None:
     assert len(replans) == 5
 
 
+def test_live_controls_are_pinned_per_consumer(tmp_path: Path) -> None:
+    """Pinned consumers keep their order, pinning twice adds nothing, removing the device unpins it."""
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.config.store import ConfigStore
+
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[
+        DeviceConfig(id=key, ha_device_id=key, profile="evcc_intg/loadpoint", profile_version=1, name=key) for key in ("ev", "heat")
+    ]))
+    app = create_app()
+    app.state.store = store
+    client = TestClient(app)
+
+    client.put("/api/v1/control/devices/heat/live", json={"shown": True})
+    client.put("/api/v1/control/devices/ev/live", json={"shown": True})
+    pinned = client.put("/api/v1/control/devices/heat/live", json={"shown": True}).json()["live_controls"]
+    config = store.load()
+    config.forget_device("heat")
+
+    assert pinned == ["ev", "heat"]
+    assert config.display.live_controls == ["ev"]
+    assert client.put("/api/v1/control/devices/nope/live", json={"shown": True}).status_code == 404
+
+
 def test_priority_conditions(tmp_path: Path) -> None:
     """Conditions are stored per consumer, validated and removed with an empty list."""
     from sunflow.config.models import DeviceConfig, SunflowConfig
@@ -747,8 +771,12 @@ async def test_display_settings_are_stored(tmp_path: Path) -> None:
 
     store = ConfigStore(tmp_path)
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(store=store)))
-    assert await api.get_display(request) == {"weather_mobile": True, "weather_desktop": True, "language": "auto"}
+    assert await api.get_display(request) == {"weather_mobile": True, "weather_desktop": True, "language": "auto", "live_controls": []}
+    config = store.load()
+    config.display.live_controls = ["ev"]
+    store.save(config)
 
     await api.set_display(request, DisplaySettings(weather_mobile=False))
 
-    assert ConfigStore(tmp_path).load().display == DisplaySettings(weather_mobile=False, weather_desktop=True)
+    # The quick controls pinned in the control tab stay
+    assert ConfigStore(tmp_path).load().display == DisplaySettings(weather_mobile=False, weather_desktop=True, live_controls=["ev"])
