@@ -31,6 +31,7 @@ from sunflow.control.charger import ChargerWatch
 from sunflow.control.journal import ControlJournal
 from sunflow.devices.discovery import Snapshot, fetch_snapshot
 from sunflow.devices.executor import (
+    RELEASE_RUNTIME,
     EepromGuard,
     ExecutorError,
     PlannedCall,
@@ -560,7 +561,7 @@ async def hand_back(access: DeviceAccess, marker: TakeoverMarker, device_id: str
     if device_id not in taken:
         return
     if access.release is not None:
-        await apply(access, status, access.release, None, datetime.now(UTC), reason=t(HAND_BACK))
+        await apply(access, status, access.release, None, datetime.now(UTC), dict(RELEASE_RUNTIME), reason=t(HAND_BACK))
     if access.pv_limit:
         await apply(access, DeviceControl(device_id=device_id, name=status.name), PV_RELEASE, None, datetime.now(UTC), reason=t(HAND_BACK))
         status.limit_w = None
@@ -825,8 +826,7 @@ class PlanController:
             actions = [a for a in (access.release, PV_RELEASE if access.pv_limit else None) if a]
             for action in actions:
                 try:
-                    # Without Sunflow the inverter regulates the grid to zero, no buffer
-                    planned, _ = await access.plan(action, {"grid_offset": 0.0})
+                    planned, _ = await access.plan(action, dict(RELEASE_RUNTIME))
                 except Exception as err:  # noqa: BLE001 - the fallback is best effort
                     _LOGGER.debug("No fallback for %s: %s", device.name, err)
                     continue
@@ -1221,7 +1221,7 @@ class PlanController:
     async def _release_on_shutdown(self, device: DeviceConfig, status: DeviceControl) -> None:
         access = self._access_for(device)
         if access.release is not None:
-            await apply(access, status, "auto", None, datetime.now(UTC), reason=t(SHUTDOWN))
+            await apply(access, status, "auto", None, datetime.now(UTC), dict(RELEASE_RUNTIME), reason=t(SHUTDOWN))
         # Without Sunflow nobody would lift the limit again
         if access.pv_limit:
             await apply(access, DeviceControl(device_id=device.id, name=device.name), PV_RELEASE, None, datetime.now(UTC), reason=t(SHUTDOWN))

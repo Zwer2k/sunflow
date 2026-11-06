@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from sunflow.i18n import t
 
-from .executor import ExecutorError, PlannedCall
+from .executor import RELEASE_RUNTIME, ExecutorError, PlannedCall
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ async def run_device_test(
     async def restore() -> None:
         state.phase = "restore"
         state.message = t("Setze auf Eigenverbrauch zurück …")
-        calls = await run_action("auto", {})
+        calls = await run_action("auto", dict(RELEASE_RUNTIME))
         state.calls += calls
         # A value the device already holds is skipped, which restores as well
         state.restored = all(c.status in ("done", "skipped") for c in calls)

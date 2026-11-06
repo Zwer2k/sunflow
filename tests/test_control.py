@@ -38,10 +38,12 @@ class FakeDevice:
         self.writes: list[tuple[str, dict[str, float]]] = []
         self.modes: list[str] = []
         self.fail = False
+        self.runtimes: list[dict[str, float]] = []
 
     def access(self) -> DeviceAccess:
         """Calls as the controller gets them from the API layer."""
         async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, Any]]:
+            self.runtimes.append(runtime)
             target = {"auto": -10000, "hold": 0, "force_charge": runtime.get("P", 0)}[action]
             call = PlannedCall(domain="number", service="set_value", data={"value": target}, entity_id="number.min", storage="volatile", write="always")
             states = {"number.min": {"state": str(self.values["number.min"])}} if "number.min" in self.values else {}
@@ -221,6 +223,8 @@ async def test_shutdown_leaves_self_consumption(tmp_path: Path) -> None:
     await controller.release_all(_config())
 
     assert device.values == {"number.min": -10000}
+    # No grid buffer: the inverter stays in passive mode and would feed the battery into the grid
+    assert device.runtimes[-1] == {"grid_offset": 0.0}
     # The mode stays: after a restart Sunflow continues
     assert TakeoverMarker(tmp_path).get() == {"bat": "Self Use"}
 
