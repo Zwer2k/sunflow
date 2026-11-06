@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.6
+
+- Live view, tiles: a "Losses" tile with the inverter and battery losses – the average of the last minutes with a consumption meter, else what the balance leaves right now (including reading differences, as in the bars).
+
 ## 0.78.5
 
 - Live view: a fourth view "House" shows the site as an animated scene – sun (brighter and turning faster with more PV) or moon and stars at night, clouds from the weather, panels shimmering on the roof, the grid pole, the battery with its level, the hot water tank coloured by temperature, the carport with wallbox and car with its level. Glowing flows run from the inverter to each part, thicker and faster with more power; lights go on in the window when the house draws power. Without motion when the system asks for reduced motion.
