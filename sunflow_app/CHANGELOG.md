@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.8
+
+- Settings: a search box above the list of areas finds a setting by its name, by other words for it (e.g. "Akku", "Notstrom", "Tibber"), despite typos, in German and English, and devices by their name. A result opens the area, scrolls to the setting, opens it if folded and highlights it briefly.
+
 ## 0.77.7
 
 - Buffer for a day above the forecast: with a time-of-use or dynamic tariff the battery is charged in cheap hours for a day somewhat above the forecast instead of exactly for the expected one, so it no longer runs empty in the evening whenever consumption is a little higher or the sun weaker. The size comes from how much the daily consumption varies and from the range of the PV forecast (p10); a missing buffer only counts half of what cheap charging saves, so the battery still uses it on such a day and Sunflow never buys expensive power for it. The planning view shows how much should be left before the next cheap period.

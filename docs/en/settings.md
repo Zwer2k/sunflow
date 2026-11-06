@@ -6,6 +6,11 @@ The settings are split into areas; on first start Sunflow walks through them in 
 [Installation and setup](installation.md)). Unsaved changes in one area are kept when you switch
 to another.
 
+**Search** (box above the list) finds a setting by its name, by other words for it ("battery",
+"backup", "Tibber", "export limit"), despite typos, and your devices by name. A result opens the
+area, scrolls to the setting and highlights it briefly. Arrow keys and Enter choose, Esc clears
+the box.
+
 **Expert mode** (switch below the list) additionally shows entity, unit, factor,
 sign, decimals, polling interval and RAM/flash per role. These values are stored as deviations
 from the profile. The browser remembers the switch.
