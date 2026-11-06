@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.78.3
+## 0.78.7
 
 - Plan a battery: the measured row shows the payback of today's battery against no battery at all, from the purchase price entered for its wear.
 
