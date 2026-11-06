@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.15
+
+- Fix: when Sunflow stopped, handed a battery back or restored it after the device test, a Sofar inverter kept "Passive: Desired Grid Power" at the profile's buffer of -200 W instead of 0. In passive mode the battery then fed 200 W into the grid around the clock, also at night. Releasing now regulates the grid to zero, as the fallback stored in the integration already did.
+
 ## 0.77.14
 
 - Today's energy balance is recomputed in the background shortly after Home Assistant compiles its 5 minute statistics (newer it cannot be), so the live view never waits for it.

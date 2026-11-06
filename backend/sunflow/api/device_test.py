@@ -19,6 +19,7 @@ from sunflow.devices.device_test import (
 )
 from sunflow.devices.discovery import fetch_snapshot
 from sunflow.devices.executor import (
+    RELEASE_RUNTIME,
     ExecutorError,
     PlannedCall,
     execute,
@@ -125,7 +126,7 @@ async def restore_after_test(request: Request, confirm: bool = False) -> dict[st
     calls: list[PlannedCall] = []
     _, apply_action, mode = _device_control(request, device, profile, calls)
     try:
-        calls += await apply_action("auto", {})
+        calls += await apply_action("auto", dict(RELEASE_RUNTIME))
         if mode is not None and marker.get("previous_mode"):
             await mode.set(marker["previous_mode"])
     except ExecutorError as err:

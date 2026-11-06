@@ -215,6 +215,12 @@ def plan_action(
     return params, calls
 
 
+# Handing the battery back (shutdown, end of control, device test): without Sunflow the
+# inverter regulates the grid to zero; a buffer (e.g. -200 W) would make the battery feed
+# into the grid around the clock, also at night
+RELEASE_RUNTIME = {"grid_offset": 0.0}
+
+
 def plan_battery(
     profile: dict[str, Any],
     action: str,
