@@ -918,6 +918,14 @@ class SunflowPlan extends LitElement {
           </div>`
         : nothing}
       ${lineChart(series, { label: t("Ladestand gemessen und erwartet"), now, range: this._range, ...options })}
+      ${(plan.buffers ?? []).slice(0, 2).map((b) => html`<p class="small muted">${t(
+        "Puffer: Um {time} sollen noch {energy} über der Entladegrenze übrig sein – für einen Tag mit mehr Verbrauch oder weniger Sonne als erwartet (Tagesverbrauch schwankt um etwa {spread}).",
+        {
+          time: `${new Date(b.at).toLocaleDateString(locale(), { weekday: "short" })} ${time.format(new Date(b.at))}`,
+          energy: formatValue(b.wh, "Wh"),
+          spread: formatValue((plan.load_spread ?? 0.15) * 100, "%"),
+        },
+      )}</p>`)}
       ${(plan.vehicles ?? []).map((v) => {
         const at = flex.find((f) => f.vehicle_id === v.id && f.expected_arrival);
         return html`<p class="small muted">${v.name}: ${v.usage_days

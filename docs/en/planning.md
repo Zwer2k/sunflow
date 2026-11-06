@@ -30,18 +30,42 @@ under Control or in the settings.
 
 ## Home battery strategies
 
-| | Balanced | Absorb as much PV as possible | As self-sufficient as possible |
-|---|---|---|---|
-| Goal | lowest electricity cost | like Balanced, room for PV | as little grid import as possible |
-| Charging from the grid | when the price difference exceeds losses and wear | rarely before sunny days | never (except an overdue full charge) |
-| In the plan | cost | every exported kWh counts 5 ct less | every kWh from the grid counts €1 extra |
-| Suits | dynamic and time-of-use tariffs | lots of PV, small battery | fixed price, independence |
+| | Balanced | Absorb as much PV as possible | As self-sufficient as possible | Battery use |
+|---|---|---|---|---|
+| Goal | lowest electricity cost | like Balanced, room for PV | as little grid import as possible | like Balanced, battery lasts on heavy days too |
+| Charging from the grid | when the price difference exceeds losses and wear | rarely before sunny days | never (except an overdue full charge) | like Balanced, with a larger buffer |
+| In the plan | cost, buffer for 4 days in 5 | every exported kWh counts 5 ct less | every kWh from the grid counts €1 extra | cost, buffer for 19 days in 20 |
+| Suits | dynamic and time-of-use tariffs | lots of PV, small battery | fixed price, independence | time-of-use tariffs, varying consumption |
 
 - **Balanced** keeps energy for expensive hours and discharges there.
 - **Absorb PV** only differs from "Balanced" when energy would be exported, so hardly in winter.
   It knows no export limit; use "grid-friendly" for that.
 - **Self-sufficient** covers every demand from the battery immediately and gives loads PV surplus
   first. With time-of-use tariffs it costs more, because cheap night power is not stored.
+- **Battery use** charges enough in cheap hours that the battery lasts until the next cheap charge
+  even on a day with clearly more consumption or less sun.
+
+### Buffer for a day above the forecast
+
+Consumption and PV forecast are never exact. If Sunflow charged at night only for the expected
+day, the battery would be empty in the evening on every day with a little more consumption, and
+the rest would come from the grid at the expensive price. A kWh charged too much costs almost
+nothing: it stays in the battery and replaces part of the next cheap charge.
+
+So with "Balanced", "Absorb PV" and "Battery use" the battery should still hold a buffer above
+the discharge limit at the end of each expensive period (before the next cheap one):
+
+- **Size**: from how much your daily consumption varies (per weekday/weekend, learned from the
+  history; 15 % without history) and the range of the PV forecast down to p10, as far as that PV
+  would cover the house. "Balanced" is then enough on about 4 days in 5, "Battery use" on about
+  19 in 20. At most half the usable capacity.
+- **Soft**: a missing buffer counts half of what cheap charging saves per kWh in the plan. On a
+  day above the forecast the battery uses the buffer rather than buying expensive power, and
+  Sunflow never buys at the expensive price for the buffer.
+- **Only with a time-of-use or dynamic tariff** and charging from the grid allowed. With a fixed
+  price or too small a price difference there is no buffer.
+
+The plan says under "State of charge" how much should be left at what time.
 
 The strategy is set under Settings → Planning, temporarily under Control, or with the action
 `sunflow_ems.set_strategy`.

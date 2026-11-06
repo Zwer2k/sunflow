@@ -5,7 +5,7 @@ set_strategy:
       selector:
         select:
           translation_key: strategy
-          options: [balanced, pv_absorption, autarky, default]
+          options: [balanced, pv_absorption, autarky, storage, default]
     until:
       selector:
         datetime:

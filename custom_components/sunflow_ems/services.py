@@ -21,7 +21,7 @@ from .api import SunflowError
 from .const import CONF_KIND, DOMAIN, KIND_FORECAST
 from .coordinator import SunflowData
 
-STRATEGIES = ["balanced", "pv_absorption", "autarky", "default"]
+STRATEGIES = ["balanced", "pv_absorption", "autarky", "storage", "default"]
 CONSUMER_STRATEGIES = ["cost", "pv_only", "fast"]
 
 SET_STRATEGY_SCHEMA = vol.Schema(

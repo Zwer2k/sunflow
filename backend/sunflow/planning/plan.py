@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta, tzinfo
 import math
-from statistics import median
+from statistics import fmean, median
 import time
 from typing import Any
 
@@ -47,7 +47,7 @@ from .load_forecast import (
     unmeasured_consumers,
 )
 from .load_model import LoadModel
-from .optimizer import BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
+from .optimizer import DT_H, BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
 from .price_estimate import extend_prices
 from .pv_learning import PvCorrection, cloud_class
 from .pv_sun import SunCorrection
@@ -578,6 +578,15 @@ def next_time(hhmm: str, after: datetime, tz: tzinfo) -> datetime:
     return candidate
 
 
+@dataclass(frozen=True, kw_only=True)
+class Buffer:
+    """Energy the battery should still hold at the end of an expensive period."""
+
+    slot: int
+    wh: float
+    penalty: float  # €/kWh missing
+
+
 @dataclass(kw_only=True)
 class PlanResult:
     """Plan with the inputs' provenance and warnings."""
@@ -598,6 +607,8 @@ class PlanResult:
     raw_pv: list[float] = field(default_factory=list)
     # Per slot the corrected range of the forecast (p10, p90), for the chart
     pv_band: list[tuple[float | None, float | None]] = field(default_factory=list)
+    # What the battery should still hold at the end of each expensive period
+    buffers: list[Buffer] = field(default_factory=list)
     plane_forecasts_now: dict[str, float] = field(default_factory=dict)
     plane_corrections: dict[str, PvCorrection] = field(default_factory=dict)
     clouds: list[float | None] = field(default_factory=list)
@@ -822,6 +833,70 @@ def cheapest_window_end(inputs: list[SlotInput], hours: int = 24) -> int:
 
 # Share of the way from the expected (p50) towards the pessimistic PV forecast (p10)
 PV_RISK = {"expected": 0.0, "balanced": 0.3, "cautious": 0.7}
+
+# Buffer for a day above the forecast, as the normal quantile it covers: about 4 of 5 days
+# ("balanced"), 19 of 20 ("storage")
+BUFFER_Z = {"balanced": 0.84, "pv_absorption": 0.84, "storage": 1.64}
+# A missing kWh of buffer costs this share of what cheap charging saves per kWh: below the
+# saving, so a day above the forecast uses the buffer, above the losses, so it is charged
+BUFFER_PENALTY_SHARE = 0.5
+# Day to day deviation of the consumption until enough history is there
+DEFAULT_LOAD_SPREAD = 0.15
+# A slot is cheap when it is within this much of the lowest price 12 h around it
+CHEAP_AROUND = 48
+CHEAP_TOLERANCE = 0.1
+MIN_PRICE_SPREAD = 0.01
+# At most this share of the usable capacity is held as a buffer
+MAX_BUFFER_SHARE = 0.5
+# p10 lies this many standard deviations below p50
+P10_Z = 1.2816
+
+
+def storage_buffers(
+    inputs: list[SlotInput], z: float, load_spread: float, round_trip: float, penalty_share: float, max_wh: float
+) -> list[Buffer]:
+    """A buffer for every expensive period between two cheap ones.
+
+    Consumption and PV are not certain: charging only for the expected need runs the battery
+    empty on every day above it. A kWh too little costs the expensive price, a kWh too much
+    only stays for the next period and saves the next cheap charge, so the battery is charged
+    for a day above the forecast (the share given by z).
+    """
+    n = len(inputs)
+    prices = [slot.price for slot in inputs]
+    cheap = []
+    for index in range(n):
+        around = prices[max(index - CHEAP_AROUND, 0) : index + CHEAP_AROUND + 1]
+        low, high = min(around), max(around)
+        # Where the price hardly changes, no slot is cheaper than the others
+        cheap.append(high - low >= MIN_PRICE_SPREAD and prices[index] <= low + CHEAP_TOLERANCE * (high - low))
+    buffers = []
+    end = 0
+    while end < n:
+        if cheap[end]:
+            end += 1
+            continue
+        first = end
+        while end < n and not cheap[end]:
+            end += 1
+        # Only periods that end in a cheap one: that is where the battery can be charged again
+        if end == n:
+            break
+        period = inputs[first:end]
+        low = min(prices[max(first - CHEAP_AROUND, 0) : end + CHEAP_AROUND])
+        saving = fmean(slot.price for slot in period) - low / round_trip
+        if saving <= 0:
+            continue
+        load = sum(slot.load_w for slot in period) * DT_H
+        pv = sum(slot.pv_w for slot in period) * DT_H
+        pv_low = sum(slot.pv_low_w if slot.pv_low_w is not None else slot.pv_w for slot in period) * DT_H
+        # Only PV that would cover the house counts; less of a surplus is only less export
+        pv_short = max(min(pv, load) - min(pv_low, load), 0.0)
+        spread = math.hypot(load_spread * load, pv_short / P10_Z)
+        if (wh := min(z * spread, max_wh)) > 0:
+            buffers.append(Buffer(slot=end - 1, wh=wh, penalty=penalty_share * saving))
+    return buffers
+
 
 # A due full charge is worth this much per kWh missing; overdue it must happen
 OVERDUE_FULL_CHARGE_PENALTY = 2.0
@@ -1604,6 +1679,19 @@ async def compute_plan(
     # A car only expected back may come later or not at all: charged where cheaper than the median price
     worth = median(slot.price for slot in inputs) if inputs else MUST_HAVE_COST
     loads = [replace(load, unmet_cost=worth) if load.expected else load for load in loads]
+    buffers = []
+    strategy = config.effective_strategy(now)
+    if settings.allow_grid_charge and strategy in BUFFER_Z:
+        first = batteries[0]
+        buffers = storage_buffers(
+            inputs,
+            BUFFER_Z[strategy],
+            load.daily_spread if load.daily_spread is not None else DEFAULT_LOAD_SPREAD,
+            (first.efficiency_charge_grid or first.efficiency_charge) * first.efficiency_discharge,
+            BUFFER_PENALTY_SHARE,
+            MAX_BUFFER_SHARE * sum(b.capacity_wh - b.min_soc_wh for b in batteries),
+        )
+        settings = replace(settings, buffer=tuple((b.slot, b.wh, b.penalty) for b in buffers))
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads)
     device_actions(plan, profile, battery_device.id)
@@ -1619,6 +1707,7 @@ async def compute_plan(
     return PlanResult(
         raw_pv=raw_pv,
         pv_band=band,
+        buffers=buffers,
         plane_forecasts_now={key: powers[0] for key, powers in plane_slots.items() if powers},
         plane_corrections=own if config.optimizer.pv_learning else {},
         clouds=clouds,

@@ -84,6 +84,9 @@ class Settings:
     # Calendar aging is faster at a high SoC: every kWh above this (Wh) costs per hour
     high_soc_wh: float | None = None
     high_soc_ct_per_kwh_h: float = 0.0
+    # Buffer for a day above the forecast (soft): (slot, Wh above the floor of all batteries
+    # at its end, €/kWh missing)
+    buffer: tuple[tuple[int, float, float], ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -428,6 +431,9 @@ def optimize(
     full_short = count if settings.full_charge_slot is not None and 0 <= settings.full_charge_slot < n else None
     if full_short is not None:
         count += 1
+    buffers = [(t, wh, penalty) for t, wh, penalty in settings.buffer if 0 <= t < n and wh > 0]
+    buffer_short = count + np.arange(len(buffers))
+    count += len(buffers)
     # Energy above the high SoC threshold per battery and slot
     high = [b.high_soc_wh if b.high_soc_wh is not None else settings.high_soc_wh for b in batteries]
     hs: list[Any] = []
@@ -467,6 +473,8 @@ def optimize(
         cost[s[k][-1]] -= terminal[k] / 1000
     if full_short is not None:
         cost[full_short] = settings.full_charge_penalty / 1000
+    for index, (_, _, penalty) in zip(buffer_short, buffers, strict=True):
+        cost[index] = penalty / 1000
     if cu is not None:
         cost[cu] = CURTAIL_COST * DT_H / 1000
     for k in range(m):
@@ -680,6 +688,11 @@ def optimize(
     if full_short is not None:
         # soc at the target slot plus shortfall reaches (almost) full
         gate_rows.append(({s[0][settings.full_charge_slot]: -1, full_short: -1}, -batteries[0].capacity_wh * FULL_FRACTION))
+    # soc of all batteries plus shortfall reaches the floor plus the buffer
+    gate_rows.extend(
+        ({**{s[k][t]: -1 for k in range(m)}, index: -1}, -(sum(soc_min) + wh))
+        for index, (t, wh, _) in zip(buffer_short, buffers, strict=True)
+    )
     if m > 1:
         for t, slot in enumerate(inputs):
             surplus = max(slot.pv_w - slot.load_w, 0.0)

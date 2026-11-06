@@ -42,6 +42,8 @@ class LoadForecast:
     separated_hours: int = 0
     # Mean daily base load of the history (large loads left out), as a suggestion
     history_daily_kwh: float | None = None
+    # How far a day's consumption strays from its day type's mean (standard deviation / mean)
+    daily_spread: float | None = None
 
 
 async def fetch_hourly_means(
@@ -118,6 +120,21 @@ TYPICAL_DAY = (
 )
 
 
+def daily_spread(history: list[tuple[datetime, float]], tz: tzinfo) -> float | None:
+    """Relative standard deviation of whole days' consumption around their day type's mean."""
+    days: dict[Any, list[float]] = {}
+    for moment, mean in history:
+        days.setdefault(moment.astimezone(tz).date(), []).append(mean)
+    totals: dict[str, list[float]] = {}
+    for day, values in days.items():
+        if len(values) >= 22:
+            totals.setdefault("weekend" if day.weekday() >= 5 else "weekday", []).append(fmean(values) * 24)
+    deviations = [total / fmean(group) - 1 for group in totals.values() if len(group) >= 3 for total in group]
+    if len(deviations) < 7:
+        return None
+    return (sum(x * x for x in deviations) / len(deviations)) ** 0.5
+
+
 def build_load_forecast(
     history: list[tuple[datetime, float]],
     start: datetime,
@@ -190,6 +207,7 @@ def build_load_forecast(
         excluded_hours=len(history) - len(kept),
         scaled_to_kwh=daily_kwh if scale else None,
         history_daily_kwh=fmean(v for _, v in kept) * 24 / 1000 if len(kept) >= OWN_HISTORY_HOURS else None,
+        daily_spread=daily_spread(kept, tz),
     )
 
 

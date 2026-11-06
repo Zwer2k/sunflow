@@ -195,6 +195,7 @@ export default {
   "Nur diesen in seiner Einheit zeigen": "Show only this one in its unit",
   "Klick zeigt wieder alle in %": "Click shows all in % again",
   "alle in % · Klick zeigt einen in kWh bzw. °C": "all in % · click shows one in kWh or °C",
+  "Puffer: Um {time} sollen noch {energy} über der Entladegrenze übrig sein – für einen Tag mit mehr Verbrauch oder weniger Sonne als erwartet (Tagesverbrauch schwankt um etwa {spread}).": "Buffer: at {time} {energy} above the discharge limit should still be left – for a day with more consumption or less sun than expected (daily consumption varies by about {spread}).",
   "Ladestand gemessen und erwartet": "SoC measured and expected",
   "Verbrauch aus {days} Tagen gelernt (Ø {pct} am Tag)": "Consumption learned from {days} days (Ø {pct} per day)",
   "unterwegs, zurück erwartet gegen {time} mit etwa {soc}; ab dann eingeplant.": "on the road, expected back around {time} with about {soc}; planned from then on.",

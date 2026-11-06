@@ -13,7 +13,7 @@ from .entity import SunflowEntity
 
 PARALLEL_UPDATES = 1
 
-STRATEGIES = ["balanced", "pv_absorption", "autarky"]
+STRATEGIES = ["balanced", "pv_absorption", "autarky", "storage"]
 
 
 async def async_setup_entry(
