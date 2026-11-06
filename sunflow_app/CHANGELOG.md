@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.2
+
+- Plan a battery: with an existing battery the table starts with "No battery" – the house without any battery – and a column shows per year what today's battery and each scenario save against none. The saving against today is now labelled as such.
+
 ## 0.78.1
 
 - Live: the energy flow has three views, switched below it on the right and remembered per browser – the diagram as before, two flat bars "From" and "To", and small tiles per component and load. Bars and tiles leave room for the quick controls.

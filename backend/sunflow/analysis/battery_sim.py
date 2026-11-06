@@ -193,11 +193,21 @@ def optimized(hours: list[Hour], scenario: BatteryScenario) -> Run:
     return _credit_rest(run, hours, soc, floor, eta_d)
 
 
+def without_battery(hours: list[Hour]) -> Run:
+    """The house with no battery at all: the existing one taken out, nothing added."""
+    run = Run()
+    for hour in hours:
+        net = _net(hour, "replace")
+        run.add(max(net, 0.0), max(-net, 0.0), hour)
+    return run
+
+
 def simulate(hours: list[Hour], scenarios: list[BatteryScenario]) -> dict[str, Any]:
-    """Measured operation and, per scenario, both ways of running the battery."""
+    """Measured operation, the house without any battery and, per scenario, both ways of running the battery."""
     measured = Run()
     for hour in hours:
         measured.add(hour.imported, hour.exported, hour)
+    none = without_battery(hours)
     days = len(hours) / 24
     year = 365 / days if days else 0.0
     results = []
@@ -210,6 +220,7 @@ def simulate(hours: list[Hour], scenarios: list[BatteryScenario]) -> dict[str, A
             entry[key] = run.as_dict() | {
                 "saving": saving,
                 "saving_per_year": saving * year,
+                "saving_vs_none_per_year": (none.cost - run.cost) * year,
                 "cycles_per_year": run.discharged_wh / 1000 / usable * year if usable else None,
                 "payback_years": scenario.price_eur / (saving * year) if scenario.price_eur and saving > 0 else None,
             }
@@ -218,6 +229,8 @@ def simulate(hours: list[Hour], scenarios: list[BatteryScenario]) -> dict[str, A
         "days": days,
         "start": hours[0].start.isoformat() if hours else None,
         "end": (hours[-1].start + timedelta(hours=1)).isoformat() if hours else None,
-        "measured": measured.as_dict(),
+        "measured": measured.as_dict() | {"saving_vs_none_per_year": (none.cost - measured.cost) * year},
+        "without_battery": none.as_dict(),
+        "has_battery": any(h.charged or h.discharged for h in hours),
         "scenarios": results,
     }

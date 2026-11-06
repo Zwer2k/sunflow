@@ -3,7 +3,13 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sunflow.analysis.battery_sim import Hour, optimized, self_consumption, simulate
+from sunflow.analysis.battery_sim import (
+    Hour,
+    optimized,
+    self_consumption,
+    simulate,
+    without_battery,
+)
 from sunflow.config.models import BatteryScenario
 
 START = datetime(2026, 10, 1, tzinfo=UTC)
@@ -83,3 +89,18 @@ def test_simulation_reports_savings_per_year_and_payback() -> None:
     assert scenario["saving"] > 0
     assert scenario["saving_per_year"] == pytest.approx(scenario["saving"] * 365 / 14)
     assert scenario["payback_years"] == pytest.approx(5000 / scenario["saving_per_year"])
+
+
+def test_without_battery_takes_out_the_existing_one() -> None:
+    """Without any battery its charging goes to the grid and its discharging comes from it."""
+    measured = _days(2, charged=1000, discharged=900)
+
+    result = simulate(measured, [_scenario(price_eur=5000)])
+    none = without_battery(measured)
+
+    assert none.exported_wh == pytest.approx(2 * (3000 + 3000))
+    assert none.imported_wh == pytest.approx(2 * (4000 + 2700))
+    assert result["has_battery"] is True
+    assert result["measured"]["saving_vs_none_per_year"] == pytest.approx((none.cost - result["measured"]["cost"]) * 365 / 2)
+    run = result["scenarios"][0]["self_consumption"]
+    assert run["saving_vs_none_per_year"] == pytest.approx((none.cost - run["cost"]) * 365 / 2)
