@@ -85,6 +85,12 @@ function dragScroll(event) {
 
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const WEATHER_DAYS_KEY = "sunflow.live.weatherDays";
+const FLOW_VIEW_KEY = "sunflow.live.flowView";
+const FLOW_VIEWS = {
+  diagram: [t("Diagramm"), "M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM5 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10.5 8.5l-4 7M13.5 8.5l4 7M8 18h8"],
+  bars: [t("Balken"), "M3 7h10M15 7h6M3 17h5M10 17h11"],
+  tiles: [t("Kacheln"), "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"],
+};
 const weekday = new Intl.DateTimeFormat(locale(), { weekday: "short" });
 
 // Home Assistant weather conditions: symbol and German name
@@ -120,6 +126,7 @@ class SunflowLive extends LitElement {
     _optimizers: { state: true },
     _todayError: { state: true },
     _scroll: { state: true },
+    _flowView: { state: true },
   };
 
   constructor() {
@@ -133,6 +140,12 @@ class SunflowLive extends LitElement {
     } catch {
       this._weatherDays = false;
     }
+    try {
+      this._flowView = localStorage.getItem(FLOW_VIEW_KEY);
+    } catch {
+      this._flowView = null;
+    }
+    if (!(this._flowView in FLOW_VIEWS)) this._flowView = "diagram";
   }
 
   connectedCallback() {
@@ -298,6 +311,15 @@ class SunflowLive extends LitElement {
     list?.scrollBy({ left: direction * list.clientWidth * 0.8, behavior: "smooth" });
   }
 
+  _setFlowView(view) {
+    this._flowView = view;
+    try {
+      localStorage.setItem(FLOW_VIEW_KEY, view);
+    } catch {
+      // Not remembered, the switch still works for this visit
+    }
+  }
+
   _setWeatherDays(days) {
     this._weatherDays = days;
     try {
@@ -307,16 +329,144 @@ class SunflowLive extends LitElement {
     }
   }
 
-  _renderFlow(live) {
+  /** What all views of the energy flow show. */
+  _flowData(live) {
     const battery = live.battery;
     const displays = live.displays ?? {};
     const pvDisplay = live.pv.find((p) => p.display)?.display;
     const flows = splitFlows({ pv: live.pv_w, battery: battery?.power_w, grid: live.grid_w, load: live.load_w });
     const consumers = live.consumers.slice(0, MAX_CONSUMERS);
     const consumerPower = consumers.reduce((s, c) => s + Math.max(c.power_w ?? 0, 0), 0);
-    const homeBase = Math.max(flows.house - consumerPower, 0);
-    // Only configured components are drawn, together with the lines between them
-    const hasPv = live.pv.length > 0;
+    const hasGrid = live.grid_w !== null && live.grid_w !== undefined;
+    const summary = [
+      live.pv.length ? `PV ${formatPower(live.pv_w, pvDisplay)}` : null,
+      battery
+        ? `${t("Batterie")} ${formatPower(battery.power_w, battery.display)}${battery.soc_pct === null ? "" : ` ${t("bei {soc} %", { soc: Math.round(battery.soc_pct) })}`}`
+        : null,
+      hasGrid ? `${t("Netz")} ${formatPower(live.grid_w, displays.grid)}` : null,
+      `${t("Haus")} ${formatPower(flows.house, displays.load)}`,
+      ...consumers.map((c) => `${c.name} ${formatPower(c.power_w, c.display)}`),
+    ]
+      .filter(Boolean)
+      .join(", ");
+    return {
+      battery, displays, pvDisplay, flows, consumers, hasGrid, summary,
+      homeBase: Math.max(flows.house - consumerPower, 0),
+      hasPv: live.pv.length > 0,
+      gridDetail: !hasGrid ? t("keine Messung") : live.grid_w > ACTIVE_W ? t("Bezug") : live.grid_w < -ACTIVE_W ? t("Einspeisung") : t("ausgeglichen"),
+      batteryState: (battery?.power_w ?? 0) > ACTIVE_W ? t("lädt") : (battery?.power_w ?? 0) < -ACTIVE_W ? t("entlädt") : t("ruht"),
+    };
+  }
+
+  _renderFlow(live) {
+    const data = this._flowData(live);
+    const view = this._flowView;
+    return html`
+      ${view === "bars" ? this._renderBars(live, data) : view === "tiles" ? this._renderTiles(live, data) : this._renderDiagram(live, data)}
+      <div class="flow-foot">
+        ${live.losses_w !== null && live.losses_w !== undefined
+          ? html`<p class="small muted" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>${t("Verluste Wechselrichter/Speicher: {power} (Ø letzte Minuten)", { power: formatValue(live.losses_w, "W") })}</p>`
+          : nothing}
+        <div class="flow-switch range" role="group" aria-label=${t("Ansicht Energiefluss")}>
+          ${Object.entries(FLOW_VIEWS).map(
+            ([key, [label, icon]]) => html`<button class=${key === view ? "active" : ""} aria-pressed=${key === view}
+              title=${label} aria-label=${label} @click=${() => this._setFlowView(key)}>
+              <svg viewBox="0 0 24 24" class="mini-icon" aria-hidden="true"><path d=${icon}></path></svg></button>`,
+          )}
+        </div>
+      </div>
+      ${view !== "tiles" && live.consumers.length > MAX_CONSUMERS
+        ? html`<p class="small muted">${t("Weitere Verbraucher:")} ${live.consumers
+            .slice(MAX_CONSUMERS)
+            .map((c) => `${c.name} ${formatPower(c.power_w, c.display)}`)
+            .join(", ")}</p>`
+        : nothing}
+    `;
+  }
+
+  /** Where the power comes from and where it goes, as two stacked bars on one scale. */
+  _renderBars(live, { battery, displays, pvDisplay, flows, consumers, homeBase, summary, batteryState }) {
+    const charge = Math.max(battery?.power_w ?? 0, 0);
+    const discharge = Math.max(-(battery?.power_w ?? 0), 0);
+    const imported = Math.max(live.grid_w ?? 0, 0);
+    const exported = Math.max(-(live.grid_w ?? 0), 0);
+    const soc = battery?.soc_pct === null || battery?.soc_pct === undefined ? "" : ` ${Math.round(battery.soc_pct)} %`;
+    const sources = [
+      ["pv", "PV", Math.max(live.pv_w ?? 0, 0), COLOR.pv, pvDisplay],
+      battery ? ["battery", `${t("Batterie")}${soc}`, discharge, COLOR.battery, battery.display] : null,
+      ["grid", t("Netzbezug"), imported, COLOR.grid, displays.grid],
+    ].filter(Boolean);
+    const sinks = [
+      ["home", t("Haus"), homeBase, "var(--sf-muted)", displays.load],
+      ...consumers.map((c, i) => [c.kind in ICONS ? c.kind : "load", c.name, Math.max(c.power_w ?? 0, 0), COLOR.consumers[i], c.display]),
+      battery ? ["battery", `${t("Batterie")}${soc}`, charge, COLOR.battery, battery.display] : null,
+      ["grid", t("Einspeisung"), exported, COLOR.grid, displays.grid],
+    ].filter(Boolean);
+    const total = Math.max(
+      sources.reduce((s, [, , w]) => s + w, 0),
+      sinks.reduce((s, [, , w]) => s + w, 0),
+      ACTIVE_W,
+    );
+    const row = (heading, parts) => {
+      const active = parts.filter(([, , w]) => w > ACTIVE_W);
+      return html`<div class="bar-row">
+        <div class="bar-head small muted">${heading}</div>
+        <div class="bar" aria-hidden="true">
+          ${active.map(([, label, w, color]) => html`<span class="segment" style="flex-grow: ${w}; background: ${color}"
+            title="${label}: ${formatValue(w, "W")}"></span>`)}
+          <span class="segment rest" style="flex-grow: ${Math.max(total - active.reduce((s, [, , w]) => s + w, 0), 0)}"></span>
+        </div>
+        <ul class="bar-legend">
+          ${parts.map(([icon, label, w, color, display]) => html`<li class=${w > ACTIVE_W ? "" : "idle"}>
+            <svg viewBox="0 0 24 24" class="mini-icon" style="stroke: ${color}" aria-hidden="true"><path d=${ICONS[icon]}></path></svg>
+            <span>${label}</span> <strong>${formatPower(w, display)}</strong>
+          </li>`)}
+        </ul>
+      </div>`;
+    };
+    return html`<section class="bars" role="img" aria-label=${t("Energiefluss: {summary}", { summary })}>
+      ${row(t("Woher"), sources)}
+      ${row(t("Wohin"), sinks)}
+      ${battery ? html`<p class="small muted">${t("Batterie")}${soc} · ${batteryState}${flows.house ? html` · ${t("Haus gesamt {power}", { power: formatPower(flows.house, displays.load) })}` : nothing}</p>` : nothing}
+    </section>`;
+  }
+
+  /** One small tile per component and consumer: fits beside many controls. */
+  _renderTiles(live, { battery, displays, pvDisplay, flows, homeBase, hasPv, hasGrid, gridDetail, batteryState }) {
+    const tile = (icon, color, label, value, detail, level = null) => html`<div class="flow-tile" style="--tile-color: ${color}">
+      <div class="flow-tile-head">
+        <svg viewBox="0 0 24 24" class="mini-icon" style="stroke: ${color}" aria-hidden="true"><path d=${ICONS[icon]}></path></svg>
+        <span class="small">${label}</span>
+      </div>
+      <div class="value">${value}</div>
+      ${detail ? html`<div class="small muted">${detail}</div>` : nothing}
+      ${level === null ? nothing : html`<div class="level" aria-hidden="true"><span style="width: ${Math.min(Math.max(level, 0), 100)}%"></span></div>`}
+    </div>`;
+    const consumerColor = (i) => COLOR.consumers[Math.min(i, COLOR.consumers.length - 1)];
+    return html`<section class="flow-tiles" aria-label=${t("Energiefluss")}>
+      ${hasPv
+        ? tile("pv", COLOR.pv, "PV", formatPower(live.pv_w, pvDisplay),
+            live.pv.length > 1 ? live.pv.map((p) => formatPower(p.power_w, p.display)).join(" + ") : null)
+        : nothing}
+      ${battery
+        ? tile("battery", COLOR.battery,
+            `${battery.count > 1 ? t("{count} Speicher", { count: battery.count }) : t("Batterie")}${battery.soc_pct === null ? "" : ` ${Math.round(battery.soc_pct)} %`}`,
+            formatPower(Math.abs(battery.power_w ?? 0), battery.display), batteryState, battery.soc_pct)
+        : nothing}
+      ${tile("grid", COLOR.grid, t("Netz"), hasGrid ? formatPower(Math.abs(live.grid_w), displays.grid) : "–", gridDetail)}
+      ${tile("home", COLOR.home, t("Haus"), formatPower(homeBase, displays.load),
+        live.consumers.length ? t("gesamt {power}", { power: formatPower(flows.house, displays.load) }) : null)}
+      ${live.consumers.map((c, i) => {
+        const level = c.level !== null && c.level !== undefined ? c.level : null;
+        const levelText = level === null ? null : `${Math.round(level)}${c.level_unit === "°C" ? " °C" : " %"}`;
+        const detail = c.kind === "vehicle" && c.connected === false ? t("kein Auto") : [c.vehicle, levelText].filter(Boolean).join(" ") || null;
+        return tile(c.kind in ICONS ? c.kind : "load", consumerColor(i), c.name, formatPower(c.power_w ?? 0, c.display), detail,
+          c.level_unit === "°C" ? null : level);
+      })}
+    </section>`;
+  }
+
+  _renderDiagram(live, { battery, displays, pvDisplay, flows, consumers, homeBase, hasPv, hasGrid, summary, gridDetail }) {
     const hasBattery = Boolean(battery);
     // Consumers keep at least CONSUMER_GAP apart; without a battery row the diagram grows for them
     const spread = Math.max((consumers.length - 1) * CONSUMER_GAP, hasBattery ? 264 : 0);
@@ -336,18 +486,6 @@ class SunflowLive extends LitElement {
     const top = strings.length ? STRING_ROW : 0;
     const stringX = (i) =>
       Math.min(Math.max(NODE.pv[0] + (i - (strings.length - 1) / 2) * STRING_GAP, 40), width - 40);
-    const hasGrid = live.grid_w !== null && live.grid_w !== undefined;
-    const summary = [
-      hasPv ? `PV ${formatPower(live.pv_w, pvDisplay)}` : null,
-      battery
-        ? `${t("Batterie")} ${formatPower(battery.power_w, battery.display)}${battery.soc_pct === null ? "" : ` ${t("bei {soc} %", { soc: Math.round(battery.soc_pct) })}`}`
-        : null,
-      hasGrid ? `${t("Netz")} ${formatPower(live.grid_w, displays.grid)}` : null,
-      `${t("Haus")} ${formatPower(flows.house, displays.load)}`,
-      ...consumers.map((c) => `${c.name} ${formatPower(c.power_w, c.display)}`),
-    ]
-      .filter(Boolean)
-      .join(", ");
 
     return html`
       <svg viewBox="0 0 ${width} ${height + top}" class="flow" role="img" aria-label=${t("Energiefluss: {summary}", { summary })}>
@@ -384,8 +522,7 @@ class SunflowLive extends LitElement {
               // The string row above already shows the parts
               live.pv.length > 1 && !strings.length ? live.pv.map((p) => formatPower(p.power_w, p.display)).join(" + ") : null)
           : nothing}
-        ${this._node("grid", NODE.grid, COLOR.grid, t("Netz"), hasGrid ? formatPower(Math.abs(live.grid_w), displays.grid) : "–",
-          !hasGrid ? t("keine Messung") : live.grid_w > ACTIVE_W ? t("Bezug") : live.grid_w < -ACTIVE_W ? t("Einspeisung") : t("ausgeglichen"))}
+        ${this._node("grid", NODE.grid, COLOR.grid, t("Netz"), hasGrid ? formatPower(Math.abs(live.grid_w), displays.grid) : "–", gridDetail)}
         ${battery
           ? this._batteryNode(battery)
           : nothing}
@@ -395,15 +532,6 @@ class SunflowLive extends LitElement {
         ${consumers.map((c, i) => this._consumerNode(c, [CONSUMER_X, consumerY(i)], COLOR.consumers[i]))}
         </g>
       </svg>
-      ${live.losses_w !== null && live.losses_w !== undefined
-        ? html`<p class="small muted" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>${t("Verluste Wechselrichter/Speicher: {power} (Ø letzte Minuten)", { power: formatValue(live.losses_w, "W") })}</p>`
-        : nothing}
-      ${live.consumers.length > MAX_CONSUMERS
-        ? html`<p class="small muted">${t("Weitere Verbraucher:")} ${live.consumers
-            .slice(MAX_CONSUMERS)
-            .map((c) => `${c.name} ${formatPower(c.power_w, c.display)}`)
-            .join(", ")}</p>`
-        : nothing}
     `;
   }
 
@@ -655,6 +783,32 @@ class SunflowLive extends LitElement {
     }
     .weather-hours li .small { font-size: 11px; }
     .soc-ring { fill: none; stroke-width: 4; stroke-linecap: round; }
+    .flow-foot { display: flex; align-items: center; gap: 8px; margin-top: -8px; }
+    .flow-switch { margin-left: auto; flex: none; }
+    .flow-switch button { display: flex; align-items: center; min-width: 32px; justify-content: center; }
+    .bars { display: flex; flex-direction: column; gap: 12px; }
+    .bar-row { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 4px 10px; }
+    .bar { display: flex; gap: 2px; height: 16px; }
+    .segment { min-width: 0; border-radius: 4px; }
+    .segment.rest { background: var(--sf-subtle); }
+    .bar-legend {
+      grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px;
+    }
+    .bar-legend li { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .bar-legend li.idle { color: var(--sf-muted); }
+    .bar-legend strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .mini-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .flow-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+    .flow-tile {
+      display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; min-width: 0;
+      background: var(--sf-surface); border: 1px solid var(--sf-border); border-top: 3px solid var(--tile-color);
+    }
+    .flow-tile-head { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .flow-tile-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .flow-tile .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .flow-tile .small { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .level { height: 4px; border-radius: 2px; background: var(--sf-subtle); margin-top: 3px; overflow: hidden; }
+    .level span { display: block; height: 100%; background: var(--tile-color); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 8px 12px; }
     .tile.highlight { background: var(--sf-primary-bg); }

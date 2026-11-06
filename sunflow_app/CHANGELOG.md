@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.1
+
+- Live: the energy flow has three views, switched below it on the right and remembered per browser – the diagram as before, two flat bars "From" and "To", and small tiles per component and load. Bars and tiles leave room for the quick controls.
+
 ## 0.78.0
 
 - Analysis → "Plan a battery": scenarios of a battery one might buy – capacity, usable share, power, battery and inverter efficiency, price and cycles – simulated over the measured grid and battery values and the price history of the last 30 days, 90 days or a year, in addition to the existing battery or instead of it. Each as plain self-consumption and price optimized (with prices and consumption known in advance), with import, export, cost, saving against today, per year, cycles per year and payback. "Use the existing battery" adds the existing one with its values to work out other settings in hindsight.

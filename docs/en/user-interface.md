@@ -14,6 +14,14 @@ The energy flow shows what is flowing right now: PV (top, with one circle per st
 home battery, house and the controllable loads such as wallbox and hot water. Animated lines show
 where energy is going.
 
+Below the energy flow on the right you choose the view; each browser remembers its own:
+
+- **Diagram**: the large graphic with strings and animated lines.
+- **Bars**: two flat bars, "From" (PV, battery, grid import) and "To" (house, loads, battery,
+  export), on the same scale with the values below. Fits next to the quick controls.
+- **Tiles**: one small tile per component and load with power, state and level; also shows more
+  than four loads.
+
 - **House** shows consumption without the controllable loads; "total" below includes them.
 - **Battery** shows power, direction and state of charge; the ring is the state of charge.
 - **Wallbox** shows charging power and the state of charge of the detected car.
