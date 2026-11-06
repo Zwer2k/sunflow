@@ -27,6 +27,19 @@ STALE_MAX = timedelta(minutes=15)
 router = APIRouter(prefix=f"/api/{API_VERSION}")
 
 
+def _fresh_cache(state: Any) -> tuple[dict[Any, tuple[datetime, Any]], dict[Any, asyncio.Task[Any]]]:
+    if getattr(state, "kept_fresh", None) is None:
+        state.kept_fresh = {}
+        state.kept_fresh_tasks = {}
+    return state.kept_fresh, state.kept_fresh_tasks
+
+
+def keep_fresh(state: Any, key: Any, value: Any) -> Any:
+    """Store a result computed in the background for kept_fresh."""
+    _fresh_cache(state)[0][key] = (datetime.now(UTC), value)
+    return value
+
+
 def _log_failed_refresh(task: asyncio.Task[Any]) -> None:
     # A failed refresh keeps the older result; the next request tries again
     if not task.cancelled() and (err := task.exception()) is not None:
@@ -40,17 +53,11 @@ async def kept_fresh(request: Request, key: Any, max_age: timedelta, compute: Ca
     gets the refreshed result.
     """
     state = request.app.state
-    if getattr(state, "kept_fresh", None) is None:
-        state.kept_fresh = {}
-        state.kept_fresh_tasks = {}
-    cache: dict[Any, tuple[datetime, Any]] = state.kept_fresh
-    tasks: dict[Any, asyncio.Task[Any]] = state.kept_fresh_tasks
+    cache, tasks = _fresh_cache(state)
     now = datetime.now(UTC)
 
     async def refresh() -> Any:
-        value = await compute()
-        cache[key] = (datetime.now(UTC), value)
-        return value
+        return keep_fresh(state, key, await compute())
 
     if (entry := cache.get(key)) is not None and now - entry[0] <= max_age:
         return entry[1]

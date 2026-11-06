@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 from sunflow.api import create_app
 from sunflow.settings import Settings
 
@@ -804,3 +805,32 @@ async def test_kept_fresh_answers_at_once_and_refreshes_behind() -> None:
     assert await kept_fresh(request, "k", timedelta(minutes=1), compute) == 1
     await asyncio.sleep(0)
     assert await kept_fresh(request, "k", timedelta(minutes=1), compute) == 2
+
+
+async def test_todays_energy_is_recomputed_after_each_statistics_compilation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The loop waits until shortly after the next 5 minutes and keeps the result for the pages."""
+    import asyncio
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from sunflow.api import analysis
+
+    waits: list[float] = []
+
+    async def sleep(seconds: float) -> None:
+        waits.append(seconds)
+        if len(waits) > 1:
+            raise asyncio.CancelledError
+
+    async def energy(request: object, period: str) -> dict:
+        return {"period": period}
+
+    monkeypatch.setattr(analysis.asyncio, "sleep", sleep)
+    monkeypatch.setattr(analysis, "_energy", energy)
+    app = SimpleNamespace(state=SimpleNamespace(ha=SimpleNamespace(connected=True)))
+
+    with pytest.raises(asyncio.CancelledError):
+        await analysis.keep_energy_today(app)
+
+    assert 0 <= waits[0] <= timedelta(minutes=5).total_seconds()
+    assert app.state.kept_fresh[("energy", "today")][1] == {"period": "today"}
