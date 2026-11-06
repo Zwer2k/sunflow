@@ -4,6 +4,7 @@ import { confirmDialog } from "./components/dialog.js";
 import { poll } from "./lib/poll.js";
 import "./components/picker.js";
 import { withSuggestedName } from "./lib/names.js";
+import { findLabel, searchSettings } from "./lib/settings-search.js";
 import "./views/live-view.js";
 import "./views/plan-view.js";
 import "./views/control-view.js";
@@ -204,6 +205,8 @@ class SunflowApp extends LitElement {
     _navMore: { state: true },
     _setupCompleted: { state: true },
     _advanced: { state: true },
+    _searchQuery: { state: true },
+    _searchActive: { state: true },
     _integrations: { state: true },
     _selected: { state: true },
     _previews: { state: true },
@@ -259,6 +262,8 @@ class SunflowApp extends LitElement {
     super();
     this._step = 0;
     this._advanced = readSetting(ADVANCED_KEY) === "1";
+    this._searchQuery = "";
+    this._searchActive = 0;
     this._integrations = null;
     this._selected = new Set();
     this._showUnusedIntegrations = false;
@@ -1111,6 +1116,7 @@ class SunflowApp extends LitElement {
     return html`
       <div class="layout">
         <aside class="sidebar">
+        ${this._renderSearch()}
         <div class="nav-wrap">
         ${this._navMore.left
           ? html`<button class="nav-more left" aria-label=${t("Weitere Bereiche links")} @click=${() => this._scrollNav(-1)}>‹</button>`
@@ -1152,6 +1158,81 @@ class SunflowApp extends LitElement {
         </main>
       </div>
     `;
+  }
+
+  /** Results for the search box: settings by name, synonym or a typo, and devices by name. */
+  _searchResults() {
+    const devices = (this._devices ?? []).map((d) => ({ step: "devices", label: d.name, keywords: "gerät device", hint: t("Gerät") }));
+    return searchSettings(this._searchQuery, STEPS, devices);
+  }
+
+  _renderSearch() {
+    const results = this._searchQuery.trim() ? this._searchResults() : [];
+    const active = Math.min(this._searchActive, results.length - 1);
+    const area = (step) => STEPS.find(([key]) => key === step)?.[1] ?? "";
+    const onKey = (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        this._searchActive = (active + step + results.length) % Math.max(results.length, 1);
+      } else if (e.key === "Enter" && results[active]) {
+        this._openSearchResult(results[active]);
+      } else if (e.key === "Escape") {
+        this._searchQuery = "";
+      }
+    };
+    return html`<div class="settings-search" role="search">
+      <input type="search" .value=${this._searchQuery} placeholder=${t("Einstellung suchen …")} aria-label=${t("Einstellung suchen")}
+        role="combobox" aria-expanded=${results.length > 0} aria-controls="settings-search-results" autocomplete="off"
+        aria-activedescendant=${results.length ? `search-result-${active}` : nothing}
+        @input=${(e) => {
+          this._searchQuery = e.target.value;
+          this._searchActive = 0;
+        }}
+        @keydown=${onKey}>
+      ${this._searchQuery.trim()
+        ? html`<ul class="search-results" id="settings-search-results" role="listbox">
+            ${results.length
+              ? results.map((r, i) => html`<li id="search-result-${i}" role="option" aria-selected=${i === active}
+                  class=${i === active ? "active" : ""} @mousedown=${(e) => e.preventDefault()} @click=${() => this._openSearchResult(r)}>
+                  <span class="search-label">${r.label}</span>
+                  <span class="search-area">${r.area ? t("Bereich") : [area(r.step), r.hint].filter(Boolean).join(" · ")}</span>
+                </li>`)
+              : html`<li class="search-empty">${t("Nichts gefunden – versuch ein anderes Wort.")}</li>`}
+          </ul>`
+        : nothing}
+    </div>`;
+  }
+
+  /** Opens the area of a result and shows the setting: scrolled into view, opened and highlighted. */
+  async _openSearchResult(result) {
+    this._searchQuery = "";
+    await this._goTo(result.step);
+    if (STEPS[this._step][0] !== result.step) return;
+    if (result.area) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    // Areas load their data after opening; some fields only show in expert mode
+    const started = Date.now();
+    let element = null;
+    while (!element && Date.now() - started < 4000) {
+      await this.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      element = findLabel(this.renderRoot, result.label);
+      if (!element && !this._advanced && Date.now() - started > 1500) this._setAdvanced(true);
+    }
+    if (!element) return;
+    for (let node = element; node; node = node.parentNode ?? node.host) {
+      if (node.tagName === "DETAILS") node.open = true;
+    }
+    const target = element.closest(".field, fieldset, label, .card, details") ?? element;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    target.animate(
+      [{ boxShadow: "0 0 0 3px var(--sf-primary)", borderRadius: "8px" }, { boxShadow: "0 0 0 3px transparent", borderRadius: "8px" }],
+      { duration: 2400, easing: "ease-in" },
+    );
   }
 
   _renderStep() {
@@ -3040,6 +3121,18 @@ class SunflowApp extends LitElement {
     /* Fixed width: long step names must not squeeze the switch below */
     .sidebar { flex: 0 0 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .nav-more { display: none; }
+    .settings-search { position: relative; margin-bottom: 4px; }
+    .settings-search input { width: 100%; box-sizing: border-box; min-height: 40px; }
+    .search-results {
+      position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;
+      background: var(--sf-surface); border: 1px solid var(--sf-border); border-radius: 10px;
+      box-shadow: 0 6px 18px rgb(0 0 0 / 0.15); max-height: 60vh; overflow-y: auto;
+    }
+    .search-results li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+    .search-results li.active, .search-results li:hover { background: var(--sf-primary-bg); color: var(--sf-primary-text); }
+    .search-results li.search-empty { cursor: default; color: var(--sf-muted); }
+    .search-results li.search-empty:hover { background: none; color: inherit; }
+    .search-area { font-size: 12px; opacity: 0.75; }
     .sidebar nav {
       background: var(--sf-surface);
       border: 1px solid var(--sf-border); border-radius: 12px; padding: 8px;

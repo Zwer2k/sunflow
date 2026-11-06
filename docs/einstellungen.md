@@ -6,6 +6,11 @@ Die Einstellungen sind in Bereiche gegliedert; beim ersten Start führt Sunflow 
 durch sie (siehe [Installation und Einrichtung](installation.md)). Ungespeicherte Änderungen
 eines Bereichs bleiben erhalten, wenn du zu einem anderen wechselst.
 
+**Suche** (Feld über der Liste) findet eine Einstellung nach ihrem Namen, nach anderen Wörtern
+dafür („Akku“, „Notstrom“, „Tibber“, „Einspeisegrenze“) und trotz Tippfehlern, außerdem deine
+Geräte nach Namen. Ein Treffer öffnet den Bereich, scrollt zur Einstellung und hebt sie kurz
+hervor. Pfeiltasten und Enter wählen, Esc leert das Feld.
+
 **Expertenmodus** (Schalter unter der Liste) zeigt zusätzlich je Rolle Entität, Einheit, Faktor,
 Vorzeichen, Nachkommastellen, Abfrageintervall und RAM/Flash. Diese Werte werden als
 Abweichung vom Profil gespeichert. Der Browser merkt sich den Schalter.

@@ -83,6 +83,16 @@ def test_frontend_translated(language: str) -> None:
     _check(frontend_texts(), frontend_catalog(language))
 
 
+def test_settings_search_labels_are_on_the_pages() -> None:
+    """The search jumps to a label by its text: each one must be a text of the settings."""
+    search = FRONTEND / "lib" / "settings-search.js"
+    labels = re.findall(r'^  \["\w+", "([^"]+)"', search.read_text(), re.MULTILINE)
+    texts = {text for text, where in frontend_texts().items() if not where.endswith("settings-search.js")}
+
+    assert labels
+    assert not [label for label in labels if label not in texts]
+
+
 @pytest.mark.parametrize("language", ["en"])
 def test_backend_translated(language: str) -> None:
     """Every t("…") and N_("…") of the backend is in the catalog."""
