@@ -4,11 +4,14 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from fnmatch import fnmatch
+import logging
 from typing import Any, Protocol
 
-from sunflow.ha import HAClient
+from sunflow.ha import HAClient, HAError
 
 from .profiles import ProfileLibrary
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(kw_only=True)
@@ -87,6 +90,18 @@ async def fetch_snapshot(client: HAClient, direct: Contributor | None = None) ->
     return direct.contribute(snapshot) if direct else snapshot
 
 
+def _apply_state_change(states: dict[str, dict[str, Any]], event: dict[str, Any]) -> None:
+    """Apply a state_changed event; an older state than the one known is ignored."""
+    data = event.get("data", {})
+    entity_id, new = data.get("entity_id"), data.get("new_state")
+    if entity_id is None:
+        return
+    if new is None:
+        states.pop(entity_id, None)
+    elif (known := states.get(entity_id)) is None or known.get("last_updated", "") <= new.get("last_updated", ""):
+        states[entity_id] = new
+
+
 GAP_STATES = {"unknown", "unavailable"}
 # Inverter integrations report single failed reads as "unknown"; longer outages stay visible
 GAP_BRIDGE = timedelta(minutes=15)
@@ -106,9 +121,16 @@ class SnapshotCache:
         registry_ttl: timedelta = timedelta(minutes=2),
         states_ttl: timedelta = timedelta(seconds=4),
         direct: Contributor | None = None,
+        live: bool = False,
     ) -> None:
-        """Initialize the cache."""
+        """Initialize the cache; live keeps the states current from state_changed events."""
         self._client = client
+        self._live = live
+        # Per connection (generation): all states, updated by events instead of fetched again
+        self._live_states: dict[str, dict[str, Any]] | None = None
+        self._live_generation = -1
+        self._live_buffer: list[dict[str, Any]] | None = None
+        self._live_failed = -1
         self._direct = direct
         self._registry_ttl = registry_ttl
         self._states_ttl = states_ttl
@@ -134,11 +156,42 @@ class SnapshotCache:
                 self._generation = getattr(self._client, "generation", 0)
                 self._snapshot = None
             if fresh or self._snapshot is None or now - self._states_at > self._states_ttl:
-                states = await self._client.get_states()
+                states = await self._kept_states() or await self._client.get_states()
                 self._snapshot = replace(self._registries, states=self._bridge_gaps(states, now))
                 self._states_at = now
             # Direct devices are polled on their own; their latest values are always added
             return self._direct.contribute(self._snapshot) if self._direct else self._snapshot
+
+    async def _kept_states(self) -> list[dict[str, Any]] | None:
+        """All states as kept current by events; None without a subscription (then fetched).
+
+        Fetching all states is several MB on large installations and slowed every page that
+        opened after a few seconds without a request.
+        """
+        generation = getattr(self._client, "generation", 0)
+        if not self._live or self._live_failed == generation:
+            return None
+        if self._live_generation != generation:
+            # A reconnect ends the old subscription; events during the fetch are applied after it
+            self._live_states, self._live_buffer = None, []
+            try:
+                await self._client.subscribe(self._on_state_changed, event_type="state_changed")
+                states = await self._client.get_states()
+            except HAError as err:
+                _LOGGER.warning("Cannot follow state changes, fetching states per request: %s", err)
+                self._live_failed, self._live_buffer = generation, None
+                return None
+            by_entity = {state["entity_id"]: state for state in states}
+            for event in self._live_buffer:
+                _apply_state_change(by_entity, event)
+            self._live_states, self._live_buffer, self._live_generation = by_entity, None, generation
+        return list(self._live_states.values())
+
+    def _on_state_changed(self, event: dict[str, Any]) -> None:
+        if self._live_states is not None:
+            _apply_state_change(self._live_states, event)
+        elif self._live_buffer is not None:
+            self._live_buffer.append(event)
 
     def _bridge_gaps(self, states: list[dict[str, Any]], now: datetime) -> dict[str, dict[str, Any]]:
         """States by entity; a briefly unavailable value keeps its last valid state."""

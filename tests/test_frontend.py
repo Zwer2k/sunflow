@@ -780,3 +780,27 @@ async def test_display_settings_are_stored(tmp_path: Path) -> None:
 
     # The quick controls pinned in the control tab stay
     assert ConfigStore(tmp_path).load().display == DisplaySettings(weather_mobile=False, weather_desktop=True, live_controls=["ev"])
+
+
+async def test_kept_fresh_answers_at_once_and_refreshes_behind() -> None:
+    """Within its age the result is reused; older it is answered at once and refreshed for the next request."""
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from sunflow.api.common import kept_fresh
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    values = iter([1, 2])
+
+    async def compute() -> int:
+        return next(values)
+
+    assert await kept_fresh(request, "k", timedelta(minutes=1), compute) == 1
+    assert await kept_fresh(request, "k", timedelta(minutes=1), compute) == 1
+    stamp, value = request.app.state.kept_fresh["k"]
+    request.app.state.kept_fresh["k"] = (datetime.now(UTC) - timedelta(minutes=2), value)
+
+    assert await kept_fresh(request, "k", timedelta(minutes=1), compute) == 1
+    await asyncio.sleep(0)
+    assert await kept_fresh(request, "k", timedelta(minutes=1), compute) == 2

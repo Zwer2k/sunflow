@@ -1,6 +1,8 @@
 """Helpers shared by the API routers."""
 
-from datetime import UTC, datetime
+import asyncio
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -18,9 +20,46 @@ _LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_MAX_EEPROM_WRITES = 10
+# An older result is still answered at once (while it is refreshed) up to this age
+STALE_MAX = timedelta(minutes=15)
 
 
 router = APIRouter(prefix=f"/api/{API_VERSION}")
+
+
+def _log_failed_refresh(task: asyncio.Task[Any]) -> None:
+    # A failed refresh keeps the older result; the next request tries again
+    if not task.cancelled() and (err := task.exception()) is not None:
+        _LOGGER.debug("Refresh in the background failed: %s", err)
+
+
+async def kept_fresh(request: Request, key: Any, max_age: timedelta, compute: Callable[[], Awaitable[Any]]) -> Any:
+    """A result computed at most max_age ago; an older one is answered at once and refreshed behind.
+
+    Opening a page should not wait for Home Assistant's history every time; the next poll
+    gets the refreshed result.
+    """
+    state = request.app.state
+    if getattr(state, "kept_fresh", None) is None:
+        state.kept_fresh = {}
+        state.kept_fresh_tasks = {}
+    cache: dict[Any, tuple[datetime, Any]] = state.kept_fresh
+    tasks: dict[Any, asyncio.Task[Any]] = state.kept_fresh_tasks
+    now = datetime.now(UTC)
+
+    async def refresh() -> Any:
+        value = await compute()
+        cache[key] = (datetime.now(UTC), value)
+        return value
+
+    if (entry := cache.get(key)) is not None and now - entry[0] <= max_age:
+        return entry[1]
+    if entry is not None and now - entry[0] <= STALE_MAX:
+        if key not in tasks or tasks[key].done():
+            tasks[key] = asyncio.create_task(refresh())
+            tasks[key].add_done_callback(_log_failed_refresh)
+        return entry[1]
+    return await refresh()
 
 
 async def _snapshot(request: Request, fresh: bool = False) -> Snapshot:

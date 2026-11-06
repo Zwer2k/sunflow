@@ -142,7 +142,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ha = HAClient(settings.ha_websocket_url, settings.ha_token)
         app.state.direct = DirectHub()
         app.state.direct.start(lambda: (app.state.store.load(), app.state.profiles))
-        app.state.snapshots = SnapshotCache(app.state.ha, direct=app.state.direct)
+        app.state.snapshots = SnapshotCache(app.state.ha, direct=app.state.direct, live=True)
         app.state.device_tests = {}
         app.state.restore_marker = RestoreMarker(settings.data_dir)
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
