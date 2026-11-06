@@ -6,6 +6,7 @@ import { lineChart, SERIES_COLORS, UNASSIGNED_COLOR } from "../components/charts
 import { formatValue } from "../lib/format.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
+import "../components/battery-planner.js";
 
 const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const REFRESH_MS = 5 * 60 * 1000;
@@ -255,6 +256,7 @@ class SunflowAnalysis extends LitElement {
       ${this._renderRecommendations()}
       ${this._renderEnergy()}
       ${this._renderCosts()}
+      <sf-battery-planner></sf-battery-planner>
       ${this._renderEfficiency()}
       ${this._renderPvLearning()}
       ${this._renderPvSun()}

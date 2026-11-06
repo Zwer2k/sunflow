@@ -174,6 +174,10 @@ export const api = {
   shadow: (hours = 48) => request("GET", `/shadow?hours=${hours}`),
   setOptimizer: (settings) => request("PUT", "/config/optimizer", settings),
   costHistory: (days) => request("GET", `/costs/history?days=${days}`),
+  batteryScenarios: () => request("GET", "/config/battery-scenarios"),
+  setBatteryScenarios: (scenarios) => request("PUT", "/config/battery-scenarios", scenarios),
+  existingBatteryScenario: () => request("GET", "/analysis/battery-scenarios/existing"),
+  batterySimulation: (days) => request("GET", `/analysis/battery-scenarios?days=${days}`),
   recommendations: () => request("GET", "/recommendations"),
   dismissRecommendation: (id, fingerprint) => request("POST", "/recommendations/dismiss", { id, fingerprint }),
   setOverrides: (configDeviceId, overrides) =>

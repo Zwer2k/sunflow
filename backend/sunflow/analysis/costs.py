@@ -5,6 +5,8 @@ would have cost from the grid (no PV, no battery). The difference is what PV and
 battery saved that day.
 """
 
+from bisect import bisect_right
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
 
@@ -19,22 +21,14 @@ def _hour(row: dict[str, Any]) -> datetime:
     return datetime.fromtimestamp(row["start"] / 1000, UTC)
 
 
-async def cost_history(
-    client: HAClient,
-    sources: EnergySources,
-    price_entity: str | None,
-    fixed_price: float | None,
-    feed_in: float,
-    days: int,
-    tz: tzinfo,
-) -> list[dict[str, Any]]:
-    """Daily import cost, export revenue, net cost and cost without PV and battery (€)."""
-    end = datetime.now(tz).replace(minute=0, second=0, microsecond=0)
-    start = (end - timedelta(days=days)).replace(hour=0)
-    keys = ("grid_import", "grid_export", "load")
+async def hourly_changes(
+    client: HAClient, sources: EnergySources, keys: tuple[str, ...], start: datetime, end: datetime
+) -> dict[str, dict[datetime, float]]:
+    """Energy (Wh) per hour and balance key, summed over the key's statistics."""
     ids = [s for key in keys for s in sources.statistics.get(key, [])]
-    if not ids or (price_entity is None and fixed_price is None):
-        return []
+    per_hour: dict[str, dict[datetime, float]] = {key: {} for key in keys}
+    if not ids:
+        return per_hour
     energy = await client.command(
         "recorder/statistics_during_period",
         start_time=start.isoformat(),
@@ -44,14 +38,19 @@ async def cost_history(
         types=["change"],
         units={"energy": "Wh"},
     )
-    per_hour: dict[str, dict[datetime, float]] = {key: {} for key in keys}
     for key in keys:
         for statistic in sources.statistics.get(key, []):
             for row in energy.get(statistic, []):
                 if row.get("change") is not None:
                     hour = _hour(row)
                     per_hour[key][hour] = per_hour[key].get(hour, 0.0) + row["change"]
+    return per_hour
 
+
+async def hourly_prices(
+    client: HAClient, price_entity: str | None, fixed_price: float | None, start: datetime, end: datetime
+) -> Callable[[datetime], float | None]:
+    """The import price (€/kWh) of an hour from the price sensor's statistics, else the fixed price."""
     prices: dict[datetime, float] = {}
     if price_entity:
         # Price sensors are "total" or "measurement"; the hourly state is the price at the end
@@ -73,8 +72,30 @@ async def cost_history(
         if fixed_price is not None and not prices:
             return fixed_price
         # Hours without a statistic (Home Assistant was down) keep the last known price
-        earlier = [h for h in known if h <= hour]
-        return prices[earlier[-1]] if earlier else None
+        index = bisect_right(known, hour)
+        return prices[known[index - 1]] if index else None
+
+    return price_at
+
+
+async def cost_history(
+    client: HAClient,
+    sources: EnergySources,
+    price_entity: str | None,
+    fixed_price: float | None,
+    feed_in: float,
+    days: int,
+    tz: tzinfo,
+) -> list[dict[str, Any]]:
+    """Daily import cost, export revenue, net cost and cost without PV and battery (€)."""
+    end = datetime.now(tz).replace(minute=0, second=0, microsecond=0)
+    start = (end - timedelta(days=days)).replace(hour=0)
+    keys = ("grid_import", "grid_export", "load")
+    ids = [s for key in keys for s in sources.statistics.get(key, [])]
+    if not ids or (price_entity is None and fixed_price is None):
+        return []
+    per_hour = await hourly_changes(client, sources, keys, start, end)
+    price_at = await hourly_prices(client, price_entity, fixed_price, start, end)
 
     daily: dict[date, dict[str, float]] = {}
     for hour in sorted(set(per_hour["grid_import"]) | set(per_hour["grid_export"])):

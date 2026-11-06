@@ -10,6 +10,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from sunflow.analysis.battery_sim import history_hours, simulate
 from sunflow.analysis.costs import cost_history
 from sunflow.analysis.energy import (
     battery_counters,
@@ -19,8 +20,10 @@ from sunflow.analysis.energy import (
 )
 from sunflow.analysis.inventory import data_inventory
 from sunflow.analysis.recommendations import build as build_recommendations
+from sunflow.config.models import BatteryScenario
 from sunflow.config.store import ConfigStore
 from sunflow.devices.profiles import controls_battery, planned_battery
+from sunflow.devices.site import device_parameters
 from sunflow.ha import HAError
 from sunflow.planning.appliances import learn_usage as learn_appliance_usage
 from sunflow.planning.plan import feed_in_price
@@ -240,3 +243,86 @@ async def get_cost_history(request: Request, days: Annotated[int, Query(ge=1, le
         days,
         await _local_tz(request),
     )
+
+
+# The simulation reads hourly statistics and optimizes day by day: kept for a while
+SCENARIOS_FRESH = timedelta(hours=1)
+
+
+@router.get("/config/battery-scenarios")
+async def get_battery_scenarios(request: Request) -> list[dict[str, Any]]:
+    """Batteries one might buy (or the existing one run differently), for the simulation."""
+    return [s.model_dump() for s in request.app.state.store.load().battery_scenarios]
+
+
+@router.put("/config/battery-scenarios")
+async def set_battery_scenarios(request: Request, body: list[BatteryScenario]) -> list[dict[str, Any]]:
+    """Store the scenarios; ids must be unique."""
+    if len({s.id for s in body}) != len(body):
+        raise HTTPException(status_code=422, detail="Scenario ids must be unique")
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.battery_scenarios = body
+    store.save(config)
+    return [s.model_dump() for s in body]
+
+
+@router.get("/analysis/battery-scenarios/existing")
+async def get_existing_battery_scenario(request: Request) -> dict[str, Any] | None:
+    """The existing battery as a scenario (instead of it), to try other settings on its history."""
+    config = request.app.state.store.load()
+    profiles = _library(request).profiles
+    device = planned_battery(config.devices, profiles)
+    if device is None:
+        return None
+    snapshot = await _snapshot(request)
+    params = {
+        p["name"]: p["effective"]
+        for p in device_parameters(profiles[device.profile], device, snapshot, config.battery_modules.get(device.id))
+    }
+    capacity = params.get("capacity_wh")
+    if not capacity:
+        return None
+    cost = config.battery_cost(device.id)
+    return BatteryScenario(
+        id=f"existing-{device.id[:8]}",
+        name=device.name,
+        capacity_kwh=capacity / 1000,
+        usable_pct=100 - (params.get("min_soc") or 0),
+        max_charge_kw=(params.get("max_charge") or 5000) / 1000,
+        max_discharge_kw=(params.get("max_discharge") or 5000) / 1000,
+        efficiency_pct=params.get("efficiency_pct") or 93,
+        inverter_efficiency_pct=params.get("inverter_efficiency_pct") or 96.5,
+        mode="replace",
+        wear_ct=cost.wear_ct_per_kwh if cost.include else 0.0,
+        grid_charge=config.optimizer.allow_grid_charge,
+    ).model_dump()
+
+
+@router.get("/analysis/battery-scenarios")
+async def get_battery_simulation(request: Request, days: Annotated[int, Query(ge=7, le=365)] = 30) -> dict[str, Any]:
+    """What each scenario would have changed over the last days, with the measured operation."""
+    config = request.app.state.store.load()
+    scenarios = config.battery_scenarios
+
+    async def compute() -> dict[str, Any]:
+        profiles = _library(request).profiles
+        snapshot = await _snapshot(request)
+        fixed = config.tariff.fixed_price_ct
+        hours = await history_hours(
+            request.app.state.ha,
+            energy_sources(config, profiles, snapshot),
+            config.tariff.import_entity_id,
+            fixed / 100 if fixed is not None else None,
+            feed_in_price(config, planned_battery(config.devices, profiles)),
+            days,
+            await _local_tz(request),
+        )
+        # Optimizing day by day takes seconds: off the event loop
+        return await asyncio.to_thread(simulate, hours, scenarios)
+
+    key = ("battery-scenarios", days, tuple(s.model_dump_json() for s in scenarios))
+    try:
+        return await kept_fresh(request, key, SCENARIOS_FRESH, compute)
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
