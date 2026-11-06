@@ -14,6 +14,15 @@ Der Energiefluss zeigt, was gerade fließt: PV (oben, mit einem Kreis je String)
 Hausspeicher, Haus und die steuerbaren Verbraucher wie Wallbox und Warmwasser. Bewegte Linien
 zeigen, wohin die Energie gerade fließt.
 
+Rechts unter dem Energiefluss wählst du die Ansicht, jeder Browser merkt sich seine:
+
+- **Diagramm**: die große Grafik mit Strings und bewegten Linien.
+- **Balken**: zwei flache Balken „Woher“ (PV, Speicher, Netzbezug) und „Wohin“ (Haus,
+  Verbraucher, Speicher, Einspeisung) im selben Maßstab, mit den Werten darunter. Passt neben die
+  Schnellsteuerung.
+- **Kacheln**: eine kleine Kachel je Teil und Verbraucher mit Leistung, Zustand und Ladestand;
+  zeigt auch mehr als vier Verbraucher.
+
 - **Haus** zeigt den Verbrauch ohne die steuerbaren Verbraucher, darunter „gesamt“ mit ihnen.
 - **Speicher** zeigt Leistung, Richtung und Ladestand; der Ring ist der Ladestand.
 - **Wallbox** zeigt Ladeleistung und Ladestand des erkannten Autos.
