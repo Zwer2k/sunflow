@@ -127,7 +127,10 @@ How well do forecasts and decisions match reality?
   twice: as plain self-consumption and price optimized, knowing prices and consumption in advance
   (an upper bound no planning reaches). The table shows import, export, electricity cost, saving
   against today, scaled to a year (without seasons), cycles per year and, with a price, the
-  payback. With hourly values the saving is a little too high, as import and export within an
+  payback. With an existing battery, **No battery** at the top is the house without any battery;
+  the column "vs. no battery per year" shows what your battery today and each scenario save
+  against none – a negative value means the losses cost more than the battery brings. With hourly
+  values the saving is a little too high, as import and export within an
   hour net out. Sunflow controls nothing here.
 - **Efficiencies**: battery and inverter over 30 days, 90 days or a year.
 - **Learning**: how much of the PV forecast actually arrives (overall, per cloud cover,

@@ -155,23 +155,33 @@ class SunflowBatteryPlanner extends LitElement {
     const result = this._result;
     const euro = new Intl.NumberFormat(locale(), { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
     const kwh = (value) => `${decimal(Math.round(value).toString())} kWh`;
+    // Without an existing battery "today" already is the house without one
+    const none = result?.has_battery ? result.without_battery : null;
     return html`
       ${this._busy ? html`<p class="small muted">${t("Rechnet … (bei einem Jahr bis zu einer Minute)")}</p>` : nothing}
       ${result
         ? html`<div class="table-wrap"><table>
             <thead><tr>
               <th>${t("Variante")}</th><th>${t("Fahrweise")}</th><th>${t("Bezug")}</th><th>${t("Einspeisung")}</th>
-              <th>${t("Stromkosten")}</th><th>${t("Ersparnis")}</th><th>${t("pro Jahr")}</th><th>${t("Zyklen/Jahr")}</th><th>${t("Amortisation")}</th>
+              <th>${t("Stromkosten")}</th><th>${t("Ersparnis ggü. heute")}</th><th>${t("pro Jahr")}</th>
+              ${none ? html`<th title=${t("Was gegenüber einem Haus ganz ohne Speicher gespart wird, aufs Jahr gerechnet")}>${t("ggü. ohne Speicher pro Jahr")}</th>` : nothing}
+              <th>${t("Zyklen/Jahr")}</th><th>${t("Amortisation")}</th>
             </tr></thead>
             <tbody>
+              ${none
+                ? html`<tr class="reference"><td>${t("Ohne Speicher")}</td><td></td><td>${kwh(none.imported_kwh)}</td>
+                    <td>${kwh(none.exported_kwh)}</td><td>${euro.format(none.cost)}</td><td></td><td></td><td></td><td></td><td></td></tr>`
+                : nothing}
               <tr class="measured"><td>${t("Gemessen (heute)")}</td><td></td><td>${kwh(result.measured.imported_kwh)}</td>
-                <td>${kwh(result.measured.exported_kwh)}</td><td>${euro.format(result.measured.cost)}</td><td></td><td></td><td></td><td></td></tr>
+                <td>${kwh(result.measured.exported_kwh)}</td><td>${euro.format(result.measured.cost)}</td><td></td><td></td>
+                ${none ? html`<td class=${result.measured.saving_vs_none_per_year < 0 ? "worse" : ""}>${euro.format(result.measured.saving_vs_none_per_year)}</td>` : nothing}<td></td><td></td></tr>
               ${result.scenarios.flatMap((s) => Object.entries(RUNS).map(([key, label], i) => {
                 const run = s[key];
                 return html`<tr>
                   <td>${i === 0 ? html`<strong>${s.name}</strong><div class="small muted">${s.mode === "replace" ? t("statt des vorhandenen") : t("zusätzlich")}</div>` : ""}</td>
                   <td>${label}</td><td>${kwh(run.imported_kwh)}</td><td>${kwh(run.exported_kwh)}</td><td>${euro.format(run.cost)}</td>
                   <td class=${run.saving < 0 ? "worse" : ""}>${euro.format(run.saving)}</td><td>${euro.format(run.saving_per_year)}</td>
+                  ${none ? html`<td class=${run.saving_vs_none_per_year < 0 ? "worse" : ""}>${euro.format(run.saving_vs_none_per_year)}</td>` : nothing}
                   <td>${run.cycles_per_year !== null ? decimal(Math.round(run.cycles_per_year).toString()) : "–"}</td>
                   <td>${run.payback_years !== null ? t("{years} Jahre", { years: decimal(run.payback_years.toFixed(1)) }) : "–"}</td>
                 </tr>`;
@@ -238,6 +248,7 @@ class SunflowBatteryPlanner extends LitElement {
     th { text-align: left; font-weight: 600; background: var(--sf-subtle); padding: 8px 10px; white-space: nowrap; }
     td { padding: 6px 10px; border-top: 1px solid var(--sf-border); vertical-align: top; }
     tr.measured td { background: var(--sf-primary-bg); }
+    tr.reference td { background: var(--sf-subtle); }
     td.worse { color: var(--sf-error-text); }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .spacer { flex: 1; }
