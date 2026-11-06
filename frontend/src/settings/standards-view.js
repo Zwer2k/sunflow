@@ -297,7 +297,7 @@ class SunflowStandards extends LitElement {
                   </span>`
                 : html`${t("freihalten")}`}
             </span>
-            <span class="small muted">${t("Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand, die Reserve bleibt dem Notstrom (EPS) bei Stromausfall vorbehalten. Liegt der Speicher darunter, wird er nicht weiter entladen.")}</span>
+            <span class="small muted">${t("Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand, die Reserve bleibt dem Notstrom (EPS) bei Stromausfall vorbehalten. Liegt der Speicher darunter, lädt Sunflow ihn vorrangig wieder auf – aus dem Netz, wenn Laden aus dem Netz erlaubt ist, unabhängig vom Preis.")}</span>
           </div>
           <label class="field">
             <span class="field-label">${t("Hausverbrauch pro Tag (Startwert)")}</span>

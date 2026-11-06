@@ -45,7 +45,8 @@ export const STRATEGIES = {
       t("Der Puffer gegen einen Tag über der Prognose reicht an etwa 19 von 20 Tagen statt an 4 von 5."),
       t("Wie groß er ist, lernt Sunflow aus den Schwankungen deines Tagesverbrauchs und der Spanne der PV-Prognose (p10)."),
       t("An einem durchschnittlichen Tag bleibt der Puffer im Speicher und ersetzt einen Teil der nächsten Ladung – das kostet nur wenig Verluste."),
-      t("Braucht „Laden aus dem Netz“ und einen Zeittarif oder dynamischen Tarif; bei festem Preis wie „Ausgewogen“."),
+      t("Kosten sind zweitrangig: Netzstrom in teuren Phasen zählt im Plan 10 ct extra. So lädt Sunflow nachts und deckt den Tag aus dem Speicher, auch wenn Verluste und Verschleiß den Preisvorteil auffressen."),
+      t("Braucht „Laden aus dem Netz“ und einen Zeittarif oder dynamischen Tarif, sonst deckt der Speicher nur möglichst viel aus PV."),
     ],
   },
 };

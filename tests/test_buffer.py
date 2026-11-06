@@ -1,6 +1,7 @@
 """Tests for the buffer against a day above the forecast."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -120,3 +121,27 @@ def test_daily_spread_of_the_consumption() -> None:
 
     assert daily_spread(history, UTC) == pytest.approx(0.2, abs=0.02)
     assert daily_spread(history[: 5 * 24], UTC) is None
+
+
+def test_battery_below_the_reserve_is_refilled_first() -> None:
+    """Back above the backup reserve right away, even at the expensive price, and never below it again."""
+    inputs = _slots()
+
+    plan = optimize(inputs, BATTERY, Settings(wear_ct_per_kwh=6, reserve_wh=6000))
+
+    assert plan.slots[3].soc_wh >= 6000 - 1
+    assert min(s.soc_wh for s in plan.slots[3:]) >= 6000 - 1
+
+
+@pytest.mark.parametrize(("premium", "charged"), [pytest.param(0.0, False, id="balanced"), pytest.param(0.1, True, id="storage")])
+def test_storage_charges_from_the_grid_despite_high_losses(premium: float, charged: bool) -> None:
+    """With 72 % round trip and wear, night power is dearer than day power; "storage" uses the battery anyway."""
+    lossy = BatterySpec(
+        capacity_wh=20000, soc_wh=2000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000,
+        efficiency_charge=0.85, efficiency_discharge=0.85,
+    )
+    inputs = [replace(slot, import_penalty=premium if slot.price > 0.3 else 0.0) for slot in _slots()]
+
+    plan = optimize(inputs, lossy, Settings(wear_ct_per_kwh=6))
+
+    assert (max(s.soc_wh for s in plan.slots[8:28]) > 6000) is charged

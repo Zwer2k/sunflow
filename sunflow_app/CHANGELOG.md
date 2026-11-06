@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.77.17
+
+- Backup reserve first: a battery below the reserve (at the start, after an outage, after a change of the setting) is refilled right away – from the grid if charging from the grid is allowed, whatever the price – and never planned below it again. Before, it was only not discharged further and stayed below the reserve as long as grid charging did not pay.
+- "Battery use": cost comes second. Grid power in expensive periods counts 10 ct/kWh extra in the plan, so the battery is charged in cheap hours and covers the day even when losses and wear eat up the price advantage (e.g. 72 % round trip and 6 ct wear with 22.6/32.6 ct). The buffer is sized with this extra too.
+
 ## 0.77.16
 
 - Devices → parameters: after "reset" the empty field showed the value stored so far (e.g. 10000 W) instead of what applies once saved – the value from the sensors or the profile's default (e.g. 20000 W).

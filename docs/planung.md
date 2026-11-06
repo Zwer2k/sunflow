@@ -34,7 +34,7 @@ Sunflow plant neu, sobald neue Preise oder Prognosen vorliegen, jede Viertelstun
 |---|---|---|---|---|
 | Ziel | geringste Stromkosten | wie Ausgewogen, Platz für PV | so wenig Netzbezug wie möglich | wie Ausgewogen, Speicher reicht auch an starken Tagen |
 | Laden aus dem Netz | wenn der Preisunterschied Verluste und Verschleiß übersteigt | kaum vor sonnigen Tagen | nie (außer überfällige Vollladung) | wie Ausgewogen, mit größerem Puffer |
-| Im Plan | Kosten, Puffer für 4 von 5 Tagen | jede eingespeiste kWh zählt 5 ct weniger | jede kWh aus dem Netz zählt 1 € extra | Kosten, Puffer für 19 von 20 Tagen |
+| Im Plan | Kosten, Puffer für 4 von 5 Tagen | jede eingespeiste kWh zählt 5 ct weniger | jede kWh aus dem Netz zählt 1 € extra | Netzbezug in teuren Phasen zählt 10 ct extra, Puffer für 19 von 20 Tagen |
 | Passt zu | dynamischen Tarifen und Zeittarifen | viel PV, wenig Speicher | festem Preis, Unabhängigkeit | Zeittarifen, schwankendem Verbrauch |
 
 - **Ausgewogen** hält Energie für teure Stunden zurück und entlädt dort.
@@ -43,7 +43,10 @@ Sunflow plant neu, sobald neue Preise oder Prognosen vorliegen, jede Viertelstun
 - **Autark** deckt jeden Bedarf sofort aus dem Speicher und gibt Verbrauchern bevorzugt
   PV-Überschuss. Bei Zeittarifen kostet sie mehr, weil günstiger Nachtstrom nicht gespeichert wird.
 - **Speichernutzung** lädt in günstigen Stunden so weit nach, dass der Speicher auch an einem Tag
-  mit deutlich mehr Verbrauch oder weniger Sonne bis zur nächsten günstigen Ladung reicht.
+  mit deutlich mehr Verbrauch oder weniger Sonne bis zur nächsten günstigen Ladung reicht. Die
+  Kosten sind dabei zweitrangig: Netzstrom in teuren Phasen zählt 10 ct extra, so lädt Sunflow
+  auch dann nachts und deckt den Tag aus dem Speicher, wenn Verluste und Verschleiß den
+  Preisvorteil auffressen.
 
 ### Puffer gegen einen Tag über der Prognose
 
@@ -88,7 +91,8 @@ Preisunterschieden nicht aus dem Netz. Das ist Absicht und kein Fehler.
   sie voll stehen. Jede kWh über der Schwelle kostet je Stunde einen kleinen Betrag. Sunflow lädt
   dann möglichst kurz vor dem Bedarf, z. B. am Ende des günstigen Nachtfensters statt ab
   Mitternacht. Beispiel: 4 kWh über 80 % für 10 Stunden kosten bei 0,1 ct rund 4 ct.
-- **Notstrom-Reserve**: In jeder Strategie bleibt dieser Ladestand für Stromausfälle frei.
+- **Notstrom-Reserve**: In jeder Strategie bleibt dieser Ladestand für Stromausfälle frei. Liegt
+  der Speicher darunter, lädt Sunflow ihn vorrangig wieder auf, aus dem Netz, wenn erlaubt.
 
 ## Mehrere Speicher
 
