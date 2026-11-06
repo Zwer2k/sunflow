@@ -25,6 +25,7 @@ class SunflowStandards extends LitElement {
     _agingThreshold: { state: true },
     _agingCost: { state: true },
     _saving: { state: true },
+    _saved: { state: true },
   };
 
   constructor() {
@@ -80,6 +81,10 @@ class SunflowStandards extends LitElement {
       if ("high_soc_threshold_pct" in changes) this._agingThreshold = undefined;
       if ("high_soc_ct_per_kwh_h" in changes) this._agingCost = undefined;
       await this._load();
+      this._error = null;
+      this._saved = true;
+      clearTimeout(this._savedTimer);
+      this._savedTimer = setTimeout(() => (this._saved = false), 2500);
       return true;
     } catch (err) {
       this._error = t("Einstellungen konnten nicht gespeichert werden: {error}", { error: err.message });
@@ -203,7 +208,8 @@ class SunflowStandards extends LitElement {
             <span class="field-label">${t("Ladegrenze im Alltag")}</span>
             <span class="input-unit">
               <input inputmode="decimal" .value=${this._maxSoc ?? toDisplay(settings.max_soc_pct, "%")}
-                @input=${(e) => (this._maxSoc = e.target.value)}>
+                @input=${(e) => (this._maxSoc = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">%</span>
             </span>
             <span class="small muted">${settings.max_soc_mode === "unless_poor_days"
@@ -235,7 +241,8 @@ class SunflowStandards extends LitElement {
             <span class="field-label">${t("Voll laden alle")}</span>
             <span class="input-unit">
               <input inputmode="numeric" placeholder=${t("z. B. {example}", { example: "14" })} .value=${this._fullEvery ?? toDisplay(settings.full_charge_every_days, "")}
-                @input=${(e) => (this._fullEvery = e.target.value)}>
+                @input=${(e) => (this._fullEvery = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">${t("Tage")}</span>
             </span>
             <span class="small muted">${t("Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt.")}</span>
@@ -244,7 +251,8 @@ class SunflowStandards extends LitElement {
             <span class="field-label">${t("Spätestens nach … aus dem Netz")}</span>
             <span class="input-unit">
               <input inputmode="numeric" placeholder=${t("z. B. {example}", { example: "21" })} .value=${this._gridAfter ?? toDisplay(settings.full_charge_grid_after_days, "")}
-                @input=${(e) => (this._gridAfter = e.target.value)}>
+                @input=${(e) => (this._gridAfter = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">${t("Tage")}</span>
             </span>
             <span class="small muted">${t("War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll – auch wenn Netzladen sonst aus ist. Leer = nie.")}</span>
@@ -259,13 +267,15 @@ class SunflowStandards extends LitElement {
                       <span class="muted">${t("über")}</span>
                       <input inputmode="decimal" aria-label=${t("Schwelle in Prozent")}
                         .value=${this._agingThreshold ?? toDisplay(settings.high_soc_threshold_pct, "%")}
-                        @input=${(e) => (this._agingThreshold = e.target.value)}>
+                        @input=${(e) => (this._agingThreshold = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}>
                       <span class="muted">%</span>
                     </span>
                     <span class="input-unit">
                       <input inputmode="decimal" aria-label=${t("Kosten in ct je kWh und Stunde")}
                         .value=${this._agingCost ?? toDisplay(settings.high_soc_ct_per_kwh_h, "ct")}
-                        @input=${(e) => (this._agingCost = e.target.value)}>
+                        @input=${(e) => (this._agingCost = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}>
                       <span class="muted">${t("ct je kWh und Stunde")}</span>
                     </span>`
                 : html`${t("einrechnen")}`}
@@ -281,7 +291,8 @@ class SunflowStandards extends LitElement {
                 ? html`<span class="input-unit">
                     <input inputmode="decimal" aria-label=${t("Notstrom-Reserve in Prozent")}
                       .value=${this._reserve ?? toDisplay(settings.backup_reserve_pct, "%")}
-                      @input=${(e) => (this._reserve = e.target.value)}>
+                      @input=${(e) => (this._reserve = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}>
                     <span class="muted">%</span>
                   </span>`
                 : html`${t("freihalten")}`}
@@ -293,7 +304,8 @@ class SunflowStandards extends LitElement {
             <span class="input-unit">
               <input inputmode="decimal" placeholder=${t("z. B. {example}", { example: "14" })}
                 .value=${this._daily ?? toDisplay(settings.daily_consumption_kwh, "kWh")}
-                @input=${(e) => (this._daily = e.target.value)}>
+                @input=${(e) => (this._daily = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">${t("kWh/Tag")}</span>
             </span>
             <span class="small muted">${t("Gilt nur, solange weniger als 7 Tage Verbrauchsverlauf vorliegen; danach plant Sunflow mit den gemessenen Werten (ab 14 Tagen mit dem gelernten Modell). Ohne große Verbraucher wie Wallbox und Heizstab.")}</span>
@@ -307,7 +319,8 @@ class SunflowStandards extends LitElement {
             <span class="input-unit">
               <input inputmode="decimal"
                 .value=${this._largeLoad ?? toDisplay(settings.large_load_threshold_w === null ? null : settings.large_load_threshold_w / 1000, "kW")}
-                @input=${(e) => (this._largeLoad = e.target.value)}>
+                @input=${(e) => (this._largeLoad = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">kW</span>
             </span>
             <span class="small muted">${t("Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose, damit seltene Spitzen den Alltag nicht verzerren. Wallbox, Heizstab und andere Verbraucher in Sunflow rechnet es ohnehin heraus. Leer = nichts ausklammern.")}</span>
@@ -353,14 +366,16 @@ class SunflowStandards extends LitElement {
                     <span class="field-label">${t("Einspeisung möglichst unter")}</span>
                     <span class="input-unit"><input inputmode="decimal" placeholder=${t("z. B. {example}", { example: "6" })}
                       .value=${this._exportLimit ?? toDisplay(settings.export_limit_w === null ? null : settings.export_limit_w / 1000, "kW")}
-                      @input=${(e) => (this._exportLimit = e.target.value)}><span class="muted">kW</span></span>
+                      @input=${(e) => (this._exportLimit = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}><span class="muted">kW</span></span>
                     <span class="small muted">${t("Der Speicher wird morgens nicht schon voll, sondern nimmt die Mittagsspitze auf; Wallbox und Heizstab laufen bevorzugt dann. Ersetzt keine vorgeschriebene Begrenzung im Wechselrichter (Solarspitzengesetz: oft 60 % der PV-Leistung).")}</span>
                   </label>
                   <label class="field">
                     <span class="field-label">${t("Netzbezug möglichst unter")}</span>
                     <span class="input-unit"><input inputmode="decimal" placeholder=${t("z. B. {example}", { example: "11" })}
                       .value=${this._importLimit ?? toDisplay(settings.import_limit_w === null ? null : settings.import_limit_w / 1000, "kW")}
-                      @input=${(e) => (this._importLimit = e.target.value)}><span class="muted">kW</span></span>
+                      @input=${(e) => (this._importLimit = e.target.value)}
+                @change=${() => this._saveNumbers(this._settings)}><span class="muted">kW</span></span>
                     <span class="small muted">${t("Wallbox, Heizstab und Laden aus dem Netz laufen dann eher nacheinander als gleichzeitig, z. B. damit der Hausanschluss nicht überlastet wird.")}</span>
                   </label>
                 </div>`
@@ -391,13 +406,8 @@ class SunflowStandards extends LitElement {
             <span class="small muted">${t("Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.")}</span>
           </div>
         </div>
-        ${[this._reserve, this._maxSoc, this._fullEvery, this._gridAfter, this._exportLimit, this._importLimit, this._daily, this._largeLoad, this._agingThreshold, this._agingCost].some((v) => v !== undefined)
-          ? html`<div class="actions">
-              <button class="ok" ?disabled=${this._saving} @click=${() => this._saveNumbers(settings)}>
-                ${t("Speichern und neu planen")}
-              </button>
-            </div>`
-          : html`<p class="small muted">${t("Strategie und Netzladen gelten sofort. Zahlenwerte werden nach einer Änderung mit „Speichern und neu planen“ übernommen.")}</p>`}
+        <p class="small muted">${t("Änderungen gelten sofort; Zahlen, sobald du das Feld verlässt oder Enter drückst. Danach plant Sunflow neu.")}</p>
+        ${this._saved ? html`<div class="saved" role="status">${t("Gespeichert – Plan wird neu berechnet")}</div>` : nothing}
       </section>
     `;
   }
@@ -501,7 +511,11 @@ class SunflowStandards extends LitElement {
     .inline input[type="checkbox"] { width: 18px; height: 18px; }
     .aging { display: flex; flex-wrap: wrap; }
     .aging .input-unit { flex: 1 1 140px; }
-    .actions { display: flex; gap: 10px; margin-top: 12px; }
+    .saved {
+      position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30;
+      padding: 8px 14px; border-radius: 8px; background: var(--sf-ok); color: var(--sf-on-ok); font-size: 14px;
+      box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+    }
     .secondary, .ok { min-height: 44px; padding: 0 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     .button-link {
