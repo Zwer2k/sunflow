@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.3
+
+- Live view: the switch between diagram, bars and tiles, the quick controls and today's figures sit together at the bottom of the screen, without the "Today from energy meters" heading (the source shows as tooltip).
+
 ## 0.78.2
 
 - Plan a battery: with an existing battery the table starts with "No battery" – the house without any battery – and a column shows per year what today's battery and each scenario save against none. The saving against today is now labelled as such.
