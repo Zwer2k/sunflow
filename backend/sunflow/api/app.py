@@ -41,6 +41,7 @@ from sunflow.shadow.runner import ShadowRunner
 from sunflow.shadow.store import ShadowStore
 
 from . import mcp
+from .analysis import keep_energy_today
 from .common import _LOGGER, DEFAULT_MAX_EEPROM_WRITES, router
 
 RECONNECT_DELAYS = (1, 2, 5, 10, 30)
@@ -156,6 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.ha, lambda: app.state.profiles.profiles, app.state.controller.journal
         )
         reload_task = asyncio.create_task(_watch_integrations(app))
+        energy_task = asyncio.create_task(keep_energy_today(app))
         peer_task = (
             asyncio.create_task(_watch_peer(app, settings.supervisor_token, settings.port))
             if settings.supervisor_token
@@ -164,9 +166,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            reload_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await reload_task
+            for task in (reload_task, energy_task):
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
             if peer_task is not None:
                 peer_task.cancel()
                 with suppress(asyncio.CancelledError):

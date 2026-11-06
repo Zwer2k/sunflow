@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.14
+
+- Today's energy balance is recomputed in the background shortly after Home Assistant compiles its 5 minute statistics (newer it cannot be), so the live view never waits for it.
+
 ## 0.77.13
 
 - Faster pages: Sunflow follows Home Assistant's state changes instead of fetching all states again for a request a few seconds after the last one (several MB on large installations). The day's energy balance is kept for a minute; an older one is answered at once and refreshed in the background.
