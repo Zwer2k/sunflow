@@ -279,4 +279,7 @@ export default {
   "{days} Tage mit Zählerwerten und Preis. Hochgerechnet aufs Jahr ohne Jahreszeiten – im Winter nutzt ein Speicher weniger PV als im Sommer. Stundenwerte gleichen Bezug und Einspeisung innerhalb einer Stunde aus, die Ersparnis ist daher etwas zu hoch. „Mit Preisoptimierung“ kennt die Preise und den Verbrauch im Voraus – so gut wird keine Planung.": "{days} days with counter values and price. Scaled to a year without seasons – in winter a battery uses less PV than in summer. Hourly values net out import and export within an hour, so the saving is a little too high. “Price optimized” knows prices and consumption in advance – no planning gets that good.",
   "{years} Jahre": "{years} years",
   "„Vorhandenen Speicher übernehmen“ legt deinen Speicher mit seinen Werten als Variante „statt des vorhandenen“ an – ändere dann z. B. Netzladen, Verschleiß oder Leistung, um zu sehen, was das gebracht hätte.": "“Use the existing battery” adds your battery with its values as a scenario “instead of the existing” – then change e.g. grid charging, wear or power to see what that would have brought.",
+  "Verluste / Messdifferenz": "Losses / reading difference",
+  "Messdifferenz": "Reading difference",
+  "Bilanz minus gemessener Abgänge: Wandlungsverluste von Wechselrichter und Speicher und Zeitversatz der Messungen": "Balance minus measured outflows: conversion losses of inverter and battery and readings taken at different moments",
 };

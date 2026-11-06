@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.4
+
+- Live view, bars: what comes in but is not measured going out shows as a hatched "Losses / reading difference" segment with its value and an explanation, instead of an unlabeled grey rest; more measured out than in shows as "Reading difference" in the "From" bar. The house has its own colour instead of grey.
+
 ## 0.78.3
 
 - Live view: the switch between diagram, bars and tiles, the quick controls and today's figures sit together at the bottom of the screen, without the "Today from energy meters" heading (the source shows as tooltip).
