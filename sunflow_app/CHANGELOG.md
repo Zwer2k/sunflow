@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.5
+
+- Live view: a fourth view "House" shows the site as an animated scene – sun (brighter and turning faster with more PV) or moon and stars at night, clouds from the weather, panels shimmering on the roof, the grid pole, the battery with its level, the hot water tank coloured by temperature, the carport with wallbox and car with its level. Glowing flows run from the inverter to each part, thicker and faster with more power; lights go on in the window when the house draws power. Without motion when the system asks for reduced motion.
+
 ## 0.78.4
 
 - Live view, bars: what comes in but is not measured going out shows as a hatched "Losses / reading difference" segment with its value and an explanation, instead of an unlabeled grey rest; more measured out than in shows as "Reading difference" in the "From" bar. The house has its own colour instead of grey.

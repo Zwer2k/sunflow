@@ -22,6 +22,11 @@ Rechts unter dem Energiefluss wählst du die Ansicht, jeder Browser merkt sich s
   Schnellsteuerung.
 - **Kacheln**: eine kleine Kachel je Teil und Verbraucher mit Leistung, Zustand und Ladestand;
   zeigt auch mehr als vier Verbraucher.
+- **Haus**: die Anlage als bewegtes Bild – Sonne (heller und schneller mit mehr PV) oder Mond und
+  Sterne, Wolken nach dem Wetter, Module auf dem Dach, Strommast, Speicher mit Füllstand,
+  Warmwasserspeicher in seiner Temperaturfarbe, Carport mit Wallbox und Auto. Leuchtende Ströme
+  laufen vom Wechselrichter zu jedem Teil, dicker und schneller mit mehr Leistung. „Bewegung
+  reduzieren“ im System schaltet die Bewegung ab.
 
 - **Haus** zeigt den Verbrauch ohne die steuerbaren Verbraucher, darunter „gesamt“ mit ihnen.
 - **Speicher** zeigt Leistung, Richtung und Ladestand; der Ring ist der Ladestand.
