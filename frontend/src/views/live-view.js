@@ -5,6 +5,7 @@ import { dailyRatios, splitFlows } from "../components/flows.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "../components/optimizer-view.js";
 import "../components/quick-controls.js";
+import "../components/house-scene.js";
 import { recall, remember } from "../lib/view-cache.js";
 import { decimal, locale, t, tc } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
@@ -92,6 +93,7 @@ const FLOW_VIEWS = {
   diagram: [t("Diagramm"), "M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM5 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10.5 8.5l-4 7M13.5 8.5l4 7M8 18h8"],
   bars: [t("Balken"), "M3 7h10M15 7h6M3 17h5M10 17h11"],
   tiles: [t("Kacheln"), "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"],
+  house: [t("Haus"), "M3 11l9-8 9 8M5 10v11h14V10M10 21v-6h4v6"],
 };
 const weekday = new Intl.DateTimeFormat(locale(), { weekday: "short" });
 
@@ -386,7 +388,10 @@ class SunflowLive extends LitElement {
     const data = this._flowData(live);
     const view = this._flowView;
     return html`
-      ${view === "bars" ? this._renderBars(live, data) : view === "tiles" ? this._renderTiles(live, data) : this._renderDiagram(live, data)}
+      ${view === "bars" ? this._renderBars(live, data)
+        : view === "tiles" ? this._renderTiles(live, data)
+        : view === "house" ? html`<sf-house-scene .live=${live} .data=${data}></sf-house-scene>`
+        : this._renderDiagram(live, data)}
       ${view !== "tiles" && live.consumers.length > MAX_CONSUMERS
         ? html`<p class="small muted">${t("Weitere Verbraucher:")} ${live.consumers
             .slice(MAX_CONSUMERS)

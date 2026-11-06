@@ -21,6 +21,10 @@ Below the energy flow on the right you choose the view; each browser remembers i
   export), on the same scale with the values below. Fits next to the quick controls.
 - **Tiles**: one small tile per component and load with power, state and level; also shows more
   than four loads.
+- **House**: the site as an animated picture – sun (brighter and faster with more PV) or moon and
+  stars, clouds from the weather, panels on the roof, grid pole, battery with its level, hot water
+  tank in its temperature colour, carport with wallbox and car. Glowing flows run from the inverter
+  to each part, thicker and faster with more power. "Reduce motion" in the system stops the motion.
 
 - **House** shows consumption without the controllable loads; "total" below includes them.
 - **Battery** shows power, direction and state of charge; the ring is the state of charge.
