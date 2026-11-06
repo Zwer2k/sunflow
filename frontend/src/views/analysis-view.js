@@ -450,7 +450,9 @@ class SunflowAnalysis extends LitElement {
     const b = plane.backtest;
     const pct = (v) => `${Math.round(v * 100)} %`;
     const wh = (v) => formatValue(v, "Wh");
-    const better = b && b.by_sun < Math.min(b.raw, b.by_hour);
+    const best = b ? Math.min(b.by_sun, b.by_spread ?? b.by_sun) : null;
+    const better = b && best < Math.min(b.raw, b.by_hour);
+    const weights = c.spread_weights ?? {};
     return html`
       <div class="tiles">
         <div class="tile"><div class="small muted">${t("Klar")}</div><div class="value">${pct(c.clear)}</div>
@@ -458,10 +460,16 @@ class SunflowAnalysis extends LitElement {
         <div class="tile"><div class="small muted">${t("Bewölkt")}</div><div class="value">${pct(c.cloudy)}</div></div>
         ${b
           ? html`<div class="tile ${better ? "now" : ""}"><div class="small muted">${t("Abweichung je Stunde (Backtest)")}</div>
-              <div class="value">${wh(b.by_sun)}</div>
-              <div class="small muted">${t("Rohprognose {raw} · nach Uhrzeit {hour}", { raw: wh(b.raw), hour: wh(b.by_hour) })}</div></div>`
+              <div class="value">${wh(best)}</div>
+              <div class="small muted">${t("Rohprognose {raw} · nach Uhrzeit {hour}", { raw: wh(b.raw), hour: wh(b.by_hour) })}</div>
+              ${b.by_spread !== undefined
+                ? html`<div class="small muted">${t("nach Sonnenstand {sun} · mit Unsicherheit {spread}", { sun: wh(b.by_sun), spread: wh(b.by_spread) })}</div>`
+                : nothing}</div>`
           : nothing}
       </div>
+      ${weights["0"] !== undefined
+        ? html`<p class="small muted">${t("Ist Solcast sehr unsicher (p10 unter 30 % des Mittelwerts), kommt erfahrungsgemäß p10 plus {pct} % des Abstands zum Mittelwert an; die Planung rechnet so.", { pct: Math.round(weights["0"] * 100) })}</p>`
+        : nothing}
       ${this._shadeMap(c)}
     `;
   }

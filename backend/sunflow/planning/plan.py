@@ -591,6 +591,8 @@ class PlanResult:
     care: BatteryCare | None = None
     # Uncorrected PV forecast and forecast cloud coverage per slot (for learning)
     raw_pv: list[float] = field(default_factory=list)
+    # Per slot the corrected range of the forecast (p10, p90), for the chart
+    pv_band: list[tuple[float | None, float | None]] = field(default_factory=list)
     plane_forecasts_now: dict[str, float] = field(default_factory=dict)
     plane_corrections: dict[str, PvCorrection] = field(default_factory=dict)
     clouds: list[float | None] = field(default_factory=list)
@@ -1490,6 +1492,15 @@ async def compute_plan(
         plane.key: [value_at(resample(points, SLOT), slot.start, "power") or 0.0 for slot in inputs]
         for plane, points in zip(used_planes, series, strict=False)
     }
+    # The pessimistic case per plane: how uncertain Solcast is itself
+    plane_slots10 = {
+        plane.key: [value_at(resample(points, SLOT), slot.start, "power10") for slot in inputs]
+        for plane, points in zip(used_planes, series, strict=False)
+    }
+    pv_15 = resample(pv, SLOT)
+    # Range of the forecast (p10 to p90) for the chart, corrected like the forecast but without
+    # leaning towards p10 for uncertainty
+    band = [(value_at(pv_15, slot.start, "power10"), value_at(pv_15, slot.start, "power90")) for slot in inputs]
     weather = await weather_forecast(
         client, weather_entity(config, snapshot), [slot.start for slot in inputs], ("cloud_coverage", "temperature")
     )
@@ -1516,17 +1527,22 @@ async def compute_plan(
             site_factor = site.factor(hour, kind) if site else 1.0
             # Each plane with its own factor (e.g. shading of one roof), the rest with the site's;
             # by sun position with the sun in the middle of the slot
-            factors = {
-                key: sun[key].factor_at(slot.start + SLOT / 2, powers[index], location["latitude"], location["longitude"])
-                if key in sun
-                else own[key].factor(hour, kind)
-                if key in own
-                else site_factor
-                for key, powers in plane_slots.items()
-            }
+            factors, range_factors = {}, {}
+            for key, powers in plane_slots.items():
+                if key in sun:
+                    position = (slot.start + SLOT / 2, powers[index], location["latitude"], location["longitude"])
+                    factors[key] = sun[key].factor_at(*position, plane_slots10[key][index])
+                    range_factors[key] = sun[key].factor_at(*position)
+                else:
+                    factors[key] = range_factors[key] = own[key].factor(hour, kind) if key in own else site_factor
             total = sum(powers[index] for powers in plane_slots.values())
             weighted = sum(factors[key] * powers[index] for key, powers in plane_slots.items())
             factor = weighted / total if total > 0 else site_factor
+            range_factor = (
+                sum(range_factors[key] * powers[index] for key, powers in plane_slots.items()) / total if total > 0 else site_factor
+            )
+            low, high = band[index]
+            band[index] = (low * range_factor if low is not None else None, high * range_factor if high is not None else None)
             low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
             corrected.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
         inputs = corrected
@@ -1597,6 +1613,7 @@ async def compute_plan(
             slot.action, slot.action_power_w = first.action, first.action_power_w
     return PlanResult(
         raw_pv=raw_pv,
+        pv_band=band,
         plane_forecasts_now={key: powers[0] for key, powers in plane_slots.items() if powers},
         plane_corrections=own if config.optimizer.pv_learning else {},
         clouds=clouds,
