@@ -133,7 +133,8 @@ How well do forecasts and decisions match reality?
   against today, scaled to a year (without seasons), cycles per year and, with a price, the
   payback. With an existing battery, **No battery** at the top is the house without any battery;
   the column "vs. no battery per year" shows what your battery today and each scenario save
-  against none – a negative value means the losses cost more than the battery brings. With hourly
+  against none – a negative value means the losses cost more than the battery brings. With a
+  purchase price entered for your battery's wear, "Measured" shows its payback against no battery. With hourly
   values the saving is a little too high, as import and export within an
   hour net out. Sunflow controls nothing here.
 - **Efficiencies**: battery and inverter over 30 days, 90 days or a year.

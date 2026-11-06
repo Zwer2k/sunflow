@@ -138,7 +138,8 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   Kaufpreis die Amortisation. Mit vorhandenem Speicher steht oben zusätzlich **Ohne Speicher**: das
   Haus, wenn es gar keinen Speicher gäbe. Die Spalte „ggü. ohne Speicher pro Jahr“ zeigt, was dein
   heutiger Speicher und jede Variante gegenüber gar keinem sparen; ein negativer Wert heißt, die
-  Verluste kosten mehr, als der Speicher einbringt. Mit Stundenwerten ist die Ersparnis etwas zu hoch, weil Bezug und
+  Verluste kosten mehr, als der Speicher einbringt. Hast du beim Verschleiß deines Speichers einen
+  Kaufpreis angegeben, steht bei „Gemessen“ seine Amortisation gegenüber gar keinem Speicher. Mit Stundenwerten ist die Ersparnis etwas zu hoch, weil Bezug und
   Einspeisung innerhalb einer Stunde verrechnet werden. Sunflow steuert dabei nichts.
 - **Wirkungsgrade**: Speicher und Wechselrichter über 30 Tage, 90 Tage oder ein Jahr.
 - **Lernen**: wie gut die PV-Prognose ankommt (gesamt, je Bewölkung, je Stunde, je Fläche) und
