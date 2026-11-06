@@ -58,7 +58,8 @@ teuren Phase (vor der nächsten günstigen) noch einen Puffer über der Entladeg
 - **Größe**: aus den Schwankungen deines Tagesverbrauchs (je Werktag/Wochenende, gelernt aus
   dem Verlauf; ohne Verlauf 15 %) und der Spanne der PV-Prognose bis p10, soweit diese PV den
   Hausverbrauch decken würde. „Ausgewogen“ reicht damit an etwa 4 von 5 Tagen,
-  „Speichernutzung“ an etwa 19 von 20. Höchstens die Hälfte der nutzbaren Kapazität.
+  „Speichernutzung“ an etwa 19 von 20. Höchstens die Hälfte der nutzbaren Kapazität. Der Puffer
+  liegt über der Notstromreserve, nicht in ihr.
 - **Weich**: Ein fehlender Puffer zählt im Plan halb so viel, wie günstiges Laden je kWh spart.
   Läuft ein Tag über der Prognose, nutzt der Speicher den Puffer also, statt teuer nachzukaufen.
   Und Sunflow kauft für den Puffer nie zum teuren Preis.

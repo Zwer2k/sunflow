@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.9
+
+- Fix: the buffer for a day above the forecast now lies above the backup reserve. While the battery was below the reserve, the buffer was measured from the discharge limit instead, so part of it disappeared in the reserve and the battery was charged too little. Its maximum size also counts from the reserve.
+
 ## 0.77.8
 
 - Settings: a search box above the list of areas finds a setting by its name, by other words for it (e.g. "Akku", "Notstrom", "Tibber"), despite typos, in German and English, and devices by their name. A result opens the area, scrolls to the setting, opens it if folded and highlights it briefly.
