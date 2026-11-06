@@ -115,7 +115,7 @@ How Sunflow plans the home battery. Background in [How Sunflow plans](planning.m
 | Uncertain PV forecast | "Cautious" plans more with the bad case of the forecast (Solcast p10). |
 | Weather for cloud cover | Weather entity used for learning per cloud cover. |
 
-Strategy and grid charging apply immediately. Numbers are applied with **Save and replan**.
+All changes apply immediately, numbers once you leave the field or press Enter. Sunflow then replans; "Saved" confirms it briefly.
 
 **Learning sources** (optional): additional sensors make the learned forecasts more precise. None
 is required. Sunflow suggests sensors by their device class or unit; the inverter's and battery's

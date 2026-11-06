@@ -112,7 +112,7 @@ Wie Sunflow den Hausspeicher plant. Hintergründe stehen unter [So plant Sunflow
 | Unsichere PV-Prognose | Vorsichtig plant mehr mit dem schlechten Fall der Prognose (Solcast p10). |
 | Wetter für die Bewölkung | Wetter-Entität für das Lernen je Bewölkung. |
 
-Strategie und Netzladen gelten sofort. Zahlenwerte übernimmt **Speichern und neu planen**.
+Alle Änderungen gelten sofort, Zahlen, sobald du das Feld verlässt oder Enter drückst. Danach plant Sunflow neu; „Gespeichert“ bestätigt es kurz.
 
 **Lernquellen** (optional): Zusätzliche Sensoren machen die gelernten Prognosen genauer. Keiner
 ist nötig. Sunflow schlägt Sensoren anhand ihrer Geräteklasse oder Einheit vor; die eigenen

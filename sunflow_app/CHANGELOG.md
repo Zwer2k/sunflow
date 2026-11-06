@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.11
+
+- Settings → Planning: numbers are saved like the switches, as soon as you leave the field or press Enter, instead of with a separate "Save and replan" button; a short "Saved" confirms it. An invalid value stays in the field with a message.
+
 ## 0.77.10
 
 - Planning view right after a change in the settings or the control tab: it waits for the new plan (at most 20 seconds) instead of showing the plan from before the change for a few seconds.
