@@ -254,6 +254,38 @@ class WearCalculation(BaseModel):
         return self.price_eur * 100 / lifetime_kwh
 
 
+class BatteryScenario(BaseModel):
+    """A battery one might buy, for the simulation over the measured history (never controlled)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    id: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=60)
+    capacity_kwh: float = Field(gt=0, le=1000)
+    usable_pct: float = Field(default=90, gt=0, le=100)
+    max_charge_kw: float = Field(gt=0, le=1000)
+    max_discharge_kw: float = Field(gt=0, le=1000)
+    # Round trip at the battery's terminals and AC/DC conversion per direction
+    efficiency_pct: float = Field(default=93, ge=40, le=100)
+    inverter_efficiency_pct: float = Field(default=96.5, ge=80, le=100)
+    # "add": next to the existing battery, "replace": instead of it
+    mode: Literal["add", "replace"] = "add"
+    price_eur: float | None = Field(default=None, ge=0)
+    cycles: float = Field(default=6000, gt=0)
+    # Wear per discharged kWh as given; without it derived from price and cycles
+    wear_ct: float | None = Field(default=None, ge=0, le=100)
+    # The price optimized run may charge from the grid
+    grid_charge: bool = True
+
+    def wear_ct_per_kwh(self) -> float:
+        """Price per discharged kWh over the rated cycles; 0 without a price."""
+        if self.wear_ct is not None:
+            return self.wear_ct
+        if not self.price_eur:
+            return 0.0
+        return self.price_eur / (self.cycles * self.capacity_kwh * self.usable_pct / 100) * 100
+
+
 class BatteryCost(BaseModel):
     """Wear of one battery: what a discharged kWh costs and whether planning counts it."""
 
@@ -495,6 +527,8 @@ class SunflowConfig(BaseModel):
     battery_modules: dict[str, list[str]] = Field(default_factory=dict)
     # By battery device id: its wear (missing: the planning-wide value in optimizer)
     battery_costs: dict[str, BatteryCost] = Field(default_factory=dict)
+    # Batteries one might buy, simulated over the history in the analysis tab
+    battery_scenarios: list[BatteryScenario] = Field(default_factory=list)
     # By battery device id: temporary hold or self-regulation from the control tab
     battery_overrides: dict[str, BatteryOverride] = Field(default_factory=dict)
     # By plant id: what its feed-in earns

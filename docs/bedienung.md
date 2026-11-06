@@ -111,6 +111,18 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   für heute, 7 oder 30 Tage, aus den Energiezählern der Geräte.
 - **Kosten pro Tag**: Nettokosten (Bezug minus Einspeisung) gegenüber „ohne PV und Speicher“
   und die Ersparnis, über 30 oder 90 Tage.
+- **Speicher planen**: rechnet mit deinen gemessenen Netz- und Speicherwerten und dem Preisverlauf
+  der letzten 30 Tage, 90 Tage oder eines Jahres durch, was ein Speicher gespart hätte. Je Variante
+  gibst du Kapazität, nutzbaren Anteil, Lade- und Entladeleistung, Wirkungsgrad von Speicher und
+  Wechselrichter, Kaufpreis und Zyklen (daraus der Verschleiß) an und ob er **zusätzlich** zum
+  vorhandenen oder **statt** seiner arbeiten soll. **Vorhandenen Speicher übernehmen** legt deinen
+  Speicher mit seinen Werten an, so kannst du andere Einstellungen (Netzladen, Verschleiß,
+  Leistung) rückblickend durchrechnen. Jede Variante wird zweimal gerechnet: als reiner
+  Eigenverbrauch und mit Preisoptimierung, die Preise und Verbrauch im Voraus kennt (eine
+  Obergrenze, die keine Planung erreicht). Die Tabelle zeigt Bezug, Einspeisung, Stromkosten,
+  Ersparnis gegenüber heute, aufs Jahr hochgerechnet (ohne Jahreszeiten), Zyklen pro Jahr und mit
+  Kaufpreis die Amortisation. Mit Stundenwerten ist die Ersparnis etwas zu hoch, weil Bezug und
+  Einspeisung innerhalb einer Stunde verrechnet werden. Sunflow steuert dabei nichts.
 - **Wirkungsgrade**: Speicher und Wechselrichter über 30 Tage, 90 Tage oder ein Jahr.
 - **Lernen**: wie gut die PV-Prognose ankommt (gesamt, je Bewölkung, je Stunde, je Fläche) und
   wie weit das Modell für den Hausverbrauch ist. Je Dachfläche setzt „Neu lernen ab heute“ das

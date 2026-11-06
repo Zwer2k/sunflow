@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.0
+
+- Analysis → "Plan a battery": scenarios of a battery one might buy – capacity, usable share, power, battery and inverter efficiency, price and cycles – simulated over the measured grid and battery values and the price history of the last 30 days, 90 days or a year, in addition to the existing battery or instead of it. Each as plain self-consumption and price optimized (with prices and consumption known in advance), with import, export, cost, saving against today, per year, cycles per year and payback. "Use the existing battery" adds the existing one with its values to work out other settings in hindsight.
+
 ## 0.77.18
 
 - Planning: of the running quarter hour only the rest counts. Planned at 17:28, the 17:15 slot moves two minutes' worth of energy instead of 15 – before, e.g. refilling the backup reserve looked done within minutes.

@@ -110,6 +110,17 @@ How well do forecasts and decisions match reality?
   battery and efficiency for today, 7 or 30 days, from the devices' energy meters.
 - **Cost per day**: net cost (import minus export) compared to "without PV and
   battery", and the savings, over 30 or 90 days.
+- **Plan a battery**: works out with your measured grid and battery values and the price history
+  of the last 30 days, 90 days or a year what a battery would have saved. Per scenario you enter
+  capacity, usable share, charge and discharge power, battery and inverter efficiency, purchase
+  price and cycles (giving the wear) and whether it works **in addition** to the existing battery
+  or **instead** of it. **Use the existing battery** adds your battery with its values, so you can
+  work out other settings (grid charging, wear, power) in hindsight. Each scenario is calculated
+  twice: as plain self-consumption and price optimized, knowing prices and consumption in advance
+  (an upper bound no planning reaches). The table shows import, export, electricity cost, saving
+  against today, scaled to a year (without seasons), cycles per year and, with a price, the
+  payback. With hourly values the saving is a little too high, as import and export within an
+  hour net out. Sunflow controls nothing here.
 - **Efficiencies**: battery and inverter over 30 days, 90 days or a year.
 - **Learning**: how much of the PV forecast actually arrives (overall, per cloud cover,
   per hour, per plane) and how far the house consumption model is. Per roof plane, "Relearn from

@@ -834,3 +834,20 @@ async def test_todays_energy_is_recomputed_after_each_statistics_compilation(mon
 
     assert 0 <= waits[0] <= timedelta(minutes=5).total_seconds()
     assert app.state.kept_fresh[("energy", "today")][1] == {"period": "today"}
+
+
+def test_battery_scenarios_are_stored_with_unique_ids(tmp_path: Path) -> None:
+    """Scenarios are kept as given; two with the same id are refused."""
+    from sunflow.config.store import ConfigStore
+
+    store = ConfigStore(tmp_path)
+    app = create_app()
+    app.state.store = store
+    client = TestClient(app)
+    scenario = {"id": "a", "name": "10 kWh", "capacity_kwh": 10, "max_charge_kw": 5, "max_discharge_kw": 5, "price_eur": 6000}
+
+    stored = client.put("/api/v1/config/battery-scenarios", json=[scenario]).json()
+
+    assert stored[0]["mode"] == "add"
+    assert store.load().battery_scenarios[0].wear_ct_per_kwh() == pytest.approx(6000 / (6000 * 9) * 100)
+    assert client.put("/api/v1/config/battery-scenarios", json=[scenario, scenario]).status_code == 422
