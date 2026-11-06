@@ -232,8 +232,11 @@ class SunflowLive extends LitElement {
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${live === null && !this._error ? html`<p class="muted">${t("Lade Live-Werte …")}</p>` : nothing}
       ${live ? this._renderFlow(live) : nothing}
-      <sf-quick-controls></sf-quick-controls>
-      ${this._renderToday()}
+      <div class="dock">
+        ${live ? this._renderFlowFoot(live) : nothing}
+        <sf-quick-controls></sf-quick-controls>
+        ${this._renderToday()}
+      </div>
       ${this._optimizers
         ? html`<sf-optimizer-view .string=${this._optimizers.key} .heading=${t("Optimierer · {name}", { name: this._optimizers.name })}
             @close=${() => (this._optimizers = null)}></sf-optimizer-view>`
@@ -358,11 +361,10 @@ class SunflowLive extends LitElement {
     };
   }
 
-  _renderFlow(live) {
-    const data = this._flowData(live);
+  /** Losses and the switch between diagram, bars and tiles; docked above today's figures. */
+  _renderFlowFoot(live) {
     const view = this._flowView;
     return html`
-      ${view === "bars" ? this._renderBars(live, data) : view === "tiles" ? this._renderTiles(live, data) : this._renderDiagram(live, data)}
       <div class="flow-foot">
         ${live.losses_w !== null && live.losses_w !== undefined
           ? html`<p class="small muted" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>${t("Verluste Wechselrichter/Speicher: {power} (Ø letzte Minuten)", { power: formatValue(live.losses_w, "W") })}</p>`
@@ -375,6 +377,14 @@ class SunflowLive extends LitElement {
           )}
         </div>
       </div>
+    `;
+  }
+
+  _renderFlow(live) {
+    const data = this._flowData(live);
+    const view = this._flowView;
+    return html`
+      ${view === "bars" ? this._renderBars(live, data) : view === "tiles" ? this._renderTiles(live, data) : this._renderDiagram(live, data)}
       ${view !== "tiles" && live.consumers.length > MAX_CONSUMERS
         ? html`<p class="small muted">${t("Weitere Verbraucher:")} ${live.consumers
             .slice(MAX_CONSUMERS)
@@ -629,16 +639,15 @@ class SunflowLive extends LitElement {
     const today = this._today;
     if (!today) {
       return this._todayError
-        ? html`<section class="today"><h2>${t("Heute")}</h2>
-            <p class="small muted">${t("Tageswerte gerade nicht abrufbar ({error}) – neuer Versuch in Kürze.", { error: this._todayError })}</p></section>`
+        ? html`<p class="small muted">${t("Tageswerte gerade nicht abrufbar ({error}) – neuer Versuch in Kürze.", { error: this._todayError })}</p>`
         : nothing;
     }
     const kwh = (v) => formatValue(v * 1000, "Wh");
     return html`
-      <section class="today">
-        <h2>${t("Heute")} <span class="small muted source">${t("aus {source}", { source: today.source })}${this._todayError
-          ? html` · <span class="warn-text" title=${this._todayError}>${t("nicht aktuell, Abruf fehlgeschlagen")}</span>`
-          : nothing}</span></h2>
+      <section class="today" aria-label=${t("Heute")} title=${t("Heute aus {source}", { source: today.source })}>
+        ${this._todayError
+          ? html`<p class="small warn-text" title=${this._todayError}>${t("Tageswerte nicht aktuell, Abruf fehlgeschlagen")}</p>`
+          : nothing}
         <div class="tiles">
           <div class="tile"><div class="small muted">${t("PV erzeugt")}</div><div class="value">${kwh(today.pv)}</div></div>
           <div class="tile"><div class="small muted">${t("Verbraucht")}</div><div class="value">${kwh(today.consumption)}</div></div>
@@ -692,7 +701,8 @@ class SunflowLive extends LitElement {
     .part-power { font-size: 10px; fill: var(--sf-muted); font-variant-numeric: tabular-nums; }
     /* Fills the screen: the diagram on top, today's figures at the bottom */
     :host { display: flex; flex-direction: column; gap: 16px; min-height: calc(100dvh - 110px); }
-    .today { margin-top: auto; }
+    /* Losses, view switch, quick controls and today's figures sit together at the bottom */
+    .dock { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
     @media (max-width: 700px) {
       /* Below the content sits the fixed menu bar */
       :host { min-height: calc(100dvh - 96px - env(safe-area-inset-bottom)); }
@@ -783,7 +793,7 @@ class SunflowLive extends LitElement {
     }
     .weather-hours li .small { font-size: 11px; }
     .soc-ring { fill: none; stroke-width: 4; stroke-linecap: round; }
-    .flow-foot { display: flex; align-items: center; gap: 8px; margin-top: -8px; }
+    .flow-foot { display: flex; align-items: center; gap: 8px; }
     .flow-switch { margin-left: auto; flex: none; }
     .flow-switch button { display: flex; align-items: center; min-width: 32px; justify-content: center; }
     .bars { display: flex; flex-direction: column; gap: 12px; }
