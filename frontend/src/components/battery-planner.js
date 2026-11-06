@@ -174,7 +174,10 @@ class SunflowBatteryPlanner extends LitElement {
                 : nothing}
               <tr class="measured"><td>${t("Gemessen (heute)")}</td><td></td><td>${kwh(result.measured.imported_kwh)}</td>
                 <td>${kwh(result.measured.exported_kwh)}</td><td>${euro.format(result.measured.cost)}</td><td></td><td></td>
-                ${none ? html`<td class=${result.measured.saving_vs_none_per_year < 0 ? "worse" : ""}>${euro.format(result.measured.saving_vs_none_per_year)}</td>` : nothing}<td></td><td></td></tr>
+                ${none ? html`<td class=${result.measured.saving_vs_none_per_year < 0 ? "worse" : ""}>${euro.format(result.measured.saving_vs_none_per_year)}</td>` : nothing}<td></td>
+                <td title=${none ? t("Kaufpreis aus dem Verschleiß des Speichers gegenüber gar keinem Speicher") : ""}>${result.measured.payback_years
+                  ? t("{years} Jahre", { years: decimal(result.measured.payback_years.toFixed(1)) })
+                  : none ? "–" : ""}</td></tr>
               ${result.scenarios.flatMap((s) => Object.entries(RUNS).map(([key, label], i) => {
                 const run = s[key];
                 return html`<tr>

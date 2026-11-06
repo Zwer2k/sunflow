@@ -91,6 +91,7 @@ export default {
   "ggü. ohne Speicher pro Jahr": "vs. no battery per year",
   "Was gegenüber einem Haus ganz ohne Speicher gespart wird, aufs Jahr gerechnet": "What is saved against a house with no battery at all, per year",
   "Ohne Speicher": "No battery",
+  "Kaufpreis aus dem Verschleiß des Speichers gegenüber gar keinem Speicher": "Purchase price from the battery's wear setting, against no battery at all",
   "Balken": "Bars",
   "Kacheln": "Tiles",
   "Ansicht Energiefluss": "Energy flow view",

@@ -202,8 +202,17 @@ def without_battery(hours: list[Hour]) -> Run:
     return run
 
 
-def simulate(hours: list[Hour], scenarios: list[BatteryScenario]) -> dict[str, Any]:
-    """Measured operation, the house without any battery and, per scenario, both ways of running the battery."""
+def _payback(price: float | None, saving_per_year: float) -> float | None:
+    return price / saving_per_year if price and saving_per_year > 0 else None
+
+
+def simulate(
+    hours: list[Hour], scenarios: list[BatteryScenario], existing_price: float | None = None
+) -> dict[str, Any]:
+    """Measured operation, the house without any battery and, per scenario, both ways of running the battery.
+
+    The existing battery pays back against no battery at all, a scenario against today.
+    """
     measured = Run()
     for hour in hours:
         measured.add(hour.imported, hour.exported, hour)
@@ -222,14 +231,18 @@ def simulate(hours: list[Hour], scenarios: list[BatteryScenario]) -> dict[str, A
                 "saving_per_year": saving * year,
                 "saving_vs_none_per_year": (none.cost - run.cost) * year,
                 "cycles_per_year": run.discharged_wh / 1000 / usable * year if usable else None,
-                "payback_years": scenario.price_eur / (saving * year) if scenario.price_eur and saving > 0 else None,
+                "payback_years": _payback(scenario.price_eur, saving * year),
             }
         results.append(entry)
     return {
         "days": days,
         "start": hours[0].start.isoformat() if hours else None,
         "end": (hours[-1].start + timedelta(hours=1)).isoformat() if hours else None,
-        "measured": measured.as_dict() | {"saving_vs_none_per_year": (none.cost - measured.cost) * year},
+        "measured": measured.as_dict()
+        | {
+            "saving_vs_none_per_year": (none.cost - measured.cost) * year,
+            "payback_years": _payback(existing_price, (none.cost - measured.cost) * year),
+        },
         "without_battery": none.as_dict(),
         "has_battery": any(h.charged or h.discharged for h in hours),
         "scenarios": results,

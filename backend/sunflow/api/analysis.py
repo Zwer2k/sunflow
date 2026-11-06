@@ -318,8 +318,11 @@ async def get_battery_simulation(request: Request, days: Annotated[int, Query(ge
             days,
             await _local_tz(request),
         )
+        # Purchase prices entered for the wear of the existing batteries
+        costs = [config.battery_cost(d.id) for d in config.devices if controls_battery(profiles[d.profile])]
+        prices = [c.calculation.price_eur for c in costs if c.calculation]
         # Optimizing day by day takes seconds: off the event loop
-        return await asyncio.to_thread(simulate, hours, scenarios)
+        return await asyncio.to_thread(simulate, hours, scenarios, sum(prices) or None)
 
     key = ("battery-scenarios", days, tuple(s.model_dump_json() for s in scenarios))
     try:

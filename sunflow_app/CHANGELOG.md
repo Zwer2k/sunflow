@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.3
+
+- Plan a battery: the measured row shows the payback of today's battery against no battery at all, from the purchase price entered for its wear.
+
 ## 0.78.6
 
 - Live view, tiles: a "Losses" tile with the inverter and battery losses – the average of the last minutes with a consumption meter, else what the balance leaves right now (including reading differences, as in the bars).

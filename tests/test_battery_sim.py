@@ -104,3 +104,16 @@ def test_without_battery_takes_out_the_existing_one() -> None:
     assert result["measured"]["saving_vs_none_per_year"] == pytest.approx((none.cost - result["measured"]["cost"]) * 365 / 2)
     run = result["scenarios"][0]["self_consumption"]
     assert run["saving_vs_none_per_year"] == pytest.approx((none.cost - run["cost"]) * 365 / 2)
+
+
+@pytest.mark.parametrize(
+    ("price", "has_payback"), [pytest.param(6000.0, True, id="price"), pytest.param(None, False, id="no-price")]
+)
+def test_existing_battery_pays_back_against_none(price: float | None, has_payback: bool) -> None:
+    """The battery of today pays back with what it saves against no battery at all."""
+    result = simulate(_days(7, charged=1000, discharged=900), [], existing_price=price)
+
+    measured = result["measured"]
+    assert measured["saving_vs_none_per_year"] > 0
+    assert (measured["payback_years"] is not None) is has_payback
+    assert measured["payback_years"] == (pytest.approx(6000 / measured["saving_vs_none_per_year"]) if has_payback else None)
