@@ -59,6 +59,8 @@ const ICONS = {
   vehicle: "M3 16v-4l2-5h14l2 5v4zM3 16v3h3v-3M18 16v3h3v-3M7 12h0M17 12h0",
   heater: "M12 3c3 4 5 6 5 10a5 5 0 0 1-10 0c0-4 2-6 5-10zM12 13v4",
   load: "M13 2L4 14h7l-1 8 9-12h-7z",
+  // Heat rising: what is lost in conversion
+  losses: "M8 20c-2-3 2-5 0-8s2-5 0-8M12 20c-2-3 2-5 0-8s2-5 0-8M16 20c-2-3 2-5 0-8s2-5 0-8",
 };
 
 const dayFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -407,27 +409,31 @@ class SunflowLive extends LitElement {
       ["grid", t("Netzbezug"), imported, COLOR.grid, displays.grid],
     ].filter(Boolean);
     const sinks = [
-      ["home", t("Haus"), homeBase, "var(--sf-muted)", displays.load],
+      ["home", t("Haus"), homeBase, COLOR.home, displays.load],
       ...consumers.map((c, i) => [c.kind in ICONS ? c.kind : "load", c.name, Math.max(c.power_w ?? 0, 0), COLOR.consumers[i], c.display]),
       battery ? ["battery", `${t("Batterie")}${soc}`, charge, COLOR.battery, battery.display] : null,
       ["grid", t("Einspeisung"), exported, COLOR.grid, displays.grid],
     ].filter(Boolean);
-    const total = Math.max(
-      sources.reduce((s, [, , w]) => s + w, 0),
-      sinks.reduce((s, [, , w]) => s + w, 0),
-      ACTIVE_W,
-    );
+    const sum = (parts) => parts.reduce((s, [, , w]) => s + w, 0);
+    // What comes in but is not measured going out: mostly conversion losses, partly readings taken
+    // at different moments; the other way round (more out than in) it can only be the readings
+    const rest = sum(sources) - sum(sinks);
+    if (rest > ACTIVE_W) sinks.push(["losses", t("Verluste / Messdifferenz"), rest, "var(--sf-muted)", null, true]);
+    if (-rest > ACTIVE_W) sources.push(["losses", t("Messdifferenz"), -rest, "var(--sf-muted)", null, true]);
+    const total = Math.max(sum(sources), sum(sinks), ACTIVE_W);
+    const restTitle = t("Bilanz minus gemessener Abgänge: Wandlungsverluste von Wechselrichter und Speicher und Zeitversatz der Messungen");
     const row = (heading, parts) => {
       const active = parts.filter(([, , w]) => w > ACTIVE_W);
       return html`<div class="bar-row">
         <div class="bar-head small muted">${heading}</div>
         <div class="bar" aria-hidden="true">
-          ${active.map(([, label, w, color]) => html`<span class="segment" style="flex-grow: ${w}; background: ${color}"
-            title="${label}: ${formatValue(w, "W")}"></span>`)}
-          <span class="segment rest" style="flex-grow: ${Math.max(total - active.reduce((s, [, , w]) => s + w, 0), 0)}"></span>
+          ${active.map(([, label, w, color, , unknown]) => html`<span class="segment ${unknown ? "unknown" : ""}"
+            style="flex-grow: ${w}; ${unknown ? "" : `background: ${color}`}" title="${label}: ${formatValue(w, "W")}"></span>`)}
+          <span class="segment" style="flex-grow: ${Math.max(total - sum(active), 0)}"></span>
         </div>
         <ul class="bar-legend">
-          ${parts.map(([icon, label, w, color, display]) => html`<li class=${w > ACTIVE_W ? "" : "idle"}>
+          ${parts.map(([icon, label, w, color, display, unknown]) => html`<li class=${w > ACTIVE_W ? "" : "idle"}
+            title=${unknown ? restTitle : nothing}>
             <svg viewBox="0 0 24 24" class="mini-icon" style="stroke: ${color}" aria-hidden="true"><path d=${ICONS[icon]}></path></svg>
             <span>${label}</span> <strong>${formatPower(w, display)}</strong>
           </li>`)}
@@ -800,7 +806,10 @@ class SunflowLive extends LitElement {
     .bar-row { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 4px 10px; }
     .bar { display: flex; gap: 2px; height: 16px; }
     .segment { min-width: 0; border-radius: 4px; }
-    .segment.rest { background: var(--sf-subtle); }
+    .segment.unknown {
+      background: repeating-linear-gradient(135deg, var(--sf-muted) 0 3px, transparent 3px 6px);
+      box-shadow: inset 0 0 0 1px var(--sf-muted);
+    }
     .bar-legend {
       grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px;
     }
