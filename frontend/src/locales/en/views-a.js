@@ -283,4 +283,7 @@ export default {
   "Messdifferenz": "Reading difference",
   "Bilanz minus gemessener Abgänge: Wandlungsverluste von Wechselrichter und Speicher und Zeitversatz der Messungen": "Balance minus measured outflows: conversion losses of inverter and battery and readings taken at different moments",
   "Auto": "Car",
+  "Ø letzte Minuten": "Ø last minutes",
+  "jetzt, mit Messdifferenz": "now, incl. reading difference",
+  "Verluste": "Losses",
 };

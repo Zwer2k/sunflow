@@ -464,6 +464,10 @@ class SunflowLive extends LitElement {
       ${level === null ? nothing : html`<div class="level" aria-hidden="true"><span style="width: ${Math.min(Math.max(level, 0), 100)}%"></span></div>`}
     </div>`;
     const consumerColor = (i) => COLOR.consumers[Math.min(i, COLOR.consumers.length - 1)];
+    // The average of the last minutes where measured, else what the balance leaves now (as in the bars)
+    const averaged = live.losses_w !== null && live.losses_w !== undefined;
+    const balance = Math.max(live.pv_w ?? 0, 0) - (battery?.power_w ?? 0) + (live.grid_w ?? 0) - flows.house;
+    const losses = averaged ? Math.max(live.losses_w, 0) : hasGrid && balance > ACTIVE_W ? balance : null;
     return html`<section class="flow-tiles" aria-label=${t("Energiefluss")}>
       ${hasPv
         ? tile("pv", COLOR.pv, "PV", formatPower(live.pv_w, pvDisplay),
@@ -484,6 +488,11 @@ class SunflowLive extends LitElement {
         return tile(c.kind in ICONS ? c.kind : "load", consumerColor(i), c.name, formatPower(c.power_w ?? 0, c.display), detail,
           c.level_unit === "°C" ? null : level);
       })}
+      ${losses !== null
+        ? html`<div class="tile-wrap" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>
+            ${tile("losses", "var(--sf-muted)", t("Verluste"), formatPower(losses),
+              averaged ? t("Ø letzte Minuten") : t("jetzt, mit Messdifferenz"))}</div>`
+        : nothing}
     </section>`;
   }
 
@@ -822,6 +831,7 @@ class SunflowLive extends LitElement {
     .bar-legend li.idle { color: var(--sf-muted); }
     .bar-legend strong { font-weight: 600; font-variant-numeric: tabular-nums; }
     .mini-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .tile-wrap { display: grid; }
     .flow-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
     .flow-tile {
       display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; min-width: 0;
