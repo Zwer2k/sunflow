@@ -159,3 +159,31 @@ def test_planning_uses_the_current_level() -> None:
     correction.level = 0.4
 
     assert correction.factor_at(noon, 1800, LAT, LON) == pytest.approx(clean * 0.4)
+
+
+def test_uncertain_forecasts_lean_towards_p10() -> None:
+    """On grey days Solcast's p50 is far too high while p10 is close: the weight learns how far to trust p50."""
+    from sunflow.planning.pv_sun import backtest, fit_spread, spread_class
+
+    forecast, measured, forecast10 = {}, {}, {}
+    for hour in range(200 * 24):
+        start = START + timedelta(hours=hour)
+        elevation, _ = sun_position(start + timedelta(minutes=30), LAT, LON)
+        if elevation <= 0:
+            continue
+        p50 = 2000 * math.sin(math.radians(elevation))
+        # Two grey days in five
+        day_grey = start.date().toordinal() % 5 < 2
+        forecast[start] = p50
+        forecast10[start] = p50 * (0.15 if day_grey else 0.8)
+        measured[start] = p50 * (0.2 if day_grey else 0.95)
+    samples = samples_from(forecast, measured, LAT, LON, forecast10)
+
+    correction = fit(samples)
+    weights = fit_spread(samples, correction)
+
+    assert spread_class(1000, 150) == 0 and spread_class(1000, 800) == 2
+    assert weights[0] < 0.2
+    result = backtest(samples, UTC)
+    assert result is not None
+    assert result["by_spread"] < result["by_sun"]

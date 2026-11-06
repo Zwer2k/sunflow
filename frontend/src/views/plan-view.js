@@ -426,6 +426,10 @@ class SunflowPlan extends LitElement {
         <h3>${t("PV-Erzeugung und Hausverbrauch")}</h3>
         <div class="legend">
           <span class="legend-item">${this._legendButton("pv", SERIES_COLORS[1], t("PV-Erzeugung"))}
+            ${plan.pv_band?.some((b) => b[0] !== null && b[1] !== null)
+              ? html`<span class="muted" title=${t("Solcast gibt neben dem Mittelwert einen vorsichtigen (p10) und einen günstigen Fall (p90) an; das Band zeigt den Bereich, korrigiert wie die Prognose.")}>
+                  <span class="band-swatch" style="background:${SERIES_COLORS[1]}"></span>${t("Bandbreite p10–p90")}</span>`
+              : nothing}
             ${plan.pv_correction
               ? html`<span class="muted">${t("(Prognose an die Anlage angepasst: Ø {pct} % aus {days} Tagen)", { pct: Math.round(plan.pv_correction.overall * 100), days: plan.pv_correction.days })}</span>`
               : nothing}</span>
@@ -509,6 +513,13 @@ class SunflowPlan extends LitElement {
             now: nowDate,
             range: this._range,
             ...this._scaling("power"),
+            bands: !this._focus || this._focus === "pv"
+              ? [{
+                  name: t("PV Bandbreite (p10–p90)"),
+                  color: SERIES_COLORS[1],
+                  points: slots.map((s, i) => ({ start: s.start, end: s.end, low: plan.pv_band?.[i]?.[0], high: plan.pv_band?.[i]?.[1] })),
+                }]
+              : [],
           },
         )}
       </section>
@@ -1032,6 +1043,7 @@ class SunflowPlan extends LitElement {
   }
 
   static styles = css`
+    .band-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; opacity: 0.25; margin: 0 4px 0 8px; vertical-align: middle; }
     :host { display: flex; flex-direction: column; gap: 16px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }

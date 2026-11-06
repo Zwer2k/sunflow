@@ -187,15 +187,21 @@ let clipCount = 0;
 
 export function lineChart(
   series,
-  { label, formatY, yMax: fixedMax, yMin = 0, now = null, limits = [], scaleMax = null, onScale = null, range = null },
+  { label, formatY, yMax: fixedMax, yMin = 0, now = null, limits = [], scaleMax = null, onScale = null, range = null, bands = [] },
 ) {
   fit();
   if (range) {
     // A chosen time window (scrolling through days): only what lies in it, the axis exactly it
     const inside = (p) => new Date(p.end) > range.start && new Date(p.start) < range.end;
     series = series.map((s) => ({ ...s, points: s.points.filter(inside) }));
+    bands = bands.map((b) => ({ ...b, points: b.points.filter(inside) }));
   }
-  const all = series.flatMap((s) => s.points).filter((p) => p.value !== null && p.value !== undefined);
+  // Bands (a range around a line, e.g. p10 to p90): [{name, color, points: [{start, end, low, high}]}]
+  bands = bands.map((b) => ({ ...b, points: b.points.filter((p) => p.low !== null && p.low !== undefined && p.high !== null && p.high !== undefined) }));
+  const all = [
+    ...series.flatMap((s) => s.points).filter((p) => p.value !== null && p.value !== undefined),
+    ...bands.flatMap((b) => b.points.map((p) => ({ ...p, value: p.high }))),
+  ];
   if (!all.length) return nothing;
   const start = range?.start ?? new Date(Math.min(...series.flatMap((s) => s.points.map((p) => new Date(p.start)))));
   const end = range?.end ?? new Date(Math.max(...series.flatMap((s) => s.points.map((p) => new Date(p.end)))));
@@ -230,6 +236,19 @@ export function lineChart(
       slots.set(p.start, slot);
     }
   }
+  for (const b of bands) {
+    for (const p of b.points) {
+      const slot = slots.get(p.start) ?? { start: new Date(p.start), end: new Date(p.end), values: [] };
+      slot.values.push(`${b.name} ${formatY(p.low)} – ${formatY(p.high)}`);
+      slots.set(p.start, slot);
+    }
+  }
+  const bandPath = (points) => {
+    const mid = (p) => (x(new Date(p.start)) + x(new Date(p.end))) / 2;
+    const top = points.map((p) => `${mid(p)},${y(p.high)}`);
+    const bottom = [...points].reverse().map((p) => `${mid(p)},${y(Math.max(p.low, scale.min ?? yMin))}`);
+    return points.length > 1 ? `M${top.join(" L")} L${bottom.join(" L")} Z` : "";
+  };
   const nowX = now ? x(now) : null;
   return svg`
     <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${label}>
@@ -249,6 +268,7 @@ export function lineChart(
         `,
       )}
       <g clip-path=${zoomed ? `url(#${clip})` : nothing}>
+      ${bands.map((b) => svg`<path d=${bandPath(b.points)} style="fill: ${b.color}" fill-opacity="0.12" stroke="none"></path>`)}
       ${series.flatMap((s) => isolated(s.points).map(
         (p) => svg`<circle cx=${(x(new Date(p.start)) + x(new Date(p.end))) / 2} cy=${y(p.value)} r="4"
           style="fill: ${s.color}" fill-opacity=${s.dim ? 0.15 : 1}></circle>`,

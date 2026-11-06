@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.77.5
+
+- PV by sun position: Sunflow also learns per plane how far the measurement lies towards Solcast's cautious case (p10) when Solcast itself is uncertain (p10 far below the mean, e.g. low stratus in November), and plans with it where this is better in the backtest. The soiling check uses the same expectation, so a grey week is not taken for leaves.
+- Planning chart: the PV forecast has a band from p10 to p90, corrected like the forecast.
+
 ## 0.77.4
 
 - Charge battery (e-bike …): a charge the plan switches off before the charger is full goes on with the rest of the energy instead of a whole charge, so later plans no longer push it further back. Without an SoC entity the planned time has a 25 % reserve in case a charge takes longer than the learned mean; the charger is switched off anyway once it draws no more power.

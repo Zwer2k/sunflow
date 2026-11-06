@@ -96,6 +96,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "slots": [asdict(slot) for slot in plan.slots],
         # The forecast as its source delivers it, before learning and nowcast
         "raw_pv": result.raw_pv[: len(plan.slots)],
+        "pv_band": [list(b) for b in result.pv_band[: len(plan.slots)]],
         "pv_sources": sorted({PV_SOURCE_NAMES.get(p.source, p.source) for p in config.forecast_planes if p.device_id}),
     }
 

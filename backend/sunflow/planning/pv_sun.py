@@ -36,6 +36,12 @@ FACTOR_RANGE = (0.05, 1.7)
 # Neighbouring cells count half in the prior of a cell
 NEIGHBOUR_WEIGHT = 0.5
 BACKTEST_DAYS = 21
+# The forecast's own uncertainty, p10 / p50: below the first very uncertain, above the second
+# fairly sure; per class it is learned how far towards p10 the measurement tends to be
+SPREAD_BOUNDS = (0.3, 0.6)
+# Squared Wh that count as much as "the forecast as it is" (weight 1) when learning a weight
+SPREAD_PRIOR = 2_000_000.0
+SPREAD_RANGE = (0.0, 1.5)
 # Planning uses a plane's model only when learned from this many days and better in the backtest
 MIN_DAYS_TO_PLAN = 60
 SOLCAST_CHUNK = timedelta(days=30)
@@ -66,6 +72,8 @@ class Sample:
     elevation: float
     azimuth: float
     clear: bool = False
+    # The forecast's pessimistic case (Solcast p10); its distance to forecast_wh is its uncertainty
+    forecast10_wh: float | None = None
 
 
 def _cell(elevation: float, azimuth: float) -> tuple[int, int]:
@@ -96,7 +104,7 @@ def with_clearness(samples: list[Sample]) -> list[Sample]:
     return [
         Sample(
             start=s.start, forecast_wh=s.forecast_wh, actual_wh=s.actual_wh, elevation=s.elevation,
-            azimuth=s.azimuth, clear=is_clear(s.forecast_wh, s.elevation, s.azimuth, top),
+            azimuth=s.azimuth, clear=is_clear(s.forecast_wh, s.elevation, s.azimuth, top), forecast10_wh=s.forecast10_wh,
         )
         for s in samples
     ]
@@ -115,17 +123,29 @@ class SunCorrection:
     days: int = 0
     # Current state of the modules (leaves, snow, dirt): share of the learned yield
     level: float = 1.0
+    # By uncertainty class: how far from p10 towards p50 the measurement lies (1 = p50)
+    spread_weights: dict[int, float] = field(default_factory=dict)
 
     def factor(self, elevation: float, azimuth: float, clear: bool) -> float:
         """Correction for a sun position."""
         return self.cells.get((clear, *_cell(elevation, azimuth)), self.by_class.get(clear, self.overall))
 
-    def factor_at(self, moment: datetime, forecast_w: float, latitude: float, longitude: float) -> float:
+    def spread_factor(self, forecast: float, forecast10: float | None) -> float:
+        """Share of the forecast expected from its uncertainty: p10 + weight * (p50 - p10), relative to p50."""
+        if forecast10 is None or forecast <= 0 or (cls := spread_class(forecast, forecast10)) not in self.spread_weights:
+            return 1.0
+        low = min(forecast10, forecast)
+        return (low + self.spread_weights[cls] * (forecast - low)) / forecast
+
+    def factor_at(
+        self, moment: datetime, forecast_w: float, latitude: float, longitude: float, forecast10_w: float | None = None
+    ) -> float:
         """Correction for a slot starting at moment with this forecast power (its mean over the hour)."""
         elevation, azimuth = sun_position(moment, latitude, longitude)
         if elevation <= 0:
             return 1.0
-        return self.factor(elevation, azimuth, is_clear(forecast_w, elevation, azimuth, self.top)) * self.level
+        cell = self.factor(elevation, azimuth, is_clear(forecast_w, elevation, azimuth, self.top))
+        return cell * self.spread_factor(forecast_w, forecast10_w) * self.level
 
     def as_dict(self) -> dict[str, Any]:
         """Clear-sky cells for the shading map, with the overall factors."""
@@ -135,6 +155,7 @@ class SunCorrection:
             "cloudy": round(self.by_class.get(False, self.overall), 3),
             "hours": self.hours,
             "days": self.days,
+            "spread_weights": {str(k): round(w, 3) for k, w in sorted(self.spread_weights.items())},
             "elevation_step": ELEVATION_STEP,
             "azimuth_step": AZIMUTH_STEP,
             "cells": [
@@ -143,6 +164,34 @@ class SunCorrection:
                 if clear
             ],
         }
+
+
+def spread_class(forecast: float, forecast10: float) -> int:
+    """0 very uncertain, 1 uncertain, 2 fairly sure, by p10 / p50."""
+    share = forecast10 / forecast if forecast > 0 else 1.0
+    return sum(share >= bound for bound in SPREAD_BOUNDS)
+
+
+def fit_spread(samples: list[Sample], correction: SunCorrection) -> dict[int, float]:
+    """Per uncertainty class the weight w with measured = cell factor * (p10 + w * (p50 - p10)).
+
+    Least squares on what the cell factor leaves, pulled towards 1 (the forecast as it is).
+    """
+    sums: dict[int, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for s in samples:
+        if s.forecast10_wh is None or s.forecast_wh < MIN_FORECAST_WH:
+            continue
+        cell = correction.factor(s.elevation, s.azimuth, s.clear)
+        low = min(s.forecast10_wh, s.forecast_wh)
+        spread = s.forecast_wh - low
+        target = s.actual_wh / cell - low
+        total = sums[spread_class(s.forecast_wh, s.forecast10_wh)]
+        total[0] += spread * target
+        total[1] += spread * spread
+    return {
+        cls: min(max((xy + SPREAD_PRIOR) / (xx + SPREAD_PRIOR), SPREAD_RANGE[0]), SPREAD_RANGE[1])
+        for cls, (xy, xx) in sums.items()
+    }
 
 
 def fit(samples: list[Sample]) -> SunCorrection:
@@ -214,6 +263,7 @@ def backtest(samples: list[Sample], tz: Any) -> dict[str, Any] | None:
         return None
     local = lambda moment: moment.astimezone(tz)  # noqa: E731
     sun = fit(train)
+    spread = SunCorrection(**{**sun.__dict__, "spread_weights": fit_spread(train, sun)})
     hours = _hour_fit(train, local)
 
     def error(predict: Any) -> float:
@@ -225,12 +275,21 @@ def backtest(samples: list[Sample], tz: Any) -> dict[str, Any] | None:
         "raw": error(lambda s: s.forecast_wh),
         "by_hour": error(lambda s: s.forecast_wh * hours.get((s.clear, local(s.start).hour), 1.0)),
         "by_sun": error(lambda s: s.forecast_wh * sun.factor(s.elevation, s.azimuth, s.clear)),
+        "by_spread": error(
+            lambda s: s.forecast_wh
+            * spread.factor(s.elevation, s.azimuth, s.clear)
+            * spread.spread_factor(s.forecast_wh, s.forecast10_wh)
+        ),
         "measured_mean": round(sum(s.actual_wh for s in test) / len(test), 1),
     }
 
 
 def samples_from(
-    forecast: dict[datetime, float], measured: dict[datetime, float], latitude: float, longitude: float
+    forecast: dict[datetime, float],
+    measured: dict[datetime, float],
+    latitude: float,
+    longitude: float,
+    forecast10: dict[datetime, float] | None = None,
 ) -> list[Sample]:
     """Hourly samples where both are known; the sun at the middle of the hour."""
     result = []
@@ -241,14 +300,20 @@ def samples_from(
         if elevation <= 0:
             continue
         result.append(
-            Sample(start=start, forecast_wh=forecast_wh, actual_wh=max(actual, 0.0), elevation=elevation, azimuth=azimuth)
+            Sample(
+                start=start, forecast_wh=forecast_wh, actual_wh=max(actual, 0.0), elevation=elevation, azimuth=azimuth,
+                forecast10_wh=(forecast10 or {}).get(start),
+            )
         )
     return with_clearness(result)
 
 
-async def solcast_hours(client: HAClient, site: str, start: datetime, end: datetime) -> dict[datetime, float]:
-    """Past Solcast forecast as energy (Wh) per hour, queried in chunks; days before its history are skipped."""
+async def solcast_hours(
+    client: HAClient, site: str, start: datetime, end: datetime
+) -> tuple[dict[datetime, float], dict[datetime, float]]:
+    """Past Solcast forecast (p50, p10) as energy (Wh) per hour, queried in chunks; days before its history are skipped."""
     hours: dict[datetime, float] = defaultdict(float)
+    hours10: dict[datetime, float] = defaultdict(float)
     chunk_start = start
     while chunk_start < end:
         chunk_end = min(chunk_start + SOLCAST_CHUNK, end)
@@ -268,8 +333,9 @@ async def solcast_hours(client: HAClient, site: str, start: datetime, end: datet
             hour = period.replace(minute=0, second=0, microsecond=0)
             # Half-hour periods with the mean power in kW
             hours[hour] += float(item["pv_estimate"]) * 1000 / 2
+            hours10[hour] += float(item.get("pv_estimate10", item["pv_estimate"])) * 1000 / 2
         chunk_start = chunk_end
-    return dict(hours)
+    return dict(hours), dict(hours10)
 
 
 async def measured_hours(client: HAClient, entities: list[str], start: datetime, end: datetime) -> dict[datetime, float]:
@@ -297,7 +363,11 @@ def daily_ratios(samples: list[Sample], reference: SunCorrection | None, tz: tzi
     for s in samples:
         if s.elevation < SOILING_MIN_ELEVATION or s.forecast_wh < MIN_FORECAST_WH:
             continue
-        factor = reference.factor(s.elevation, s.azimuth, s.clear) if reference is not None else 1.0
+        factor = (
+            reference.factor(s.elevation, s.azimuth, s.clear) * reference.spread_factor(s.forecast_wh, s.forecast10_wh)
+            if reference is not None
+            else 1.0
+        )
         total = days[s.start.astimezone(tz).date()]
         total[0] += s.actual_wh
         total[1] += s.forecast_wh * factor
@@ -350,7 +420,7 @@ class PlaneSun:
             self.correction is not None
             and self.correction.days >= MIN_DAYS_TO_PLAN
             and self.backtest is not None
-            and self.backtest["by_sun"] < self.backtest["by_hour"]
+            and min(self.backtest["by_sun"], self.backtest.get("by_spread", self.backtest["by_sun"])) < self.backtest["by_hour"]
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -418,9 +488,9 @@ async def learn_planes(
             result.missing = "no_string_power"
             continue
         start = max(now - timedelta(days=HISTORY_DAYS), plane.learn_since or datetime.min.replace(tzinfo=UTC))
-        forecast = await solcast_hours(client, plane.ref, start, now)
+        forecast, forecast10 = await solcast_hours(client, plane.ref, start, now)
         measured = await measured_hours(client, entities, start, now)
-        samples = await asyncio.to_thread(samples_from, forecast, measured, latitude, longitude)
+        samples = await asyncio.to_thread(samples_from, forecast, measured, latitude, longitude, forecast10)
         recent = samples
         result.soiling, result.soiling_learned = await asyncio.to_thread(_soiling, samples, now, tz)
         if result.soiling is not None:
@@ -428,11 +498,15 @@ async def learn_planes(
             since = date.fromisoformat(result.soiling["since"])
             samples = [s for s in samples if s.start.astimezone(tz).date() < since]
         result.correction = await asyncio.to_thread(fit, samples)
+        result.correction.spread_weights = await asyncio.to_thread(fit_spread, samples, result.correction)
         result.correction.level = current_level(
             daily_ratios([s for s in recent if s.start >= now - timedelta(days=LEVEL_DAYS)], result.correction, tz),
             now.astimezone(tz).date(),
         )
         result.backtest = await asyncio.to_thread(backtest, samples, tz)
+        if result.backtest is None or result.backtest["by_spread"] >= result.backtest["by_sun"]:
+            # Only used where it predicts better than the sun position alone
+            result.correction.spread_weights = {}
         result.first = min(s.start for s in samples) if samples else None
     return planes
 
@@ -442,6 +516,9 @@ def _soiling(samples: list[Sample], now: datetime, tz: tzinfo) -> tuple[dict[str
     split = now - timedelta(days=SOILING_RECENT_DAYS)
     older = [s for s in samples if s.start < split]
     reference = fit(older) if len({s.start.date() for s in older}) >= MIN_DAYS_TO_PLAN else None
+    if reference is not None:
+        # A grey week is no soiling: expected is what Solcast's own uncertainty suggests
+        reference.spread_weights = fit_spread(older, reference)
     recent = [s for s in samples if s.start >= split]
     ratios = daily_ratios(recent, reference, tz)
     return soiled_run(ratios, SOILING_RATIO if reference is not None else SOILING_RATIO_RAW), reference is not None
@@ -461,14 +538,14 @@ async def refresh_levels(
         entities = string_power_entities(config, profiles, snapshot, forecast_plane)
         if not entities:
             continue
-        forecast = await solcast_hours(client, forecast_plane.ref, start, now)
+        forecast, forecast10 = await solcast_hours(client, forecast_plane.ref, start, now)
         measured = await measured_hours(client, entities, start, now)
-        samples = samples_from(forecast, measured, ha_config["latitude"], ha_config["longitude"])
+        samples = samples_from(forecast, measured, ha_config["latitude"], ha_config["longitude"], forecast10)
         # Clear or cloudy by the learned clear-sky values, not by these few days
         samples = [
             Sample(
                 start=s.start, forecast_wh=s.forecast_wh, actual_wh=s.actual_wh, elevation=s.elevation, azimuth=s.azimuth,
-                clear=is_clear(s.forecast_wh, s.elevation, s.azimuth, plane.correction.top),
+                clear=is_clear(s.forecast_wh, s.elevation, s.azimuth, plane.correction.top), forecast10_wh=s.forecast10_wh,
             )
             for s in samples
         ]

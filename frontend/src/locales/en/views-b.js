@@ -78,6 +78,8 @@ export default {
   "Datenbestand fürs Lernen": "Data for learning",
   "PV nach Sonnenstand (Test)": "PV by sun position (test)",
   "Gemessene Geräte": "Measured devices",
+  "nach Sonnenstand {sun} · mit Unsicherheit {spread}": "by sun position {sun} · with uncertainty {spread}",
+  "Ist Solcast sehr unsicher (p10 unter 30 % des Mittelwerts), kommt erfahrungsgemäß p10 plus {pct} % des Abstands zum Mittelwert an; die Planung rechnet so.": "When Solcast is very uncertain (p10 below 30 % of the mean), experience shows p10 plus {pct} % of the gap to the mean arrives; planning uses this.",
   "Liefert in den letzten Tagen {pct} % des Gelernten – die Planung rechnet mit dieser Leistung, bis die Fläche wieder mehr liefert.": "Delivers {pct} % of the learned yield in the last days – planning uses this yield until the plane delivers more again.",
   "noch zu wenig Stundenwerte (mindestens eine Woche)": "too few hourly values yet (at least a week)",
   "{hour} Uhr": "{hour}:00",
