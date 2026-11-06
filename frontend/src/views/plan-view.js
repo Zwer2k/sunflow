@@ -861,7 +861,7 @@ class SunflowPlan extends LitElement {
           key: `battery:${b.id}`,
           name: b.name,
           past: history.map((p) => ({ start: p.start, end: p.end, value: p.batteries?.[b.id] ?? null })),
-          future: slots.map((slot) => ({ start: slot.start, end: slot.end, value: slot.batteries?.[b.id]?.soc_wh ?? null })),
+          future: this._futureLevel(slots, (slot) => slot.batteries?.[b.id]?.soc_wh ?? null),
           pct: (wh) => (wh / b.capacity_wh) * 100,
           native: (wh) => wh,
           format: (wh) => formatValue(wh, "Wh"),
@@ -876,7 +876,8 @@ class SunflowPlan extends LitElement {
         key: "battery",
         name: several ? t("Speicher gesamt") : t("Hausspeicher"),
         past: this._past("soc_wh"),
-        future: this._future(slots, "soc_wh"),
+        // The measured SoC is the planned battery's; with several only their sum is planned
+        future: this._futureLevel(slots, (slot) => slot.soc_wh, several ? null : this._plan?.actual?.soc_wh),
         pct: (wh) => (wh / capacity) * 100,
         native: (wh) => wh,
         format: (wh) => formatValue(wh, "Wh"),
@@ -977,6 +978,13 @@ class SunflowPlan extends LitElement {
 
   _future(slots, key) {
     return slots.map((s) => ({ start: s.start, end: s.end, value: s[key] }));
+  }
+
+  /** A planned level holds at the end of its slot; from the level measured now on, not from the slot's start. */
+  _futureLevel(slots, value, current = null) {
+    const time = this._plan?.actual?.time;
+    const now = current !== null && current !== undefined && time ? [{ start: time, end: time, value: current }] : [];
+    return [...now, ...slots.map((s) => ({ start: s.end, end: s.end, value: value(s) }))];
   }
 
   /** The chart window: a third in the past, shifted by half windows. */

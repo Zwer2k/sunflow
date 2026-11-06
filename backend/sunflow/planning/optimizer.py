@@ -87,6 +87,8 @@ class Settings:
     # Calendar aging is faster at a high SoC: every kWh above this (Wh) costs per hour
     high_soc_wh: float | None = None
     high_soc_ct_per_kwh_h: float = 0.0
+    # Share of the first slot still ahead (planned at 17:28, the 17:15 slot has 2 of 15 minutes left)
+    first_slot_share: float = 1.0
     # Buffer for a day above the forecast (soft): (slot, Wh above the floor of all batteries
     # at its end, €/kWh missing)
     buffer: tuple[tuple[int, float, float], ...] = ()
@@ -465,21 +467,23 @@ def optimize(
 
     prices = [i.price for i in inputs]
     spread = max(prices) - min(prices)
+    # Hours of each slot; of the running one only what is left, so its powers move less energy
+    dts = [DT_H * min(max(settings.first_slot_share, 0.0), 1.0), *[DT_H] * (n - 1)]
     cost = np.zeros(count)
     for t, slot in enumerate(inputs):
-        cost[gi[t]] = (slot.price + slot.import_penalty + settings.import_penalty_ct_per_kwh / 100) * DT_H / 1000
+        cost[gi[t]] = (slot.price + slot.import_penalty + settings.import_penalty_ct_per_kwh / 100) * dts[t] / 1000
         # Risk premium (max 0.5 ct/kWh): export late, after the battery is full. Equally
         # cheap if the forecast holds, but robust when PV falls short and like
         # self-consumption mode; must outweigh the smoothing of a flat export
         export_tie = 0.005 * (1 - t / n)
-        cost[ge[t]] = (settings.export_penalty_ct_per_kwh / 100 - slot.feed_in + export_tie) * DT_H / 1000
+        cost[ge[t]] = (settings.export_penalty_ct_per_kwh / 100 - slot.feed_in + export_tie) * dts[t] / 1000
         # Tie-breakers (max ~0.1 ct/kWh): when the timing does not matter, discharge in the
         # more expensive slots and, at equal prices, earlier, so the plan does not flip
         # between auto and hold every few minutes
         tie = 0.001 * (max(prices) - slot.price) / spread if spread > 0 else 0.0
         tie += 0.0001 * t / n
         for k in range(m):
-            cost[d[k][t]] = (wear[k] + tie) * DT_H / 1000
+            cost[d[k][t]] = (wear[k] + tie) * dts[t] / 1000
     for k in range(m):
         cost[s[k][-1]] -= terminal[k] / 1000
     if full_short is not None:
@@ -529,10 +533,10 @@ def optimize(
         for k, b in enumerate(batteries):
             row = n + k * n + t
             a_eq[row, s[k][t]] = 1
-            a_eq[row, c[k][t]] = -eta_c[k] * DT_H
-            a_eq[row, d[k][t]] = DT_H / eta_d[k]
+            a_eq[row, c[k][t]] = -eta_c[k] * dts[t]
+            a_eq[row, d[k][t]] = dts[t] / eta_d[k]
             if cg[k] is not None:
-                a_eq[row, cg[k][t]] = (eta_c[k] - eta_g[k]) * DT_H
+                a_eq[row, cg[k][t]] = (eta_c[k] - eta_g[k]) * dts[t]
             if t == 0:
                 b_eq[row] = b.soc_wh
             else:
@@ -542,7 +546,7 @@ def optimize(
         for (first, end, energy), unmet_index in zip(needs[k], u[k], strict=True):
             # Energy delivered in the need's window plus unmet rest equals the need
             for t in range(first, end):
-                a_eq[row, f[k][t]] = DT_H
+                a_eq[row, f[k][t]] = dts[t]
             a_eq[row, unmet_index] = 1
             b_eq[row] = energy
             row += 1
@@ -917,7 +921,7 @@ def optimize(
         r.unmet_wh / 1000 * load.unmet_cost for r, load in zip(plan.flex, flex, strict=True) if has_alternative(load)
     )
     plan.cost = plan.alternative_cost + sum(
-        (p.price * p.import_w - p.feed_in * p.export_w) * DT_H / 1000 for p in plan.slots
+        (p.price * p.import_w - p.feed_in * p.export_w) * dt / 1000 for p, dt in zip(plan.slots, dts, strict=False)
     )
     baseline_inputs, plan.baseline_alternative_cost = immediate_flex(inputs, flex)
     plan.baseline_cost, baseline_socs = simulate_self_consumption(baseline_inputs, batteries, plan.baseline_slot_costs)

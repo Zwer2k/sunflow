@@ -145,3 +145,13 @@ def test_storage_charges_from_the_grid_despite_high_losses(premium: float, charg
     plan = optimize(inputs, lossy, Settings(wear_ct_per_kwh=6))
 
     assert (max(s.soc_wh for s in plan.slots[8:28]) > 6000) is charged
+
+
+def test_running_slot_moves_only_the_energy_of_its_rest() -> None:
+    """Planned two minutes before the slot ends, full power in it charges only two minutes' worth."""
+    inputs = _slots()
+
+    plan = optimize(inputs, BATTERY, Settings(wear_ct_per_kwh=0, reserve_wh=6000, first_slot_share=2 / 15))
+
+    assert plan.slots[0].action == "force_charge"
+    assert plan.slots[0].soc_wh <= BATTERY.soc_wh + BATTERY.max_charge_w * 2 / 60 + 1

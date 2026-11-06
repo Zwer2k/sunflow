@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.77.18
+
+- Planning: of the running quarter hour only the rest counts. Planned at 17:28, the 17:15 slot moves two minutes' worth of energy instead of 15 – before, e.g. refilling the backup reserve looked done within minutes.
+- Planning chart: the planned state of charge starts at the level measured now and each planned value sits at the end of its slot, so the line no longer jumps between measured and planned.
+
 ## 0.77.17
 
 - Backup reserve first: a battery below the reserve (at the start, after an outage, after a change of the setting) is refilled right away – from the grid if charging from the grid is allowed, whatever the price – and never planned below it again. Before, it was only not discharged further and stayed below the reserve as long as grid charging did not pay.
