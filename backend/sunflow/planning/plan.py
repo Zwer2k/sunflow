@@ -1714,6 +1714,9 @@ async def compute_plan(
             premium,
         )
         settings = replace(settings, buffer=tuple((b.slot, b.wh, b.penalty) for b in buffers))
+    if inputs and inputs[0].start <= (moment := datetime.now(UTC)) < inputs[0].start + SLOT:
+        # Of the running slot only the rest is ahead; at least a minute so it still steers
+        settings = replace(settings, first_slot_share=max((inputs[0].start + SLOT - moment) / SLOT, 1 / 15))
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads)
     device_actions(plan, profile, battery_device.id)
