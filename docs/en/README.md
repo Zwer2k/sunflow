@@ -45,7 +45,7 @@ of its own.
 | Profile | Describes which entities of an integration deliver which values and how the device is controlled |
 | Parameters | Values Sunflow cannot measure, e.g. usable capacity or maximum charging power |
 | Shadow mode | Sunflow records what it would do and what actually happens, even while it does not control anything |
-| Strategy | Goal for the home battery: Balanced, Absorb as much PV as possible, or As self-sufficient as possible |
+| Strategy | Goal for the home battery: Balanced, Absorb as much PV as possible, As self-sufficient as possible, or Battery use |
 | Expert mode | Switch in the settings; additionally shows entity, unit, factor and sign per role |
 
 The screenshots come from a test installation; your values and device names will differ.

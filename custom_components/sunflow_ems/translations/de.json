@@ -144,7 +144,8 @@
         "state": {
           "balanced": "Ausgewogen",
           "pv_absorption": "PV aufnehmen",
-          "autarky": "Autarkie"
+          "autarky": "Autarkie",
+          "storage": "Speichernutzung"
         }
       }
     },
@@ -251,6 +252,7 @@
         "balanced": "Ausgewogen",
         "pv_absorption": "PV aufnehmen",
         "autarky": "Autarkie",
+        "storage": "Speichernutzung",
         "default": "Standard"
       }
     },

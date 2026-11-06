@@ -40,7 +40,7 @@ Assistant und nutzt die Integrationen, die du dort schon hast. Eigene Gerätetre
 | Profil | Beschreibung, welche Entitäten einer Integration welche Werte liefern und wie das Gerät gesteuert wird |
 | Kenndaten | Werte eines Geräts, die Sunflow nicht messen kann, z. B. nutzbare Kapazität oder höchste Ladeleistung |
 | Schattenbetrieb | Sunflow zeichnet auf, was es tun würde und was tatsächlich passiert, auch ohne selbst zu steuern |
-| Strategie | Ziel für den Hausspeicher: Ausgewogen, Möglichst viel PV aufnehmen oder Möglichst autark |
+| Strategie | Ziel für den Hausspeicher: Ausgewogen, Möglichst viel PV aufnehmen, Möglichst autark oder Speichernutzung |
 | Expertenmodus | Schalter in den Einstellungen; zeigt zusätzlich Entitäten, Einheiten, Faktoren und Vorzeichen je Rolle |
 
 Die Screenshots stammen aus einer echten Installation; Kennungen wie Seriennummern und Adressen sind unkenntlich gemacht. Werte und Gerätenamen sind bei dir andere.

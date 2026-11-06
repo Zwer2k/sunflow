@@ -44,6 +44,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         "load_history_daily_kwh": result.load.history_daily_kwh if result.load else None,
         "load_excluded_hours": result.load.excluded_hours if result.load else 0,
         "load_separated_hours": result.load.separated_hours if result.load else 0,
+        "load_spread": result.load.daily_spread if result.load else None,
         "settings": config.optimizer.model_dump(),
         "strategy": config.effective_strategy(datetime.now(UTC)),
         "cost": plan.cost,
@@ -97,6 +98,12 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
         # The forecast as its source delivers it, before learning and nowcast
         "raw_pv": result.raw_pv[: len(plan.slots)],
         "pv_band": [list(b) for b in result.pv_band[: len(plan.slots)]],
+        # Energy above the floor the battery should still hold at these times (end of expensive periods)
+        "buffers": [
+            {"at": plan.slots[b.slot].end.isoformat(), "wh": round(b.wh), "penalty": round(b.penalty, 4)}
+            for b in result.buffers
+            if b.slot < len(plan.slots)
+        ],
         "pv_sources": sorted({PV_SOURCE_NAMES.get(p.source, p.source) for p in config.forecast_planes if p.device_id}),
     }
 

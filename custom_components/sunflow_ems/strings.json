@@ -144,7 +144,8 @@
         "state": {
           "balanced": "Balanced",
           "pv_absorption": "Take up PV",
-          "autarky": "Autarky"
+          "autarky": "Autarky",
+          "storage": "Battery use"
         }
       }
     },
@@ -251,6 +252,7 @@
         "balanced": "Balanced",
         "pv_absorption": "Take up PV",
         "autarky": "Autarky",
+        "storage": "Battery use",
         "default": "Default"
       }
     },

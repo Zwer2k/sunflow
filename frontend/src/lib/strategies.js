@@ -11,6 +11,7 @@ export const STRATEGIES = {
       t("Rechnet bis zu 96 Stunden voraus mit Preisen, Einspeisevergütung, PV- und Lastprognose, Verlusten und Verschleiß."),
       t("Lädt aus dem Netz, wenn der Preisunterschied Verluste und Verschleiß übersteigt – nur wenn „Laden aus dem Netz“ erlaubt ist."),
       t("Hält Energie für teure Stunden zurück und entlädt dort, statt in günstigen Stunden."),
+      t("Lädt für einen Tag etwas über der Prognose: Verbrauch und PV schwanken, eine fehlende kWh kostet den teuren Preis, eine übrige wartet nur auf die nächste günstige Ladung. Reicht an etwa 4 von 5 Tagen."),
       t("Passt zu dynamischen Tarifen und Zeittarifen (z. B. günstiger Nachtstrom)."),
     ],
   },
@@ -34,6 +35,17 @@ export const STRATEGIES = {
       t("Lädt nie aus dem Netz, auch wenn „Laden aus dem Netz“ erlaubt ist. Ausnahme: eine überfällige Vollladung („Spätestens nach … aus dem Netz“)."),
       t("Verbraucher bekommen bevorzugt PV-Überschuss statt Netzstrom."),
       t("Kostet bei Zeittarifen mehr, weil günstiger Nachtstrom nicht für den Tag gespeichert wird."),
+    ],
+  },
+  storage: {
+    label: t("Speichernutzung"),
+    short: t("Speichernutzung"),
+    hint: t("Wie „Ausgewogen“, lädt aber in günstigen Stunden so weit nach, dass der Speicher auch an verbrauchsstarken oder trüben Tagen bis zur nächsten günstigen Ladung reicht."),
+    details: [
+      t("Der Puffer gegen einen Tag über der Prognose reicht an etwa 19 von 20 Tagen statt an 4 von 5."),
+      t("Wie groß er ist, lernt Sunflow aus den Schwankungen deines Tagesverbrauchs und der Spanne der PV-Prognose (p10)."),
+      t("An einem durchschnittlichen Tag bleibt der Puffer im Speicher und ersetzt einen Teil der nächsten Ladung – das kostet nur wenig Verluste."),
+      t("Braucht „Laden aus dem Netz“ und einen Zeittarif oder dynamischen Tarif; bei festem Preis wie „Ausgewogen“."),
     ],
   },
 };

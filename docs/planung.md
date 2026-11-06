@@ -30,18 +30,42 @@ Sunflow plant neu, sobald neue Preise oder Prognosen vorliegen, jede Viertelstun
 
 ## Strategien des Hausspeichers
 
-| | Ausgewogen | Möglichst viel PV aufnehmen | Möglichst autark |
-|---|---|---|---|
-| Ziel | geringste Stromkosten | wie Ausgewogen, Platz für PV | so wenig Netzbezug wie möglich |
-| Laden aus dem Netz | wenn der Preisunterschied Verluste und Verschleiß übersteigt | kaum vor sonnigen Tagen | nie (außer überfällige Vollladung) |
-| Im Plan | Kosten | jede eingespeiste kWh zählt 5 ct weniger | jede kWh aus dem Netz zählt 1 € extra |
-| Passt zu | dynamischen Tarifen und Zeittarifen | viel PV, wenig Speicher | festem Preis, Unabhängigkeit |
+| | Ausgewogen | Möglichst viel PV aufnehmen | Möglichst autark | Speichernutzung |
+|---|---|---|---|---|
+| Ziel | geringste Stromkosten | wie Ausgewogen, Platz für PV | so wenig Netzbezug wie möglich | wie Ausgewogen, Speicher reicht auch an starken Tagen |
+| Laden aus dem Netz | wenn der Preisunterschied Verluste und Verschleiß übersteigt | kaum vor sonnigen Tagen | nie (außer überfällige Vollladung) | wie Ausgewogen, mit größerem Puffer |
+| Im Plan | Kosten, Puffer für 4 von 5 Tagen | jede eingespeiste kWh zählt 5 ct weniger | jede kWh aus dem Netz zählt 1 € extra | Kosten, Puffer für 19 von 20 Tagen |
+| Passt zu | dynamischen Tarifen und Zeittarifen | viel PV, wenig Speicher | festem Preis, Unabhängigkeit | Zeittarifen, schwankendem Verbrauch |
 
 - **Ausgewogen** hält Energie für teure Stunden zurück und entlädt dort.
 - **PV aufnehmen** unterscheidet sich von „Ausgewogen“ nur, wenn eingespeist würde, im Winter
   also kaum. Eine Einspeisebegrenzung kennt sie nicht; dafür gibt es „Netzdienlich“.
 - **Autark** deckt jeden Bedarf sofort aus dem Speicher und gibt Verbrauchern bevorzugt
   PV-Überschuss. Bei Zeittarifen kostet sie mehr, weil günstiger Nachtstrom nicht gespeichert wird.
+- **Speichernutzung** lädt in günstigen Stunden so weit nach, dass der Speicher auch an einem Tag
+  mit deutlich mehr Verbrauch oder weniger Sonne bis zur nächsten günstigen Ladung reicht.
+
+### Puffer gegen einen Tag über der Prognose
+
+Verbrauch und PV-Prognose stimmen nie genau. Würde Sunflow nachts nur für den erwarteten Tag laden,
+wäre der Speicher an jedem Tag mit etwas mehr Verbrauch am Abend leer, und der Rest käme teuer
+aus dem Netz. Eine zu viel geladene kWh kostet dagegen fast nichts: Sie bleibt im Speicher und
+ersetzt einen Teil der nächsten günstigen Ladung.
+
+Darum soll der Speicher bei „Ausgewogen“, „PV aufnehmen“ und „Speichernutzung“ am Ende jeder
+teuren Phase (vor der nächsten günstigen) noch einen Puffer über der Entladegrenze haben:
+
+- **Größe**: aus den Schwankungen deines Tagesverbrauchs (je Werktag/Wochenende, gelernt aus
+  dem Verlauf; ohne Verlauf 15 %) und der Spanne der PV-Prognose bis p10, soweit diese PV den
+  Hausverbrauch decken würde. „Ausgewogen“ reicht damit an etwa 4 von 5 Tagen,
+  „Speichernutzung“ an etwa 19 von 20. Höchstens die Hälfte der nutzbaren Kapazität.
+- **Weich**: Ein fehlender Puffer zählt im Plan halb so viel, wie günstiges Laden je kWh spart.
+  Läuft ein Tag über der Prognose, nutzt der Speicher den Puffer also, statt teuer nachzukaufen.
+  Und Sunflow kauft für den Puffer nie zum teuren Preis.
+- **Nur mit Zeittarif oder dynamischem Tarif** und erlaubtem Laden aus dem Netz. Bei festem Preis
+  oder zu kleinem Preisunterschied gibt es keinen Puffer.
+
+Im Plan steht unter „Ladestand“, wie viel zu welcher Zeit übrig bleiben soll.
 
 Die Strategie stellst du unter Einstellungen → Planung ein, vorübergehend unter Steuerung oder
 mit der Aktion `sunflow_ems.set_strategy`.

@@ -91,7 +91,7 @@ Wie Sunflow den Hausspeicher plant. Hintergründe stehen unter [So plant Sunflow
 
 | Einstellung | Bedeutung |
 |---|---|
-| Strategie | Ausgewogen, Möglichst viel PV aufnehmen oder Möglichst autark. „Was macht …?“ klappt die Erklärung auf. |
+| Strategie | Ausgewogen, Möglichst viel PV aufnehmen, Möglichst autark oder Speichernutzung. „Was macht …?“ klappt die Erklärung auf. |
 | Ladegrenze im Alltag | Höher lädt Sunflow nur für eine fällige Vollladung. 100 % = keine Grenze. |
 | Voll laden alle … Tage | Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt. |
 | Spätestens nach … aus dem Netz | War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll. |

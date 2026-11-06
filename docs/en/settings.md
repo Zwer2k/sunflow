@@ -94,7 +94,7 @@ How Sunflow plans the home battery. Background in [How Sunflow plans](planning.m
 
 | Setting | Meaning |
 |---|---|
-| Home battery strategy (default) | Balanced, Absorb as much PV as possible or As self-sufficient as possible. "What does … do?" expands the explanation. |
+| Home battery strategy (default) | Balanced, Absorb as much PV as possible, As self-sufficient as possible or Battery use. "What does … do?" expands the explanation. |
 | Everyday charge limit | Sunflow only charges above it for a due full charge. 100 % = no limit. |
 | Full charge every … days | To balance and calibrate the cells, preferably with PV. Empty = never on purpose. |
 | From the grid at the latest after … days | If the battery has not been full for that long (e.g. in winter), Sunflow fills it from the grid at the cheapest time. |

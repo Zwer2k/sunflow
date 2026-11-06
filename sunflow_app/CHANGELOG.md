@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.77.7
+
+- Buffer for a day above the forecast: with a time-of-use or dynamic tariff the battery is charged in cheap hours for a day somewhat above the forecast instead of exactly for the expected one, so it no longer runs empty in the evening whenever consumption is a little higher or the sun weaker. The size comes from how much the daily consumption varies and from the range of the PV forecast (p10); a missing buffer only counts half of what cheap charging saves, so the battery still uses it on such a day and Sunflow never buys expensive power for it. The planning view shows how much should be left before the next cheap period.
+- New home battery strategy "Battery use": like "Balanced" with a buffer for about 19 days in 20 instead of 4 in 5. Also available in the integration's strategy select and in `sunflow_ems.set_strategy`.
+
 ## 0.77.6
 
 - On/off loads: a load that is switched on goes on at an equal price instead of being stopped and restarted later; before, replanning every 15 minutes could cut a charge at equal night prices into pieces and push the rest into a more expensive tariff.
