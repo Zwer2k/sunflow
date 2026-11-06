@@ -63,6 +63,8 @@ SUN_LEVEL_REFRESH = timedelta(hours=3)
 # problem. The pause doubles with each failure up to the maximum
 REPLAN_RETRY = timedelta(minutes=5)
 REPLAN_RETRY_MAX = timedelta(minutes=30)
+# Seconds a plan request waits for a replan that is running after a change
+FRESH_PLAN_WAIT = 20.0
 # Live values deviating this much from the running slot replan before the next slot
 EARLY_REPLAN_PV_W = 800.0
 EARLY_REPLAN_PV_SHARE = 0.3
@@ -433,11 +435,19 @@ class ShadowRunner:
         self._replan_task = asyncio.create_task(self._replan_now())
 
     async def ensure_plan(self) -> PlanResult | None:
-        """Return the latest plan, computing one (shared with other callers) if there is none."""
+        """Return the latest plan, computing one (shared with other callers) if there is none.
+
+        While a requested replan runs (a setting was just changed) it waits for it, so a view
+        opened right after the change does not show the plan from before.
+        """
         if self.latest is None:
             self.request_replan()
-            if self._replan_task is not None:
+        if self._replan_task is not None and not self._replan_task.done():
+            if self.latest is None:
                 await asyncio.shield(self._replan_task)
+            else:
+                # Not forever: a slow Home Assistant still gets the older plan
+                await asyncio.wait({self._replan_task}, timeout=FRESH_PLAN_WAIT)
         return self.latest
 
     async def _replan_now(self) -> None:

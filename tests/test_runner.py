@@ -1,5 +1,6 @@
 """Tests for the background runner."""
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -208,3 +209,23 @@ async def test_replan_waits_for_the_connection(tmp_path: Path, monkeypatch: pyte
     assert attempts == []
     assert runner._planned_slot is None
     assert runner.status.last_error is None
+
+
+async def test_plan_request_waits_for_the_replan_after_a_change(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A view opened right after a change gets the new plan, not the one from before."""
+    release = asyncio.Event()
+
+    async def replan(self: ShadowRunner, start: Any) -> None:
+        await release.wait()
+        self.latest = "new"
+
+    monkeypatch.setattr(ShadowRunner, "_replan", replan)
+    runner = ShadowRunner(SimpleNamespace(connected=True), None, None, ShadowStore(tmp_path))
+    runner.latest = "old"
+
+    runner.request_replan()
+    request = asyncio.create_task(runner.ensure_plan())
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await request == "new"

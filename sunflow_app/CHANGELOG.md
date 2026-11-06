@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.77.10
+
+- Planning view right after a change in the settings or the control tab: it waits for the new plan (at most 20 seconds) instead of showing the plan from before the change for a few seconds.
+
 ## 0.77.9
 
 - Fix: the buffer for a day above the forecast now lies above the backup reserve. While the battery was below the reserve, the buffer was measured from the discharge limit instead, so part of it disappeared in the reserve and the battery was charged too little. Its maximum size also counts from the reserve.
