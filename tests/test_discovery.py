@@ -247,3 +247,56 @@ def test_disabled_control_entities_still_match(library: ProfileLibrary) -> None:
         "number.venus_set_charge_power", "number.venus_set_discharge_power", "select.venus_force_mode",
         "switch.venus_rs485_control_mode",
     ]
+
+
+async def test_snapshot_cache_follows_state_changes() -> None:
+    """States are fetched once per connection and then kept current by events; older events are ignored."""
+    from datetime import timedelta
+
+    from sunflow.devices.discovery import SnapshotCache
+
+    fetches: list[int] = []
+    callbacks: list = []
+
+    class Client:
+        generation = 1
+
+        async def command(self, msg_type: str, **data: object) -> list:
+            return []
+
+        async def get_config_entries(self) -> list:
+            return []
+
+        async def get_device_registry(self) -> list:
+            return []
+
+        async def get_entity_registry(self) -> list:
+            return []
+
+        async def get_energy_prefs(self) -> None:
+            return None
+
+        async def subscribe(self, callback: object, **data: object) -> None:
+            callbacks.append(callback)
+
+        async def get_states(self) -> list:
+            fetches.append(self.generation)
+            return [{"entity_id": "sensor.pv", "state": "100", "last_updated": "2026-11-06T10:00:00+00:00"}]
+
+    def change(state: str, updated: str) -> dict:
+        return {"data": {"entity_id": "sensor.pv", "new_state": {"entity_id": "sensor.pv", "state": state, "last_updated": updated}}}
+
+    client = Client()
+    cache = SnapshotCache(client, states_ttl=timedelta(0), live=True)
+
+    assert (await cache.get()).states["sensor.pv"]["state"] == "100"
+    callbacks[-1](change("250", "2026-11-06T10:00:05+00:00"))
+    callbacks[-1](change("90", "2026-11-06T09:59:00+00:00"))
+    assert (await cache.get()).states["sensor.pv"]["state"] == "250"
+    assert fetches == [1]
+
+    # After a reconnect the old subscription is gone: subscribe and fetch again
+    client.generation = 2
+    await cache.get()
+    assert fetches == [1, 2]
+    assert len(callbacks) == 2

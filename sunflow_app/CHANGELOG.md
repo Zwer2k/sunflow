@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.77.13
+
+- Faster pages: Sunflow follows Home Assistant's state changes instead of fetching all states again for a request a few seconds after the last one (several MB on large installations). The day's energy balance is kept for a minute; an older one is answered at once and refreshed in the background.
+- Live view: reopening it in the same browser tab shows the last values (with their time) at once while fresh ones load.
+- Quick controls: a temporary change shows as a small clock (its end as tooltip) instead of "changed until …", so a row no longer wraps on phones.
+
 ## 0.77.12
 
 - Quick controls in the live view: a pin on each load under Control puts it below the energy flow as one compact row with power, state of charge, next window and the modes as small buttons (cost-optimal, PV only, now, pause; a change applies until midnight), plus "plugged in now" for a charge battery without a plug sensor. Stored in the configuration, so it applies on every device.

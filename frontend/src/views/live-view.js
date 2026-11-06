@@ -5,11 +5,14 @@ import { dailyRatios, splitFlows } from "../components/flows.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "../components/optimizer-view.js";
 import "../components/quick-controls.js";
+import { recall, remember } from "../lib/view-cache.js";
 import { decimal, locale, t, tc } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
 
 const REFRESH_MS = 5000;
 const TODAY_REFRESH_MS = 5 * 60 * 1000;
+const KEPT_LIVE_MS = 10 * 60 * 1000;
+const KEPT_TODAY_MS = 30 * 60 * 1000;
 // Below this a flow is drawn as idle
 const ACTIVE_W = 20;
 const MAX_CONSUMERS = 4;
@@ -121,8 +124,9 @@ class SunflowLive extends LitElement {
 
   constructor() {
     super();
-    this._live = null;
-    this._today = null;
+    // The last values of this tab at once (with their time), fresh ones follow
+    this._live = recall("live", KEPT_LIVE_MS);
+    this._today = recall("today", KEPT_TODAY_MS);
     this._error = null;
     try {
       this._weatherDays = localStorage.getItem(WEATHER_DAYS_KEY) === "1";
@@ -151,6 +155,7 @@ class SunflowLive extends LitElement {
   async _loadLive() {
     try {
       this._live = await api.live();
+      remember("live", this._live);
       this._error = null;
     } catch (err) {
       this._error = t("Live-Werte nicht verfügbar: {error}", { error: err.message });
@@ -175,6 +180,7 @@ class SunflowLive extends LitElement {
           source: t("Energiezähler"),
         };
         this._todayError = null;
+        remember("today", this._today);
         return;
       }
       const history = await api.history(24);
@@ -191,6 +197,7 @@ class SunflowLive extends LitElement {
         source: t("Leistungsmittelwerte (keine Energiezähler gefunden)"),
       };
       this._todayError = null;
+      remember("today", this._today);
     } catch (err) {
       // The last values stay (e.g. while Home Assistant's database is paused), with a hint
       this._todayError = err.message;

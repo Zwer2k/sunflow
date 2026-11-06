@@ -24,7 +24,7 @@ from sunflow.planning.appliances import learn_usage as learn_appliance_usage
 from sunflow.planning.plan import feed_in_price
 from sunflow.shadow.runner import ShadowRunner
 
-from .common import _library, _local_tz, _snapshot
+from .common import _library, _local_tz, _snapshot, kept_fresh
 from .devices import _efficiency_estimate
 from .sources import get_weather_entities
 
@@ -32,6 +32,8 @@ router = APIRouter()
 
 
 ENERGY_PERIODS = {"today": 0, "7d": 7, "30d": 30}
+# The energy balance reads the counters' history since midnight; a minute old is recent enough
+ENERGY_FRESH = timedelta(minutes=1)
 
 
 @router.get("/energy")
@@ -39,15 +41,19 @@ async def get_energy(request: Request, period: str = "today") -> dict[str, Any]:
     """Energy balance from the energy counters: today (since local midnight) or the last days."""
     if period not in ENERGY_PERIODS:
         raise HTTPException(status_code=422, detail=f"period must be one of {list(ENERGY_PERIODS)}")
-    config = request.app.state.store.load()
-    snapshot = await _snapshot(request)
-    sources = energy_sources(config, _library(request).profiles, snapshot)
-    tz = await _local_tz(request)
-    end = datetime.now(tz)
-    midnight = end.replace(hour=0, minute=0, second=0, microsecond=0)
-    start = midnight - timedelta(days=ENERGY_PERIODS[period])
-    try:
+
+    async def compute() -> dict[str, Any]:
+        config = request.app.state.store.load()
+        snapshot = await _snapshot(request)
+        sources = energy_sources(config, _library(request).profiles, snapshot)
+        tz = await _local_tz(request)
+        end = datetime.now(tz)
+        midnight = end.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = midnight - timedelta(days=ENERGY_PERIODS[period])
         return await energy_balance(request.app.state.ha, sources, start, end)
+
+    try:
+        return await kept_fresh(request, ("energy", period), ENERGY_FRESH, compute)
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
 

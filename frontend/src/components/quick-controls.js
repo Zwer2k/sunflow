@@ -4,8 +4,10 @@ import { poll } from "../lib/poll.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import { MODES, currentMode, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
 import { locale, t } from "../lib/i18n.js";
+import { recall, remember } from "../lib/view-cache.js";
 
 const REFRESH_MS = 30 * 1000;
+const KEPT_MS = 10 * 60 * 1000;
 // Overrides from the live view last until midnight, like the control tab's default
 const DURATION = "midnight";
 const SHORT = { cost: "€", pv_only: t("PV"), fast: "⚡", pause: "⏸" };
@@ -21,7 +23,7 @@ class SunflowQuickControls extends LitElement {
 
   constructor() {
     super();
-    this._devices = [];
+    this._devices = recall("quick", KEPT_MS) ?? [];
     this._busy = false;
     this._error = null;
   }
@@ -40,6 +42,7 @@ class SunflowQuickControls extends LitElement {
   async _load() {
     try {
       this._devices = (await api.control()).devices.filter((d) => d.live);
+      remember("quick", this._devices);
       this._error = null;
     } catch (err) {
       this._error = err.message;
@@ -92,9 +95,10 @@ class SunflowQuickControls extends LitElement {
     return html`<div class="device" title=${plan}>
       <div class="name">
         <strong>${device.name}</strong>
-        <span class="small muted">${status.join(" · ")}${device.override
-          ? html` · <span class="changed">${t("angepasst")} ${untilText(device.override.until)}</span>`
-          : nothing}</span>
+        <span class="small muted status">${device.override
+          ? html`<span class="changed" role="img" title=${`${t("angepasst")} ${untilText(device.override.until)}`}
+              aria-label=${`${t("angepasst")} ${untilText(device.override.until)}`}>🕐</span> `
+          : nothing}${status.join(" · ")}</span>
       </div>
       <div class="controls">
         ${charger?.manual
@@ -126,7 +130,8 @@ class SunflowQuickControls extends LitElement {
     .name strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .small { font-size: 12px; }
     .muted { color: var(--sf-muted); }
-    .changed { color: var(--sf-warn-text); }
+    .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .changed { font-size: 12px; cursor: help; }
     .error { color: var(--sf-error-text); margin: 6px 0 0; }
     .controls { display: flex; align-items: center; gap: 6px; margin-left: auto; }
     .segmented { display: flex; gap: 2px; background: var(--sf-subtle); padding: 3px; border-radius: 9px; }
