@@ -141,6 +141,10 @@ class FlexLoad:
     # Only off or (nearly) full power, e.g. a charger on a switched socket: a slot plans
     # nothing or at least ON_OFF_MIN_SHARE of its power, never a fraction it cannot run at
     on_off: bool = False
+    # On/off: switched on right now, so going on costs no new start (no restart at equal prices)
+    running: bool = False
+    # On/off: € per switching on, instead of ON_OFF_START_COST (a battery charger: higher)
+    start_cost: float | None = None
 
     @property
     def gated(self) -> bool:
@@ -655,9 +659,11 @@ def optimize(
             gate_rows.append(({f[k][t]: -1, b: ON_OFF_MIN_SHARE * power}, 0.0))
             # Switched on in this slot: on now and not in the slot right before
             start = next(starts)
-            cost[start] = ON_OFF_START_COST
+            cost[start] = load.start_cost if load.start_cost is not None else ON_OFF_START_COST
             before = {previous[1]: -1} if previous is not None and previous[0] == t - 1 else {}
-            gate_rows.append(({b: 1, **before, start: -1}, 0.0))
+            # Running now: on in the first slot is no new start
+            on_before = 1.0 if t == 0 and load.running else 0.0
+            gate_rows.append(({b: 1, **before, start: -1}, on_before))
             previous = (t, b)
     for over, flow, limit in (
         (over_export, ge, settings.export_soft_limit_w),

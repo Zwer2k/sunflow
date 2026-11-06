@@ -1039,3 +1039,33 @@ def test_on_off_load_charges_in_one_block() -> None:
     assert switched_on == 1
     assert sum(on[:20]) == sum(on)
 
+
+
+
+def _charger_plan(running: bool) -> list[int]:
+    """Slots a battery charger runs in at equal night prices (cheap until slot 20)."""
+    from sunflow.planning.optimizer import FlexLoad
+    from sunflow.planning.plan import CHARGER_START_COST
+
+    inputs = _slots(10, price=lambda i: 0.226 if i < 20 else 0.326)
+    bike = FlexLoad(
+        name="E-Bike", energy_wh=280, max_power_w=140, available=[True] * 40, uses_battery=False,
+        on_off=True, running=running, start_cost=CHARGER_START_COST,
+    )
+    plan = optimize(inputs, BATTERY, Settings(), [bike])
+    return [i for i, s in enumerate(plan.slots) if s.flex_w.get("E-Bike", 0) > 1]
+
+
+def test_charger_charges_in_one_block() -> None:
+    """At equal night prices a battery charger is one block within the cheap hours, not pieces."""
+    on = _charger_plan(running=False)
+
+    assert on == list(range(on[0], on[0] + len(on)))
+    assert on[-1] < 20
+
+
+def test_running_charger_goes_on() -> None:
+    """Switched on already: it goes on now instead of stopping and starting again later."""
+    on = _charger_plan(running=True)
+
+    assert on == list(range(len(on)))

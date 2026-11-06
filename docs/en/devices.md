@@ -125,6 +125,8 @@ needs a power measurement.
 - **How much**: from the state of charge with an SoC entity and the battery capacity, else with the
   energy per charge. Sunflow replaces the starting value with the mean of the last charges once it
   has measured them. Without an SoC it plans 25 % more time as a reserve in case a charge takes longer.
+- **In one go**: a battery charges in one block if at all possible, not in pieces (easier on it,
+  especially in the cold). Once a charge runs, Sunflow simply goes on at an equal price.
 - **Window over, but not full**: Sunflow switches off at the end of the planned window, but the load
   stays ready. Only the rest of the charge (at least a fifth) is planned then, by "Ready by" or in
   the next cheap window.
