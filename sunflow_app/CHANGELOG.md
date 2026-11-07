@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.20
+
+- Live, 3D view: the line from each inverter into the house carries what it really gives – its PV plus what its batteries discharge, less what they charge – and a line from the distribution box into the house shows the consumption in the colour of its main source (battery, PV or grid). At night the battery's flow into the house now shows all the way.
+
 ## 0.78.19
 
 - Live, 3D view: the inverters feed a distribution box at the right of the house front, so their flow into the house shows apart from the grid line; the grid comes in at the meter on the left. The inverter of the carport roof hangs on the carport side, the other one nearer the house. Loads that are only measured (washing machine, dryer, stove) now show through the window.

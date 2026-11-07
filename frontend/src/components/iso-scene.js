@@ -100,6 +100,11 @@ class SunflowIsoScene extends LitElement {
     const imported = Math.max(live.grid_w ?? 0, 0);
     const exported = Math.max(-(live.grid_w ?? 0), 0);
     const hub = iso(...HUB);
+    // The flow into the house in the colour of where most of it comes from
+    const { pvToHome, batteryToHome, gridToHome } = data.flows;
+    const houseColor = batteryToHome >= pvToHome && batteryToHome >= gridToHome && batteryToHome > 0
+      ? COLOR.battery
+      : gridToHome > pvToHome ? COLOR.grid : COLOR.pv;
     const meter = iso(...METER);
     return svg`<svg viewBox="0 0 900 700" class="scene ${day ? "day" : "night"}" role="img"
       aria-label=${t("Energiefluss: {summary}", { summary: data.summary })}>
@@ -122,8 +127,17 @@ class SunflowIsoScene extends LitElement {
       ${loads.bike ? this._bike(loads.bike) : nothing}
 
       ${Object.entries(roofs).map(([face, roof]) => this._flow(this._roofCenter(face), iso(INVERTERS[roof.inverter] + 0.5, 8.2, 2.7), roof.power, COLOR.pv))}
+      ${inverters.map((inverter, i) => {
+        // What the inverter gives the house: its PV plus what its batteries discharge, less what they charge
+        const discharge = inverter.batteries.reduce((sum, b) => sum + Math.max(-(b.power_w ?? 0), 0), 0);
+        const output = inverter.power - inverter.batteries.reduce((sum, b) => sum + (b.power_w ?? 0), 0);
+        const color = discharge > inverter.power ? COLOR.battery : COLOR.pv;
+        return output >= 0
+          ? this._flow(iso(INVERTERS[i], 8.2, 1.4), hub, output, color)
+          : this._flow(hub, iso(INVERTERS[i], 8.2, 1.4), -output, COLOR.grid);
+      })}
+      ${this._flow(hub, iso(4.4, 8, 3.75), data.flows.house, houseColor)}
       ${inverters.map((inverter, i) => svg`
-        ${this._flow(iso(INVERTERS[i], 8.2, 1.4), hub, inverter.power, COLOR.pv)}
         ${inverter.batteries.map((battery, j) => {
           const power = battery.power_w ?? 0;
           const at = iso(INVERTERS[i] + 0.5, 8.3, 0.9 - j * 0.75);
