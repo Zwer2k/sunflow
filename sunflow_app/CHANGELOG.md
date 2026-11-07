@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.14
+
+- Live, 3D view: a smaller house door and a wider shop window, so up to four appliances fit side by side. Each inverter's callout lists its PV power and its batteries by name with level and power, the two side by side below the annex with short leaders.
+
 ## 0.78.13
 
 - Live, 3D view: up to two cars under the carport, parked with the rear towards the viewer and the level bar on it, the second wallbox on the back post. The heat pump stands beside the grid pole, the e-bike beside the carport. Values of the roof faces and the house sit on them; the other callouts are placed close to their part, so leaders are short and hardly cross.
