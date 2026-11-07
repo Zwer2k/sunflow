@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.17
+
+- Settings → Loads: loads added by hand as "not controllable – measure only" (washing machine, dryer, stove …) no longer show up there with planning settings; they stay under Devices.
+
 ## 0.78.16
 
 - Live, 3D view: the inverter callouts sit further left, next to the appliances.
