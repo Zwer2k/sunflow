@@ -602,6 +602,16 @@ class Buffer:
 
 
 @dataclass(kw_only=True)
+class Headroom:
+    """Room kept free in the battery for more PV than planned, at the end of a sunny period."""
+
+    slot: int
+    wh: float  # room for the PV above the plan
+    max_wh: float  # what all batteries hold at most then
+    penalty: float  # €/kWh above it
+
+
+@dataclass(kw_only=True)
 class PlanResult:
     """Plan with the inputs' provenance and warnings."""
 
@@ -623,6 +633,7 @@ class PlanResult:
     pv_band: list[tuple[float | None, float | None]] = field(default_factory=list)
     # What the battery should still hold at the end of each expensive period
     buffers: list[Buffer] = field(default_factory=list)
+    headrooms: list[Headroom] = field(default_factory=list)
     plane_forecasts_now: dict[str, float] = field(default_factory=dict)
     plane_corrections: dict[str, PvCorrection] = field(default_factory=dict)
     clouds: list[float | None] = field(default_factory=list)
@@ -925,6 +936,51 @@ def storage_buffers(
         if (wh := min(z * spread, max_wh)) > 0:
             buffers.append(Buffer(slot=end - 1, wh=wh, penalty=penalty_share * saving))
     return buffers
+
+
+# Room for a sunnier day: the same share of the way towards the optimistic forecast as the
+# planning goes towards the pessimistic one ("PV aufnehmen" at least this much)
+PV_ABSORPTION_HEADROOM = 0.7
+MIN_HEADROOM_WH = 300.0
+
+
+def pv_headrooms(
+    inputs: list[SlotInput],
+    band: list[tuple[float | None, float | None]],
+    share: float,
+    limit_wh: float,
+    extra_penalty: float = 0.0,
+) -> list[Headroom]:
+    """Room to keep free before each sunny period for the PV the optimistic forecast adds.
+
+    With cheap hours every night, holding the battery overnight only saves the price difference;
+    a fuller day than planned would then spill PV for the feed-in tariff and buy it back later.
+    The room is the share of the extra surplus up to the optimistic forecast; a kWh above it costs
+    what that PV would replace (the cheapest price after it, less the feed-in) plus extra_penalty.
+    """
+    n = len(inputs)
+    high = [band[t][1] if t < len(band) and band[t][1] is not None else inputs[t].pv_w for t in range(n)]
+    sunny = [max(high[t], inputs[t].pv_w) > inputs[t].load_w for t in range(n)]
+    result = []
+    end = 0
+    while end < n:
+        if not sunny[end]:
+            end += 1
+            continue
+        first = end
+        while end < n and sunny[end]:
+            end += 1
+        upside = sum(
+            max(max(high[t], inputs[t].pv_w) - inputs[t].load_w, 0.0) - max(inputs[t].pv_w - inputs[t].load_w, 0.0)
+            for t in range(first, end)
+        ) * DT_H
+        room = share * upside
+        if room < MIN_HEADROOM_WH:
+            continue
+        replaced = min(slot.price for slot in inputs[end - 1 : end + CHEAP_AROUND * 2]) - inputs[end - 1].feed_in
+        if (penalty := max(replaced, 0.0) + extra_penalty) > 0:
+            result.append(Headroom(slot=end - 1, wh=room, max_wh=max(limit_wh - room, 0.0), penalty=penalty))
+    return result
 
 
 # A due full charge is worth this much per kWh missing; overdue it must happen
@@ -1735,6 +1791,14 @@ async def compute_plan(
             premium,
         )
         settings = replace(settings, buffer=tuple((b.slot, b.wh, b.penalty) for b in buffers))
+    risk = PV_RISK[config.optimizer.pv_risk]
+    share = max(risk, PV_ABSORPTION_HEADROOM) if strategy == "pv_absorption" else risk
+    limit_share = care.limit_wh / battery.capacity_wh if care.limit_wh is not None else 1.0
+    headrooms = pv_headrooms(
+        inputs, band, share, limit_share * sum(b.capacity_wh for b in batteries),
+        settings.export_penalty_ct_per_kwh / 100,
+    ) if share > 0 else []
+    settings = replace(settings, headroom=tuple((h.slot, h.max_wh, h.penalty) for h in headrooms))
     if inputs and inputs[0].start <= (moment := datetime.now(UTC)) < inputs[0].start + SLOT:
         # Of the running slot only the rest is ahead; at least a minute so it still steers
         settings = replace(settings, first_slot_share=max((inputs[0].start + SLOT - moment) / SLOT, 1 / 15))
@@ -1754,6 +1818,7 @@ async def compute_plan(
         raw_pv=raw_pv,
         pv_band=band,
         buffers=buffers,
+        headrooms=headrooms,
         plane_forecasts_now={key: powers[0] for key, powers in plane_slots.items() if powers},
         plane_corrections=own if config.optimizer.pv_learning else {},
         clouds=clouds,

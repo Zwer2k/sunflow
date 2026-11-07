@@ -71,6 +71,25 @@ teuren Phase (vor der nächsten günstigen) noch einen Puffer über der Entladeg
 
 Im Plan steht unter „Ladestand“, wie viel zu welcher Zeit übrig bleiben soll.
 
+### Platz für mehr Sonne als geplant
+
+Geplant wird mit der mittleren PV-Prognose, je nach „PV-Risiko“ ein Stück in Richtung der
+vorsichtigen (p10). Kommt mehr Sonne, wäre ein schon voller Speicher das Problem: Der Überschuss
+ginge für die Einspeisevergütung ins Netz und müsste später zum günstigen Preis wieder gekauft
+werden. Gibt es jede Nacht günstigen Strom, bringt es wenig, den Speicher nachts zu halten und
+das Haus aus dem Netz zu versorgen, wenn er am nächsten Tag ohnehin voll würde.
+
+Darum hält der Plan am Ende jedes sonnigen Abschnitts Platz frei für einen Teil der zusätzlichen
+PV bis zur optimistischen Prognose (p90):
+
+- **Anteil**: derselbe wie das „PV-Risiko“ in die andere Richtung (erwartet 0 %, ausgewogen 30 %,
+  vorsichtig 70 %); bei „PV aufnehmen“ mindestens 70 %.
+- **Weich**: Jede kWh, die dann zu viel im Speicher wäre, zählt so viel, wie diese PV ersetzen
+  würde (günstigster Preis danach minus Einspeisevergütung, bei „PV aufnehmen“ plus 5 ct). Der
+  Speicher deckt dafür eher nachts das Haus, statt zu halten.
+
+Im Plan steht unter „Ladestand“, wie viel der Speicher dann höchstens halten soll.
+
 Die Strategie stellst du unter Einstellungen → Planung ein, vorübergehend unter Steuerung oder
 mit der Aktion `sunflow_ems.set_strategy`.
 

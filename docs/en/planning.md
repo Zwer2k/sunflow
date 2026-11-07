@@ -69,6 +69,25 @@ the discharge limit at the end of each expensive period (before the next cheap o
 
 The plan says under "State of charge" how much should be left at what time.
 
+### Room for more sun than planned
+
+The plan uses the middle PV forecast, depending on "PV risk" a bit towards the cautious one
+(p10). With more sun, an already full battery is the problem: the surplus would go to the grid for
+the feed-in tariff and be bought back later at the cheap price. With cheap power every night,
+holding the battery overnight and supplying the house from the grid gains little when the battery
+would be full the next day anyway.
+
+So at the end of each sunny period the plan keeps room for part of the extra PV up to the
+optimistic forecast (p90):
+
+- **Share**: the same as "PV risk" in the other direction (expected 0 %, balanced 30 %, cautious
+  70 %); with "Absorb PV" at least 70 %.
+- **Soft**: each kWh that would then be too much in the battery counts what that PV would replace
+  (the cheapest price after it less the feed-in tariff, with "Absorb PV" plus 5 ct). The battery
+  rather covers the house at night instead of holding.
+
+The plan says under "State of charge" how much the battery should hold at most then.
+
 The strategy is set under Settings → Planning, temporarily under Control, or with the action
 `sunflow_ems.set_strategy`.
 
