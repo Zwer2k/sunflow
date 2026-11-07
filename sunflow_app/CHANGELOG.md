@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.78.24
+
+- Default target of a car also when it is not recognized: the vehicle chosen in the app or the only one at this wallbox, with its value under Settings → Charging; otherwise the wallbox's own value, then evcc's limit. It no longer comes from the last plan, which right after "Default" still held the value chosen by hand.
+- Live quick controls reload once the plan has been recomputed after a change, so "Default" shows at once instead of after the next refresh.
+- The knob shows the default in its centre and as a mark on the arc.
+
 ## 0.78.23
 
 - Control and live quick controls: the default target of a car is its value under Settings → Charging (this vehicle at this wallbox), as the plan uses it – before, the wallbox's own empty value was shown, so "Default" had no value and the knob started at 55 %. Without any setting it is the value from evcc.

@@ -305,4 +305,5 @@ export default {
   "Mehr": "More",
   "Wert …": "Value …",
   "Beliebiges Ziel für {name}": "Any target for {name}",
+  "Standard {value}": "Default {value}",
 };

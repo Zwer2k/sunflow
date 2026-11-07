@@ -876,21 +876,25 @@ def test_battery_scenarios_are_stored_with_unique_ids(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("planning", "charging", "override", "expected"),
+    ("kind", "planning", "charging", "recognized", "evcc", "expected"),
     [
-        pytest.param({}, [85.0], None, 85.0, id="charging-settings-of-the-car"),
-        pytest.param({"wb": {"target": 70.0}}, [], None, 70.0, id="settings-of-the-wallbox"),
-        pytest.param({}, [], None, 80.0, id="from-evcc"),
-        pytest.param({"wb": {"target": 70.0}}, [85.0], None, 85.0, id="car-before-wallbox"),
-        pytest.param({}, [], 60.0, None, id="evcc-value-hidden-by-a-change"),
+        pytest.param("vehicle", {}, [85.0], "car", None, 85.0, id="charging-settings-of-the-car"),
+        pytest.param("vehicle", {}, [85.0], None, None, 85.0, id="only-car-at-the-wallbox-not-recognized"),
+        pytest.param("vehicle", {"wb": {"target": 70.0}}, [85.0], "car", None, 85.0, id="car-before-wallbox"),
+        pytest.param("vehicle", {"wb": {"target": 70.0}}, [], None, None, 70.0, id="settings-of-the-wallbox"),
+        pytest.param("vehicle", {}, [], None, 90.0, 90.0, id="from-evcc"),
+        pytest.param("vehicle", {}, [], None, None, None, id="nothing-known"),
+        pytest.param("heater", {}, [], None, None, 60.0, id="hot-water-default"),
     ],
 )
-def test_default_target(planning: dict, charging: list[float], override: float | None, expected: float | None) -> None:
-    """The knob's default is the car's charging setting at this wallbox before the wallbox's own and evcc's."""
-    from datetime import UTC, datetime
+def test_default_target(
+    kind: str, planning: dict, charging: list[float], recognized: str | None, evcc: float | None, expected: float | None
+) -> None:
+    """The default target as the next plan takes it, never the last plan's (which may still hold a change by hand)."""
+    from types import SimpleNamespace
 
     from sunflow.api.control import _default_target
-    from sunflow.config.models import ChargingProfile, DeviceOverride, FlexSettings, SunflowConfig, Vehicle
+    from sunflow.config.models import ChargingProfile, FlexSettings, SunflowConfig, Vehicle
     from sunflow.planning.plan import FlexInfo
 
     car = Vehicle(id="car", name="Fiat 500e", capacity_wh=37500)
@@ -899,8 +903,11 @@ def test_default_target(planning: dict, charging: list[float], override: float |
         charging=[ChargingProfile(vehicle_id="car", wallbox_id="wb", flex=FlexSettings(target=target)) for target in charging],
         planning={key: FlexSettings(**value) for key, value in planning.items()},
     )
+    # The last plan still holds a target chosen by hand before
     info = FlexInfo(
-        device_id="wb", name="Wallbox", kind="vehicle", current=35, target=override or 80.0, unit="%",
-        need_wh=0, deadline=None, max_power_w=11000, vehicle_id="car",
+        device_id="wb", name="Wallbox", kind=kind, current=35, target=73.0, unit="%",
+        need_wh=0, deadline=None, max_power_w=11000, vehicle_id=recognized,
     )
-    assert _default_target(config, "wb", info, None, DeviceOverride(target=override), datetime.now(UTC)) == expected
+    roles = {"limit_soc": SimpleNamespace(value=evcc)}
+
+    assert _default_target(config, "wb", kind, info, None, roles) == expected
