@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.12
+
+- Live: a "3D" view of the energy flow – an isometric drawing with callouts: up to four roof faces (south, the north side hinted behind the ridge, annex, carport) placed by the name of their forecast plane, up to two inverters with up to two batteries each, grid, wallbox and car, and – only where measured – e-bike, heat pump, hot water tank, washing machine, dryer and stove. Animated flows from the roof faces to their inverter and on to the house.
+- Live API: per string the forecast plane, the batteries with their device, and the device id of each load.
+
 ## 0.78.11
 
 - Charge battery (loads without an SoC, e.g. an e-bike): new "Needs charging from" power. A full battery left plugged in only draws a top-up for its self-discharge; above "full or unplugged below" but under this power the test charge no longer counts as ready, and a switched-on battery that never draws more counts as full.

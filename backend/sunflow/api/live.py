@@ -114,6 +114,7 @@ async def get_live(request: Request) -> dict[str, Any]:
                 vehicle = recognized.vehicle
             consumers.append(
                 {
+                    "device_id": device.id,
                     "name": device.name,
                     "kind": kind,
                     "power_w": value("charge_power") if "loadpoint" in capabilities else value("power"),
@@ -125,16 +126,21 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
                 }
             )
-    # Strings with optimizers open the roof view
+    # Strings with optimizers open the roof view; the forecast plane names the roof face
     assigned = optimizer_counts(config, profiles, snapshot)
+    planes = {key: plane.display_name for plane in config.forecast_planes for key in plane.strings}
     for plant in pv:
         for string in plant["strings"]:
-            string["optimizers"] = assigned.get(f"{plant['device_id']}:{string['index']}", 0)
+            key = f"{plant['device_id']}:{string['index']}"
+            string["optimizers"] = assigned.get(key, 0)
+            string["plane"] = planes.get(key)
     return {
         "time": datetime.now(UTC).isoformat(),
         "pv": pv,
         "pv_w": sum(p["power_w"] for p in pv) if pv else None,
         "battery": combine_batteries(batteries),
+        # Each battery with its device: the 3D view puts it next to its inverter
+        "batteries": batteries,
         "grid_w": grid_w,
         "load_w": load_w,
         "consumers": consumers,

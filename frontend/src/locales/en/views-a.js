@@ -94,6 +94,8 @@ export default {
   "Kaufpreis aus dem Verschleiß des Speichers gegenüber gar keinem Speicher": "Purchase price from the battery's wear setting, against no battery at all",
   "Balken": "Bars",
   "Kacheln": "Tiles",
+  "3D": "3D",
+  "Nordseite": "North side",
   "Ansicht Energiefluss": "Energy flow view",
   "Energiefluss": "Energy flow",
   "Woher": "From",
