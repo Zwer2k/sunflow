@@ -449,4 +449,7 @@ export default {
   "{name}: {soc}, {power}": "{name}: {soc}, {power}",
   "Ladebedarf ab": "Needs charging from",
   "Erst ab dieser Leistung gilt er bei der Probeladung als ladebereit. Ein voller Akku, der angesteckt blieb, zieht nur wenig für die Selbstentladung – das wird nicht eingeplant. Leer: wie „Voll oder abgesteckt unter“.": "Only from this power does the test charge count as ready. A full battery left plugged in only draws a little for its self-discharge – that is not planned. Empty: as “Full or unplugged below”.",
+  "Höchstes Ziel von Hand": "Highest target by hand",
+  "Bis hierhin lässt sich das Ziel in Steuerung und Live wählen. Leer = 60 °C; darüber Verbrühungsgefahr am Wasserhahn.": "The target can be chosen up to this value in Control and Live. Empty = 60 °C; above it there is a risk of scalding at the tap.",
+  "Bis hierhin lässt sich das Ziel in Steuerung und Live wählen. Leer = 100 %.": "The target can be chosen up to this value in Control and Live. Empty = 100 %.",
 };

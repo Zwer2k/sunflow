@@ -72,6 +72,9 @@ Defaults for wallboxes without assigned vehicles, hot water and own loads:
   or the home battery) or As fast as possible (now at full power).
 - **Target**: state of charge or temperature; empty takes the value from evcc. An active
   evcc charging plan takes precedence.
+- **Highest target by hand**: the target can be chosen up to this value in Control and Live,
+  also with the knob; Sunflow rejects higher values. Empty: 60 °C for hot water (above it there
+  is a risk of scalding at the tap), 100 % for a car.
 - **Ready by (daily)**: empty means by the end of the plan, or within 24 h.
 - **Power from the home battery**: whether the battery may discharge
   into this load.

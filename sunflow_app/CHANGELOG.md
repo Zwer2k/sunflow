@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.78.22
+
+- Settings → Loads: new "Highest target by hand" – Control, the live quick controls and the API reject a higher target. Empty: 60 °C for hot water (risk of scalding above it), 100 % for a car. The knob and the presets end there.
+- The knob's "Default" button shows its value; without one set, the target the plan uses (e.g. from evcc).
+- Live, quick controls: the vehicle button has a car symbol and shows the choice – "detect" or the chosen vehicle. In Control the "Vehicle" label is a car symbol as well.
+
 ## 0.78.21
 
 - Live, quick controls: at a wallbox a button shows the detected vehicle and opens a dropdown to choose another one (or detect automatically); a 🎯 button shows the target (state of charge, or temperature for hot water) and opens a knob to set any value until midnight.

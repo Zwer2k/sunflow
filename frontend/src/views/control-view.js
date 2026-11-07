@@ -9,7 +9,7 @@ import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
 import "../components/target-dial.js";
-import { MODES, TARGETS, currentMode, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
+import { MODES, currentMode, defaultTarget, targetRange, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -428,7 +428,7 @@ class SunflowControl extends LitElement {
     const how = v?.method === "Karte" && card ? card : [v?.method, card].filter(Boolean).join(", ");
     return html`
       <div class="row">
-        <span class="small muted">${t("Fahrzeug")}</span>
+        <svg class="car" viewBox="0 0 24 24" role="img" aria-label=${t("Fahrzeug")}><path d="M3 16v-4l2-5h14l2 5v4zM3 16v3h3v-3M18 16v3h3v-3M7 12h0M17 12h0"></path></svg>
         ${device.manual_choice
           ? html`<sf-picker label=${t("Fahrzeug an {name}", { name: device.name })} hide-values ?disabled=${this._busy}
               empty-label=${t("automatisch erkennen")} .value=${device.selected_vehicle ?? ""}
@@ -475,7 +475,7 @@ class SunflowControl extends LitElement {
   _renderDevice(device) {
     const mode = currentMode(device);
     const unit = device.kind === "heater" ? "°C" : "%";
-    const targets = TARGETS[device.kind];
+    const targets = targetRange(device);
     const targetOverride = device.override?.target ?? null;
     const status = [
       formatPower(device.power_w, device.power_display),
@@ -546,7 +546,7 @@ class SunflowControl extends LitElement {
 
   /** Any other target with the knob; shows the value once it is not one of the presets. */
   _renderDial(device, targets, custom) {
-    return html`<sf-target-dial .value=${device.override?.target ?? null} .defaultValue=${device.default.target}
+    return html`<sf-target-dial .value=${device.override?.target ?? null} .defaultValue=${defaultTarget(device)}
       .min=${targets.min} .max=${targets.max} unit=${targets.unit} ?active=${custom} ?disabled=${this._busy}
       text=${custom ? "" : t("Wert …")} label=${t("Beliebiges Ziel für {name}", { name: device.name })}
       @change=${(e) => this._setDevice(device, { target: e.detail.value })}></sf-target-dial>`;
@@ -695,6 +695,7 @@ class SunflowControl extends LitElement {
     }
     .segmented button.on { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
     .segmented button .std { display: block; font-size: 11px; font-weight: 400; color: var(--sf-muted); }
+    .car { width: 20px; height: 20px; fill: none; stroke: var(--sf-muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
     .segmented.small-buttons button, .segmented.small-buttons sf-target-dial::part(button) { min-height: 36px; font-size: 13px; }
     .row { display: flex; flex-direction: column; gap: 6px; }
     button.plugged {

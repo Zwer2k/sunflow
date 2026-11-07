@@ -54,9 +54,11 @@ Rechts unter dem Energiefluss wählst du die Ansicht, jeder Browser merkt sich s
   Stecknadel angeheftet hast, eine Zeile mit Leistung, Ladestand und nächstem Ladefenster und den
   Betriebsarten als kleine Knöpfe: € Kostenoptimal, PV Nur PV, ⚡ Sofort, ⏸ Pause. Ein Wechsel gilt
   bis Mitternacht. Bei „Akku laden“ ohne Steckersensor schaltet 🔌 „jetzt eingesteckt“. An der
-  Wallbox zeigt ein Knopf das erkannte Fahrzeug und öffnet die Auswahl (oder „automatisch
-  erkennen“); 🎯 zeigt das Ziel (Ladestand oder Temperatur) und öffnet einen Drehregler für
-  einen beliebigen Wert, „Standard“ nimmt die Änderung zurück. Ohne
+  Wallbox zeigt ein Knopf mit Auto-Symbol die Auswahl – „erkennen“ oder das gewählte Fahrzeug –
+  und öffnet die Liste; 🎯 zeigt das Ziel (Ladestand oder Temperatur) und öffnet einen
+  Drehregler für einen beliebigen Wert bis zum
+  [höchsten Ziel von Hand](einstellungen.md#verbraucher), „Standard“ (mit seinem Wert) nimmt die
+  Änderung zurück. Ohne
   angeheftete Verbraucher erscheint der Block nicht.
 - **Heute** fasst die Energiezähler zusammen: PV erzeugt, verbraucht, Netzbezug, eingespeist,
   Verluste von Wechselrichter und Speicher, Autarkie und Eigenverbrauch.

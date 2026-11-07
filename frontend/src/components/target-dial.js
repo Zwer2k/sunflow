@@ -158,8 +158,9 @@ class SunflowTargetDial extends LitElement {
         <button aria-label=${t("Mehr")} @click=${() => (this._draft = this._clamp(this._draft + this.step))}>+</button>
       </div>
       <div class="actions">
-        <button title=${this.defaultValue !== null && this.defaultValue !== undefined ? `${this.defaultValue} ${this.unit}` : nothing}
-          @click=${() => this._emit(null)}>${t("Standard")}</button>
+        <button @click=${() => this._emit(null)}>${t("Standard")}${this.defaultValue !== null && this.defaultValue !== undefined
+          ? html`<span class="std">${this.defaultValue} ${this.unit}</span>`
+          : nothing}</button>
         <button class="primary" @click=${() => this._emit(this._draft)}>${t("Übernehmen")}</button>
       </div>
     </div>`;
@@ -194,6 +195,7 @@ class SunflowTargetDial extends LitElement {
       border: 1px solid var(--sf-border); border-radius: 8px; background: transparent; padding: 0 8px;
     }
     .actions button { flex: 1; min-height: 34px; font-size: 13px; }
+    .std { display: block; font-size: 11px; color: var(--sf-muted); }
     .actions .primary { background: var(--sf-primary); border-color: var(--sf-primary); color: var(--sf-on-primary, #fff); }
   `;
 }

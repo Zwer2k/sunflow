@@ -191,6 +191,9 @@ async def set_device_override(request: Request, device_id: str, body: DeviceOver
     config = store.load()
     if config.device(device_id) is None:
         raise HTTPException(status_code=404, detail="Device not configured")
+    limit = config.flex_of(device_id).target_max
+    if body.target is not None and limit is not None and body.target > limit:
+        raise HTTPException(status_code=422, detail=f"Target above the configured maximum of {limit:g}")
     config.overrides[device_id] = body
     store.save(config)
     _replan(request)
