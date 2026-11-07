@@ -23,7 +23,7 @@ from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_category, device_kind
 from sunflow.i18n import t
-from sunflow.planning.plan import FlexInfo
+from sunflow.planning.plan import DEFAULT_HOT_WATER_C, FlexInfo
 from sunflow.planning.vehicles import METHODS, scanned_card, vehicle_at
 from sunflow.shadow.runner import ShadowRunner
 
@@ -79,11 +79,12 @@ async def get_control(request: Request) -> dict[str, Any]:
         vehicle = recognized.vehicle
         override = config.overrides.get(device.id)
         info = infos.get(device.id)
+        kind = device_kind(profile, device, snapshot) or "load"
         devices.append(
             {
                 "id": device.id,
                 "name": device.name,
-                "kind": device_kind(profile, device, snapshot) or "load",
+                "kind": kind,
                 "category": device_category(profile, device, snapshot),
                 "default": config.flex_of(device.id).model_dump(),
                 "override": override.model_dump(mode="json") if override and override.active(now) else None,
@@ -102,7 +103,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 if "vehicle_soc" in roles
                 else None,
                 "target": info.target if info else None,
-                "default_target": _default_target(config, device.id, info, vehicle, override, now),
+                "default_target": _default_target(config, device.id, kind, info, vehicle, roles),
                 "vehicles": [{"id": v.id, "name": v.name} for v in config.vehicles_at(device.id)],
                 "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": _method(info.vehicle_method)}
                 if info and info.vehicle_id
@@ -187,16 +188,24 @@ async def control_log(request: Request, hours: int = 24, device_id: str | None =
 
 
 def _default_target(
-    config: SunflowConfig, device_id: str, info: FlexInfo | None, vehicle: Vehicle | None, override: DeviceOverride | None, now: datetime
+    config: SunflowConfig, device_id: str, kind: str, info: FlexInfo | None, vehicle: Vehicle | None, roles: dict[str, Any]
 ) -> float | None:
-    """The target without a change by hand: the vehicle's charging settings at this wallbox, the consumer's, else the plan's (evcc)."""
-    vehicle_id = info.vehicle_id if info and info.vehicle_id else vehicle.id if vehicle else None
+    """The target without a change by hand, as the next plan takes it; not the last plan's, which may still hold one."""
+    assigned = config.vehicles_at(device_id)
+    # Not recognized: the vehicle chosen in the app, or the only one at this wallbox
+    vehicle_id = (
+        (info.vehicle_id if info else None)
+        or (vehicle.id if vehicle else None)
+        or config.selected_vehicles.get(device_id)
+        or (assigned[0].id if len(assigned) == 1 else None)
+    )
     profile = config.charging_profile(vehicle_id, device_id) if vehicle_id else None
     configured = (profile.flex if profile else config.flex_of(device_id)).target
     if configured is not None:
         return configured
-    by_hand = override is not None and override.active(now) and override.target is not None
-    return info.target if info and not by_hand else None
+    if "limit_soc" in roles and roles["limit_soc"].value is not None:
+        return roles["limit_soc"].value
+    return DEFAULT_HOT_WATER_C if kind == "heater" else None
 
 
 @router.put("/control/devices/{device_id}")

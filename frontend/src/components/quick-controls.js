@@ -10,6 +10,8 @@ import { recall, remember } from "../lib/view-cache.js";
 const REFRESH_MS = 30 * 1000;
 const KEPT_MS = 10 * 60 * 1000;
 const MENU_WIDTH = 190;
+// The plan is recomputed in the background after a change
+const REPLAN_DELAY_MS = 2500;
 // Overrides from the live view last until midnight, like the control tab's default
 const DURATION = "midnight";
 const SHORT = { cost: "€", pv_only: t("PV"), fast: "⚡", pause: "⏸" };
@@ -44,6 +46,7 @@ class SunflowQuickControls extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._stop?.();
+    clearTimeout(this._replanTimer);
     document.removeEventListener("pointerdown", this._outside);
   }
 
@@ -80,6 +83,8 @@ class SunflowQuickControls extends LitElement {
     try {
       await action();
       await this._load();
+      clearTimeout(this._replanTimer);
+      this._replanTimer = setTimeout(() => this._load(), REPLAN_DELAY_MS);
     } catch (err) {
       this._error = t("Änderung fehlgeschlagen: {error}", { error: err.message });
     } finally {

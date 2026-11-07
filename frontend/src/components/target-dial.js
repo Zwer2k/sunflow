@@ -142,6 +142,8 @@ class SunflowTargetDial extends LitElement {
     const fraction = (this._draft - this.min) / (this.max - this.min);
     const [kx, ky] = point(fraction);
     const text = `${this._draft} ${this.unit}`;
+    const hasDefault = this.defaultValue !== null && this.defaultValue !== undefined;
+    const tick = hasDefault ? (Math.min(this.max, Math.max(this.min, this.defaultValue)) - this.min) / (this.max - this.min) : null;
     return html`<div class="panel ${this._left ? "left" : ""} ${this._up ? "up" : ""}" role="dialog" aria-label=${this.label}
       @keydown=${(e) => e.key === "Escape" && this._close()}>
       <svg class="knob" viewBox="0 0 120 120" tabindex="0" role="slider" aria-label=${this.label}
@@ -150,8 +152,11 @@ class SunflowTargetDial extends LitElement {
         @keydown=${this._key} @wheel=${this._wheel}>
         ${svg`<path class="track" d=${arc(1)}></path>
           ${fraction > 0 ? svg`<path class="fill" d=${arc(fraction)}></path>` : nothing}
+          ${tick !== null ? svg`<line class="tick" x1=${point(tick)[0]} y1=${point(tick)[1]}
+            x2=${60 + (point(tick)[0] - 60) * 1.25} y2=${60 + (point(tick)[1] - 60) * 1.25}></line>` : nothing}
           <circle class="handle" cx=${kx} cy=${ky} r="8"></circle>
-          <text x="60" y="66">${text}</text>`}
+          <text x="60" y=${hasDefault ? 62 : 66}>${text}</text>
+          ${hasDefault ? svg`<text class="default" x="60" y="80">${t("Standard {value}", { value: `${this.defaultValue} ${this.unit}` })}</text>` : nothing}`}
       </svg>
       <div class="steps">
         <button aria-label=${t("Weniger")} @click=${() => (this._draft = this._clamp(this._draft - this.step))}>−</button>
@@ -182,13 +187,15 @@ class SunflowTargetDial extends LitElement {
     }
     .panel.left { right: auto; left: 0; }
     .panel.up { top: auto; bottom: calc(100% + 6px); }
-    .knob { width: 160px; height: 160px; align-self: center; touch-action: none; cursor: grab; border-radius: 50%; outline: none; }
+    .knob { overflow: visible; width: 160px; height: 160px; align-self: center; touch-action: none; cursor: grab; border-radius: 50%; outline: none; }
     .knob:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
     .track, .fill { fill: none; stroke-width: 10; stroke-linecap: round; }
     .track { stroke: var(--sf-subtle); }
     .fill { stroke: var(--sf-primary); }
     .handle { fill: var(--sf-surface); stroke: var(--sf-primary); stroke-width: 3; }
     text { font-size: 20px; font-weight: 600; text-anchor: middle; fill: var(--sf-text); }
+    text.default { font-size: 9px; font-weight: 400; fill: var(--sf-muted); }
+    .tick { stroke: var(--sf-text); stroke-width: 2.5; stroke-linecap: round; }
     .steps, .actions { display: flex; gap: 6px; }
     .steps button { flex: 1; min-height: 36px; font-size: 18px; }
     .steps button, .actions button {
