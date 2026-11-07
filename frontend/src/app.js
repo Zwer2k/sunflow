@@ -150,6 +150,8 @@ const MANUAL_TYPES = {
   current: t("Stromstärke (Zahl)"),
   meter: t("nicht steuerbar – nur messen"),
 };
+// Capabilities of the hand-made profiles (they are not part of discovery): a meter is only measured
+const MANUAL_CAPABILITIES = { meter: ["appliance"] };
 const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
 
 const EMPTY_MANUAL = {
@@ -800,7 +802,8 @@ class SunflowApp extends LitElement {
   /** Capabilities of a configured device; manual devices are not part of discovery. */
   _capabilitiesOf(device) {
     return (
-      this._capabilitiesByHaDevice[device.ha_device_id] ?? (device.profile.startsWith(MANUAL_PREFIX) ? ["load"] : [])
+      this._capabilitiesByHaDevice[device.ha_device_id]
+      ?? (device.profile.startsWith(MANUAL_PREFIX) ? MANUAL_CAPABILITIES[device.profile.slice(MANUAL_PREFIX.length)] ?? ["load"] : [])
     );
   }
 
