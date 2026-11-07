@@ -70,6 +70,9 @@ Standard-Vorgaben für Wallboxen ohne zugeordnete Fahrzeuge, Warmwasser und eige
   dem Netz oder dem Hausspeicher) oder Schnellstmöglich (sofort mit voller Leistung).
 - **Ziel**: Ladestand oder Temperatur; leer übernimmt Sunflow den Wert aus evcc. Ein aktiver
   evcc-Ladeplan hat Vorrang.
+- **Höchstes Ziel von Hand**: bis zu diesem Wert lässt sich das Ziel in Steuerung und Live
+  wählen, auch mit dem Drehregler; Sunflow lehnt höhere Werte ab. Leer: 60 °C beim Warmwasser
+  (darüber Verbrühungsgefahr am Wasserhahn), 100 % beim Auto.
 - **Fertig bis (täglich)**: leer heißt bis zum Ende des Plans bzw. innerhalb von 24 h.
 - **Strom aus dem Hausspeicher**: ob der Speicher in diesen Verbraucher entladen darf.
 - **Alternative Wärmequelle** (Warmwasser): Preis je kWh Wärme aus Fernwärme, Gas o. Ä.

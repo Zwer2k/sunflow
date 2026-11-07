@@ -45,8 +45,22 @@ export function currentMode(device) {
   return device.paused ? "pause" : device.override?.strategy ?? device.default.strategy;
 }
 
-/** Presets and the range of the free knob for a consumer's target. */
-export const TARGETS = {
+// Hot water above 60 °C only when set as the maximum in the settings (scalding)
+const TARGETS = {
   vehicle: { presets: [50, 80, 100], min: 10, max: 100, unit: "%" },
-  heater: { presets: [45, 55, 60], min: 30, max: 80, unit: "°C" },
+  heater: { presets: [45, 55, 60], min: 30, max: 60, unit: "°C" },
 };
+
+/** The target without an override: the configured one, else what the plan uses (e.g. from evcc). */
+export function defaultTarget(device) {
+  const target = device.default.target ?? (device.override?.target == null ? device.target : null);
+  return target === null || target === undefined ? null : Math.round(target);
+}
+
+/** Presets and range of the knob for a consumer's target; null when it has none. */
+export function targetRange(device) {
+  const base = TARGETS[device.kind];
+  if (!base) return null;
+  const max = device.default.target_max ?? base.max;
+  return { ...base, max, presets: base.presets.filter((p) => p <= max) };
+}

@@ -42,6 +42,8 @@ class FlexSettings(BaseModel):
     strategy: Literal["cost", "pv_only", "fast"] = "cost"
     # Overrides the target from evcc (% for vehicles, °C for heaters)
     target: float | None = None
+    # Highest target that may be chosen by hand (e.g. against scalding); None: the usual range
+    target_max: float | None = Field(default=None, ge=0, le=100)
     # Daily time ("HH:MM") by which the need has to be met
     ready_by: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     uses_battery: bool = True

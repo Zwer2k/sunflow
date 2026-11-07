@@ -50,9 +50,10 @@ Below the energy flow on the right you choose the view; each browser remembers i
 - **Quick controls** (below the energy flow): one row per load you pinned under Control, with
   power, state of charge and next charging window, and the modes as small buttons: € Cost-optimal,
   PV PV only, ⚡ Now, ⏸ Pause. A change applies until midnight. For "Charge battery" without a plug
-  sensor, 🔌 switches "plugged in now". At the wallbox a button shows the detected vehicle and
-  opens the choice (or "detect automatically"); 🎯 shows the target (state of charge or
-  temperature) and opens a knob for any value, "Default" undoes the change. Without pinned loads
+  sensor, 🔌 switches "plugged in now". At the wallbox a button with a car symbol shows the choice – "detect" or the chosen vehicle – and
+  opens the list; 🎯 shows the target (state of charge or
+  temperature) and opens a knob for any value up to the
+  [highest target by hand](settings.md#loads), "Default" (with its value) undoes the change. Without pinned loads
   the block is not shown.
 - **Today** sums up the energy meters: PV generated, consumed, grid import, exported,
   inverter/battery losses, self-sufficiency and self-consumption.

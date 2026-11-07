@@ -90,7 +90,7 @@ def test_manual_device_and_flex_settings(tmp_path: Path) -> None:
         json={"flex": {"strategy": "pv_only", "ready_by": "18:00", "uses_battery": False}},
     )
     assert update.json()["flex"] == {
-        "strategy": "pv_only", "target": None, "ready_by": "18:00", "uses_battery": False, "alternative_cost_ct": None
+        "strategy": "pv_only", "target": None, "target_max": None, "ready_by": "18:00", "uses_battery": False, "alternative_cost_ct": None
     }
     assert client.patch(f"/api/v1/config/devices/{device['id']}", json={"flex": {"ready_by": "25:00"}}).status_code == 422
 
@@ -160,6 +160,28 @@ def test_control_overrides_and_priorities(tmp_path: Path) -> None:
     config = store.load()
     assert config.overrides == {} and config.strategy_override is None
     assert len(replans) == 5
+
+
+@pytest.mark.parametrize(
+    ("target", "status"),
+    [pytest.param(55.0, 200, id="up-to-the-maximum"), pytest.param(56.0, 422, id="above-the-maximum")],
+)
+def test_target_by_hand_respects_the_maximum(tmp_path: Path, target: float, status: int) -> None:
+    """A target chosen by hand may not exceed the configured maximum (e.g. hot water against scalding)."""
+    from sunflow.config.models import DeviceConfig, FlexSettings, SunflowConfig
+    from sunflow.config.store import ConfigStore
+
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(
+        devices=[DeviceConfig(id="heat", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser")],
+        planning={"heat": FlexSettings(target_max=55)},
+    ))
+    app = create_app()
+    app.state.store = store
+    app.state.runner = type("Runner", (), {"request_replan": lambda self: None})()
+    client = TestClient(app)
+
+    assert client.put("/api/v1/control/devices/heat", json={"target": target}).status_code == status
 
 
 def test_live_controls_are_pinned_per_consumer(tmp_path: Path) -> None:

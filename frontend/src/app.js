@@ -78,7 +78,7 @@ function deviceCategory(device, preview) {
 function configuredDevices(config) {
   const withRelations = (d) => ({
     ...d,
-    flex: config.planning?.[d.id] ?? { strategy: "cost", target: null, ready_by: null, uses_battery: true, alternative_cost_ct: null },
+    flex: config.planning?.[d.id] ?? { strategy: "cost", target: null, target_max: null, ready_by: null, uses_battery: true, alternative_cost_ct: null },
     feed_in: config.feed_in?.[d.id] ?? null,
     measured_by: config.measured_by?.[d.id] ?? null,
   });
@@ -886,7 +886,7 @@ class SunflowApp extends LitElement {
     if (this._nameEdits[device.id] !== undefined) changes.name = this._nameEdits[device.id];
     if (this._flexEdits[device.id] !== undefined) {
       const flex = { ...device.flex, ...this._flexEdits[device.id] };
-      if (flex.target === undefined || flex.alternative_cost_ct === undefined) {
+      if (flex.target === undefined || flex.target_max === undefined || flex.alternative_cost_ct === undefined) {
         this._error = t("Bitte gültige Zahlen bei der Planung eingeben.");
         return false;
       }
@@ -2479,6 +2479,18 @@ class SunflowApp extends LitElement {
                   <span class="muted">${kind === "heater" ? "°C" : "%"}</span>
                 </span>
                 <span class="small muted">${t("Leer = Wert aus evcc. Ein aktiver evcc-Ladeplan hat Vorrang.")}</span>
+              </label>
+              <label class="field">
+                <span class="field-label">${t("Höchstes Ziel von Hand")}</span>
+                <span class="input-unit">
+                  <input inputmode="decimal" placeholder=${kind === "heater" ? "60" : "100"}
+                    .value=${flex.target_max === null || flex.target_max === undefined ? "" : toDisplay(flex.target_max, "")}
+                    @input=${(e) => set("target_max", fromDisplay(e.target.value, ""))}>
+                  <span class="muted">${kind === "heater" ? "°C" : "%"}</span>
+                </span>
+                <span class="small muted">${kind === "heater"
+                  ? t("Bis hierhin lässt sich das Ziel in Steuerung und Live wählen. Leer = 60 °C; darüber Verbrühungsgefahr am Wasserhahn.")
+                  : t("Bis hierhin lässt sich das Ziel in Steuerung und Live wählen. Leer = 100 %.")}</span>
               </label>`
             : nothing}
           <label class="field">

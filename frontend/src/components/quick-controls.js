@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { poll } from "../lib/poll.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "./target-dial.js";
-import { MODES, TARGETS, currentMode, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
+import { MODES, currentMode, defaultTarget, targetRange, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
 import { locale, t } from "../lib/i18n.js";
 import { recall, remember } from "../lib/view-cache.js";
 
@@ -135,7 +135,7 @@ class SunflowQuickControls extends LitElement {
       </div>
       <div class="controls">
         ${device.vehicles?.length && device.manual_choice ? this._renderVehicle(device) : nothing}
-        ${TARGETS[device.kind] ? this._renderTarget(device, TARGETS[device.kind]) : nothing}
+        ${targetRange(device) ? this._renderTarget(device, targetRange(device)) : nothing}
         ${charger?.manual
           ? html`<button class="plug ${charger.ready ? "on" : ""}" aria-pressed=${charger.ready} ?disabled=${this._busy}
               title=${charger.ready ? t("Nicht mehr eingesteckt") : t("Jetzt eingesteckt")}
@@ -162,7 +162,9 @@ class SunflowQuickControls extends LitElement {
       <button class="menu-button" aria-haspopup="listbox" aria-expanded=${open} ?disabled=${this._busy}
         title=${t("Fahrzeug an {name}", { name: device.name })} @click=${(e) => this._toggleMenu(device, e)}
         @keydown=${(e) => e.key === "Escape" && this._closeMenu()}>
-        ${device.vehicle?.name ?? t("Fahrzeug?")} <span aria-hidden="true">▾</span>
+        <svg class="car" viewBox="0 0 24 24" role="img" aria-label=${t("Fahrzeug")}><path d="M3 16v-4l2-5h14l2 5v4zM3 16v3h3v-3M18 16v3h3v-3M7 12h0M17 12h0"></path></svg>
+        ${selected ? device.vehicles.find((v) => v.id === selected)?.name ?? selected : t("erkennen")}
+        <span aria-hidden="true">▾</span>
       </button>
       ${open
         ? html`<ul class="menu ${this._menuLeft ? "left" : ""}" role="listbox" aria-label=${t("Fahrzeug an {name}", { name: device.name })}
@@ -180,7 +182,7 @@ class SunflowQuickControls extends LitElement {
   _renderTarget(device, targets) {
     const own = device.override?.target ?? null;
     const target = own ?? device.target ?? device.default.target;
-    return html`<sf-target-dial .value=${own} .defaultValue=${device.default.target} .min=${targets.min} .max=${targets.max}
+    return html`<sf-target-dial .value=${own} .defaultValue=${defaultTarget(device)} .min=${targets.min} .max=${targets.max}
       unit=${targets.unit} ?active=${own !== null} ?disabled=${this._busy}
       text=${target !== null && target !== undefined ? `🎯 ${Math.round(target)} ${targets.unit}` : "🎯"}
       label=${t("Ziel {name}", { name: device.name })} @change=${(e) => this._setTarget(device, e.detail.value)}></sf-target-dial>`;
@@ -214,6 +216,8 @@ class SunflowQuickControls extends LitElement {
       cursor: pointer; font-size: 16px; filter: grayscale(1); opacity: 0.6;
     }
     .vehicle { position: relative; }
+    .menu-button { display: inline-flex; align-items: center; gap: 5px; }
+    .car { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
     .menu-button, sf-target-dial::part(button) {
       min-height: 38px; padding: 0 10px; border: 1px solid var(--sf-border); border-radius: 9px; background: transparent;
       cursor: pointer; font-size: 13px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis;
