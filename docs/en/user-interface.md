@@ -30,7 +30,7 @@ Below the energy flow on the right you choose the view; each browser remembers i
   to two batteries each below them, grid connection, up to two cars with their wallbox under the
   carport. Strings go onto the roof by
   their forecast plane: a plane named e.g. "North…" or "Carport" lands there, the others in order.
-  E-bike, heat pump, hot water tank, washing machine, dryer and stove only appear when set up as
+  E-bike (in the back north corner), heat pump, hot water tank, washing machine, dryer and stove only appear when set up as
   loads with a power measurement (recognized by name); the appliances in the house show through
   the big window.
 
