@@ -144,6 +144,9 @@ class ChargerSettings(BaseModel):
     # Energy of a charge without a SoC; replaced by the mean of the last charges once known
     energy_wh: float | None = Field(default=None, gt=0, le=1_000_000)
     done_below_w: float = Field(default=10.0, ge=0, le=100_000)
+    # Without a SoC: a charge (and a test) counts only from this power; below it a full battery
+    # left plugged in just tops up its self-discharge. None: done_below_w
+    needs_above_w: float | None = Field(default=None, ge=0, le=100_000)
     done_after_min: int = Field(default=3, ge=1, le=120)
     trigger_entity: str | None = None
     # State of the trigger that starts a test (e.g. "locked"); None: any change

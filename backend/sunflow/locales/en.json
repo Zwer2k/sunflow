@@ -78,6 +78,7 @@
   "nach Plan: jetzt nicht": "as planned: not now",
   "nutzt PV-Überschuss, den der Plan nicht erwartet hat": "uses PV surplus the plan did not expect",
   "Grenze: Hausspeicher unter {level} %": "Limit: home battery below {level} %",
+  "Nicht ladebereit (nur Erhaltungsladung, Akku voll)": "Not ready (only a top-up, battery full)",
   "Grenze: Ladestand von {name} unbekannt": "Limit: level of {name} unknown",
   "Grenze: {name} unter {level} {unit}": "Limit: {name} below {level} {unit}",
   "{entity_id}: Schreiblimit für heute erreicht, bleibt beim letzten Wert": "{entity_id}: write limit for today reached, keeps the last value",

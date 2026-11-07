@@ -56,6 +56,8 @@ class _State:
     charges: list[float] = field(default_factory=list)
     # Full while its plug entity still says plugged in; cleared when it is unplugged
     full: bool = False
+    # Since switching on it drew the power of a real charge (not only a top-up)
+    charging: bool = False
 
 
 def _time(value: str | None) -> datetime | None:
@@ -169,6 +171,10 @@ class ChargerWatch:
     ) -> tuple[str, str] | None:
         threshold = settings.done_below_w
         drawing = power_w is not None and power_w >= threshold
+        # Without a SoC a battery left plugged in shows its top-up, not a need
+        start = max(settings.needs_above_w or 0.0, threshold) if not settings.soc_entity else threshold
+        needs = power_w is not None and power_w >= start
+        state.charging = bool(switch_on) and (state.charging or needs)
         self._count_energy(state, switch_on, power_w, now)
         self._watch_trigger(settings, state, states, now)
 
@@ -176,8 +182,11 @@ class ChargerWatch:
             if now - testing < timedelta(seconds=settings.test_seconds):
                 return "charge", t("Prüft, ob {name} ladebereit ist", name=device.name)
             state.testing_since = None
-            if drawing:
+            if needs:
                 self._set_ready(state, True, t("Ladebereit (Prüfung)"), now)
+            elif drawing:
+                self._set_ready(state, False, t("Nicht ladebereit (nur Erhaltungsladung, Akku voll)"), now)
+                return "stop", t("Nicht ladebereit")
             else:
                 self._set_ready(state, False, t("Nicht ladebereit (Prüfung ohne Leistung)"), now)
                 return "stop", t("Nicht ladebereit")
@@ -185,7 +194,7 @@ class ChargerWatch:
         if (due := _time(state.test_due)) is not None and now >= due:
             state.test_due = None
             # Charging already: it is plugged in, no test needed
-            if not (switch_on and drawing):
+            if not (switch_on and needs):
                 if not state.ready:
                     # The test is no charge of its own
                     state.charge_wh = 0.0
@@ -201,9 +210,9 @@ class ChargerWatch:
         elif not state.ready:
             return "stop", t("Nicht ladebereit")
 
-        # Switched on long enough and hardly any power: full or unplugged
+        # Switched on long enough and hardly any power, or only a top-up from the start: full or unplugged
         on_since = _time(state.on_since)
-        if switch_on and on_since is not None and now - on_since >= SWITCH_ON_GRACE and not drawing:
+        if switch_on and on_since is not None and now - on_since >= SWITCH_ON_GRACE and not (drawing and state.charging):
             low_since = _time(state.low_since) or now
             state.low_since = low_since.isoformat()
             if now - low_since >= timedelta(minutes=settings.done_after_min):

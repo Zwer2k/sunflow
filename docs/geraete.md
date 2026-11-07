@@ -124,7 +124,11 @@ eines E-Bikes an einer schaltbaren Steckdose. Unter „Eigene Verbraucher“ lä
 - **Ladebereit** ist er, wenn die optionale Entität „angesteckt“ an ist. Ohne sie prüft Sunflow es
   mit einer **Probeladung**: Nach dem Auslöser (z. B. die Gartenhaustür wird verriegelt, Zustand
   `locked`; leer heißt bei jeder Änderung) und der eingestellten Wartezeit schaltet es den
-  Verbraucher kurz ein. Zieht er dabei mindestens die Schwelle, ist er ladebereit. Unter
+  Verbraucher kurz ein. Zieht er dabei mindestens die Schwelle, ist er ladebereit. Ohne
+  Ladestand-Entität gilt dafür **Ladebedarf ab**: Ein voller Akku, der angesteckt blieb, zieht nur
+  wenig für die Selbstentladung (Erhaltungsladung) – das zählt nicht als ladebereit, und auch
+  eingeschaltet gilt er als voll, solange er nie mehr zieht. Ein Wert knapp unter der Leistung zu
+  Beginn einer Ladung passt (beim E-Bike z. B. 80 W, wenn es mit 110–145 W lädt). Unter
   **Steuerung** lässt er sich auch von Hand als **Jetzt eingesteckt** (bzw. „Nicht mehr
   eingesteckt“) melden.
 - **Eingeplant** wird er nur, solange er ladebereit ist, mit PV-Überschuss oder günstigem Strom und
