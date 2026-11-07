@@ -927,6 +927,14 @@ class SunflowPlan extends LitElement {
           spread: formatValue((plan.load_spread ?? 0.15) * 100, "%"),
         },
       )}</p>`)}
+      ${(plan.headrooms ?? []).slice(0, 2).map((h) => html`<p class="small muted">${t(
+        "Platz für mehr Sonne: Um {time} soll der Speicher höchstens {max} halten, damit {energy} mehr PV als geplant noch hineinpasst statt ins Netz zu gehen.",
+        {
+          time: `${new Date(h.at).toLocaleDateString(locale(), { weekday: "short" })} ${time.format(new Date(h.at))}`,
+          max: formatValue(h.max_wh, "Wh"),
+          energy: formatValue(h.wh, "Wh"),
+        },
+      )}</p>`)}
       ${(plan.vehicles ?? []).map((v) => {
         const at = flex.find((f) => f.vehicle_id === v.id && f.expected_arrival);
         return html`<p class="small muted">${v.name}: ${v.usage_days

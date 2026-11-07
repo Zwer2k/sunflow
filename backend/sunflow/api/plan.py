@@ -104,6 +104,12 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
             for b in result.buffers
             if b.slot < len(plan.slots)
         ],
+        # Room kept free for more PV than planned (end of sunny periods)
+        "headrooms": [
+            {"at": plan.slots[h.slot].end.isoformat(), "wh": round(h.wh), "max_wh": round(h.max_wh), "penalty": round(h.penalty, 4)}
+            for h in result.headrooms
+            if h.slot < len(plan.slots)
+        ],
         "pv_sources": sorted({PV_SOURCE_NAMES.get(p.source, p.source) for p in config.forecast_planes if p.device_id}),
     }
 

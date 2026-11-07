@@ -94,6 +94,7 @@ export default {
   "Kaufpreis aus dem Verschleiß des Speichers gegenüber gar keinem Speicher": "Purchase price from the battery's wear setting, against no battery at all",
   "Balken": "Bars",
   "Kacheln": "Tiles",
+  "Platz für mehr Sonne: Um {time} soll der Speicher höchstens {max} halten, damit {energy} mehr PV als geplant noch hineinpasst statt ins Netz zu gehen.": "Room for more sun: at {time} the battery should hold at most {max}, so {energy} more PV than planned still fits in instead of going to the grid.",
   "3D": "3D",
   "Nordseite": "North side",
   "Ansicht Energiefluss": "Energy flow view",

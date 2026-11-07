@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.18
+
+- Planning: room for more sun than planned. At the end of each sunny period the battery keeps room for part of the extra PV up to the optimistic forecast (the "PV risk" share, with "Absorb PV" at least 70 %); a kWh above counts what that PV would replace. With cheap power every night the battery then covers the house at night instead of holding and spilling PV the next day. The plan view shows the room under the state of charge.
+
 ## 0.78.17
 
 - Settings → Loads: loads added by hand as "not controllable – measure only" (washing machine, dryer, stove …) no longer show up there with planning settings; they stay under Devices.

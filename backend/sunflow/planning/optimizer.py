@@ -92,6 +92,9 @@ class Settings:
     # Buffer for a day above the forecast (soft): (slot, Wh above the floor of all batteries
     # at its end, €/kWh missing)
     buffer: tuple[tuple[int, float, float], ...] = ()
+    # Room for more PV than planned (soft): (slot, Wh the batteries hold at most at its end,
+    # €/kWh above it)
+    headroom: tuple[tuple[int, float, float], ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -443,6 +446,9 @@ def optimize(
     buffers = [(t, wh, penalty) for t, wh, penalty in settings.buffer if 0 <= t < n and wh > 0]
     buffer_short = count + np.arange(len(buffers))
     count += len(buffers)
+    headrooms = [(t, wh, penalty) for t, wh, penalty in settings.headroom if 0 <= t < n]
+    headroom_over = count + np.arange(len(headrooms))
+    count += len(headrooms)
     # Discharge limit or backup reserve, whichever is higher, also while a battery is below it
     soc_floor = [max(b.min_soc_wh, b.reserve_wh if b.reserve_wh is not None else settings.reserve_wh) for b in batteries]
     # Below it (at the start, after an outage) every slot short of it costs: refilled first
@@ -491,6 +497,8 @@ def optimize(
     if full_short is not None:
         cost[full_short] = settings.full_charge_penalty / 1000
     for index, (_, _, penalty) in zip(buffer_short, buffers, strict=True):
+        cost[index] = penalty / 1000
+    for index, (_, _, penalty) in zip(headroom_over, headrooms, strict=True):
         cost[index] = penalty / 1000
     if reserve_short is not None:
         cost[reserve_short] = RESERVE_PENALTY * DT_H / 1000
@@ -719,6 +727,11 @@ def optimize(
     gate_rows.extend(
         ({**{s[k][t]: -1 for k in range(m)}, index: -1}, -(sum(soc_floor) + wh))
         for index, (t, wh, _) in zip(buffer_short, buffers, strict=True)
+    )
+    # soc of all batteries minus what lies above stays within the room left for more PV
+    gate_rows.extend(
+        ({**{s[k][t]: 1 for k in range(m)}, index: -1}, wh)
+        for index, (t, wh, _) in zip(headroom_over, headrooms, strict=True)
     )
     if m > 1:
         for t, slot in enumerate(inputs):
