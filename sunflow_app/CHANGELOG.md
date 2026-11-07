@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.11
+
+- Charge battery (loads without an SoC, e.g. an e-bike): new "Needs charging from" power. A full battery left plugged in only draws a top-up for its self-discharge; above "full or unplugged below" but under this power the test charge no longer counts as ready, and a switched-on battery that never draws more counts as full.
+
 ## 0.78.10
 
 - Priority limits (Control → Priority → Limits) hold in operation: control checks them at every step against the measured battery, car and tank levels, not only against the forecast the plan was made with. A load whose limit is not reached gets no planned PV or battery power; power planned from the grid may still run, "Immediately" ignores the limits as before.

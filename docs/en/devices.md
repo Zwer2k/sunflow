@@ -118,7 +118,11 @@ needs a power measurement.
 - **Ready to charge** when the optional "plugged in" entity is on. Without one, Sunflow checks with a
   **test charge**: after the trigger (e.g. the shed door is locked, state `locked`; empty means any
   change) and the set waiting time it switches the load on briefly. If it draws at least the
-  threshold, it is ready. Under **Control** you can also report it by hand as **Plugged in now**
+  threshold, it is ready. Without an SoC entity **Needs charging from** applies: a full battery left
+  plugged in only draws a little for its self-discharge (a top-up) – that does not count as ready,
+  and switched on it counts as full as long as it never draws more. A value just below the power at
+  the start of a charge fits (for an e-bike charging at 110–145 W e.g. 80 W). Under **Control** you
+  can also report it by hand as **Plugged in now**
   (or "No longer plugged in").
 - **Planned** only while it is ready, with PV surplus or cheap power and by "Ready by" as usual.
   Until then it is switched off.

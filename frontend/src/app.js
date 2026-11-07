@@ -2233,6 +2233,10 @@ class SunflowApp extends LitElement {
                   : t("Startwert, bis Sunflow es aus den ersten Ladungen gelernt hat"))}
               ${number("done_below_w", t("Voll oder abgesteckt unter"), "W")}
               ${number("done_after_min", t("… für"), "min")}
+              ${settings.soc_entity
+                ? nothing
+                : number("needs_above_w", t("Ladebedarf ab"), "W",
+                  t("Erst ab dieser Leistung gilt er bei der Probeladung als ladebereit. Ein voller Akku, der angesteckt blieb, zieht nur wenig für die Selbstentladung – das wird nicht eingeplant. Leer: wie „Voll oder abgesteckt unter“."))}
             </div>
             ${settings.connected_entity
               ? nothing

@@ -223,3 +223,39 @@ def test_interrupted_charge_plans_the_rest(tmp_path: Path, minutes: int, remaini
 
     assert planning["bike"].ready
     assert planning["bike"].energy_wh == pytest.approx(remaining, abs=3)
+
+
+@pytest.mark.parametrize(
+    ("power", "ready", "note"),
+    [
+        pytest.param(120.0, True, "Ladebereit (Prüfung)", id="real-charge"),
+        # A full battery left plugged in tops up its self-discharge: more than "full below", less than a need
+        pytest.param(25.0, False, "Nicht ladebereit (nur Erhaltungsladung, Akku voll)", id="top-up-only"),
+        pytest.param(0.0, False, "Nicht ladebereit (Prüfung ohne Leistung)", id="unplugged"),
+    ],
+)
+def test_test_charge_needs_more_than_a_top_up(tmp_path: Path, power: float, ready: bool, note: str) -> None:
+    """Without a SoC the test charge only counts as ready from the "needs charging" power."""
+    watch, bike = ChargerWatch(tmp_path), _bike(needs_above_w=60.0)
+    watch.step(bike, False, 0.0, UNLOCKED, NOW)
+    watch.step(bike, False, 0.0, LOCKED, NOW + timedelta(minutes=1))
+    watch.step(bike, False, 0.0, LOCKED, NOW + timedelta(minutes=3))
+    watch.step(bike, True, power, LOCKED, NOW + timedelta(minutes=4))
+
+    assert watch.ready(bike, LOCKED) is ready
+    assert watch.status(bike, LOCKED)["note"] == note
+
+
+@pytest.mark.parametrize(
+    ("power", "full"),
+    [pytest.param(25.0, True, id="top-up-only-is-full"), pytest.param(120.0, False, id="charging")],
+)
+def test_plugged_battery_drawing_only_a_top_up_is_full(tmp_path: Path, power: float, full: bool) -> None:
+    """With a plug entity but no SoC, a switched-on battery that never draws a real charge counts as full."""
+    watch = ChargerWatch(tmp_path)
+    bike = _bike(connected_entity="binary_sensor.bike_plugged", trigger_entity=None, needs_above_w=60.0)
+    plugged = {"binary_sensor.bike_plugged": {"state": "on"}}
+
+    results = _minutes(watch, bike, plugged, 0, 8, True, power)
+
+    assert (("stop", "Voll oder abgesteckt") in results) is full

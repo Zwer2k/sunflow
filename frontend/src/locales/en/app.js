@@ -447,4 +447,6 @@ export default {
   "{name} (+ laden, − entladen)": "{name} (+ charging, − discharging)",
   "{count} benötigte Entitäten sind in Home Assistant deaktiviert. Sunflow aktiviert sie beim Übernehmen; die Integration lädt danach kurz neu, bis dahin fehlen ihre Werte.": "{count} entities it needs are disabled in Home Assistant. Sunflow enables them when you take the device over; the integration then reloads briefly, until then their values are missing.",
   "{name}: {soc}, {power}": "{name}: {soc}, {power}",
+  "Ladebedarf ab": "Needs charging from",
+  "Erst ab dieser Leistung gilt er bei der Probeladung als ladebereit. Ein voller Akku, der angesteckt blieb, zieht nur wenig für die Selbstentladung – das wird nicht eingeplant. Leer: wie „Voll oder abgesteckt unter“.": "Only from this power does the test charge count as ready. A full battery left plugged in only draws a little for its self-discharge – that is not planned. Empty: as “Full or unplugged below”.",
 };
