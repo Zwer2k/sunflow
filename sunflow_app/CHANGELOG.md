@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.13
+
+- Live, 3D view: up to two cars under the carport, parked with the rear towards the viewer and the level bar on it, the second wallbox on the back post. The heat pump stands beside the grid pole, the e-bike beside the carport. Values of the roof faces and the house sit on them; the other callouts are placed close to their part, so leaders are short and hardly cross.
+
 ## 0.78.12
 
 - Live: a "3D" view of the energy flow – an isometric drawing with callouts: up to four roof faces (south, the north side hinted behind the ridge, annex, carport) placed by the name of their forecast plane, up to two inverters with up to two batteries each, grid, wallbox and car, and – only where measured – e-bike, heat pump, hot water tank, washing machine, dryer and stove. Animated flows from the roof faces to their inverter and on to the house.

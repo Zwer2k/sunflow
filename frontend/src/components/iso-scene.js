@@ -27,7 +27,7 @@ const HOUSE = { x: 9, y: 8, wall: 4.5, ridge: 5.9 };
 // Annex in front on the right, a mono-pitch roof falling to the front
 const ANNEX = { x0: 9, x1: 14, y0: 3, y1: 8, back: 4.0, front: 3.0 };
 // Carport with a flat roof falling to the front
-const CARPORT = { x0: 15.5, x1: 21, y0: 2, y1: 8, back: 3.0, front: 2.7 };
+const CARPORT = { x0: 15.5, x1: 21, y0: 2, y1: 8, back: 3.5, front: 3.2 };
 
 // Roof faces for PV: corners (eave left, eave right, top right, top left) in metres
 const ROOFS = {
@@ -41,6 +41,15 @@ const ROOF_ORDER = ["south", "annex", "carport", "north"];
 const ROOF_HINTS = [[/nord|north/i, "north"], [/carport|garage|vordach|port/i, "carport"]];
 // Inverters on the annex front wall, their batteries below them
 const INVERTERS = [10.0, 12.0];
+// The e-bike stands beside the carport
+const BIKE = [22.2, 5.0];
+// Two parking places under the carport (left edge in metres), the rear towards the viewer;
+// the first wallbox hangs on the annex wall, the second on the back post
+const CAR_SLOTS = [15.9, 18.6];
+const WALLBOXES = [
+  { box: [[14.05, 7.0, 1.0], [14.05, 6.3, 1.0], [14.05, 6.3, 1.9], [14.05, 7.0, 1.9]], plug: [14.05, 6.6, 1.4] },
+  { box: [[20.1, 2.25, 1.0], [20.7, 2.25, 1.0], [20.7, 2.25, 1.8], [20.1, 2.25, 1.8]], plug: [20.4, 2.25, 1.4] },
+];
 // Point where grid, inverters and house loads meet: the meter on the house front
 const HUB = [0.8, 8, 1.6];
 
@@ -76,6 +85,7 @@ class SunflowIsoScene extends LitElement {
       const which = role(consumer);
       if (which && !loads[which] && consumer.power_w !== null && consumer.power_w !== undefined) loads[which] = consumer;
     }
+    const vehicles = live.consumers.filter((c) => role(c) === "vehicle" && c.power_w !== null && c.power_w !== undefined).slice(0, 2);
     const { displays, homeBase, hasGrid } = data;
     const imported = Math.max(live.grid_w ?? 0, 0);
     const exported = Math.max(-(live.grid_w ?? 0), 0);
@@ -96,11 +106,11 @@ class SunflowIsoScene extends LitElement {
       ${this._pole(hasGrid)}
       ${this._house(roofs, loads)}
       ${this._annex(roofs, inverters)}
-      ${this._carport(roofs, loads.vehicle)}
+      ${this._carport(roofs, vehicles)}
       ${loads.heatpump ? this._heatPump(loads.heatpump) : nothing}
       ${loads.bike ? this._bike(loads.bike) : nothing}
 
-      ${Object.entries(roofs).map(([face, roof]) => this._flow(this._roofCenter(face), iso(INVERTERS[roof.inverter] + 0.5, 8.2, 2.1), roof.power, COLOR.pv, true))}
+      ${Object.entries(roofs).map(([face, roof]) => this._flow(this._roofCenter(face), iso(INVERTERS[roof.inverter] + 0.5, 8.2, 2.7), roof.power, COLOR.pv))}
       ${inverters.map((inverter, i) => svg`
         ${this._flow(iso(INVERTERS[i], 8.2, 1.4), hub, inverter.power, COLOR.pv)}
         ${inverter.batteries.map((battery, j) => {
@@ -115,10 +125,14 @@ class SunflowIsoScene extends LitElement {
           ? this._flow(this._poleTop(), hub, imported, COLOR.grid)
           : this._flow(hub, this._poleTop(), exported, COLOR.pv)
         : nothing}
-      ${loads.vehicle ? this._flow(hub, iso(14.05, 6.6, 1.5), loads.vehicle.power_w, COLOR.vehicle) : nothing}
-      ${loads.heatpump ? this._flow(hub, iso(7.0, 8.6, 1.2), loads.heatpump.power_w, COLOR.heat) : nothing}
+      ${vehicles.map((vehicle, i) => svg`
+        ${this._flow(iso(13.2, 8.2, 1.0), iso(...WALLBOXES[i].plug), vehicle.power_w, COLOR.vehicle)}
+        ${vehicle.connected !== false
+          ? this._flow(iso(...WALLBOXES[i].plug), iso(CAR_SLOTS[i] + (i ? 1.9 : 0), i ? 3.4 : 5.6, 0.7), vehicle.power_w, COLOR.vehicle)
+          : nothing}`)}
+      ${loads.heatpump ? this._flow(hub, iso(-1.1, 9.0, 1.0), loads.heatpump.power_w, COLOR.heat) : nothing}
 
-      ${this._labels(live, roofs, inverters, loads, { displays, homeBase, hasGrid, imported, exported })}
+      ${this._labels(live, roofs, inverters, loads, vehicles, { displays, homeBase, hasGrid, imported, exported })}
     </svg>`;
   }
 
@@ -259,50 +273,53 @@ class SunflowIsoScene extends LitElement {
     </g>`;
   }
 
-  _carport(roofs, vehicle) {
+  _carport(roofs, vehicles) {
     const { x0, x1, y0, y1, back, front } = CARPORT;
     const post = (x, y, h) => svg`<line class="post" x1=${iso(x, y, 0)[0]} y1=${iso(x, y, 0)[1]} x2=${iso(x, y, h)[0]} y2=${iso(x, y, h)[1]}></line>`;
     return svg`<g class="carport">
       ${post(x0 + 0.2, y0 + 0.2, back)}${post(x1 - 0.2, y0 + 0.2, back)}
+      ${vehicles.map((vehicle, i) => (vehicle.connected !== false ? this._car(vehicle, CAR_SLOTS[i]) : nothing))}
       ${post(x0 + 0.2, y1 - 0.2, front)}${post(x1 - 0.2, y1 - 0.2, front)}
       <polygon class="slab" points=${pts([x0, y1, front], [x1, y1, front], [x1, y1, front + 0.12], [x0, y1, front + 0.12])}></polygon>
       <polygon class="slab-side" points=${pts([x1, y1, front], [x1, y0, back], [x1, y0, back + 0.12], [x1, y1, front + 0.12])}></polygon>
       <polygon class="roof flat" points=${pts([x0, y1, front + 0.12], [x1, y1, front + 0.12], [x1, y0, back + 0.12], [x0, y0, back + 0.12])}></polygon>
       ${roofs.carport ? this._panels("carport", roofs.carport) : nothing}
-      ${vehicle ? this._wallbox(vehicle) : nothing}
-      ${vehicle && vehicle.connected !== false ? this._car(vehicle) : nothing}
+      ${vehicles.map((vehicle, i) => this._wallbox(vehicle, WALLBOXES[i].box))}
     </g>`;
   }
 
-  _car(vehicle) {
+  /** A car parked nose first, its rear (with the level bar) towards the viewer. */
+  _car(vehicle, x) {
     const level = clamp((vehicle.level ?? 0) / 100, 0, 1);
     const charging = (vehicle.power_w ?? 0) > ACTIVE_W;
+    const [x0, x1, y0, y1] = [x, x + 1.9, 3.0, 7.2];
     const box = (xa, xb, ya, yb, za, zb, cls) => svg`
       <polygon class="${cls} top" points=${pts([xa, yb, zb], [xb, yb, zb], [xb, ya, zb], [xa, ya, zb])}></polygon>
       <polygon class="${cls} front" points=${pts([xa, yb, za], [xb, yb, za], [xb, yb, zb], [xa, yb, zb])}></polygon>
       <polygon class="${cls} side" points=${pts([xb, yb, za], [xb, ya, za], [xb, ya, zb], [xb, yb, zb])}></polygon>`;
-    const wheel = (x, y) => {
-      const [cx, cy] = iso(x, y, 0.35);
-      return svg`<ellipse cx=${cx} cy=${cy} rx="9" ry="11" class="wheel" transform="rotate(-30 ${cx} ${cy})"></ellipse>`;
+    const wheel = (y) => {
+      const [cx, cy] = iso(x1, y, 0.35);
+      return svg`<ellipse cx=${cx} cy=${cy} rx="8" ry="11" class="wheel" transform="rotate(30 ${cx} ${cy})"></ellipse>`;
     };
+    const bar = (to, cls) => svg`<polygon class=${cls}
+      points=${pts([x0 + 0.3, y1 + 0.01, 0.6], [x0 + 0.3 + 1.3 * to, y1 + 0.01, 0.6], [x0 + 0.3 + 1.3 * to, y1 + 0.01, 0.85], [x0 + 0.3, y1 + 0.01, 0.85])}></polygon>`;
     return svg`<g class="car ${charging ? "charging" : ""}">
-      ${wheel(16.9, 8.3)}${wheel(19.7, 8.3)}
-      ${box(16.3, 20.4, 6.2, 8.3, 0.3, 1.05, "car-body")}
-      ${box(17.2, 19.4, 6.4, 8.1, 1.05, 1.65, "car-cabin")}
-      <polygon class="car-level" points=${pts([16.9, 8.31, 0.55], [19.9, 8.31, 0.55], [19.9, 8.31, 0.75], [16.9, 8.31, 0.75])}></polygon>
-      <polygon class="car-level-fill" points=${pts([16.9, 8.32, 0.55], [16.9 + 3 * level, 8.32, 0.55], [16.9 + 3 * level, 8.32, 0.75], [16.9, 8.32, 0.75])}></polygon>
+      ${box(x0, x1, y0, y1, 0.3, 1.05, "car-body")}
+      ${box(x0 + 0.15, x1 - 0.15, 4.1, 6.4, 1.05, 1.65, "car-cabin")}
+      ${wheel(3.9)}${wheel(6.3)}
+      ${bar(1, "car-level")}${bar(level, "car-level-fill")}
+      <title>${vehicle.vehicle ?? vehicle.name}</title>
     </g>`;
   }
 
-  _wallbox(vehicle) {
+  _wallbox(vehicle, corners) {
     const charging = (vehicle.power_w ?? 0) > ACTIVE_W;
-    return svg`<polygon class="wallbox ${charging ? "charging" : ""}"
-      points=${pts([14.05, 7.0, 1.0], [14.05, 6.3, 1.0], [14.05, 6.3, 1.9], [14.05, 7.0, 1.9])}></polygon>`;
+    return svg`<polygon class="wallbox ${charging ? "charging" : ""}" points=${pts(...corners)}><title>${vehicle.name}</title></polygon>`;
   }
 
   _heatPump(consumer) {
     const on = (consumer.power_w ?? 0) > ACTIVE_W;
-    const [x0, x1, y0, y1, h] = [6.1, 7.9, 8.5, 9.3, 1.2];
+    const [x0, x1, y0, y1, h] = [-1.9, -0.3, 9.0, 9.8, 1.2];
     const [fx, fy] = iso((x0 + x1) / 2, y1, h / 2);
     return svg`<g class="heatpump ${on ? "on" : ""}">
       <polygon class="hp front" points=${pts([x0, y1, 0], [x1, y1, 0], [x1, y1, h], [x0, y1, h])}></polygon>
@@ -316,7 +333,7 @@ class SunflowIsoScene extends LitElement {
 
   _bike(consumer) {
     const charging = (consumer.power_w ?? 0) > ACTIVE_W;
-    const [x, y] = iso(14.6, 9.6, 0);
+    const [x, y] = iso(BIKE[0], BIKE[1], 0);
     return svg`<g class="bike ${charging ? "charging" : ""}" transform="translate(${x} ${y})">
       <circle cx="-14" cy="-10" r="10" class="bike-wheel"></circle><circle cx="14" cy="-10" r="10" class="bike-wheel"></circle>
       <path d="M-14,-10 L-3,-26 L10,-26 L14,-10 M-3,-26 L2,-10 L-14,-10 M2,-10 L10,-26 M8,-31 L12,-31 M-6,-30 L0,-30" class="bike-frame"></path>
@@ -346,61 +363,55 @@ class SunflowIsoScene extends LitElement {
         <title>${formatPower(power)}</title></path>`;
   }
 
-  /** Callouts like a product drawing: a dot on the thing, a leader line and the value; in fixed rows and columns. */
-  _labels(live, roofs, inverters, loads, { displays, homeBase, hasGrid, imported, exported }) {
+  /**
+   * Values on the roof faces and the house itself; the rest as callouts close to their part, with a
+   * short leader. The scene is fixed, so are the places.
+   */
+  _labels(live, roofs, inverters, loads, vehicles, { displays, homeBase, hasGrid, imported, exported }) {
     // Long names (e.g. "Warmwasserspeicher") would run into the neighbouring label
     const short = (text) => (text.length > 16 ? `${text.slice(0, 15)}…` : text);
-    const callout = (anchor, [lx, ly], title, value, color, align = "middle") => {
-      const [ax, ay] = anchor;
-      return svg`<g class="callout">
-        <line x1=${ax} y1=${ay} x2=${lx} y2=${ly + 6} class="leader"></line>
-        <circle cx=${ax} cy=${ay} r="3.5" class="dot" style="fill: ${color}"></circle>
-        <text x=${lx} y=${ly - 22} class="c-title" text-anchor=${align}>${short(title)}<title>${title}</title></text>
-        <text x=${lx} y=${ly} class="c-value" text-anchor=${align} style="fill: ${color}">${value}</text>
-      </g>`;
-    };
+    const lines = (x, y, align, title, values) => svg`
+      <text x=${x} y=${y} class="c-title" text-anchor=${align}>${short(title)}<title>${title}</title></text>
+      ${values.map(([value, color], i) => svg`<text x=${x} y=${y + 24 + i * 24} class="c-value" text-anchor=${align} style="fill: ${color}">${value}</text>`)}`;
+    const callout = ([ax, ay], [lx, ly], align, title, values) => svg`<g class="callout">
+      <line x1=${ax} y1=${ay} x2=${lx} y2=${ly + 4} class="leader"></line>
+      <circle cx=${ax} cy=${ay} r="3.5" class="dot" style="fill: ${values[0][1]}"></circle>
+      ${lines(lx, ly, align, title, values)}</g>`;
+    const onFace = ([x, y], title, value, color) => svg`<g class="on-face">${lines(x, y - 6, "middle", title, [[value, color]])}</g>`;
     const signed = (w) => `${w > ACTIVE_W ? "+" : w < -ACTIVE_W ? "−" : ""}`;
     const level = (c, unit) => (c.level !== null && c.level !== undefined ? ` · ${Math.round(c.level)} ${unit}` : "");
-    const soc = (b) => (b.soc_pct === null || b.soc_pct === undefined ? "" : ` ${Math.round(b.soc_pct)} %`);
-    const pvTitle = (face, roof) => (face === "north" ? `${t("Nordseite")}: ${roof.names[0]}` : roof.names.join(" + "));
-    // Roof faces along the top
-    const top = { south: [24, 52], north: [440, 40], annex: [690, 52] };
-    // Right column, top to bottom: carport, each inverter with its batteries, car, e-bike
-    const right = [];
-    if (roofs.carport) {
-      right.push([this._roofCenter("carport"), pvTitle("carport", roofs.carport), formatPower(roofs.carport.power, roofs.carport.display), COLOR.pv]);
-    }
-    inverters.forEach((inverter, i) => {
-      right.push([iso(INVERTERS[i] + 1.0, 8.1, 2.4), inverter.name, formatPower(inverter.power, inverter.display), COLOR.pv]);
-      inverter.batteries.forEach((battery, j) => right.push([iso(INVERTERS[i] + 1.0, 8.2, 1.05 - j * 0.75),
-        battery.short_name ?? battery.name, `${signed(battery.power_w ?? 0)}${formatPower(Math.abs(battery.power_w ?? 0), battery.display)}${soc(battery) ? ` ·${soc(battery)}` : ""}`,
-        COLOR.battery]));
-    });
-    if (loads.vehicle) {
-      const car = loads.vehicle;
-      right.push([iso(20.4, 7.2, 1.0), car.connected === false ? t("kein Auto") : (car.vehicle ?? car.name),
-        `${formatPower(car.power_w ?? 0, car.display)}${level(car, "%")}`, COLOR.vehicle]);
-    }
-    if (loads.bike) right.push([iso(14.6, 9.6, 1.2), loads.bike.name, formatPower(loads.bike.power_w, loads.bike.display), COLOR.load]);
-    const step = Math.min(64, 560 / Math.max(right.length, 1));
-    // Left column: grid and house; bottom row: what is inside and the heat pump
-    const bottom = ["tank", "washer", "dryer", "stove"].filter((r) => loads[r]).map((which, i) => {
-      const consumer = loads[which];
-      return [iso(2.4 + i * 1.15, 8, 1.4).map((v, k) => v + (k ? 0 : 14)),
-        consumer.name, `${formatPower(consumer.power_w, consumer.display)}${which === "tank" ? level(consumer, "°C") : ""}`,
-        which === "tank" ? COLOR.heat : COLOR.load];
-    });
-    if (loads.heatpump) bottom.push([iso(7.0, 9.3, 1.2), loads.heatpump.name, formatPower(loads.heatpump.power_w, loads.heatpump.display), COLOR.heat]);
+    const soc = (b) => (b.soc_pct === null || b.soc_pct === undefined ? "" : ` · ${Math.round(b.soc_pct)} %`);
+    const pv = (roof) => formatPower(roof.power, roof.display);
+    const inside = ["tank", "washer", "dryer", "stove"].filter((r) => loads[r]);
     return svg`
-      ${Object.entries(roofs).filter(([face]) => face in top).map(([face, roof]) =>
-        callout(this._roofCenter(face), top[face], pvTitle(face, roof), formatPower(roof.power, roof.display), COLOR.pv, face === "south" ? "start" : "middle"))}
-      ${right.map(([anchor, title, value, color], i) => callout(anchor, [880, 120 + i * step], title, value, color, "end"))}
-      ${hasGrid
-        ? callout(this._poleTop(), [24, 250], t("Netz"),
-            `${imported >= exported ? (imported > ACTIVE_W ? "↓ " : "") : "↑ "}${formatPower(Math.abs(live.grid_w), displays.grid)}`, COLOR.grid, "start")
+      ${["south", "annex", "carport"].filter((f) => roofs[f]).map((face) =>
+        onFace(this._roofCenter(face), roofs[face].names.join(" + "), pv(roofs[face]), COLOR.pv))}
+      ${roofs.north
+        ? callout(iso(4.5, 0.4, 4.6), [470, 70], "middle", `${t("Nordseite")}: ${roofs.north.names[0]}`, [[pv(roofs.north), COLOR.pv]])
         : nothing}
-      ${callout(iso(4.5, 8, 4.0), [24, 420], t("Haus"), formatPower(homeBase, displays.load), COLOR.home, "start")}
-      ${bottom.map(([anchor, title, value, color], i) => callout(anchor, [112 + i * 160, 668], title, value, color))}
+      ${onFace(iso(9, 4.8, 4.75), t("Haus"), formatPower(homeBase, displays.load), COLOR.home)}
+      ${hasGrid
+        ? callout(this._poleTop(), [62, 96], "start", t("Netz"),
+            [[`${imported >= exported ? (imported > ACTIVE_W ? "↓ " : "") : "↑ "}${formatPower(Math.abs(live.grid_w), displays.grid)}`, COLOR.grid]])
+        : nothing}
+      ${loads.heatpump
+        ? callout(iso(-1.1, 9.4, 1.2), [56, 270], "start", loads.heatpump.name, [[formatPower(loads.heatpump.power_w, loads.heatpump.display), COLOR.heat]])
+        : nothing}
+      ${inside.map((which, i) => {
+        const consumer = loads[which];
+        return callout(iso(2.4 + i * 1.15, 8, 1.4).map((v, k) => v + (k ? 0 : 14)), [24, 440 + i * 62], "start", consumer.name,
+          [[`${formatPower(consumer.power_w, consumer.display)}${which === "tank" ? level(consumer, "°C") : ""}`, which === "tank" ? COLOR.heat : COLOR.load]]);
+      })}
+      ${inverters.map((inverter, i) => callout(iso(INVERTERS[i] + 0.5, 8.35, 0.2), [i ? 560 : 330, 600], "middle", inverter.name, [
+        [formatPower(inverter.power, inverter.display), COLOR.pv],
+        ...inverter.batteries.map((b) => [`${signed(b.power_w ?? 0)}${formatPower(Math.abs(b.power_w ?? 0), b.display)}${soc(b)}`, COLOR.battery]),
+      ]))}
+      ${vehicles.map((vehicle, i) => callout(iso(CAR_SLOTS[i] + 1.0, 7.2, 0.85), [880, i ? 400 : 540], "end",
+        vehicle.connected === false ? `${vehicle.name}: ${t("kein Auto")}` : (vehicle.vehicle ?? vehicle.name),
+        [[`${formatPower(vehicle.power_w ?? 0, vehicle.display)}${level(vehicle, "%")}`, COLOR.vehicle]]))}
+      ${loads.bike
+        ? callout(iso(BIKE[0], BIKE[1], 1.0), [880, 640], "end", loads.bike.name, [[formatPower(loads.bike.power_w, loads.bike.display), COLOR.load]])
+        : nothing}
     `;
   }
 
@@ -475,6 +486,8 @@ class SunflowIsoScene extends LitElement {
     .spark { fill: none; stroke-linecap: round; stroke-dasharray: 1 12; animation: spark linear infinite; }
     @keyframes spark { to { stroke-dashoffset: -26; } }
     .leader { stroke: #8c959f; stroke-width: 1; stroke-dasharray: 2 3; }
+    .on-face .c-title { fill: #fff; paint-order: stroke; stroke: rgb(23 48 87 / 0.75); stroke-width: 3px; }
+    .on-face .c-value { stroke: rgb(255 255 255 / 0.95); stroke-width: 4px; }
     .dot { stroke: #fff; stroke-width: 1.5; }
     .c-title { font-size: 15px; fill: #57606a; }
     .c-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; paint-order: stroke; stroke: rgb(255 255 255 / 0.85); stroke-width: 3px; }
