@@ -406,7 +406,7 @@ class SunflowIsoScene extends LitElement {
         return callout(iso(APPLIANCES[i], 8, 1.4).map((v, k) => v + (k ? 0 : 14)), [24, 440 + i * 62], "start", consumer.name,
           [[`${formatPower(consumer.power_w, consumer.display)}${which === "tank" ? level(consumer, "°C") : ""}`, which === "tank" ? COLOR.heat : COLOR.load]]);
       })}
-      ${inverters.map((inverter, i) => callout(iso(INVERTERS[i] + (i ? 1.0 : 0), 8.3, 0.1), [i ? 445 : 420, 600], i ? "start" : "end", inverter.name, [
+      ${inverters.map((inverter, i) => callout(iso(INVERTERS[i] + (i ? 1.0 : 0), 8.3, 0.1), [i ? 370 : 345, 600], i ? "start" : "end", inverter.name, [
         [`PV ${formatPower(inverter.power, inverter.display)}`, COLOR.pv],
         ...inverter.batteries.map((b) => [
           `${b.short_name ?? b.name}${soc(b).replace(" ·", "")} ${signed(b.power_w ?? 0)}${formatPower(Math.abs(b.power_w ?? 0), b.display)}`,
