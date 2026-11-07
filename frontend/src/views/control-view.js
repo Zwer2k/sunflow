@@ -8,7 +8,8 @@ import { plugInHints } from "../lib/plug-in.js";
 import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
-import { MODES, currentMode, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
+import "../components/target-dial.js";
+import { MODES, TARGETS, currentMode, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -42,7 +43,6 @@ const LOG_HOURS = { 24: t("24 Stunden"), 72: t("3 Tage"), 336: t("14 Tage") };
 // More rows make the page slow and say nothing more
 const LOG_ROWS = 300;
 const KIND_LABELS = { vehicle: t("Wallbox"), heater: t("Wärme"), load: t("Verbraucher") };
-const TARGETS = { vehicle: [50, 80, 100], heater: [45, 55, 60] };
 const DURATIONS = {
   midnight: t("bis Mitternacht"),
   hours4: t("4 Stunden"),
@@ -517,10 +517,11 @@ class SunflowControl extends LitElement {
                   @click=${() => this._setDevice(device, { target: null })}>
                   ${t("Standard")}${device.default.target !== null ? ` (${device.default.target} ${unit})` : ""}
                 </button>
-                ${targets.map(
+                ${targets.presets.map(
                   (target) => html`<button class=${targetOverride === target ? "on" : ""} aria-pressed=${targetOverride === target} ?disabled=${this._busy}
                     @click=${() => this._setDevice(device, { target })}>${target} ${unit}</button>`,
                 )}
+                ${this._renderDial(device, targets, !targets.presets.includes(targetOverride) && targetOverride !== null)}
               </div>
             </div>`
           : nothing}
@@ -541,6 +542,14 @@ class SunflowControl extends LitElement {
           : nothing}
       </article>
     `;
+  }
+
+  /** Any other target with the knob; shows the value once it is not one of the presets. */
+  _renderDial(device, targets, custom) {
+    return html`<sf-target-dial .value=${device.override?.target ?? null} .defaultValue=${device.default.target}
+      .min=${targets.min} .max=${targets.max} unit=${targets.unit} ?active=${custom} ?disabled=${this._busy}
+      text=${custom ? "" : t("Wert …")} label=${t("Beliebiges Ziel für {name}", { name: device.name })}
+      @change=${(e) => this._setDevice(device, { target: e.detail.value })}></sf-target-dial>`;
   }
 
   _saveConditions(deviceId, form) {
@@ -686,7 +695,7 @@ class SunflowControl extends LitElement {
     }
     .segmented button.on { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
     .segmented button .std { display: block; font-size: 11px; font-weight: 400; color: var(--sf-muted); }
-    .segmented.small-buttons button { min-height: 36px; font-size: 13px; }
+    .segmented.small-buttons button, .segmented.small-buttons sf-target-dial::part(button) { min-height: 36px; font-size: 13px; }
     .row { display: flex; flex-direction: column; gap: 6px; }
     button.plugged {
       align-self: flex-start; min-height: 40px; padding: 0 14px; border: 1px solid var(--sf-border-strong); border-radius: 8px;

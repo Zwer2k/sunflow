@@ -44,3 +44,9 @@ export function modeChanges(device, mode) {
 export function currentMode(device) {
   return device.paused ? "pause" : device.override?.strategy ?? device.default.strategy;
 }
+
+/** Presets and the range of the free knob for a consumer's target. */
+export const TARGETS = {
+  vehicle: { presets: [50, 80, 100], min: 10, max: 100, unit: "%" },
+  heater: { presets: [45, 55, 60], min: 30, max: 80, unit: "°C" },
+};

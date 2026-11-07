@@ -53,7 +53,10 @@ Rechts unter dem Energiefluss wählst du die Ansicht, jeder Browser merkt sich s
 - **Schnellsteuerung** (unter dem Energiefluss): je Verbraucher, den du unter Steuerung mit der
   Stecknadel angeheftet hast, eine Zeile mit Leistung, Ladestand und nächstem Ladefenster und den
   Betriebsarten als kleine Knöpfe: € Kostenoptimal, PV Nur PV, ⚡ Sofort, ⏸ Pause. Ein Wechsel gilt
-  bis Mitternacht. Bei „Akku laden“ ohne Steckersensor schaltet 🔌 „jetzt eingesteckt“. Ohne
+  bis Mitternacht. Bei „Akku laden“ ohne Steckersensor schaltet 🔌 „jetzt eingesteckt“. An der
+  Wallbox zeigt ein Knopf das erkannte Fahrzeug und öffnet die Auswahl (oder „automatisch
+  erkennen“); 🎯 zeigt das Ziel (Ladestand oder Temperatur) und öffnet einen Drehregler für
+  einen beliebigen Wert, „Standard“ nimmt die Änderung zurück. Ohne
   angeheftete Verbraucher erscheint der Block nicht.
 - **Heute** fasst die Energiezähler zusammen: PV erzeugt, verbraucht, Netzbezug, eingespeist,
   Verluste von Wechselrichter und Speicher, Autarkie und Eigenverbrauch.
@@ -79,7 +82,9 @@ auf Weiteres. Nach jeder Änderung plant Sunflow sofort neu.
 - **Hausspeicher**: Strategie für den Zeitraum (Ausgewogen, PV aufnehmen, Autarkie).
   „Was macht …?“ klappt die Erklärung der Strategie auf.
 - **Verbraucher**: je Wallbox, Warmwasser oder eigenem Verbraucher die Betriebsart
-  (Kostenoptimal, Nur PV, Sofort, Pause) und das Ziel (Ladestand oder Temperatur). Bei der
+  (Kostenoptimal, Nur PV, Sofort, Pause) und das Ziel (Ladestand oder Temperatur): Standard,
+  eine Vorwahl oder über „Wert …“ ein beliebiger Wert mit dem Drehregler (ziehen, Mausrad,
+  Pfeiltasten oder −/+, dann „Übernehmen“). Bei der
   Wallbox wählst du das Fahrzeug oder lässt es erkennen; die gescannte Karte steht in Klammern,
   z. B. „Fiat 500e (Karte 1)“. Mit eingerichtetem Sensor siehst du auch die Spannung der
   12-V-Batterie des Autos. Darunter steht, was der Plan vorsieht oder warum nichts eingeplant ist.

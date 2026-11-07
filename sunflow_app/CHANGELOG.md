@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.21
+
+- Live, quick controls: at a wallbox a button shows the detected vehicle and opens a dropdown to choose another one (or detect automatically); a 🎯 button shows the target (state of charge, or temperature for hot water) and opens a knob to set any value until midnight.
+- Control: next to the target presets, "Value …" opens the same knob for any state of charge or temperature.
+
 ## 0.78.20
 
 - Live, 3D view: the line from each inverter into the house carries what it really gives – its PV plus what its batteries discharge, less what they charge – and a line from the distribution box into the house shows the consumption in the colour of its main source (battery, PV or grid). At night the battery's flow into the house now shows all the way.
