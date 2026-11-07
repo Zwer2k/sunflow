@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.10
+
+- Priority limits (Control → Priority → Limits) hold in operation: control checks them at every step against the measured battery, car and tank levels, not only against the forecast the plan was made with. A load whose limit is not reached gets no planned PV or battery power; power planned from the grid may still run, "Immediately" ignores the limits as before.
+- A car plugged in but not recognized yet (level unknown) holds back the loads waiting for it – before, hot water could start with the car below its limit right after plugging in.
+
 ## 0.78.9
 
 - Control: surplus the forecast missed is used. When power goes to the grid that the plan did not expect, the wallbox and loads with a current or power steps charge from it once it lasts two minutes – in priority order and with their conditions. A load whose battery condition is met (e.g. the car from 50 %) or that ranks above the battery also takes the battery's charging power, so the car charges first. Through a short dip the smallest current is kept for three minutes, so charging no longer starts and stops every minute when plans differ.

@@ -1069,3 +1069,30 @@ def test_running_charger_goes_on() -> None:
     on = _charger_plan(running=True)
 
     assert on == list(range(len(on)))
+
+
+def test_condition_on_an_unknown_vehicle_keeps_the_gate_closed() -> None:
+    """A car plugged in but not recognized yet: hot water waiting for it gets no PV or battery energy."""
+    from sunflow.config.models import DeviceConfig, PriorityCondition
+    from sunflow.planning.optimizer import BatterySpec, FlexLoad, SlotInput, optimize
+    from sunflow.planning.plan import with_conditions
+
+    devices = [
+        DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
+        DeviceConfig(id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser"),
+    ]
+    config = SunflowConfig(
+        devices=devices,
+        priorities=["battery", "ev", "ww"],
+        priority_conditions={"ww": [PriorityCondition(device_id="ev", min_pct=80)]},
+    )
+    loads = {"ww": FlexLoad(name="Warmwasser", energy_wh=1000, max_power_w=2800, available=[True] * 4, pv_only=True)}
+
+    result = with_conditions(config, loads, {}, 20000.0, START, {"ev"})
+
+    assert result["ww"].gate_closed
+    slots = [SlotInput(start=START + timedelta(minutes=15 * t), pv_w=5000, load_w=300, price=0.3, feed_in=0.08) for t in range(4)]
+    battery = BatterySpec(capacity_wh=10000, soc_wh=10000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    plan = optimize(slots, battery, Settings(), [result["ww"]])
+    # Whatever it gets comes from the grid at the same time, none of the PV surplus
+    assert all(slot.flex_w["Warmwasser"] <= slot.import_w + 1e-6 for slot in plan.slots)

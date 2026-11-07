@@ -75,7 +75,10 @@ further notice. Sunflow replans immediately after every change.
   and devices.
 - **Priority**: if PV surplus is not enough for everyone, the top entry gets it
   first. With **Limits** a load waits until storages ranked higher reach a level,
-  e.g. hot water only above 90 % home battery.
+  e.g. hot water only above 90 % home battery. Until then it gets no PV or battery power, only grid
+  power where the plan provides it. Control checks the limits at every step against the measured
+  values, not only the forecast. A car plugged in but not recognized yet (level unknown) holds
+  waiting loads back.
 - **Log**: what Sunflow wrote to devices, with reason and errors, and changes made by
   others with their trigger. Filters by device, period, "only external changes" and "only errors
   and warnings".

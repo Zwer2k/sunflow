@@ -955,3 +955,27 @@ async def test_battery_condition_puts_the_car_first(tmp_path: Path, soc_pct: flo
         await controller.tick(config, _surplus_plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=minute), _sample(0, 5000, soc_pct))
 
     assert charger.option == option
+
+
+@pytest.mark.parametrize(
+    ("soc_pct", "grid", "option"),
+    [
+        pytest.param(60.0, 0.0, "charge", id="limit-reached"),
+        pytest.param(40.0, 0.0, "dont_charge", id="limit-not-reached"),
+        # Planned from the grid it may run before the limit (as the plan's gate allows)
+        pytest.param(40.0, 11000.0, "charge", id="from-the-grid"),
+    ],
+)
+async def test_priority_limits_hold_with_measured_values(tmp_path: Path, soc_pct: float, grid: float, option: str) -> None:
+    """The limit set under Priorität is checked against the measured battery level, not only the plan's forecast."""
+    charger = FakeCharger()
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE})
+    config = _charger_config("goe")
+    config.priorities = ["battery", "wb"]
+    config.priority_conditions = {"wb": [PriorityCondition(device_id="battery", min_pct=50)]}
+    plan = _charge_plan(11000, grid=grid)
+    plan.battery = SimpleNamespace(capacity_wh=20000.0)
+
+    await controller.tick(config, plan, NOW, SNAPSHOT, NOW, _sample(0, 0, soc_pct))
+
+    assert charger.option == option
