@@ -51,10 +51,9 @@ const TARGETS = {
   heater: { presets: [45, 55, 60], min: 30, max: 60, unit: "°C" },
 };
 
-/** The target without an override: the configured one, else what the plan uses (e.g. from evcc). */
+/** The target without a change by hand (for a car its charging settings at this wallbox), rounded. */
 export function defaultTarget(device) {
-  const target = device.default.target ?? (device.override?.target == null ? device.target : null);
-  return target === null || target === undefined ? null : Math.round(target);
+  return device.default_target === null || device.default_target === undefined ? null : Math.round(device.default_target);
 }
 
 /** Presets and range of the knob for a consumer's target; null when it has none. */

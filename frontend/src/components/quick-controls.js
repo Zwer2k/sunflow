@@ -181,7 +181,7 @@ class SunflowQuickControls extends LitElement {
 
   _renderTarget(device, targets) {
     const own = device.override?.target ?? null;
-    const target = own ?? device.target ?? device.default.target;
+    const target = own ?? defaultTarget(device);
     return html`<sf-target-dial .value=${own} .defaultValue=${defaultTarget(device)} .min=${targets.min} .max=${targets.max}
       unit=${targets.unit} ?active=${own !== null} ?disabled=${this._busy}
       text=${target !== null && target !== undefined ? `🎯 ${Math.round(target)} ${targets.unit}` : "🎯"}

@@ -873,3 +873,34 @@ def test_battery_scenarios_are_stored_with_unique_ids(tmp_path: Path) -> None:
     assert stored[0]["mode"] == "add"
     assert store.load().battery_scenarios[0].wear_ct_per_kwh() == pytest.approx(6000 / (6000 * 9) * 100)
     assert client.put("/api/v1/config/battery-scenarios", json=[scenario, scenario]).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("planning", "charging", "override", "expected"),
+    [
+        pytest.param({}, [85.0], None, 85.0, id="charging-settings-of-the-car"),
+        pytest.param({"wb": {"target": 70.0}}, [], None, 70.0, id="settings-of-the-wallbox"),
+        pytest.param({}, [], None, 80.0, id="from-evcc"),
+        pytest.param({"wb": {"target": 70.0}}, [85.0], None, 85.0, id="car-before-wallbox"),
+        pytest.param({}, [], 60.0, None, id="evcc-value-hidden-by-a-change"),
+    ],
+)
+def test_default_target(planning: dict, charging: list[float], override: float | None, expected: float | None) -> None:
+    """The knob's default is the car's charging setting at this wallbox before the wallbox's own and evcc's."""
+    from datetime import UTC, datetime
+
+    from sunflow.api.control import _default_target
+    from sunflow.config.models import ChargingProfile, DeviceOverride, FlexSettings, SunflowConfig, Vehicle
+    from sunflow.planning.plan import FlexInfo
+
+    car = Vehicle(id="car", name="Fiat 500e", capacity_wh=37500)
+    config = SunflowConfig(
+        vehicles=[car],
+        charging=[ChargingProfile(vehicle_id="car", wallbox_id="wb", flex=FlexSettings(target=target)) for target in charging],
+        planning={key: FlexSettings(**value) for key, value in planning.items()},
+    )
+    info = FlexInfo(
+        device_id="wb", name="Wallbox", kind="vehicle", current=35, target=override or 80.0, unit="%",
+        need_wh=0, deadline=None, max_power_w=11000, vehicle_id="car",
+    )
+    assert _default_target(config, "wb", info, None, DeviceOverride(target=override), datetime.now(UTC)) == expected

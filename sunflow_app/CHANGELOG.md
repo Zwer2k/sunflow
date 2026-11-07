@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.23
+
+- Control and live quick controls: the default target of a car is its value under Settings → Charging (this vehicle at this wallbox), as the plan uses it – before, the wallbox's own empty value was shown, so "Default" had no value and the knob started at 55 %. Without any setting it is the value from evcc.
+
 ## 0.78.22
 
 - Settings → Loads: new "Highest target by hand" – Control, the live quick controls and the API reject a higher target. Empty: 60 °C for hot water (risk of scalding above it), 100 % for a car. The knob and the presets end there.

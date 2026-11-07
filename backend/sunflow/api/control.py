@@ -23,6 +23,7 @@ from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_category, device_kind
 from sunflow.i18n import t
+from sunflow.planning.plan import FlexInfo
 from sunflow.planning.vehicles import METHODS, scanned_card, vehicle_at
 from sunflow.shadow.runner import ShadowRunner
 
@@ -101,6 +102,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 if "vehicle_soc" in roles
                 else None,
                 "target": info.target if info else None,
+                "default_target": _default_target(config, device.id, info, vehicle, override, now),
                 "vehicles": [{"id": v.id, "name": v.name} for v in config.vehicles_at(device.id)],
                 "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": _method(info.vehicle_method)}
                 if info and info.vehicle_id
@@ -182,6 +184,19 @@ async def control_log(request: Request, hours: int = 24, device_id: str | None =
         return {"entries": []}
     since = datetime.now(UTC) - timedelta(hours=min(max(hours, 1), 14 * 24))
     return {"entries": controller.journal.entries(since, device_id)}
+
+
+def _default_target(
+    config: SunflowConfig, device_id: str, info: FlexInfo | None, vehicle: Vehicle | None, override: DeviceOverride | None, now: datetime
+) -> float | None:
+    """The target without a change by hand: the vehicle's charging settings at this wallbox, the consumer's, else the plan's (evcc)."""
+    vehicle_id = info.vehicle_id if info and info.vehicle_id else vehicle.id if vehicle else None
+    profile = config.charging_profile(vehicle_id, device_id) if vehicle_id else None
+    configured = (profile.flex if profile else config.flex_of(device_id)).target
+    if configured is not None:
+        return configured
+    by_hand = override is not None and override.active(now) and override.target is not None
+    return info.target if info and not by_hand else None
 
 
 @router.put("/control/devices/{device_id}")
