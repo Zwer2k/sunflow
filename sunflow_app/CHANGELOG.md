@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.16
+
+- Live, 3D view: the inverter callouts sit further left, next to the appliances.
+
 ## 0.78.15
 
 - Live, 3D view: the e-bike stands in the back (north) corner with its callout above it; the cars are labelled on the south side below the carport.
