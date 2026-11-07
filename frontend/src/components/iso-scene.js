@@ -43,8 +43,8 @@ const ROOF_HINTS = [[/nord|north/i, "north"], [/carport|garage|vordach|port/i, "
 const INVERTERS = [10.0, 12.0];
 // Appliances seen through the shop window, from the left (metres along the house front)
 const APPLIANCES = [1.9, 3.3, 4.7, 6.1];
-// The e-bike stands beside the carport
-const BIKE = [22.2, 5.0];
+// The e-bike stands in the back (north) corner behind the carport
+const BIKE = [21.6, 0.6];
 // Two parking places under the carport (left edge in metres), the rear towards the viewer;
 // the first wallbox hangs on the annex wall, the second on the back post
 const CAR_SLOTS = [15.9, 18.6];
@@ -413,11 +413,11 @@ class SunflowIsoScene extends LitElement {
           COLOR.battery, "c-sub",
         ]),
       ], true))}
-      ${vehicles.map((vehicle, i) => callout(iso(CAR_SLOTS[i] + 1.0, 7.2, 0.85), [880, i ? 400 : 540], "end",
+      ${vehicles.map((vehicle, i) => callout(iso(CAR_SLOTS[i] + 1.0, 7.2, 0.85), [880, i ? 662 : 598], "end",
         vehicle.connected === false ? `${vehicle.name}: ${t("kein Auto")}` : (vehicle.vehicle ?? vehicle.name),
         [[`${formatPower(vehicle.power_w ?? 0, vehicle.display)}${level(vehicle, "%")}`, COLOR.vehicle]]))}
       ${loads.bike
-        ? callout(iso(BIKE[0], BIKE[1], 1.0), [880, 640], "end", loads.bike.name, [[formatPower(loads.bike.power_w, loads.bike.display), COLOR.load]])
+        ? callout(iso(BIKE[0], BIKE[1], 1.0), [880, 400], "end", loads.bike.name, [[formatPower(loads.bike.power_w, loads.bike.display), COLOR.load]])
         : nothing}
     `;
   }

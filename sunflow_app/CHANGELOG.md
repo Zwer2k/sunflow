@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.15
+
+- Live, 3D view: the e-bike stands in the back (north) corner with its callout above it; the cars are labelled on the south side below the carport.
+
 ## 0.78.14
 
 - Live, 3D view: a smaller house door and a wider shop window, so up to four appliances fit side by side. Each inverter's callout lists its PV power and its batteries by name with level and power, the two side by side below the annex with short leaders.
