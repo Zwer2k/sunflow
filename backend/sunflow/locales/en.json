@@ -76,6 +76,7 @@
   "Plan deckt die aktuelle Zeit nicht ab – {fallback}": "Plan does not cover the current time – {fallback}",
   "Gerät regelt selbst": "device controls itself",
   "nach Plan: jetzt nicht": "as planned: not now",
+  "nutzt PV-Überschuss, den der Plan nicht erwartet hat": "uses PV surplus the plan did not expect",
   "{entity_id}: Schreiblimit für heute erreicht, bleibt beim letzten Wert": "{entity_id}: write limit for today reached, keeps the last value",
   "PV auf {limit} kW begrenzt ({reason})": "PV limited to {limit} kW ({reason})",
   "12-V-Batterie von {vehicle} bei {voltage} V (unter {limit} V): lädt {minutes} min mit kleinster Leistung": "12 V battery of {vehicle} at {voltage} V (below {limit} V): charging {minutes} min at the lowest power",

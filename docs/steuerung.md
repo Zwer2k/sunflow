@@ -35,6 +35,14 @@ Schalter je Gerät. Siehe [Sunflow-Integration](integration.md).
   behalten die feste Grenze des Plans.
 - **Wallbox**: In den geplanten Viertelstunden wird geladen, sonst gesperrt. Beim PV-Überschuss
   folgt der Ladestrom dem Überschuss. Die go-e schaltet Sunflow bei Bedarf zwischen 1 und 3 Phasen um.
+- **Überschuss, den der Plan nicht erwartet hat**: Liegt die PV-Prognose daneben und geht Strom ins
+  Netz, laden Wallbox und Verbraucher mit Strom oder Leistungsstufen trotzdem, sobald der
+  Überschuss zwei Minuten anhält und sie noch Energie brauchen. Die Reihenfolge der Prioritäten und
+  ihre Bedingungen gelten auch hier. Hat ein Verbraucher eine Speicher-Bedingung (z. B. Auto ab
+  50 % Hausspeicher) und ist sie erfüllt, oder steht er über dem Speicher, zählt auch die
+  Ladeleistung des Speichers als Überschuss: Dann lädt das Auto vor dem Speicher. Nach einer
+  Wolke bleibt der kleinste Ladestrom drei Minuten stehen, bevor gestoppt wird; Netz oder Speicher
+  werden darüber hinaus nicht genutzt.
 - **Warmwasser und eigene Verbraucher**: ein- und ausschalten oder Leistungsstufe bzw. Strom
   setzen, wie geplant.
 - **PV abregeln**: nur bei freigegebenen Anlagen und nur, wenn Einspeisen kostet (negative

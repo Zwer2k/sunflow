@@ -34,6 +34,13 @@ per device. See [Sunflow integration](integration.md).
   fixed limit.
 - **Wallbox**: charges in the planned quarter hours and is locked otherwise. On PV surplus the
   charging current follows the surplus. Sunflow switches the go-e between 1 and 3 phases when needed.
+- **Surplus the plan did not expect**: when the PV forecast is off and power goes to the grid,
+  the wallbox and loads with a current or power steps charge anyway, once the surplus lasts two
+  minutes and they still need energy. The priority order and its conditions apply here too. A
+  load with a battery condition (e.g. the car from 50 % home battery) that is met, or ranked above
+  the battery, also counts the battery's charging power as surplus: the car then charges before
+  the battery. After a cloud the smallest current stays for three minutes before stopping; grid
+  or battery are not used beyond that.
 - **Hot water and own loads**: switched on and off, or power level or current set, as planned.
 - **PV curtailment**: only for released systems and only when exporting costs money (negative
   feed-in tariff or above the grid-friendly limit).

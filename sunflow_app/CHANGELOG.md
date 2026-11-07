@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.9
+
+- Control: surplus the forecast missed is used. When power goes to the grid that the plan did not expect, the wallbox and loads with a current or power steps charge from it once it lasts two minutes – in priority order and with their conditions. A load whose battery condition is met (e.g. the car from 50 %) or that ranks above the battery also takes the battery's charging power, so the car charges first. Through a short dip the smallest current is kept for three minutes, so charging no longer starts and stops every minute when plans differ.
+- Planning: a clear PV measurement (from 1 kW) lifts a dull forecast up to ten times instead of three, never above what is measured now, and the measurement counts two minutes after a start instead of four.
+
 ## 0.78.8
 
 - Plan a battery: instead of one "price optimized" run, each scenario is run as Sunflow does with the strategies picked above the table – Balanced, Absorb PV, Self-sufficiency and Battery use, with their grid charging, surcharges and buffers – next to plain self-consumption.

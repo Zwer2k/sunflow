@@ -1315,6 +1315,10 @@ def build_inputs(
 # Weight of the live PV deviation halves over this time ahead
 NOWCAST_HALF_LIFE = timedelta(minutes=60)
 NOWCAST_RANGE = (0.2, 3.0)
+# From this much measured PV the measurement is clear enough to scale the forecast further
+# (a dull forecast on a bright day); no slot ahead gets more than is measured now
+NOWCAST_CLEAR_W = 1000.0
+NOWCAST_CLEAR_MAX = 10.0
 # Weight of the live consumption deviation halves over this time ahead
 LOAD_NOWCAST_HALF_LIFE = timedelta(minutes=30)
 # Twilight: the ratio of small values says nothing
@@ -1338,12 +1342,15 @@ def nowcast(inputs: list[SlotInput], live_pv_w: float) -> list[SlotInput]:
     forecast = inputs[0].pv_w
     if max(forecast, live_pv_w) < NOWCAST_MIN_W:
         return inputs
-    ratio = min(max((live_pv_w + 50) / (forecast + 50), NOWCAST_RANGE[0]), NOWCAST_RANGE[1])
+    upper = NOWCAST_CLEAR_MAX if live_pv_w >= NOWCAST_CLEAR_W else NOWCAST_RANGE[1]
+    ratio = min(max((live_pv_w + 50) / (forecast + 50), NOWCAST_RANGE[0]), upper)
     result = []
     for slot, weight in zip(inputs, nowcast_weights(len(inputs)), strict=True):
         factor = 1 + (ratio - 1) * weight
-        low = slot.pv_low_w * factor if slot.pv_low_w is not None else None
-        result.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
+        ceiling = max(live_pv_w, slot.pv_w) if ratio > 1 else math.inf
+        pv = min(slot.pv_w * factor, ceiling)
+        low = min(slot.pv_low_w * factor, pv) if slot.pv_low_w is not None else None
+        result.append(replace(slot, pv_w=pv, pv_low_w=low))
     return result
 
 
