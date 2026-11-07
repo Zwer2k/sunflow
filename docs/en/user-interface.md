@@ -25,6 +25,13 @@ Below the energy flow on the right you choose the view; each browser remembers i
   stars, clouds from the weather, panels on the roof, grid pole, battery with its level, hot water
   tank in its temperature colour, carport with wallbox and car. Glowing flows run from the inverter
   to each part, thicker and faster with more power. "Reduce motion" in the system stops the motion.
+- **3D**: the site as a spatial drawing with callouts like a brochure. Up to four roof faces (house
+  roof south, the north side hinted behind the ridge, annex, carport), up to two inverters with up
+  to two batteries each below them, grid connection, wallbox with car. Strings go onto the roof by
+  their forecast plane: a plane named e.g. "North…" or "Carport" lands there, the others in order.
+  E-bike, heat pump, hot water tank, washing machine, dryer and stove only appear when set up as
+  loads with a power measurement (recognized by name); the appliances in the house show through
+  the big window.
 
 - **House** shows consumption without the controllable loads; "total" below includes them.
 - **Battery** shows power, direction and state of charge; the ring is the state of charge.

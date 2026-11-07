@@ -6,6 +6,7 @@ import { formatPower, formatValue } from "../lib/format.js";
 import "../components/optimizer-view.js";
 import "../components/quick-controls.js";
 import "../components/house-scene.js";
+import "../components/iso-scene.js";
 import { recall, remember } from "../lib/view-cache.js";
 import { decimal, locale, t, tc } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
@@ -94,6 +95,7 @@ const FLOW_VIEWS = {
   bars: [t("Balken"), "M3 7h10M15 7h6M3 17h5M10 17h11"],
   tiles: [t("Kacheln"), "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"],
   house: [t("Haus"), "M3 11l9-8 9 8M5 10v11h14V10M10 21v-6h4v6"],
+  iso: [t("3D"), "M12 2l9 5v10l-9 5-9-5V7zM12 12l9-5M12 12v10M12 12L3 7"],
 };
 const weekday = new Intl.DateTimeFormat(locale(), { weekday: "short" });
 
@@ -391,6 +393,7 @@ class SunflowLive extends LitElement {
       ${view === "bars" ? this._renderBars(live, data)
         : view === "tiles" ? this._renderTiles(live, data)
         : view === "house" ? html`<sf-house-scene .live=${live} .data=${data}></sf-house-scene>`
+        : view === "iso" ? html`<sf-iso-scene .live=${live} .data=${data}></sf-iso-scene>`
         : this._renderDiagram(live, data)}
       ${view !== "tiles" && live.consumers.length > MAX_CONSUMERS
         ? html`<p class="small muted">${t("Weitere Verbraucher:")} ${live.consumers
