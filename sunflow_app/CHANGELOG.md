@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.19
+
+- Live, 3D view: the inverters feed a distribution box at the right of the house front, so their flow into the house shows apart from the grid line; the grid comes in at the meter on the left. The inverter of the carport roof hangs on the carport side, the other one nearer the house. Loads that are only measured (washing machine, dryer, stove) now show through the window.
+- Live API: measured-only loads as "appliances".
+
 ## 0.78.18
 
 - Planning: room for more sun than planned. At the end of each sunny period the battery keeps room for part of the extra PV up to the optimistic forecast (the "PV risk" share, with "Absorb PV" at least 70 %); a kWh above counts what that PV would replace. With cheap power every night the battery then covers the house at night instead of holding and spilling PV the next day. The plan view shows the room under the state of charge.

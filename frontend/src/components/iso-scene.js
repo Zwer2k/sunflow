@@ -52,8 +52,10 @@ const WALLBOXES = [
   { box: [[14.05, 7.0, 1.0], [14.05, 6.3, 1.0], [14.05, 6.3, 1.9], [14.05, 7.0, 1.9]], plug: [14.05, 6.6, 1.4] },
   { box: [[20.1, 2.25, 1.0], [20.7, 2.25, 1.0], [20.7, 2.25, 1.8], [20.1, 2.25, 1.8]], plug: [20.4, 2.25, 1.4] },
 ];
-// Point where grid, inverters and house loads meet: the meter on the house front
-const HUB = [0.8, 8, 1.6];
+// The grid comes in at the meter on the left of the house front
+const METER = [0.8, 8, 1.6];
+// The house's distribution box at the right of the front: inverters feed the house here
+const HUB = [8.8, 8.05, 1.5];
 
 /** Which known load a consumer is, from its kind and name; null: only part of the house load. */
 function role(consumer) {
@@ -81,9 +83,15 @@ class SunflowIsoScene extends LitElement {
     const day = pv > ACTIVE_W || (hour >= 7 && hour < 18);
     const roofs = this._roofs(live);
     const inverters = this._inverters(live);
+    if (inverters.length === 2 && roofs.carport?.inverter === 0) {
+      // The inverter of the carport roof hangs on the carport side, the other one nearer the house
+      inverters.reverse();
+      for (const roof of Object.values(roofs)) roof.inverter = 1 - roof.inverter;
+    }
     // Only loads with a reading
     const loads = {};
-    for (const consumer of live.consumers) {
+    // Measured only appliances (washing machine, stove …) come apart from the planned loads
+    for (const consumer of [...live.consumers, ...(live.appliances ?? [])]) {
       const which = role(consumer);
       if (which && !loads[which] && consumer.power_w !== null && consumer.power_w !== undefined) loads[which] = consumer;
     }
@@ -92,6 +100,7 @@ class SunflowIsoScene extends LitElement {
     const imported = Math.max(live.grid_w ?? 0, 0);
     const exported = Math.max(-(live.grid_w ?? 0), 0);
     const hub = iso(...HUB);
+    const meter = iso(...METER);
     return svg`<svg viewBox="0 0 900 700" class="scene ${day ? "day" : "night"}" role="img"
       aria-label=${t("Energiefluss: {summary}", { summary: data.summary })}>
       <defs>
@@ -124,15 +133,15 @@ class SunflowIsoScene extends LitElement {
         })}`)}
       ${hasGrid
         ? imported >= exported
-          ? this._flow(this._poleTop(), hub, imported, COLOR.grid)
-          : this._flow(hub, this._poleTop(), exported, COLOR.pv)
+          ? svg`${this._flow(this._poleTop(), meter, imported, COLOR.grid)}${this._flow(meter, hub, imported, COLOR.grid)}`
+          : svg`${this._flow(hub, meter, exported, COLOR.pv)}${this._flow(meter, this._poleTop(), exported, COLOR.pv)}`
         : nothing}
       ${vehicles.map((vehicle, i) => svg`
         ${this._flow(iso(13.2, 8.2, 1.0), iso(...WALLBOXES[i].plug), vehicle.power_w, COLOR.vehicle)}
         ${vehicle.connected !== false
           ? this._flow(iso(...WALLBOXES[i].plug), iso(CAR_SLOTS[i] + (i ? 1.9 : 0), i ? 3.4 : 5.6, 0.7), vehicle.power_w, COLOR.vehicle)
           : nothing}`)}
-      ${loads.heatpump ? this._flow(hub, iso(-1.1, 9.0, 1.0), loads.heatpump.power_w, COLOR.heat) : nothing}
+      ${loads.heatpump ? this._flow(meter, iso(-1.1, 9.0, 1.0), loads.heatpump.power_w, COLOR.heat) : nothing}
 
       ${this._labels(live, roofs, inverters, loads, vehicles, { displays, homeBase, hasGrid, imported, exported })}
     </svg>`;
@@ -217,6 +226,7 @@ class SunflowIsoScene extends LitElement {
       <polygon class="door" points=${pts([7.85, y, 0], [8.6, y, 0], [8.6, y, 2.1], [7.85, y, 2.1])}></polygon>
       <polygon class="window" points=${pts([x, 5.5, 2.0], [x, 2.5, 2.0], [x, 2.5, 3.6], [x, 5.5, 3.6])}></polygon>
       <polygon class="meter" points=${pts([0.4, y + 0.02, 1.1], [1.2, y + 0.02, 1.1], [1.2, y + 0.02, 2.1], [0.4, y + 0.02, 2.1])}></polygon>
+      <polygon class="hub" points=${pts([8.62, y + 0.02, 1.1], [8.95, y + 0.02, 1.1], [8.95, y + 0.02, 1.9], [8.62, y + 0.02, 1.9])}></polygon>
     </g>`;
   }
 
@@ -447,6 +457,7 @@ class SunflowIsoScene extends LitElement {
     .window.lit { fill: #f6d98a; }
     .door { fill: #8a6a4a; }
     .meter { fill: #fff; stroke: var(--sf-series-1); stroke-width: 2; }
+    .hub { fill: #fff; stroke: var(--sf-series-4); stroke-width: 2; }
     .app-body { fill: #f2f4f7; stroke: #57606a; stroke-width: 1.5; }
     .app-door { fill: #b9c6d4; stroke: #57606a; stroke-width: 1.2; }
     .app-door.spin { stroke-dasharray: 6 4; animation: turn 1.4s linear infinite; transform-box: fill-box; transform-origin: center; }

@@ -45,6 +45,7 @@ async def get_live(request: Request) -> dict[str, Any]:
     pv: list[dict[str, Any]] = []
     batteries: list[dict[str, Any]] = []
     consumers: list[dict[str, Any]] = []
+    appliances: list[dict[str, Any]] = []
     grid_w: float | None = None
     load_w: float | None = None
     # Unit and decimals of the source entities, so values look like in Home Assistant
@@ -105,6 +106,11 @@ async def get_live(request: Request) -> dict[str, Any]:
         if load_device is not None and device.id == load_device.id:
             load_w = value("load_power")
             displays["load"] = display("load_power")
+        if "appliance" in capabilities:
+            # Only measured (washing machine, stove …): for pictures of the site, not planned
+            appliances.append(
+                {"device_id": device.id, "name": device.name, "power_w": value("power"), "display": display("power")}
+            )
         if "loadpoint" in capabilities or "load" in capabilities:
             kind = device_kind(profile, device, snapshot) or "load"
             # A wallbox with assigned vehicles shows the car it recognized, with the car's own SoC
@@ -144,6 +150,7 @@ async def get_live(request: Request) -> dict[str, Any]:
         "grid_w": grid_w,
         "load_w": load_w,
         "consumers": consumers,
+        "appliances": appliances,
         # Inverter and battery losses, averaged over the last minutes (single readings are not in step)
         "losses_w": runner.recent_losses() if (runner := getattr(request.app.state, "runner", None)) and load_w is not None else None,
         "displays": displays,
