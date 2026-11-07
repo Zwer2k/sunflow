@@ -515,7 +515,7 @@ class SunflowControl extends LitElement {
               <div class="segmented small-buttons" role="group" aria-label=${t("Ziel {name}", { name: device.name })}>
                 <button class=${targetOverride === null ? "on" : ""} aria-pressed=${targetOverride === null} ?disabled=${this._busy}
                   @click=${() => this._setDevice(device, { target: null })}>
-                  ${t("Standard")}${device.default.target !== null ? ` (${device.default.target} ${unit})` : ""}
+                  ${t("Standard")}${defaultTarget(device) !== null ? ` (${defaultTarget(device)} ${unit})` : ""}
                 </button>
                 ${targets.presets.map(
                   (target) => html`<button class=${targetOverride === target ? "on" : ""} aria-pressed=${targetOverride === target} ?disabled=${this._busy}
