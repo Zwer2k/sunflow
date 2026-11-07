@@ -1,6 +1,7 @@
-import { LitElement, svg, css, nothing } from "../../vendor/lit-all.min.js";
+import { LitElement, svg, css, nothing, unsafeCSS } from "../../vendor/lit-all.min.js";
 import { formatPower } from "../lib/format.js";
 import { t } from "../lib/i18n.js";
+import { MOTION, animate } from "../lib/motion.js";
 
 const ACTIVE_W = 20;
 const COLOR = {
@@ -125,7 +126,7 @@ class SunflowHouseScene extends LitElement {
   _moon() {
     return svg`<g class="moon">
       ${[[60, 40], [150, 30], [230, 70], [520, 40], [600, 90], [420, 30]].map(([x, y], i) => svg`<circle cx=${x} cy=${y} r="1.6"
-        class="star" style="animation-delay: ${i * 0.7}s"></circle>`)}
+        class="star" style="--offset: ${i * 0.7}s"></circle>`)}
       <path d="M100,46 a26,26 0 1,0 22,40 a20,20 0 1,1 -22,-40z" class="moon-disc"></path>
     </g>`;
   }
@@ -211,8 +212,19 @@ class SunflowHouseScene extends LitElement {
     </g>`;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this._unwatch = animate(this);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._unwatch();
+  }
+
   static styles = css`
     :host { display: block; }
+    * { ${unsafeCSS(MOTION)} }
     .scene { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 340px)); display: block; margin: 0 auto; border-radius: 14px; }
     .sky-top { stop-color: #8ec5f2; }
     .sky-bottom { stop-color: #e8f3fc; }
@@ -236,7 +248,7 @@ class SunflowHouseScene extends LitElement {
     .night .wall { fill: #cfc6b6; }
     .roof { fill: #a8493a; stroke: #7c3328; stroke-width: 2; stroke-linejoin: round; }
     .panel { fill: url(#panel); stroke: #9fb4d4; stroke-width: 1; }
-    .panel-shine .panel { fill: #9fd3ff; stroke: none; mix-blend-mode: screen; animation: shimmer 3.5s ease-in-out infinite; }
+    .panel-shine .panel { fill: #9fd3ff; stroke: none; animation: shimmer 3.5s ease-in-out infinite; }
     @keyframes shimmer { 50% { opacity: 0.45; } }
     .window { fill: #5b6b80; stroke: #8a7a63; stroke-width: 2; transition: fill 0.6s; }
     .window.lit { fill: #ffd97a; filter: drop-shadow(0 0 6px #ffcf5c); }
@@ -263,7 +275,7 @@ class SunflowHouseScene extends LitElement {
     .car-level { fill: #fff; stroke: #57606a; stroke-width: 1; }
     .car-level-fill { fill: var(--sf-series-6); }
     .wire { fill: none; stroke: #8c959f; stroke-width: 1.5; stroke-linecap: round; opacity: 0.45; }
-    .spark { fill: none; stroke-linecap: round; stroke-dasharray: 1 13; animation: spark linear infinite; filter: drop-shadow(0 0 3px currentColor); }
+    .spark { fill: none; stroke-linecap: round; stroke-dasharray: 1 13; animation: spark linear infinite; }
     @keyframes spark { to { stroke-dashoffset: -28; } }
     .label-title { font-size: 14px; text-anchor: middle; fill: #24292f; paint-order: stroke; stroke: rgb(255 255 255 / 0.85); stroke-width: 3px; }
     .label-value { font-size: 18px; font-weight: 700; text-anchor: middle; font-variant-numeric: tabular-nums;

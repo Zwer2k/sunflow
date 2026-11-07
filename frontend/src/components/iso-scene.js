@@ -1,6 +1,7 @@
-import { LitElement, svg, css, nothing } from "../../vendor/lit-all.min.js";
+import { LitElement, svg, css, nothing, unsafeCSS } from "../../vendor/lit-all.min.js";
 import { formatPower } from "../lib/format.js";
 import { t } from "../lib/i18n.js";
+import { MOTION, animate } from "../lib/motion.js";
 
 const ACTIVE_W = 20;
 const COLOR = {
@@ -100,7 +101,7 @@ class SunflowIsoScene extends LitElement {
     const imported = Math.max(live.grid_w ?? 0, 0);
     const exported = Math.max(-(live.grid_w ?? 0), 0);
     const hub = iso(...HUB);
-    // The flow into the house in the colour of where most of it comes from
+    // The flow into the house (without car and heat pump, they have lines of their own) in the colour of its main source
     const { pvToHome, batteryToHome, gridToHome } = data.flows;
     const houseColor = batteryToHome >= pvToHome && batteryToHome >= gridToHome && batteryToHome > 0
       ? COLOR.battery
@@ -136,7 +137,7 @@ class SunflowIsoScene extends LitElement {
           ? this._flow(iso(INVERTERS[i], 8.2, 1.4), hub, output, color)
           : this._flow(hub, iso(INVERTERS[i], 8.2, 1.4), -output, COLOR.grid);
       })}
-      ${this._flow(hub, iso(4.4, 8, 3.75), data.flows.house, houseColor)}
+      ${this._flow(hub, iso(4.4, 8, 3.75), homeBase, houseColor)}
       ${inverters.map((inverter, i) => svg`
         ${inverter.batteries.map((battery, j) => {
           const power = battery.power_w ?? 0;
@@ -446,8 +447,19 @@ class SunflowIsoScene extends LitElement {
     `;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this._unwatch = animate(this);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._unwatch();
+  }
+
   static styles = css`
     :host { display: block; }
+    * { ${unsafeCSS(MOTION)} }
     .scene { width: 100%; max-width: 980px; height: auto; max-height: max(300px, calc(100dvh - 300px)); display: block; margin: 0 auto; }
     .sky-in { stop-color: #e9f2fb; }
     .sky-out { stop-color: #c7dbef; }
@@ -464,7 +476,7 @@ class SunflowIsoScene extends LitElement {
     .roof.flat { fill: #8b929c; stroke: #6c737d; stroke-width: 1.2; }
     .panel { fill: url(#iso-panel); stroke: #a9c0e0; stroke-width: 0.8; }
     .panels.north .panel { opacity: 0.85; }
-    .shine .panel { fill: #a8d8ff; stroke: none; mix-blend-mode: screen; animation: shimmer 3.5s ease-in-out infinite; }
+    .shine .panel { fill: #a8d8ff; stroke: none; animation: shimmer 3.5s ease-in-out infinite; }
     @keyframes shimmer { 50% { opacity: 0.4; } }
     .window { fill: #6f7f93; stroke: #9c9283; stroke-width: 1.5; }
     .window.big { fill: #50606f; }

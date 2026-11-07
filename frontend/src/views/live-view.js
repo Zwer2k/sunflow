@@ -1,4 +1,4 @@
-import { LitElement, html, svg, css, nothing } from "../../vendor/lit-all.min.js";
+import { LitElement, html, svg, css, nothing, unsafeCSS } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { poll } from "../lib/poll.js";
 import { dailyRatios, splitFlows } from "../components/flows.js";
@@ -8,6 +8,7 @@ import "../components/quick-controls.js";
 import "../components/house-scene.js";
 import "../components/iso-scene.js";
 import { recall, remember } from "../lib/view-cache.js";
+import { MOTION, animate } from "../lib/motion.js";
 import { decimal, locale, t, tc } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
 
@@ -169,6 +170,8 @@ class SunflowLive extends LitElement {
     this._stopLive();
     this._stopToday();
     window.removeEventListener("resize", this._onResize);
+    this._unwatch?.();
+    this._watched = null;
   }
 
   async _loadLive() {
@@ -305,6 +308,12 @@ class SunflowLive extends LitElement {
 
   updated() {
     this._updateScroll();
+    const graphic = this.renderRoot.querySelector("svg.flow");
+    if (graphic !== this._watched) {
+      this._unwatch?.();
+      this._watched = graphic;
+      this._unwatch = graphic ? animate(graphic) : null;
+    }
   }
 
   /** Arrows only where more forecast is hidden. */
@@ -757,6 +766,7 @@ class SunflowLive extends LitElement {
     .edge.base { opacity: 0.25; }
     .edge.flow { stroke-dasharray: 2 14; animation: flow linear infinite; }
     @keyframes flow { to { stroke-dashoffset: -32; } }
+    .edge.flow { ${unsafeCSS(MOTION)} }
     @media (prefers-reduced-motion: reduce) { .edge.flow { animation: none; stroke-dasharray: none; opacity: 0.8; } }
     .disc { fill: var(--sf-surface); stroke-width: 3; }
     .disc.thin { stroke-width: 2; }

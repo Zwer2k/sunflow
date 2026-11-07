@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.25
+
+- Live graphics use far less GPU and CPU: the animations of the diagram, house and 3D views stay paused and a clock moves them on 12 times a second, only while the graphic is in view and the tab is visible – instead of the browser redrawing the whole graphic 60 times a second. The glow on the sparks and the blending of the panel shimmer are gone.
+- Live, 3D view: the line into the house carries the house's own consumption, no longer including the car and the heat pump, which have lines of their own.
+
 ## 0.78.24
 
 - Default target of a car also when it is not recognized: the vehicle chosen in the app or the only one at this wallbox, with its value under Settings → Charging; otherwise the wallbox's own value, then evcc's limit. It no longer comes from the last plan, which right after "Default" still held the value chosen by hand.
