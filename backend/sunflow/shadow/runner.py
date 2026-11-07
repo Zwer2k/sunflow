@@ -76,7 +76,7 @@ EARLY_REPLAN_SAMPLES = 3
 RECENT_SAMPLES = 5
 # Fewer samples (just after a start) say nothing about what the battery does
 RECENT_ACTION_MIN_SAMPLES = 3
-NOWCAST_MIN_SAMPLES = 4
+NOWCAST_MIN_SAMPLES = 2
 
 
 async def current_plan(

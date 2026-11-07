@@ -87,6 +87,31 @@ def test_nowcast_carries_the_live_deviation_ahead() -> None:
     assert nowcast([SlotInput(start=start, pv_w=0, load_w=500, price=0.3, feed_in=0.08)], 20)[0].pv_w == 0
 
 
+@pytest.mark.parametrize(
+    ("forecast", "live", "expected"),
+    [
+        # A clear measurement lifts a dull forecast beyond three times (as on 7 Nov: 0.7 kW planned, 4.4 kW there)
+        pytest.param(600.0, 4400.0, 600.0 * 4450 / 650, id="bright-day"),
+        # Little PV: three times the forecast at most
+        pytest.param(200.0, 900.0, 3 * 200.0, id="small-values"),
+    ],
+)
+def test_nowcast_follows_a_clear_measurement(forecast: float, live: float, expected: float) -> None:
+    """A forecast far too low is lifted by the measurement, never above it."""
+    from datetime import UTC, datetime, timedelta
+
+    from sunflow.planning.optimizer import SlotInput
+    from sunflow.planning.plan import nowcast
+
+    start = datetime(2026, 11, 7, 12, tzinfo=UTC)
+    inputs = [SlotInput(start=start + timedelta(minutes=15 * t), pv_w=forecast, load_w=500, price=0.3, feed_in=0.08) for t in range(8)]
+
+    result = nowcast(inputs, live)
+
+    assert result[0].pv_w == pytest.approx(expected)
+    assert all(slot.pv_w <= live for slot in result)
+
+
 def test_load_nowcast_starts_at_the_measured_consumption() -> None:
     """The house uses less than forecast now: the next slots start there and return to the forecast."""
     from datetime import UTC, datetime, timedelta

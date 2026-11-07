@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from sunflow.config.models import ControlSettings, DeviceConfig, SunflowConfig
+from sunflow.config.models import ControlSettings, DeviceConfig, PriorityCondition, SunflowConfig
 from sunflow.control.controller import (
     DeviceAccess,
     PlanController,
@@ -887,3 +887,71 @@ def test_limit_discharge_storage_of_the_profiles(profile: str, volatile: bool) -
     """Only inverters that keep the discharge limit in RAM get it rewritten every minute."""
     library = load_profiles(REPO / "profiles", load_schema(REPO / "schema"))
     assert volatile_action(library.profiles[profile], "limit_discharge") is volatile
+
+
+GOE_CURRENT = GOE | {"roles": {"current": {}}}
+
+
+def _surplus_plan() -> SimpleNamespace:
+    """Nothing planned now for the wallbox (forecast too low); the car still needs energy."""
+    plan = _charge_plan(0, pv=700)
+    plan.flex = [
+        SimpleNamespace(
+            device_id="wb", unknown_vehicle=False, vehicle_id=None, vehicle_method="card", reason=None, need_wh=13750.0,
+            current=47.0, target=80.0,
+        )
+    ]
+    plan.battery = SimpleNamespace(capacity_wh=20000.0)
+    return plan
+
+
+def _sample(grid: float, battery: float = 0.0, soc_pct: float = 97.0, own: float = 0.0) -> SimpleNamespace:
+    return SimpleNamespace(pv_w=4400.0, grid_w=grid, battery_w=battery, soc_wh=200.0 * soc_pct, consumers={"wb": own})
+
+
+async def test_unplanned_surplus_charges_after_it_lasts(tmp_path: Path) -> None:
+    """Export the plan did not expect goes to the car, once it lasted two minutes, not at the first reading."""
+    charger = FakeCharger()
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE_CURRENT})
+    config = _charger_config("goe")
+
+    await controller.tick(config, _surplus_plan(), NOW, SNAPSHOT, NOW, _sample(-5000))
+    assert charger.option == "dont_charge"
+    await controller.tick(config, _surplus_plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=2), _sample(-5000))
+
+    assert (charger.option, charger.current) == ("charge", 8)
+    assert controller.statuses["wb"].reason == "nutzt PV-Überschuss, den der Plan nicht erwartet hat"
+
+
+async def test_unplanned_surplus_rides_out_a_short_dip(tmp_path: Path) -> None:
+    """A cloud keeps the minimum current for three minutes before charging stops."""
+    charger = FakeCharger()
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE_CURRENT})
+    config = _charger_config("goe")
+    for minute in (0, 2):
+        await controller.tick(config, _surplus_plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=minute), _sample(-5000))
+
+    # The car takes 4.1 kW, the house now imports 1 kW
+    await controller.tick(config, _surplus_plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=3), _sample(1000, own=4140))
+    assert charger.option == "charge"
+    await controller.tick(config, _surplus_plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=6), _sample(1000, own=4140))
+
+    assert charger.option == "dont_charge"
+
+
+@pytest.mark.parametrize(
+    ("soc_pct", "option"),
+    [pytest.param(60.0, "charge", id="above-the-condition"), pytest.param(40.0, "dont_charge", id="below-the-condition")],
+)
+async def test_battery_condition_puts_the_car_first(tmp_path: Path, soc_pct: float, option: str) -> None:
+    """Once the battery reached the car's condition, its charging power counts as surplus for the car."""
+    charger = FakeCharger()
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: charger.access(), lambda: {"goe": GOE_CURRENT})
+    config = _charger_config("goe")
+    config.priorities = ["battery", "wb"]
+    config.priority_conditions = {"wb": [PriorityCondition(device_id="battery", min_pct=50)]}
+
+    for minute in (0, 2):
+        await controller.tick(config, _surplus_plan(), NOW, SNAPSHOT, NOW + timedelta(minutes=minute), _sample(0, 5000, soc_pct))
+
+    assert charger.option == option

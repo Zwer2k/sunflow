@@ -25,7 +25,13 @@ from pathlib import Path
 import re
 from typing import Any
 
-from sunflow.config.models import AuxBatteryGuard, DeviceConfig, SunflowConfig, Vehicle
+from sunflow.config.models import (
+    BATTERY_PRIORITY_ID,
+    AuxBatteryGuard,
+    DeviceConfig,
+    SunflowConfig,
+    Vehicle,
+)
 from sunflow.control.aux_battery import AuxCharge, aux_charge_due, aux_voltage
 from sunflow.control.charger import ChargerWatch
 from sunflow.control.journal import ControlJournal
@@ -69,6 +75,17 @@ SWITCH_ON_SHARE = ON_OFF_MIN_SHARE
 GRID_MARGIN_W = 300.0
 # Already charging, it keeps the minimum current down to this share of it
 KEEP_CHARGING_SHARE = 0.5
+# Surplus the plan did not foresee (forecast too low): used once it lasts this long, and
+# kept at the minimum through a shortfall this long, so it does not toggle every minute
+SURPLUS_START = timedelta(minutes=2)
+SURPLUS_STOP = timedelta(minutes=3)
+UNPLANNED = N_("nutzt PV-Überschuss, den der Plan nicht erwartet hat")
+PLAN_STOP = N_("nach Plan: jetzt nicht")
+# Why part power stops or what it follows: the planned PV surplus, or the unplanned one
+FOLLOW_REASONS = {
+    False: (N_("zu wenig PV-Überschuss für die kleinste Leistung"), N_("folgt dem PV-Überschuss")),
+    True: (PLAN_STOP, UNPLANNED),
+}
 # Actions of the PV limit, besides the battery and charge actions of a device
 PV_LIMIT_PREFIX = "pv_"
 HAND_BACK = N_("an das Gerät zurückgegeben")
@@ -190,7 +207,7 @@ def desired_charge(
     power = (getattr(slot, "flex_w", None) or {}).get(name, 0.0)
     if power >= MIN_CHARGE_W:
         return "charge", power, t(ON_PLAN)
-    return "stop", None, t("nach Plan: jetzt nicht")
+    return "stop", None, t(PLAN_STOP)
 
 
 def planned_from_grid(slot: Any) -> bool:
@@ -394,6 +411,49 @@ def follow_surplus(
     if power >= minimum:
         return power
     return minimum if charging and power >= minimum * KEEP_CHARGING_SHARE else None
+
+
+def spare_surplus(own_w: float, live: Any, battery_charge: bool) -> float | None:
+    """Power a consumer can have without grid or battery.
+
+    Its own power, what goes to the grid and, when it comes before the battery, what the
+    battery is charging with.
+    """
+    if live is None or live.grid_w is None:
+        return None
+    battery = live.battery_w or 0.0
+    spare = own_w - live.grid_w - max(-battery, 0.0)
+    return spare + max(battery, 0.0) if battery_charge else spare
+
+
+def before_battery(config: SunflowConfig, device_id: str, live: Any, capacity_wh: float | None) -> bool:
+    """The consumer comes before the battery: ranked above it, or its battery conditions are met."""
+    if BATTERY_PRIORITY_ID not in config.ranked_above(device_id):
+        return True
+    levels = [c.min_pct for c in config.valid_conditions(device_id) if c.device_id == BATTERY_PRIORITY_ID]
+    if not levels or not capacity_wh or live is None or live.soc_wh is None:
+        return False
+    return live.soc_wh / capacity_wh * 100 >= max(levels)
+
+
+def storages_ready(config: SunflowConfig, device_id: str, flex: list[Any]) -> bool:
+    """Vehicles and tanks ranked above (its conditions) reached their level; one not planned holds nothing back."""
+    infos = {f.device_id: f for f in flex}
+    for condition in config.valid_conditions(device_id):
+        info = infos.get(condition.device_id)
+        if condition.device_id == BATTERY_PRIORITY_ID or info is None or info.reason or info.current is None:
+            continue
+        if info.current < min(condition.min_pct, info.target if info.target is not None else condition.min_pct):
+            return False
+    return True
+
+
+def _capacity(plan: Any) -> float | None:
+    """Capacity of all planned batteries (live.soc_wh is their sum)."""
+    if batteries := getattr(plan, "batteries", None):
+        return sum(spec.capacity_wh for _, _, spec in batteries)
+    battery = getattr(plan, "battery", None)
+    return getattr(battery, "capacity_wh", None)
 
 
 def choose_step(steps: dict[str, float], power: float) -> str | None:
@@ -756,6 +816,11 @@ class PlanController:
         # watchdog when the App stops answering; refreshed now and then
         self.fallback: list[dict[str, Any]] = []
         self._fallback_at = datetime.min.replace(tzinfo=UTC)
+        # Unplanned surplus per consumer: since when there is enough, since when too little
+        self._surplus_since: dict[str, datetime] = {}
+        self._surplus_short: dict[str, datetime] = {}
+        # Surplus handed out in this tick (the live values do not show it yet)
+        self._surplus_used = 0.0
 
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive, a loadpoint with charge control or a PV limit."""
@@ -794,7 +859,9 @@ class PlanController:
         self.paused = self.blocked or (
             t("evcc steuert gerade den Hausspeicher – Sunflow wartet") if evcc_controls_battery(snapshot) else None
         )
-        for device in config.devices:
+        self._surplus_used = 0.0
+        order = config.priority_order()
+        for device in sorted(config.devices, key=lambda d: order.index(d.id)):
             if not self.wanted(config, device):
                 continue
             profile = self._profiles()[device.profile]
@@ -967,6 +1034,7 @@ class PlanController:
             if (forced := self.chargers.step(device, switch_on, power_w, snapshot.states, now)) is not None:
                 action, reason = forced
                 power = (device.parameters.get("max_power") or profile.get("parameters", {}).get("max_power", {}).get("default")) if action == "charge" else None
+        action, power, unplanned = self._unplanned_start(action, power, reason, device, info, plan, live, now)
         access = self._access_for(device)
         await take_over(access, self._marker, device)
         aux = self._aux_due(device, snapshot, now)
@@ -1000,7 +1068,7 @@ class PlanController:
             max_power = params.get("max_power") or 0
             # Planned from the grid (e.g. cheap night hours) the power is held, not taken from the PV surplus
             from_grid = planned_from_grid(current_slot(plan, now) if action == "charge" else None)
-            partial = action == "charge" and power < FOLLOW_BELOW * max_power and not from_grid
+            partial = unplanned or (action == "charge" and power < FOLLOW_BELOW * max_power and not from_grid)
             if binary:
                 if action == "charge" and power < SWITCH_ON_SHARE * max_power:
                     action, reason = "stop", t("nach Plan: zu wenig für die volle Leistung")
@@ -1008,21 +1076,17 @@ class PlanController:
                 # Without a current setpoint (evcc) the device follows the surplus itself
                 action = "follow"
             elif partial:
-                slot = current_slot(plan, now)
-                if "phase_switch" in profile and action == "charge":
-                    # The surplus there is decides the phases; their minimum current whether it charges
-                    available = follow_surplus(power, getattr(slot, "pv_w", 0.0), live, True, params, 0.0) or 0.0
-                    phases = await self._switch_phases(device, status, profile, params, available, False, plan, now, snapshot)
-                    params = params | {"phases": phases}
                 smallest = min((w for w in steps.values() if w > 0), default=None) if steps else None
-                followed = follow_surplus(power, getattr(slot, "pv_w", 0.0), live, status.action == "charge", params, smallest)
+                follow = self._unplanned_power if unplanned else self._planned_power
+                params, followed = await follow(device, status, profile, params, power, smallest, plan, now, live, snapshot)
                 if followed is None and aux is not None:
                     await self._aux_top_up(device, status, access, aux, now, snapshot)
                     return
+                stop_reason, follow_reason = FOLLOW_REASONS[unplanned]
                 if followed is None:
-                    action, reason = "stop", t("zu wenig PV-Überschuss für die kleinste Leistung")
+                    action, reason = "stop", t(stop_reason)
                 else:
-                    power, reason = followed, t("folgt dem PV-Überschuss")
+                    power, reason = followed, t(follow_reason)
             elif "phase_switch" in profile and action == "charge":
                 phases = await self._switch_phases(device, status, profile, params, power, True, plan, now, snapshot)
                 params = params | {"phases": phases}
@@ -1069,6 +1133,85 @@ class PlanController:
                 status.current_a = None
             self._check_current(device, status, profile, action, now, snapshot)
         status.active, status.action, status.power_w, status.reason = True, action, power, reason
+
+    def _unplanned_start(
+        self, action: str, power: float | None, reason: str, device: DeviceConfig, info: Any, plan: Any, live: Any,
+        now: datetime,
+    ) -> tuple[str, float | None, bool]:
+        """Charging from surplus the forecast missed (it would go to the grid, or a battery the consumer comes before)."""
+        if action == "stop" and reason == t(PLAN_STOP) and self._may_use_surplus(device, info, plan, live, now):
+            return "charge", 0.0, True
+        return action, power, False
+
+    def _may_use_surplus(self, device: DeviceConfig, info: Any, plan: Any, live: Any, now: datetime) -> bool:
+        """A consumer the plan left out may take surplus it did not foresee.
+
+        It still needs energy, is not paused, can take part power and its conditions are met.
+        """
+        profile = self._profiles()[device.profile]
+        roles = profile.get("roles", {})
+        if device.charger is not None or not (device.power_steps or "current" in roles or "follow" in profile["charge_control"]):
+            return False
+        if info is None or info.unknown_vehicle or info.reason or (info.need_wh or 0.0) <= 0:
+            return False
+        if self._config.effective_flex(device, now)[1]:
+            return False
+        if not storages_ready(self._config, device.id, getattr(plan, "flex", None) or []):
+            return False
+        capacity = _capacity(plan)
+        before = before_battery(self._config, device.id, live, capacity)
+        # With battery conditions not met it waits for the battery, also with surplus
+        if BATTERY_PRIORITY_ID in self._config.ranked_above(device.id) and not before and any(
+            c.device_id == BATTERY_PRIORITY_ID for c in self._config.valid_conditions(device.id)
+        ):
+            return False
+        return (spare_surplus(0.0, live, before) or 0.0) > 0 or self._status(device).reason == t(UNPLANNED)
+
+    async def _planned_power(
+        self, device: DeviceConfig, status: DeviceControl, profile: dict[str, Any], params: dict[str, Any],
+        power: float, smallest: float | None, plan: Any, now: datetime, live: Any, snapshot: Snapshot | None,
+    ) -> tuple[dict[str, Any], float | None]:
+        """Phases and power of a planned part charge, corrected by the PV actually there."""
+        slot = current_slot(plan, now)
+        if "phase_switch" in profile:
+            # The surplus there is decides the phases; their minimum current whether it charges
+            available = follow_surplus(power, getattr(slot, "pv_w", 0.0), live, True, params, 0.0) or 0.0
+            phases = await self._switch_phases(device, status, profile, params, available, False, plan, now, snapshot)
+            params = params | {"phases": phases}
+        return params, follow_surplus(power, getattr(slot, "pv_w", 0.0), live, status.action == "charge", params, smallest)
+
+    async def _unplanned_power(
+        self, device: DeviceConfig, status: DeviceControl, profile: dict[str, Any], params: dict[str, Any],
+        power: float, smallest: float | None, plan: Any, now: datetime, live: Any, snapshot: Snapshot | None,
+    ) -> tuple[dict[str, Any], float | None]:
+        """Phases and power from the surplus the plan did not foresee; what it takes is no longer free."""
+        own = (live.consumers or {}).get(device.id, 0.0)
+        before = before_battery(self._config, device.id, live, _capacity(plan))
+        spare = (spare_surplus(own, live, before) or 0.0) - self._surplus_used
+        if "phase_switch" in profile:
+            phases = await self._switch_phases(device, status, profile, params, spare, False, plan, now, snapshot)
+            params = params | {"phases": phases}
+        power = self._surplus_gate(device.id, status, spare, params, smallest, now)
+        if power is not None:
+            self._surplus_used += max(power - own, 0.0)
+        return params, power
+
+    def _surplus_gate(
+        self, device_id: str, status: DeviceControl, spare: float, params: dict[str, Any], smallest: float | None,
+        now: datetime,
+    ) -> float | None:
+        """Power from unplanned surplus: starts once it lasts, keeps the minimum through a short dip."""
+        minimum = smallest if smallest is not None else (params.get("min_current_a") or 6) * VOLTS * (params.get("phases") or 3)
+        running = status.action == "charge" and status.reason == t(UNPLANNED)
+        if spare >= minimum:
+            self._surplus_short.pop(device_id, None)
+            since = self._surplus_since.setdefault(device_id, now)
+            return spare if running or now - since >= SURPLUS_START else None
+        self._surplus_since.pop(device_id, None)
+        if running and now - self._surplus_short.setdefault(device_id, now) < SURPLUS_STOP:
+            return minimum
+        self._surplus_short.pop(device_id, None)
+        return None
 
     def _check_current(
         self, device: DeviceConfig, status: DeviceControl, profile: dict[str, Any], action: str, now: datetime,
