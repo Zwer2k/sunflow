@@ -300,4 +300,9 @@ export default {
   "Gibt nichts ab, PV darf ihn weiter laden – z. B. Energie für später aufheben.": "Gives nothing, PV may still charge it – e.g. to keep energy for later.",
   "Sunflow steuert ihn nicht, er regelt im Eigenverbrauch selbst; der Plan rechnet mit ihm, ohne ihn zu zwingen.": "Sunflow does not control it, it runs self-consumption on its own; the plan counts on it without forcing it.",
   "Nutzung von {name}": "Use of {name}",
+  "Fahrzeug?": "Vehicle?",
+  "Weniger": "Less",
+  "Mehr": "More",
+  "Wert …": "Value …",
+  "Beliebiges Ziel für {name}": "Any target for {name}",
 };
