@@ -29,7 +29,8 @@ Rechts unter dem Energiefluss wählst du die Ansicht, jeder Browser merkt sich s
   reduzieren“ im System schaltet die Bewegung ab.
 - **3D**: die Anlage als räumliche Zeichnung mit Beschriftungen wie in einem Prospekt. Bis zu vier
   Dachflächen (Hausdach Süd, die Nordseite angedeutet hinter dem First, Anbau, Carport), bis zu
-  zwei Wechselrichter mit je bis zu zwei Speichern darunter, Netzanschluss, Wallbox mit Auto. Die
+  zwei Wechselrichter mit je bis zu zwei Speichern darunter, Netzanschluss, bis zu zwei Autos mit
+  Wallbox unter dem Carport. Die
   Strings kommen über ihre Prognosefläche auf das Dach: Heißt die Fläche z. B. „Nord…“ oder
   „Carport“, landet sie dort, sonst der Reihe nach. E-Bike, Wärmepumpe, Warmwasserspeicher,
   Waschmaschine, Trockner und Herd erscheinen nur, wenn sie als Verbraucher mit Leistungsmessung
