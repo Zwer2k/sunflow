@@ -41,6 +41,8 @@ const ROOF_ORDER = ["south", "annex", "carport", "north"];
 const ROOF_HINTS = [[/nord|north/i, "north"], [/carport|garage|vordach|port/i, "carport"]];
 // Inverters on the annex front wall, their batteries below them
 const INVERTERS = [10.0, 12.0];
+// Appliances seen through the shop window, from the left (metres along the house front)
+const APPLIANCES = [1.9, 3.3, 4.7, 6.1];
 // The e-bike stands beside the carport
 const BIKE = [22.2, 5.0];
 // Two parking places under the carport (left edge in metres), the rear towards the viewer;
@@ -210,9 +212,9 @@ class SunflowIsoScene extends LitElement {
       <polygon class="wall side" points=${pts([x, y, 0], [x, 0, 0], [x, 0, wall], [x, mid, ridge], [x, y, wall])}></polygon>
       <polygon class="roof front" points=${pts([-0.3, y + 0.4, wall - 0.2], [x + 0.3, y + 0.4, wall - 0.2], [x + 0.3, mid, ridge], [-0.3, mid, ridge])}></polygon>
       ${roofs.south ? this._panels("south", roofs.south) : nothing}
-      <polygon class="window big ${lit ? "lit" : ""}" points=${pts([1.8, y, 0.5], [6.4, y, 0.5], [6.4, y, 3.5], [1.8, y, 3.5])}></polygon>
-      ${inside.map((which, i) => this._appliance(which, loads[which], iso(2.4 + i * 1.15, y, 0.6)))}
-      <polygon class="door" points=${pts([7.0, y, 0], [8.1, y, 0], [8.1, y, 2.3], [7.0, y, 2.3])}></polygon>
+      <polygon class="window big ${lit ? "lit" : ""}" points=${pts([1.3, y, 0.4], [7.5, y, 0.4], [7.5, y, 3.6], [1.3, y, 3.6])}></polygon>
+      ${inside.map((which, i) => this._appliance(which, loads[which], iso(APPLIANCES[i], y, 0.5)))}
+      <polygon class="door" points=${pts([7.85, y, 0], [8.6, y, 0], [8.6, y, 2.1], [7.85, y, 2.1])}></polygon>
       <polygon class="window" points=${pts([x, 5.5, 2.0], [x, 2.5, 2.0], [x, 2.5, 3.6], [x, 5.5, 3.6])}></polygon>
       <polygon class="meter" points=${pts([0.4, y + 0.02, 1.1], [1.2, y + 0.02, 1.1], [1.2, y + 0.02, 2.1], [0.4, y + 0.02, 2.1])}></polygon>
     </g>`;
@@ -370,11 +372,13 @@ class SunflowIsoScene extends LitElement {
   _labels(live, roofs, inverters, loads, vehicles, { displays, homeBase, hasGrid, imported, exported }) {
     // Long names (e.g. "Warmwasserspeicher") would run into the neighbouring label
     const short = (text) => (text.length > 16 ? `${text.slice(0, 15)}…` : text);
+    // Values: [text, colour] or [text, colour, "c-sub"] for a smaller line
     const lines = (x, y, align, title, values) => svg`
       <text x=${x} y=${y} class="c-title" text-anchor=${align}>${short(title)}<title>${title}</title></text>
-      ${values.map(([value, color], i) => svg`<text x=${x} y=${y + 24 + i * 24} class="c-value" text-anchor=${align} style="fill: ${color}">${value}</text>`)}`;
-    const callout = ([ax, ay], [lx, ly], align, title, values) => svg`<g class="callout">
-      <line x1=${ax} y1=${ay} x2=${lx} y2=${ly + 4} class="leader"></line>
+      ${values.map(([value, color, cls = "c-value"], i) => svg`<text x=${x} y=${y + 24 + i * 24} class=${cls} text-anchor=${align} style="fill: ${color}">${value}</text>`)}`;
+    // below: the label hangs below its part, the leader ends at its top
+    const callout = ([ax, ay], [lx, ly], align, title, values, below = false) => svg`<g class="callout">
+      <line x1=${ax} y1=${ay} x2=${lx} y2=${below ? ly - 16 : ly + 4} class="leader"></line>
       <circle cx=${ax} cy=${ay} r="3.5" class="dot" style="fill: ${values[0][1]}"></circle>
       ${lines(lx, ly, align, title, values)}</g>`;
     const onFace = ([x, y], title, value, color) => svg`<g class="on-face">${lines(x, y - 6, "middle", title, [[value, color]])}</g>`;
@@ -399,13 +403,16 @@ class SunflowIsoScene extends LitElement {
         : nothing}
       ${inside.map((which, i) => {
         const consumer = loads[which];
-        return callout(iso(2.4 + i * 1.15, 8, 1.4).map((v, k) => v + (k ? 0 : 14)), [24, 440 + i * 62], "start", consumer.name,
+        return callout(iso(APPLIANCES[i], 8, 1.4).map((v, k) => v + (k ? 0 : 14)), [24, 440 + i * 62], "start", consumer.name,
           [[`${formatPower(consumer.power_w, consumer.display)}${which === "tank" ? level(consumer, "°C") : ""}`, which === "tank" ? COLOR.heat : COLOR.load]]);
       })}
-      ${inverters.map((inverter, i) => callout(iso(INVERTERS[i] + 0.5, 8.35, 0.2), [i ? 560 : 330, 600], "middle", inverter.name, [
-        [formatPower(inverter.power, inverter.display), COLOR.pv],
-        ...inverter.batteries.map((b) => [`${signed(b.power_w ?? 0)}${formatPower(Math.abs(b.power_w ?? 0), b.display)}${soc(b)}`, COLOR.battery]),
-      ]))}
+      ${inverters.map((inverter, i) => callout(iso(INVERTERS[i] + (i ? 1.0 : 0), 8.3, 0.1), [i ? 445 : 420, 600], i ? "start" : "end", inverter.name, [
+        [`PV ${formatPower(inverter.power, inverter.display)}`, COLOR.pv],
+        ...inverter.batteries.map((b) => [
+          `${b.short_name ?? b.name}${soc(b).replace(" ·", "")} ${signed(b.power_w ?? 0)}${formatPower(Math.abs(b.power_w ?? 0), b.display)}`,
+          COLOR.battery, "c-sub",
+        ]),
+      ], true))}
       ${vehicles.map((vehicle, i) => callout(iso(CAR_SLOTS[i] + 1.0, 7.2, 0.85), [880, i ? 400 : 540], "end",
         vehicle.connected === false ? `${vehicle.name}: ${t("kein Auto")}` : (vehicle.vehicle ?? vehicle.name),
         [[`${formatPower(vehicle.power_w ?? 0, vehicle.display)}${level(vehicle, "%")}`, COLOR.vehicle]]))}
@@ -486,6 +493,8 @@ class SunflowIsoScene extends LitElement {
     .spark { fill: none; stroke-linecap: round; stroke-dasharray: 1 12; animation: spark linear infinite; }
     @keyframes spark { to { stroke-dashoffset: -26; } }
     .leader { stroke: #8c959f; stroke-width: 1; stroke-dasharray: 2 3; }
+    .c-sub { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; paint-order: stroke; stroke: rgb(255 255 255 / 0.85); stroke-width: 3px; }
+    .night .c-sub { stroke: rgb(13 21 41 / 0.85); }
     .on-face .c-title { fill: #fff; paint-order: stroke; stroke: rgb(23 48 87 / 0.75); stroke-width: 3px; }
     .on-face .c-value { stroke: rgb(255 255 255 / 0.95); stroke-width: 4px; }
     .dot { stroke: #fff; stroke-width: 1.5; }
@@ -498,6 +507,7 @@ class SunflowIsoScene extends LitElement {
     @media (max-width: 600px) {
       .c-title { font-size: 19px; }
       .c-value { font-size: 28px; }
+      .c-sub { font-size: 22px; }
       .scene { max-height: none; }
     }
     @media (prefers-reduced-motion: reduce) {
