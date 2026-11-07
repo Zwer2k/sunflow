@@ -79,7 +79,10 @@ auf Weiteres. Nach jeder Änderung plant Sunflow sofort neu.
   Live; für alle Browser und Geräte.
 - **Priorität**: Reicht der PV-Überschuss nicht für alle, bekommt der obere Eintrag zuerst.
   Mit **Grenzen** wartet ein Verbraucher, bis höher stehende Speicher einen Stand erreicht haben,
-  z. B. Warmwasser erst ab 90 % Hausspeicher.
+  z. B. Warmwasser erst ab 90 % Hausspeicher. Bis dahin bekommt er keinen PV- oder Speicherstrom,
+  nur Netzstrom, wenn der Plan ihn dafür vorsieht. Die Steuerung prüft die Grenzen bei jedem
+  Schritt mit den gemessenen Werten, nicht nur mit der Prognose. Ein Auto, das angesteckt, aber
+  noch nicht erkannt ist (Ladestand unbekannt), hält wartende Verbraucher zurück.
 - **Protokoll**: was Sunflow an Geräte geschrieben hat, mit Grund und Fehlern, und Änderungen
   von anderer Seite mit ihrem Auslöser. Filter nach Gerät, Zeitraum, „nur fremde Änderungen“
   und „nur Fehler und Warnungen“.

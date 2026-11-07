@@ -146,6 +146,8 @@ class FlexLoad:
     # named loads got this much energy; until then it may only run on grid power
     gate_battery_wh: float | None = None
     gate_after: list[tuple[str, float]] = field(default_factory=list)
+    # Waits for a storage whose level is unknown: grid power only for now
+    gate_closed: bool = False
     # A car not there yet (expected back): its need is no must, unmet_cost is what it is worth
     expected: bool = False
     # Only off or (nearly) full power, e.g. a charger on a switched socket: a slot plans
@@ -159,7 +161,7 @@ class FlexLoad:
     @property
     def gated(self) -> bool:
         """Whether the load waits for other storages."""
-        return self.gate_battery_wh is not None or bool(self.gate_after)
+        return self.gate_battery_wh is not None or bool(self.gate_after) or self.gate_closed
 
     def needs(self, n: int) -> list[tuple[int, int, float]]:
         """All needs as (first slot, end slot, Wh), in time order."""
@@ -671,6 +673,9 @@ def optimize(
     for k, slots in gate_slots:
         load = flex[k]
         add_gate(slots, [f[k]], load.max_power_w, load.gate_battery_wh, waits_for(load.gate_after))
+        if load.gate_closed:
+            for _, b in slots:
+                upper[b] = 0.0
     if battery_slots:
         add_gate(battery_slots, c, sum(b.max_charge_w for b in batteries), None, battery_after)
     starts = iter(on_off_starts)

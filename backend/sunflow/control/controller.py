@@ -81,6 +81,8 @@ SURPLUS_START = timedelta(minutes=2)
 SURPLUS_STOP = timedelta(minutes=3)
 UNPLANNED = N_("nutzt PV-Überschuss, den der Plan nicht erwartet hat")
 PLAN_STOP = N_("nach Plan: jetzt nicht")
+# The battery level of a limit counts as reached this close below (the plan releases in the slot reaching it)
+SOC_TOLERANCE_PCT = 1.0
 # Why part power stops or what it follows: the planned PV surplus, or the unplanned one
 FOLLOW_REASONS = {
     False: (N_("zu wenig PV-Überschuss für die kleinste Leistung"), N_("folgt dem PV-Überschuss")),
@@ -436,16 +438,34 @@ def before_battery(config: SunflowConfig, device_id: str, live: Any, capacity_wh
     return live.soc_wh / capacity_wh * 100 >= max(levels)
 
 
-def storages_ready(config: SunflowConfig, device_id: str, flex: list[Any]) -> bool:
-    """Vehicles and tanks ranked above (its conditions) reached their level; one not planned holds nothing back."""
+def unmet_limit(config: SunflowConfig, device_id: str, live: Any, capacity_wh: float | None, flex: list[Any]) -> str | None:
+    """The first priority limit (Steuerung → Priorität → Grenzen) not reached now, None if all are.
+
+    Measured values, not the plan's forecast. A vehicle not plugged in holds nothing back, one
+    plugged in with an unknown level does.
+    """
     infos = {f.device_id: f for f in flex}
+    levels = getattr(live, "levels", None) or {}
     for condition in config.valid_conditions(device_id):
-        info = infos.get(condition.device_id)
-        if condition.device_id == BATTERY_PRIORITY_ID or info is None or info.reason or info.current is None:
+        if condition.device_id == BATTERY_PRIORITY_ID:
+            if not capacity_wh or live is None or live.soc_wh is None:
+                continue
+            if live.soc_wh / capacity_wh * 100 < condition.min_pct - SOC_TOLERANCE_PCT:
+                return t("Grenze: Hausspeicher unter {level} %", level=number(condition.min_pct))
             continue
-        if info.current < min(condition.min_pct, info.target if info.target is not None else condition.min_pct):
-            return False
-    return True
+        info = infos.get(condition.device_id)
+        if info is None:
+            continue
+        if info.unknown_vehicle:
+            return t("Grenze: Ladestand von {name} unbekannt", name=info.name)
+        if info.reason or info.current is None:
+            continue
+        key = f"vehicle:{info.vehicle_id}" if info.vehicle_id else condition.device_id
+        current = levels.get(key, info.current)
+        required = min(condition.min_pct, info.target if info.target is not None else condition.min_pct)
+        if current < required:
+            return t("Grenze: {name} unter {level} {unit}", name=info.name, level=number(required), unit=info.unit or "%")
+    return None
 
 
 def _capacity(plan: Any) -> float | None:
@@ -1034,7 +1054,7 @@ class PlanController:
             if (forced := self.chargers.step(device, switch_on, power_w, snapshot.states, now)) is not None:
                 action, reason = forced
                 power = (device.parameters.get("max_power") or profile.get("parameters", {}).get("max_power", {}).get("default")) if action == "charge" else None
-        action, power, unplanned = self._unplanned_start(action, power, reason, device, info, plan, live, now)
+        action, power, unplanned, reason = self._unplanned_start(action, power, reason, device, info, plan, live, now)
         access = self._access_for(device)
         await take_over(access, self._marker, device)
         aux = self._aux_due(device, snapshot, now)
@@ -1137,11 +1157,22 @@ class PlanController:
     def _unplanned_start(
         self, action: str, power: float | None, reason: str, device: DeviceConfig, info: Any, plan: Any, live: Any,
         now: datetime,
-    ) -> tuple[str, float | None, bool]:
-        """Charging from surplus the forecast missed (it would go to the grid, or a battery the consumer comes before)."""
+    ) -> tuple[str, float | None, bool, str]:
+        """Charging from surplus the forecast missed (it would go to the grid, or a battery the consumer comes before).
+
+        Planned PV or battery energy only goes to a consumer whose priority limits are reached now;
+        power planned from the grid may run before ("Sofort" ignores the limits).
+        """
         if action == "stop" and reason == t(PLAN_STOP) and self._may_use_surplus(device, info, plan, live, now):
-            return "charge", 0.0, True
-        return action, power, False
+            return "charge", 0.0, True, reason
+        if (
+            action == "charge"
+            and not planned_from_grid(current_slot(plan, now))
+            and self._config.effective_flex(device, now)[0].strategy != "fast"
+            and (limit := unmet_limit(self._config, device.id, live, _capacity(plan), getattr(plan, "flex", None) or []))
+        ):
+            return "stop", None, False, limit
+        return action, power, False, reason
 
     def _may_use_surplus(self, device: DeviceConfig, info: Any, plan: Any, live: Any, now: datetime) -> bool:
         """A consumer the plan left out may take surplus it did not foresee.
@@ -1156,15 +1187,10 @@ class PlanController:
             return False
         if self._config.effective_flex(device, now)[1]:
             return False
-        if not storages_ready(self._config, device.id, getattr(plan, "flex", None) or []):
-            return False
         capacity = _capacity(plan)
-        before = before_battery(self._config, device.id, live, capacity)
-        # With battery conditions not met it waits for the battery, also with surplus
-        if BATTERY_PRIORITY_ID in self._config.ranked_above(device.id) and not before and any(
-            c.device_id == BATTERY_PRIORITY_ID for c in self._config.valid_conditions(device.id)
-        ):
+        if unmet_limit(self._config, device.id, live, capacity, getattr(plan, "flex", None) or []):
             return False
+        before = before_battery(self._config, device.id, live, capacity)
         return (spare_surplus(0.0, live, before) or 0.0) > 0 or self._status(device).reason == t(UNPLANNED)
 
     async def _planned_power(

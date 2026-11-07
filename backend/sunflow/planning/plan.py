@@ -319,6 +319,8 @@ def flex_loads(
     # Per vehicle: current level and target in %, Wh per %
     # Per vehicle or hot water tank: current level and target (% or °C), Wh per unit
     storages: dict[str, tuple[float, float, float]] = {}
+    # Vehicles plugged in whose level Sunflow does not know (not recognized yet): what waits for them keeps waiting
+    unknown: set[str] = set()
     infos: list[FlexInfo] = []
     warnings: list[str] = []
     if not slot_starts:
@@ -409,6 +411,7 @@ def flex_loads(
                     if connected:
                         info.reason = t("{reason} – Wallbox regelt selbst", reason=recognized.reason)
                         info.unknown_vehicle = True
+                        unknown.add(device.id)
                     else:
                         info.reason = t("Fahrzeug nicht angesteckt")
                     continue
@@ -441,6 +444,8 @@ def flex_loads(
                 continue
             if current is None:
                 info.reason = t("Ladestand des Fahrzeugs unbekannt")
+                if connected:
+                    unknown.add(device.id)
                 continue
             learned = (departures or {}).get(device.id)
             if ready_by:
@@ -505,7 +510,7 @@ def flex_loads(
             )
         )
         loads.append(load)
-    loads = list(with_conditions(config, by_device, storages, battery_capacity_wh, slot_starts[0]).values())
+    loads = list(with_conditions(config, by_device, storages, battery_capacity_wh, slot_starts[0], unknown).values())
     return loads, infos, warnings, storage_gates(config, BATTERY_PRIORITY_ID, by_device, storages)
 
 
@@ -534,8 +539,12 @@ def with_conditions(
     storages: dict[str, tuple[float, float, float]],
     battery_capacity_wh: float | None,
     now: datetime,
+    unknown: set[str] | frozenset[str] = frozenset(),
 ) -> dict[str, FlexLoad]:
-    """Apply the priority conditions as gates; storages map to (current, target, Wh per unit)."""
+    """Apply the priority conditions as gates; storages map to (current, target, Wh per unit).
+
+    A condition on a vehicle that is plugged in with an unknown level keeps the gate closed.
+    """
     result = {}
     for device_id, load in by_device.items():
         # "Sofort" ignores the conditions
@@ -548,7 +557,12 @@ def with_conditions(
             if condition.device_id == BATTERY_PRIORITY_ID and battery_capacity_wh:
                 battery_wh = max(battery_wh or 0.0, battery_capacity_wh * condition.min_pct / 100)
         after = list(storage_gates(config, device_id, by_device, storages))
-        result[device_id] = replace(load, gate_battery_wh=battery_wh, gate_after=after) if battery_wh or after else load
+        closed = any(c.device_id in unknown for c in config.valid_conditions(device_id))
+        result[device_id] = (
+            replace(load, gate_battery_wh=battery_wh, gate_after=after, gate_closed=closed)
+            if battery_wh or after or closed
+            else load
+        )
     return result
 
 
