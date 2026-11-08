@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.28
+
+- PV learning notices leaves and cleaning per plane: each day a plane's share of its forecast is compared with the other planes, so weather and forecast errors cancel out. A drop of more than 30 % on at least two days counts as soiled – those days are not learned and the plane is planned at its lower share until it recovers; a sudden rise (leaves cleared) drops the soiled days before it from learning. The learned clean state survives leaves coming back all autumn. Shown at the plane under Analysis → Learning. With two planes, the one whose own share moved more is the one that changed.
+
 ## 0.78.27
 
 - PV planning follows how the day went so far: the share of the raw forecast measured over the last three hours carries over to the rest of today (half of it after three hours), on top of the short live nowcast. A clear day above the learned correction no longer drops back to it for the afternoon; a dull one is lowered. Those hours also lean less towards the pessimistic forecast. Tomorrow keeps the learned correction.

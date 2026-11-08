@@ -72,6 +72,10 @@ export default {
   "klar {value}": "clear {value}",
   "bedeckt {value}": "overcast {value}",
   "neu gelernt seit {date}": "relearning since {date}",
+  "liefert seit {date} nur {value} des sauberen Zustands (Laub o. Ä., gemessen an den anderen Flächen): plant damit und lernt diese Tage nicht mit":
+    "delivers only {value} of its clean state since {date} (leaves or the like, compared with the other planes): planned with that, these days are not learned",
+  "seit {date} wieder sauber (gemessen an den anderen Flächen): die Tage davor mit Laub o. Ä. lernt Sunflow nicht mit":
+    "clean again since {date} (compared with the other planes): the days before with leaves or the like are not learned",
   "Nach Reinigung, Baumschnitt oder Modultausch: ältere Messwerte dieser Fläche nicht mehr verwenden": "After cleaning, tree trimming or module replacement: stop using older measurements of this plane",
   "Neu lernen ab heute": "Relearn from today",
   "Datenbestand nicht verfügbar: {error}": "Data inventory not available: {error}",

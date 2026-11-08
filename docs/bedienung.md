@@ -165,7 +165,9 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
 - **Wirkungsgrade**: Speicher und Wechselrichter über 30 Tage, 90 Tage oder ein Jahr.
 - **Lernen**: wie gut die PV-Prognose ankommt (gesamt, je Bewölkung, je Stunde, je Fläche) und
   wie weit das Modell für den Hausverbrauch ist. Je Dachfläche setzt „Neu lernen ab heute“ das
-  Lernen zurück, z. B. nach einem Baumschnitt.
+  Lernen zurück, z. B. nach einem Baumschnitt. Laub und Säubern erkennt Sunflow selbst im
+  Vergleich mit den anderen Flächen und zeigt es bei der Fläche an (siehe
+  [Planung](planung.md#lernen)).
 - **PV je Fläche**: je Dachfläche die gemessenen Strings gegen die rohe Solcast-Prognose, stündlich
   über die letzten 3, 7 oder 14 Tage, und rechts davon die rohe Prognose mit Bandbreite (p10 bis p90)
   und was Sunflow nach dem Gelernten erwartet. Darüber der Anteil: wie viel der Rohprognose

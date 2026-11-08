@@ -30,6 +30,7 @@ from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import SLOT_HOURS, PlanResult, compute_plan
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
+from sunflow.planning.pv_steps import PlaneState, plane_states
 from sunflow.planning.pv_sun import (
     PlaneSun,
     SunCorrection,
@@ -257,6 +258,8 @@ class ShadowRunner:
         self._correction: PvCorrection | None = None
         self.load_model: LoadModel | None = None
         self.plane_corrections: dict[str, PvCorrection] = {}
+        # Planes that changed suddenly against the others (leaves, cleaning), by key
+        self.plane_states: dict[str, PlaneState] = {}
         # PV correction by sun position per plane, learned in the background
         self.sun_planes: list[PlaneSun] = []
         self.sun_learned_at: datetime | None = None
@@ -533,7 +536,9 @@ class ShadowRunner:
             snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
             config = self._store.load()
             tz = await local_timezone(self._client)
-            self.sun_planes = await learn_sun_planes(self._client, config, self._library.profiles, snapshot, tz)
+            self.sun_planes = await learn_sun_planes(
+                self._client, config, self._library.profiles, snapshot, tz, self.plane_states
+            )
             self.sun_error = None
             self._sun_level_at = datetime.now(UTC)
         except (HAError, KeyError, TypeError, ValueError) as err:
@@ -563,11 +568,14 @@ class ShadowRunner:
             tz = await local_timezone(self._client)
             self._correction = learn(rows, tz)
             config = self._store.load()
+            strings = {plane.key: plane.strings for plane in config.forecast_planes if plane.strings}
+            self.plane_states = plane_states(rows, strings, tz)
             self.plane_corrections = learn_planes(
                 rows,
-                {plane.key: plane.strings for plane in config.forecast_planes if plane.strings},
+                strings,
                 tz,
                 {plane.key: plane.learn_since for plane in config.forecast_planes if plane.learn_since},
+                self.plane_states,
             )
             self.load_model = await asyncio.to_thread(
                 fit_load_model, rows, tz, self._store.load().optimizer.large_load_threshold_w
