@@ -52,8 +52,9 @@ Rechts unter dem Energiefluss wählst du die Ansicht, jeder Browser merkt sich s
   lässt es sich ausblenden.
 - **Schnellsteuerung** (unter dem Energiefluss): je Verbraucher, den du unter Steuerung mit der
   Stecknadel angeheftet hast, eine Zeile mit Leistung, Ladestand und nächstem Ladefenster und den
-  Betriebsarten als kleine Knöpfe: € Kostenoptimal, PV Nur PV, ⚡ Sofort, ⏸ Pause. Ein Wechsel gilt
-  bis Mitternacht. Bei „Akku laden“ ohne Steckersensor schaltet 🔌 „jetzt eingesteckt“. An der
+  Betriebsarten als kleine Knöpfe: € Kostenoptimal, PV Nur PV, ⚡ Sofort, ⏸ Pause. Auf dem Handy
+  zeigt ein Knopf die aktuelle Betriebsart und öffnet die Auswahl, damit der Name in die Zeile
+  passt. Ein Wechsel gilt bis Mitternacht. Bei „Akku laden“ ohne Steckersensor schaltet 🔌 „jetzt eingesteckt“. An der
   Wallbox zeigt ein Knopf mit Auto-Symbol die Auswahl – „erkennen“ oder das gewählte Fahrzeug –
   und öffnet die Liste; 🎯 zeigt das Ziel (Ladestand oder Temperatur) und öffnet einen
   Drehregler für einen beliebigen Wert bis zum

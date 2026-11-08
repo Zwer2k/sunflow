@@ -33,7 +33,7 @@ class SunflowQuickControls extends LitElement {
     this._error = null;
     this._menu = null;
     this._outside = (e) => {
-      if (!e.composedPath().some((el) => el.classList?.contains("vehicle"))) this._closeMenu();
+      if (!e.composedPath().some((el) => el.classList?.contains("dropdown"))) this._closeMenu();
     };
   }
 
@@ -50,11 +50,12 @@ class SunflowQuickControls extends LitElement {
     document.removeEventListener("pointerdown", this._outside);
   }
 
-  _toggleMenu(device, e) {
-    if (this._menu === device.id) return this._closeMenu();
+  /** menu: "<device id>:vehicle" or "<device id>:mode". */
+  _toggleMenu(menu, e) {
+    if (this._menu === menu) return this._closeMenu();
     // Opens towards the side with room
     this._menuLeft = e.currentTarget.getBoundingClientRect().left + MENU_WIDTH < window.innerWidth;
-    this._menu = device.id;
+    this._menu = menu;
     document.addEventListener("pointerdown", this._outside);
   }
 
@@ -100,6 +101,7 @@ class SunflowQuickControls extends LitElement {
   }
 
   _setMode(device, mode) {
+    this._closeMenu();
     const next = overrideFor(device, modeChanges(device, mode));
     return this._apply(() =>
       next === null ? api.clearDeviceOverride(device.id) : api.setDeviceOverride(device.id, { ...next, until: untilFor(DURATION) }),
@@ -121,7 +123,7 @@ class SunflowQuickControls extends LitElement {
     const status = [
       formatPower(device.power_w, device.power_display),
       device.level !== null && device.level !== undefined ? `${Math.round(device.level)} ${unit}` : null,
-      device.kind === "vehicle" && device.connected === false ? t("nicht angesteckt") : null,
+      device.kind === "vehicle" && device.connected === false ? t("abgesteckt") : null,
       device.reason ? null : next ? t("ab {time}", { time: time.format(new Date(next.start)) }) : null,
     ].filter(Boolean);
     const plan = device.reason
@@ -147,6 +149,7 @@ class SunflowQuickControls extends LitElement {
               aria-label=${t("{name} eingesteckt", { name: device.name })}
               @click=${() => this._apply(() => api.setPlugged(device.id, !charger.ready))}>🔌</button>`
           : nothing}
+        ${this._renderModeMenu(device, mode)}
         <div class="segmented" role="group" aria-label=${t("Modus {name}", { name: device.name })}>
           ${Object.entries(MODES).map(
             ([value, label]) => html`<button class=${mode === value ? "on" : ""} aria-pressed=${mode === value} ?disabled=${this._busy}
@@ -158,14 +161,40 @@ class SunflowQuickControls extends LitElement {
     </div>`;
   }
 
+  /** On a phone the mode as one button with a dropdown, so the name keeps its line. */
+  _renderModeMenu(device, mode) {
+    const open = this._menu === `${device.id}:mode`;
+    const label = t("Modus {name}", { name: device.name });
+    return html`<div class="dropdown mode-menu">
+      <button class="menu-button" aria-haspopup="listbox" aria-expanded=${open} ?disabled=${this._busy}
+        title=${`${label}: ${MODES[mode]}`} aria-label=${`${label}: ${MODES[mode]}`}
+        @click=${(e) => this._toggleMenu(`${device.id}:mode`, e)} @keydown=${(e) => e.key === "Escape" && this._closeMenu()}>
+        ${SHORT[mode]} <span aria-hidden="true">▾</span>
+      </button>
+      ${open
+        ? html`<ul class="menu ${this._menuLeft ? "left" : ""}" role="listbox" aria-label=${label}
+            @keydown=${(e) => e.key === "Escape" && this._closeMenu()}>
+            ${Object.entries(MODES).map(
+              ([value, name]) => html`<li role="option" aria-selected=${mode === value}>
+                <button class=${mode === value ? "on" : ""} @click=${() => this._setMode(device, value)}>
+                  <span class="symbol" aria-hidden="true">${SHORT[value]}</span>${name}${value === device.default.strategy
+                    ? html` <span class="muted">(${t("Standard")})</span>`
+                    : nothing}</button>
+              </li>`,
+            )}
+          </ul>`
+        : nothing}
+    </div>`;
+  }
+
   /** Which car is at the wallbox: the recognized one on the button, the choice in a dropdown. */
   _renderVehicle(device) {
-    const open = this._menu === device.id;
+    const open = this._menu === `${device.id}:vehicle`;
     const selected = device.selected_vehicle ?? null;
     const options = [{ id: null, name: t("automatisch erkennen") }, ...device.vehicles];
-    return html`<div class="vehicle">
+    return html`<div class="dropdown vehicle">
       <button class="menu-button" aria-haspopup="listbox" aria-expanded=${open} ?disabled=${this._busy}
-        title=${t("Fahrzeug an {name}", { name: device.name })} @click=${(e) => this._toggleMenu(device, e)}
+        title=${t("Fahrzeug an {name}", { name: device.name })} @click=${(e) => this._toggleMenu(`${device.id}:vehicle`, e)}
         @keydown=${(e) => e.key === "Escape" && this._closeMenu()}>
         <svg class="car" viewBox="0 0 24 24" role="img" aria-label=${t("Fahrzeug")}><path d="M3 16v-4l2-5h14l2 5v4zM3 16v3h3v-3M18 16v3h3v-3M7 12h0M17 12h0"></path></svg>
         ${selected ? device.vehicles.find((v) => v.id === selected)?.name ?? selected : t("erkennen")}
@@ -220,7 +249,18 @@ class SunflowQuickControls extends LitElement {
       min-width: 38px; min-height: 38px; border: 1px solid var(--sf-border); border-radius: 9px; background: transparent;
       cursor: pointer; font-size: 16px; filter: grayscale(1); opacity: 0.6;
     }
-    .vehicle { position: relative; }
+    .dropdown { position: relative; }
+    .mode-menu { display: none; }
+    .symbol { display: inline-block; min-width: 22px; }
+    @media (max-width: 600px) {
+      .device { flex-wrap: nowrap; }
+      .name { flex: 1 1 auto; }
+      .controls { flex-wrap: nowrap; flex: none; gap: 4px; }
+      .menu-button, sf-target-dial::part(button) { padding: 0 7px; }
+      .vehicle .menu-button { max-width: 92px; }
+      .segmented { display: none; }
+      .mode-menu { display: block; }
+    }
     .menu-button { display: inline-flex; align-items: center; gap: 5px; }
     .car { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
     .menu-button, sf-target-dial::part(button) {

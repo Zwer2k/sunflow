@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.31
+
+- Live quick controls on a phone: the modes (cost-optimal, PV only, now, pause) are one button showing the current mode with a dropdown, so the load's name stays on the same line; the car and target buttons are narrower there. A car that is not plugged in reads "unplugged".
+
 ## 0.78.30
 
 - Live bars: losses and measurement difference are always listed (0 W when there is none), so the legend no longer jumps. On a phone they sit on one line with grid import or export: the grid reads "Grid" there (the row says which way) and the losses show by their icon and value.
