@@ -635,6 +635,8 @@ class PlanResult:
     buffers: list[Buffer] = field(default_factory=list)
     headrooms: list[Headroom] = field(default_factory=list)
     plane_forecasts_now: dict[str, float] = field(default_factory=dict)
+    # Per plane and slot: Solcast's forecast (raw, low = p10, high = p90) and the learned expectation
+    plane_pv: dict[str, dict[str, list[float | None]]] = field(default_factory=dict)
     plane_corrections: dict[str, PvCorrection] = field(default_factory=dict)
     clouds: list[float | None] = field(default_factory=list)
     temperatures: list[float | None] = field(default_factory=list)
@@ -1669,6 +1671,11 @@ async def compute_plan(
         plane.key: [value_at(resample(points, SLOT), slot.start, "power10") for slot in inputs]
         for plane, points in zip(used_planes, series, strict=False)
     }
+    plane_slots90 = {
+        plane.key: [value_at(resample(points, SLOT), slot.start, "power90") for slot in inputs]
+        for plane, points in zip(used_planes, series, strict=False)
+    }
+    plane_expected = {key: list(powers) for key, powers in plane_slots.items()}
     pv_15 = resample(pv, SLOT)
     # Range of the forecast (p10 to p90) for the chart, corrected like the forecast but without
     # leaning towards p10 for uncertainty
@@ -1707,6 +1714,7 @@ async def compute_plan(
                     range_factors[key] = sun[key].factor_at(*position)
                 else:
                     factors[key] = range_factors[key] = own[key].factor(hour, kind) if key in own else site_factor
+                plane_expected[key][index] = factors[key] * powers[index]
             total = sum(powers[index] for powers in plane_slots.values())
             weighted = sum(factors[key] * powers[index] for key, powers in plane_slots.items())
             factor = weighted / total if total > 0 else site_factor
@@ -1820,6 +1828,10 @@ async def compute_plan(
         buffers=buffers,
         headrooms=headrooms,
         plane_forecasts_now={key: powers[0] for key, powers in plane_slots.items() if powers},
+        plane_pv={
+            key: {"raw": powers, "low": plane_slots10[key], "high": plane_slots90[key], "expected": plane_expected[key]}
+            for key, powers in plane_slots.items()
+        },
         plane_corrections=own if config.optimizer.pv_learning else {},
         clouds=clouds,
         temperatures=weather["temperature"],

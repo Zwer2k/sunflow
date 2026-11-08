@@ -155,6 +155,7 @@ export const api = {
   efficiencyHistory: (days) => request("GET", `/efficiency/history?days=${days}`),
   pvLearning: () => request("GET", "/pv-learning"),
   appliances: () => request("GET", "/appliances/usage"),
+  pvPlanes: (days) => request("GET", `/analysis/pv-planes?days=${days}`),
   pvSun: (refresh = false) => request("GET", `/pv-learning/sun${refresh ? "?refresh=true" : ""}`),
   dataInventory: (refresh = false, entities = []) => {
     const query = new URLSearchParams();

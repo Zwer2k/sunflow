@@ -160,6 +160,11 @@ How well do forecasts and decisions match reality?
 - **Learning**: how much of the PV forecast actually arrives (overall, per cloud cover,
   per hour, per plane) and how far the house consumption model is. Per roof plane, "Relearn from
   today" resets learning, e.g. after trimming a tree.
+- **PV per plane**: per roof plane the measured strings against Solcast's raw forecast, hourly over
+  the last 3, 7 or 14 days, and to the right the raw forecast with its range (p10 to p90) and what
+  Sunflow expects from what it learned. Above it the share: how much of the raw forecast was
+  measured and how much Sunflow expects for the next days. Depending on the
+  [PV risk](settings.md#planning) planning is a little more cautious still.
 - **PV by sun position (test)**: learns per roof plane from Solcast's past forecasts and the measured
   strings how much of the forecast arrives per sun elevation and direction, separately for clear
   and cloudy hours. It also learns how far towards p10 the measurement lies when the forecast is

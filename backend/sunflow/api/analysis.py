@@ -19,6 +19,7 @@ from sunflow.analysis.energy import (
     energy_sources,
 )
 from sunflow.analysis.inventory import data_inventory
+from sunflow.analysis.pv_planes import plane_comparison
 from sunflow.analysis.recommendations import build as build_recommendations
 from sunflow.config.models import BatteryScenario
 from sunflow.config.store import ConfigStore
@@ -71,6 +72,18 @@ async def keep_energy_today(app: Any) -> None:
             keep_fresh(app.state, ("energy", "today"), await _energy(request, "today"))
         except Exception as err:  # noqa: BLE001 - the loop must never die; a page computes it then
             _LOGGER.debug("Energy balance in the background failed: %s", err)
+
+
+@router.get("/analysis/pv-planes")
+async def get_pv_planes(request: Request, days: Annotated[int, Query(ge=1, le=30)] = 7) -> dict[str, Any]:
+    """Per roof plane the measured strings against the raw forecast, the past days and the plan ahead."""
+    config = request.app.state.store.load()
+    runner: ShadowRunner = request.app.state.runner
+    rows = await asyncio.to_thread(runner.shadow.rows, datetime.now(UTC) - timedelta(days=days))
+    latest = runner.latest
+    starts = [slot.start for slot in latest.plan.slots] if latest else []
+    planes = [plane for plane in config.forecast_planes if plane.device_id is not None]
+    return {"planes": plane_comparison(planes, rows, starts, latest.plane_pv if latest else {})}
 
 
 @router.get("/energy")
