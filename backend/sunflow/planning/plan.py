@@ -719,7 +719,12 @@ async def learned_vehicle_usages(
         if not vehicle.soc_entity:
             continue
         try:
-            socs = await cached(("hourly", vehicle.soc_entity), HABITS_TTL, lambda e=vehicle.soc_entity: fetch_hourly_means(client, e, now))
+            # The highest value per hour: a car's cloud sending 0 % for a moment would look like driving
+            socs = await cached(
+                ("hourly_max", vehicle.soc_entity),
+                HABITS_TTL,
+                lambda e=vehicle.soc_entity: fetch_hourly_means(client, e, now, kind="max"),
+            )
         except HAError:
             socs = []
         # A sensor without statistics: the samples Sunflow kept itself

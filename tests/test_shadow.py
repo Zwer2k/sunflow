@@ -63,8 +63,11 @@ def test_store_and_evaluate(tmp_path: Path) -> None:
         for i, (planned, actual) in enumerate((("auto", "auto"), ("hold", "auto"), ("auto", None))):
             start = START + i * timedelta(minutes=15)
             store.store_planned(
-                start, {"action": planned, "power": None, "soc": 10000, "pv": 2000, "load": 1000, "price": 0.3}
+                start, {"action": planned, "power": None, "soc": 10400, "pv": 2000, "load": 1000, "price": 0.3}
             )
+            # Six hours before the slot the plan expected 10000 Wh; a later plan does not replace it
+            store.store_ahead(start, 10000, {"battery": 10000})
+            store.store_ahead(start, 10400, {"battery": 10400})
             if actual:
                 store.store_actual(
                     start,
@@ -75,6 +78,7 @@ def test_store_and_evaluate(tmp_path: Path) -> None:
         late = START + timedelta(hours=1)
         store.store_actual(late, {"actual_soc_wh": 9000, "actual_action": "auto", "samples": 3})
         store.store_planned(late, {"action": "auto", "power": None, "soc": 9000, "pv": 0, "load": 500, "price": 0.3})
+        store.store_ahead(late, 9000, {})
 
         rows = store.rows(START)
         evaluation = evaluate(rows)
@@ -87,6 +91,7 @@ def test_store_and_evaluate(tmp_path: Path) -> None:
     assert evaluation["differing_slots"] == 1
     assert evaluation["agreement"] == pytest.approx(2 / 3)
     assert evaluation["soc_mae_wh"] == pytest.approx(800 / 3)
+    assert rows[0]["ahead_batteries"] == {"battery": 10000}
     assert evaluation["pv_forecast_kwh"] == pytest.approx(2 * 2000 * 0.25 / 1000)
 
 

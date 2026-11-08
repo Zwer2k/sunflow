@@ -41,7 +41,7 @@ from sunflow.planning.vehicle_soc import estimator
 from sunflow.planning.vehicles import recognize, soc_of, unplugged_choices
 from sunflow.shadow.counters import EnergyCounters
 
-from .store import Sample, ShadowStore, SlotRecorder, actual_action, slot_start
+from .store import PLAN_AHEAD, Sample, ShadowStore, SlotRecorder, actual_action, slot_start
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -648,3 +648,11 @@ class ShadowRunner:
             ),
         }
         await asyncio.to_thread(self.shadow.store_planned, start, planned)
+        ahead = next((slot for slot in result.plan.slots if slot.start == start + PLAN_AHEAD), None)
+        if ahead is not None:
+            await asyncio.to_thread(
+                self.shadow.store_ahead,
+                ahead.start,
+                ahead.soc_wh,
+                {key: share.soc_wh for key, share in ahead.batteries.items()},
+            )

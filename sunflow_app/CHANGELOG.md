@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.33
+
+- Analysis → Shadow mode compares the measured state of charge with what the plan expected 6 hours before (also per battery). Before, the latest plan was shown, which starts from the measured SoC every quarter hour and so always matched. The plan from 6 hours before is recorded from this version on.
+- A car reporting 0 % counts as no report (its cloud sends that while it has no value): the last valid one plus what was charged since stays. Learning the car's use per hour takes the highest SoC of each hour, so a short 0 % no longer looks like driving.
+
 ## 0.78.32
 
 - Cars that report their state of charge only now and then (e.g. a Fiat 500e through its cloud): between two reports Sunflow adds what the wallbox charged into the car since, for planning, control and the views. At each new report it compares and learns how much of the wallbox's energy reaches the battery (energy-weighted over the last ~60 kWh, kept across restarts). On by default, switchable per vehicle ("Estimate between reports"); estimated values show with "≈", the vehicle's card shows the last report, the energy since and what was learned.

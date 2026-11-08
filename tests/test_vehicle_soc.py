@@ -67,11 +67,14 @@ def test_no_learning_from_odd_reports(new_soc: float, learned: bool) -> None:
     assert estimator.as_dict(FIAT)["learned"] is learned
 
 
-def test_unreadable_sensor_keeps_the_estimate() -> None:
-    """The car's cloud is gone for a while: the last report plus what was charged since."""
+@pytest.mark.parametrize("state", [pytest.param("unavailable", id="unavailable"), pytest.param("0", id="zero from the cloud")])
+def test_unreadable_sensor_keeps_the_estimate(state: str) -> None:
+    """The car's cloud is gone for a while or sends 0 %: the last report plus what was charged since."""
     estimator = SocEstimator()
     charge(estimator, report(40, START), 3700, 60)
-    assert estimator.soc(FIAT, report("unavailable", START + timedelta(hours=1))) == (48.9, True)
+    later = report(state, START + timedelta(hours=1))
+    estimator.observe([FIAT], later, {FIAT.id: 3700}, START + timedelta(hours=1))
+    assert estimator.soc(FIAT, later) == (48.9, True)
 
 
 def test_switched_off() -> None:

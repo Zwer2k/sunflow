@@ -148,12 +148,14 @@ class SocEstimator:
 
 
 def reading(vehicle: Vehicle, states: dict[str, dict[str, Any]]) -> tuple[float, str | None] | None:
-    """The car's own report: SoC and when it changed."""
+    """The car's own report: SoC and when it changed; None while unreadable or invalid."""
     state = states.get(vehicle.soc_entity or "") or {}
     try:
-        return float(state.get("state")), state.get("last_updated")
+        soc = float(state.get("state"))
     except TypeError, ValueError:
         return None
+    # A car never runs down to 0 %: its cloud sends that while it has no value (e.g. Fiat)
+    return (soc, state.get("last_updated")) if 0 < soc <= 100 else None
 
 
 # One per app: the runner feeds it, everything reading a car's SoC asks it
