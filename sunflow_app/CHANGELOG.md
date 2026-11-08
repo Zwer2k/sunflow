@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.37
+
+- Control on a phone: the four home battery strategies fit one row (short names Balanced, PV, Self-suff., Battery; the full name as tooltip).
+- Control → loads → target: the knob is a compact "±" button (showing the own value once set) instead of "Value …", and the default's value sits on a second line in its button, so default, presets and knob fit one row.
+
 ## 0.78.36
 
 - Live on a phone: the line with losses and view switch, the quick controls and today's figures stay at the bottom above the menu bar while scrolling, as long as they take at most 60 % of the screen; the energy flow passes beneath. The quick controls' menus open upwards when there is no room below.
