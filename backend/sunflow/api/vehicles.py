@@ -10,7 +10,7 @@ from sunflow.config.store import ConfigStore
 from sunflow.control.aux_battery import aux_voltage
 from sunflow.devices.site import device_kind
 from sunflow.i18n import t
-from sunflow.planning.vehicles import soc_of
+from sunflow.planning.vehicle_soc import estimator, reading as _reported
 
 from .common import _library, _replan, _snapshot
 
@@ -48,7 +48,7 @@ ABSENT_STATES = {"off", "not_home", "away", "false", "unplugged", "disconnected"
 
 def vehicle_live(vehicle: Vehicle, states: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Current values of a vehicle's own sensors: SoC, energy in the battery, plugged in, as of when."""
-    soc = soc_of(vehicle, states)
+    soc, estimated = estimator.soc(vehicle, states)
     soc_state = states.get(vehicle.soc_entity or "")
     plugged_state = states.get(vehicle.plugged_entity or "", {}).get("state")
     aux_state = states.get(vehicle.aux_battery.voltage_entity or "")
@@ -59,7 +59,9 @@ def vehicle_live(vehicle: Vehicle, states: dict[str, dict[str, Any]]) -> dict[st
         "soc_pct": soc,
         "energy_wh": soc / 100 * vehicle.capacity_wh if soc is not None else None,
         "soc_updated": soc_state.get("last_updated") if soc_state else None,
-        "soc_unavailable": vehicle.soc_entity is not None and soc is None,
+        "soc_unavailable": vehicle.soc_entity is not None and _reported(vehicle, states) is None,
+        "soc_estimated": estimated,
+        "soc_estimate": estimator.as_dict(vehicle) if vehicle.estimate_soc and vehicle.soc_entity else None,
         "plugged": plugged,
         "plugged_state": plugged_state,
         "aux_voltage": aux_voltage(vehicle, states),

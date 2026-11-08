@@ -20,6 +20,7 @@ from sunflow.devices.site import (
 )
 from sunflow.ha import HAError
 from sunflow.planning.plan import weather_entity
+from sunflow.planning.vehicle_soc import estimator
 from sunflow.planning.vehicles import vehicle_at
 
 from .common import _library, _local_tz, _snapshot
@@ -126,6 +127,8 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "power_w": value("charge_power") if "loadpoint" in capabilities else value("power"),
                     "display": display("charge_power" if "loadpoint" in capabilities else "power"),
                     "level": vehicle_soc if vehicle_soc is not None else value("vehicle_soc"),
+                    # Between the car's reports, from what was charged since
+                    "level_estimated": vehicle is not None and vehicle_soc is not None and estimator.soc(vehicle, snapshot.states)[1],
                     "vehicle": vehicle.name if vehicle else None,
                     "level_unit": {"heater": "°C", "vehicle": "%"}.get(kind),
                     "charging": roles["charging"].raw_state == "on" if "charging" in roles else None,

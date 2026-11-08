@@ -500,7 +500,7 @@ class SunflowLive extends LitElement {
         live.consumers.length ? t("gesamt {power}", { power: formatPower(flows.house, displays.load) }) : null)}
       ${live.consumers.map((c, i) => {
         const level = c.level !== null && c.level !== undefined ? c.level : null;
-        const levelText = level === null ? null : `${Math.round(level)}${c.level_unit === "°C" ? " °C" : " %"}`;
+        const levelText = level === null ? null : `${c.level_estimated ? "≈ " : ""}${Math.round(level)}${c.level_unit === "°C" ? " °C" : " %"}`;
         const detail = c.kind === "vehicle" && c.connected === false ? t("kein Auto") : [c.vehicle, levelText].filter(Boolean).join(" ") || null;
         return tile(c.kind in ICONS ? c.kind : "load", consumerColor(i), c.name, formatPower(c.power_w ?? 0, c.display), detail,
           c.level_unit === "°C" ? null : level);

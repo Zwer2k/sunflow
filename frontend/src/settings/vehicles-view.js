@@ -12,7 +12,7 @@ const REFRESH_MS = 30000;
 
 // Defaults of the 12 V battery guard (as in the backend)
 const AUX_DEFAULTS = { min_voltage_v: 12.2, charge_min: 5, pause_min: 60 };
-const EMPTY = { name: "", capacity_kwh: "", efficiency: "", max_1p_kw: "", max_3p_kw: "", soc_entity: "", plugged_entity: "", aux: auxForm({}) };
+const EMPTY = { name: "", capacity_kwh: "", efficiency: "", max_1p_kw: "", max_3p_kw: "", soc_entity: "", estimate_soc: true, plugged_entity: "", aux: auxForm({}) };
 
 /** The 12 V guard as form strings. */
 function auxForm(guard) {
@@ -76,11 +76,30 @@ class SunflowVehicles extends LitElement {
     if (!live) return [];
     const values = [];
     if (vehicle.soc_entity) {
+      const estimate = live.soc_estimate;
       values.push({
-        label: t("Ladestand"),
-        value: live.soc_pct === null ? "–" : formatValue(live.soc_pct, "%"),
-        hint: live.soc_unavailable ? t("Sensor gerade nicht lesbar") : since(live.soc_updated),
+        label: live.soc_estimated ? t("Ladestand (berechnet)") : t("Ladestand"),
+        value: live.soc_pct === null ? "–" : `${live.soc_estimated ? "≈ " : ""}${formatValue(live.soc_pct, "%")}`,
+        hint: live.soc_estimated && estimate?.reported_soc !== null
+          ? t("gemeldet {value} {since}, seitdem {energy} geladen", {
+              value: formatValue(estimate.reported_soc, "%"),
+              since: since(live.soc_updated),
+              energy: formatValue(estimate.charged_since_wh ?? 0, "Wh"),
+            })
+          : live.soc_unavailable ? t("Sensor gerade nicht lesbar") : since(live.soc_updated),
       });
+      if (estimate) {
+        values.push({
+          label: t("Im Akku kommt an"),
+          value: formatValue(estimate.efficiency * 100, "%"),
+          hint: estimate.learned
+            ? t("gelernt aus {count} Ladungen, Abweichung zuletzt ± {error} Punkte", {
+                count: estimate.charges,
+                error: toDisplay(Math.round((estimate.error_pct ?? 0) * 10) / 10, "%"),
+              })
+            : t("wie eingestellt, lernt ab der nächsten Ladung"),
+        });
+      }
       if (live.energy_wh !== null) {
         values.push({ label: t("Im Akku"), value: formatValue(live.energy_wh, "Wh"), hint: t("von {capacity}", { capacity: formatValue(vehicle.capacity_wh, "Wh") }) });
       }
@@ -189,6 +208,12 @@ class SunflowVehicles extends LitElement {
             <sf-picker label=${t("Ladestand")} empty-label=${t("keiner")} placeholder=${t("z. B. MQTT-Sensor des Autos …")} .value=${form.soc_entity}
               .options=${options(this._candidates?.percent, (c) => `${c.state ?? "–"} %`)}
               @change=${(e) => (this._form = withSuggestedName({ ...this._form, soc_entity: e.detail.value }, (this._candidates?.percent ?? []).find((c) => c.entity_id === e.detail.value)))}></sf-picker>
+            <label class="check">
+              <input type="checkbox" .checked=${form.estimate_soc} ?disabled=${!form.soc_entity}
+                @change=${(e) => (this._form = { ...this._form, estimate_soc: e.target.checked })}>
+              <span>${t("Zwischen den Meldungen berechnen")}</span>
+            </label>
+            <span class="small muted">${t("Für Autos, die ihren Ladestand nur ab und zu senden: Sunflow zählt dazu, was die Wallbox seitdem geladen hat, und lernt bei jeder neuen Meldung, wie viel davon im Akku ankommt.")}</span>
           </div>
           <div class="field">
             <span class="field-label">${t("Angesteckt / zuhause (optional)")}</span>
@@ -272,6 +297,7 @@ class SunflowVehicles extends LitElement {
           max_1p_kw: vehicle.max_power_1p_w ? toDisplay(vehicle.max_power_1p_w / 1000, "kW") : "",
           max_3p_kw: vehicle.max_power_3p_w ? toDisplay(vehicle.max_power_3p_w / 1000, "kW") : "",
           soc_entity: vehicle.soc_entity ?? "",
+          estimate_soc: vehicle.estimate_soc ?? true,
           plugged_entity: vehicle.plugged_entity ?? "",
           aux: auxForm(vehicle.aux_battery ?? {}),
         }
@@ -311,6 +337,7 @@ class SunflowVehicles extends LitElement {
       max_power_1p_w: max1p === null ? null : Math.round(max1p * 1000),
       max_power_3p_w: max3p === null ? null : Math.round(max3p * 1000),
       soc_entity: form.soc_entity || null,
+      estimate_soc: form.estimate_soc,
       plugged_entity: form.plugged_entity || null,
       aux_battery: aux,
     };
