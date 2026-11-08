@@ -460,7 +460,7 @@ class SunflowIsoScene extends LitElement {
   static styles = css`
     :host { display: block; }
     * { ${unsafeCSS(MOTION)} }
-    .scene { width: 100%; max-width: 980px; height: auto; max-height: max(300px, calc(100dvh - 300px)); display: block; margin: 0 auto; }
+    .scene { width: 100%; max-width: 980px; height: auto; max-height: max(160px, var(--flow-room, calc(100dvh - 300px))); display: block; margin: 0 auto; }
     .sky-in { stop-color: #e9f2fb; }
     .sky-out { stop-color: #c7dbef; }
     .night .sky-in { stop-color: #1f2d4d; }

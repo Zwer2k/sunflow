@@ -225,7 +225,7 @@ class SunflowHouseScene extends LitElement {
   static styles = css`
     :host { display: block; }
     * { ${unsafeCSS(MOTION)} }
-    .scene { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 340px)); display: block; margin: 0 auto; border-radius: 14px; }
+    .scene { width: 100%; max-width: 900px; height: auto; max-height: max(160px, var(--flow-room, calc(100dvh - 340px))); display: block; margin: 0 auto; border-radius: 14px; }
     .sky-top { stop-color: #8ec5f2; }
     .sky-bottom { stop-color: #e8f3fc; }
     .night .sky-top { stop-color: #0f1a33; }
