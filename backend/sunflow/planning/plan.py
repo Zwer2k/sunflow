@@ -1391,6 +1391,12 @@ NOWCAST_RANGE = (0.2, 3.0)
 # (a dull forecast on a bright day); no slot ahead gets more than is measured now
 NOWCAST_CLEAR_W = 1000.0
 NOWCAST_CLEAR_MAX = 10.0
+# How the day so far went (measured / raw forecast over the last hours) carries over to the rest
+# of the day: a clear or dull day usually stays so longer than a single cloud
+DAY_NOWCAST_HALF_LIFE = timedelta(hours=3)
+DAY_NOWCAST_RANGE = (0.2, 1.5)
+# Less raw forecast energy than this over the last hours (Wh) says nothing about the day
+DAY_NOWCAST_MIN_WH = 600.0
 # Weight of the live consumption deviation halves over this time ahead
 LOAD_NOWCAST_HALF_LIFE = timedelta(minutes=30)
 # Twilight: the ratio of small values says nothing
@@ -1403,6 +1409,34 @@ CLEAR_SKY_RISK = 0.25
 def nowcast_weights(count: int) -> list[float]:
     """How much the measured PV counts per slot ahead: fully now, half after an hour."""
     return [0.5 ** ((t * SLOT) / NOWCAST_HALF_LIFE) for t in range(count)]
+
+
+def day_nowcast(
+    inputs: list[SlotInput], raw_pv: list[float], recent: tuple[float, float], tz: tzinfo
+) -> tuple[list[SlotInput], list[float]]:
+    """Move the rest of today's expectation towards the share of the raw forecast measured lately.
+
+    recent: measured and raw forecast energy (Wh) of the last hours. Returns the slots and
+    per slot how much the measurement counts (0 from tomorrow on).
+    """
+    measured_wh, raw_wh = recent
+    weights = [0.0] * len(inputs)
+    if raw_wh < DAY_NOWCAST_MIN_WH or not inputs:
+        return inputs, weights
+    share = min(max(measured_wh / raw_wh, DAY_NOWCAST_RANGE[0]), DAY_NOWCAST_RANGE[1])
+    today = inputs[0].start.astimezone(tz).date()
+    result = []
+    for index, (slot, raw) in enumerate(zip(inputs, raw_pv, strict=True)):
+        if slot.start.astimezone(tz).date() != today or raw <= 0:
+            result.append(slot)
+            continue
+        weights[index] = 0.5 ** ((index * SLOT) / DAY_NOWCAST_HALF_LIFE)
+        learned = slot.pv_w / raw
+        pv = raw * (learned + (share - learned) * weights[index])
+        factor = pv / slot.pv_w if slot.pv_w > 0 else 1.0
+        low = min(slot.pv_low_w * factor, pv) if slot.pv_low_w is not None else None
+        result.append(replace(slot, pv_w=pv, pv_low_w=low))
+    return result, weights
 
 
 def nowcast(inputs: list[SlotInput], live_pv_w: float) -> list[SlotInput]:
@@ -1467,11 +1501,13 @@ async def compute_plan(
     vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
+    pv_recent: tuple[float, float] | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule.
 
     consumer_hours: hourly power of all controllable consumers from Sunflow's own samples;
-    vehicle_hours: hourly SoC per car from them; sun_corrections: correction by sun position
+    vehicle_hours: hourly SoC per car from them; sun_corrections: correction by sun position;
+    pv_recent: measured and raw forecast PV energy (Wh) of the last hours
     per plane, used instead of the hourly one when switched on.
     """
     warnings: list[str] = []
@@ -1727,9 +1763,11 @@ async def compute_plan(
             corrected.append(replace(slot, pv_w=slot.pv_w * factor, pv_low_w=low))
         inputs = corrected
     measured = [0.0] * len(inputs)
+    if pv_recent is not None:
+        inputs, measured = day_nowcast(inputs, raw_pv, pv_recent, tz)
     if live_pv_w is not None and inputs:
         inputs = nowcast(inputs, live_pv_w)
-        measured = nowcast_weights(len(inputs))
+        measured = [max(a, b) for a, b in zip(measured, nowcast_weights(len(inputs)), strict=True)]
     if live_load_w is not None and inputs:
         inputs = load_nowcast(inputs, live_load_w)
     if (risk := PV_RISK[config.optimizer.pv_risk]) > 0:

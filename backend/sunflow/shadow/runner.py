@@ -28,7 +28,7 @@ from sunflow.devices.site import (
 from sunflow.ha import HAClient, HAError
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
-from sunflow.planning.plan import PlanResult, compute_plan
+from sunflow.planning.plan import SLOT_HOURS, PlanResult, compute_plan
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
 from sunflow.planning.pv_sun import (
     PlaneSun,
@@ -77,6 +77,8 @@ RECENT_SAMPLES = 5
 # Fewer samples (just after a start) say nothing about what the battery does
 RECENT_ACTION_MIN_SAMPLES = 3
 NOWCAST_MIN_SAMPLES = 2
+# How the day went so far: measured against raw forecast PV over this time
+PV_RECENT = timedelta(hours=3)
 
 
 async def current_plan(
@@ -93,6 +95,7 @@ async def current_plan(
     vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
+    pv_recent: tuple[float, float] | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -113,6 +116,7 @@ async def current_plan(
         vehicle_hours,
         chargers,
         sun_corrections,
+        pv_recent,
     )
 
 
@@ -539,6 +543,14 @@ class ShadowRunner:
         if self._store.load().optimizer.pv_sun:
             self.request_replan()
 
+    def pv_recent(self) -> tuple[float, float] | None:
+        """Measured and raw forecast PV energy (Wh) of the last hours, for how the day goes."""
+        rows = self.shadow.rows(datetime.now(UTC) - PV_RECENT)
+        pairs = [(r["actual_pv_w"], r["forecast_pv_w"]) for r in rows if r["actual_pv_w"] is not None and r["forecast_pv_w"] is not None]
+        if not pairs:
+            return None
+        return sum(max(a, 0.0) for a, _ in pairs) * SLOT_HOURS, sum(f for _, f in pairs) * SLOT_HOURS
+
     def sun_corrections(self) -> dict[str, SunCorrection]:
         """The learned corrections good enough to plan with, by plane key."""
         return {p.key: p.correction for p in self.sun_planes if p.plannable and p.correction is not None}
@@ -580,6 +592,7 @@ class ShadowRunner:
             *await asyncio.to_thread(self.own_hours),
             chargers=self.controller.chargers if self.controller is not None else None,
             sun_corrections=self.sun_corrections(),
+            pv_recent=await asyncio.to_thread(self.pv_recent),
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
