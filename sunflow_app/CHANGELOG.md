@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.42
+
+- Live: title, subtitle and the time of the values are back (undoes 0.78.41).
+
 ## 0.78.41
 
 - Live: no title "Live", subtitle and time of the values any more – the tab says where you are, and the room goes to the energy flow. The weather row stays where it is switched on.
