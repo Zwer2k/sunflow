@@ -81,11 +81,12 @@ further notice. Sunflow replans immediately after every change.
 - **Sunflow controls**: main switch and one switch per device, with each
   device's state. Collapsed, it shows how many devices are controlled and whether one has a
   problem. Details in [Handing over control](control.md).
-- **Home battery**: strategy for the period (Balanced, Absorb PV, Self-sufficiency).
+- **Home battery**: strategy for the period (Balanced, Absorb PV, Self-sufficiency, Battery use;
+  short on a phone: Balanced, PV, Self-suff., Battery).
   "What does … do?" expands the explanation of the strategy.
 - **Loads**: per wallbox, hot water tank or own load the mode (Cost-optimal, PV only, Now,
   Pause) and the target (state of charge or
-  temperature): default, a preset or any value via "Value …" with the knob (drag, mouse wheel,
+  temperature): default, a preset or any value via "±" with the knob (drag, mouse wheel,
   arrow keys or −/+, then "Apply"). For the wallbox you choose the vehicle or let it be detected; the scanned card is
   shown in brackets, e.g. "Fiat 500e (Card 1)". With a sensor set up you also see the voltage of
   the car's 12 V battery. Below it says what the plan intends, or why nothing is planned.

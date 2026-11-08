@@ -1,11 +1,12 @@
 import { html } from "../../vendor/lit-all.min.js";
 import { t } from "./i18n.js";
 
-/** Strategies of the home battery: short label, one-line hint and what the plan does differently. */
+/** Strategies of the home battery: short label (tiny on a phone), one-line hint and what the plan does differently. */
 export const STRATEGIES = {
   balanced: {
     label: t("Ausgewogen"),
     short: t("Ausgewogen"),
+    tiny: t("Ausgewogen"),
     hint: t("Geringste Stromkosten über den Planungszeitraum."),
     details: [
       t("Rechnet bis zu 96 Stunden voraus mit Preisen, Einspeisevergütung, PV- und Lastprognose, Verlusten und Verschleiß."),
@@ -18,6 +19,7 @@ export const STRATEGIES = {
   pv_absorption: {
     label: t("Möglichst viel PV aufnehmen"),
     short: t("PV aufnehmen"),
+    tiny: t("PV"),
     hint: t("Lädt vor sonnigen Tagen nicht aus dem Netz und hält Platz für Solarstrom frei."),
     details: [
       t("Wie „Ausgewogen“, aber jede eingespeiste kWh zählt im Plan 5 ct weniger."),
@@ -29,6 +31,7 @@ export const STRATEGIES = {
   autarky: {
     label: t("Möglichst autark"),
     short: t("Autarkie"),
+    tiny: t("Autark"),
     hint: t("So wenig Netzbezug wie möglich: kein Netzladen, der Speicher deckt jeden Bedarf sofort. Kann mit Zeittarifen etwas mehr kosten."),
     details: [
       t("Jede kWh aus dem Netz zählt im Plan 1 € extra: Der Speicher deckt jeden Bedarf, solange er kann."),
@@ -40,6 +43,7 @@ export const STRATEGIES = {
   storage: {
     label: t("Speichernutzung"),
     short: t("Speichernutzung"),
+    tiny: t("Speicher"),
     hint: t("Wie „Ausgewogen“, lädt aber in günstigen Stunden so weit nach, dass der Speicher auch an verbrauchsstarken oder trüben Tagen bis zur nächsten günstigen Ladung reicht."),
     details: [
       t("Der Puffer gegen einen Tag über der Prognose reicht an etwa 19 von 20 Tagen statt an 4 von 5."),

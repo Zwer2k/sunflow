@@ -85,11 +85,12 @@ auf Weiteres. Nach jeder Änderung plant Sunflow sofort neu.
 - **Sunflow steuert**: Hauptschalter und Schalter je Gerät, dazu der Zustand jedes Geräts.
   Zugeklappt zeigt der Abschnitt, wie viele Geräte gesteuert werden und ob eines ein Problem hat.
   Ausführlich unter [Steuerung übernehmen](steuerung.md).
-- **Hausspeicher**: Strategie für den Zeitraum (Ausgewogen, PV aufnehmen, Autarkie).
+- **Hausspeicher**: Strategie für den Zeitraum (Ausgewogen, PV aufnehmen, Autarkie,
+  Speichernutzung; auf dem Handy kurz: Ausgewogen, PV, Autark, Speicher).
   „Was macht …?“ klappt die Erklärung der Strategie auf.
 - **Verbraucher**: je Wallbox, Warmwasser oder eigenem Verbraucher die Betriebsart
   (Kostenoptimal, Nur PV, Sofort, Pause) und das Ziel (Ladestand oder Temperatur): Standard,
-  eine Vorwahl oder über „Wert …“ ein beliebiger Wert mit dem Drehregler (ziehen, Mausrad,
+  eine Vorwahl oder über „±“ ein beliebiger Wert mit dem Drehregler (ziehen, Mausrad,
   Pfeiltasten oder −/+, dann „Übernehmen“). Bei der
   Wallbox wählst du das Fahrzeug oder lässt es erkennen; die gescannte Karte steht in Klammern,
   z. B. „Fiat 500e (Karte 1)“. Mit eingerichtetem Sensor siehst du auch die Spannung der

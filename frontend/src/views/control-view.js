@@ -373,10 +373,11 @@ class SunflowControl extends LitElement {
             ? html`<span class="chip">${STRATEGIES[strategy.effective].short} · ${untilText(strategy.override.until)}</span>`
             : nothing}
         </div>
-        <div class="segmented" role="group" aria-label=${t("Strategie Hausspeicher")}>
+        <div class="segmented strategies" role="group" aria-label=${t("Strategie Hausspeicher")}>
           ${Object.entries(STRATEGIES).map(
-            ([value, { short }]) => html`<button aria-pressed=${strategy.effective === value} ?disabled=${this._busy}
-              class=${strategy.effective === value ? "on" : ""} @click=${() => this._setStrategy(value)}>${short}</button>`,
+            ([value, { short, tiny, label }]) => html`<button aria-pressed=${strategy.effective === value} ?disabled=${this._busy}
+              class=${strategy.effective === value ? "on" : ""} title=${label} @click=${() => this._setStrategy(value)}>
+              <span class="long">${short}</span><span class="tiny">${tiny}</span></button>`,
           )}
         </div>
         ${strategyDetails(strategy.effective)}
@@ -515,7 +516,7 @@ class SunflowControl extends LitElement {
               <div class="segmented small-buttons" role="group" aria-label=${t("Ziel {name}", { name: device.name })}>
                 <button class=${targetOverride === null ? "on" : ""} aria-pressed=${targetOverride === null} ?disabled=${this._busy}
                   @click=${() => this._setDevice(device, { target: null })}>
-                  ${t("Standard")}${defaultTarget(device) !== null ? ` (${defaultTarget(device)} ${unit})` : ""}
+                  ${t("Standard")}${defaultTarget(device) !== null ? html`<span class="std">${defaultTarget(device)} ${unit}</span>` : nothing}
                 </button>
                 ${targets.presets.map(
                   (target) => html`<button class=${targetOverride === target ? "on" : ""} aria-pressed=${targetOverride === target} ?disabled=${this._busy}
@@ -548,7 +549,7 @@ class SunflowControl extends LitElement {
   _renderDial(device, targets, custom) {
     return html`<sf-target-dial .value=${device.override?.target ?? null} .defaultValue=${defaultTarget(device)}
       .min=${targets.min} .max=${targets.max} unit=${targets.unit} ?active=${custom} ?disabled=${this._busy}
-      text=${custom ? "" : t("Wert …")} label=${t("Beliebiges Ziel für {name}", { name: device.name })}
+      text=${custom ? "" : "±"} label=${t("Beliebiges Ziel für {name}", { name: device.name })}
       @change=${(e) => this._setDevice(device, { target: e.detail.value })}></sf-target-dial>`;
   }
 
@@ -695,8 +696,23 @@ class SunflowControl extends LitElement {
     }
     .segmented button.on { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
     .segmented button .std { display: block; font-size: 11px; font-weight: 400; color: var(--sf-muted); }
+    .strategies .tiny { display: none; }
+    @media (max-width: 600px) {
+      /* The four strategies in one row on a phone, with their tiny names */
+      .strategies { flex-wrap: nowrap; gap: 2px; padding: 3px; }
+      .strategies button { flex: 1 1 auto; min-width: 0; padding: 0 4px; font-size: 13px; white-space: nowrap; }
+      .strategies .long { display: none; }
+      .strategies .tiny { display: inline; }
+    }
     .car { width: 20px; height: 20px; fill: none; stroke: var(--sf-muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
     .segmented.small-buttons button, .segmented.small-buttons sf-target-dial::part(button) { min-height: 36px; font-size: 13px; }
+    @media (max-width: 600px) {
+      /* Standard, the presets and the knob in one row on a phone */
+      .segmented.small-buttons { flex-wrap: nowrap; gap: 2px; padding: 3px; }
+      .segmented.small-buttons button, .segmented.small-buttons sf-target-dial::part(button) { padding: 0 6px; white-space: nowrap; }
+      .segmented.small-buttons button { flex: 1 1 auto; min-width: 0; }
+      .segmented.small-buttons sf-target-dial::part(button) { min-width: 36px; }
+    }
     .row { display: flex; flex-direction: column; gap: 6px; }
     button.plugged {
       align-self: flex-start; min-height: 40px; padding: 0 14px; border: 1px solid var(--sf-border-strong); border-radius: 8px;
