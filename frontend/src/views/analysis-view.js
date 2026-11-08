@@ -28,6 +28,8 @@ class SunflowAnalysis extends LitElement {
     _pvLearning: { state: true },
     _inventory: { state: true },
     _pvSun: { state: true },
+    _pvPlanes: { state: true },
+    _pvPlaneDays: { state: true },
     _appliances: { state: true },
     _inventoryError: { state: true },
     _recommendations: { state: true },
@@ -45,6 +47,8 @@ class SunflowAnalysis extends LitElement {
     this._period = "7d";
     this._efficiency = null;
     this._efficiencyDays = 60;
+    this._pvPlanes = null;
+    this._pvPlaneDays = 7;
   }
 
   connectedCallback() {
@@ -52,6 +56,7 @@ class SunflowAnalysis extends LitElement {
     // Cached for an hour in the backend; not part of the polling
     this._loadInventory();
     this._loadPvSun();
+    this._loadPvPlanes();
     api.appliances().then((list) => (this._appliances = list)).catch(() => (this._appliances = null));
     this._load();
     this._stopPolling = poll(() => this._load(), REFRESH_MS);
@@ -86,6 +91,22 @@ class SunflowAnalysis extends LitElement {
       // Optional section; without energy counters there is nothing to show
       if (days === this._efficiencyDays) this._efficiency = [];
     }
+  }
+
+  async _loadPvPlanes() {
+    const days = this._pvPlaneDays;
+    try {
+      const data = await api.pvPlanes(days);
+      if (days === this._pvPlaneDays) this._pvPlanes = data.planes;
+    } catch {
+      // Optional section; without planes or shadow data there is nothing to show
+      if (days === this._pvPlaneDays) this._pvPlanes = [];
+    }
+  }
+
+  _setPvPlaneDays(days) {
+    this._pvPlaneDays = days;
+    this._loadPvPlanes();
   }
 
   _setEfficiencyDays(days) {
@@ -258,6 +279,7 @@ class SunflowAnalysis extends LitElement {
       ${this._renderCosts()}
       <sf-battery-planner></sf-battery-planner>
       ${this._renderEfficiency()}
+      ${this._renderPvPlanes()}
       ${this._renderPvLearning()}
       ${this._renderPvSun()}
       ${this._renderInventory()}
@@ -397,6 +419,58 @@ class SunflowAnalysis extends LitElement {
     }
     // Learned in the background: ask again until it is done
     if (this._pvSun.computing) this._pvSunTimer = setTimeout(() => this._loadPvSun(), PV_SUN_POLL_MS);
+  }
+
+  /** Each plane's measured strings against Solcast's raw forecast, the past days and the plan ahead. */
+  _renderPvPlanes() {
+    const planes = this._pvPlanes?.filter((p) => p.history.length || p.forecast.length);
+    if (!planes?.length) return nothing;
+    const share = (value) => (value === null || value === undefined ? "–" : `${Math.round(value * 100)} %`);
+    const kw = (v) => formatValue(v, "W");
+    const colors = { raw: UNASSIGNED_COLOR, measured: SERIES_COLORS[1], expected: SERIES_COLORS[0] };
+    return html`
+      <section>
+        <div class="section-head">
+          <h2>${t("PV je Fläche")}</h2>
+          <div class="range" role="group" aria-label=${t("Zeitraum PV je Fläche")}>
+            ${[[3, t("3 Tage")], [7, t("7 Tage")], [14, t("14 Tage")]].map(
+              ([value, label]) => html`<button class=${this._pvPlaneDays === value ? "active" : ""}
+                aria-pressed=${this._pvPlaneDays === value} @click=${() => this._setPvPlaneDays(value)}>${label}</button>`,
+            )}
+          </div>
+        </div>
+        <p class="small muted">${t("Je Dachfläche die gemessenen Strings gegen die rohe Prognose (Solcast), stündlich. Rechts der senkrechten Linie: die rohe Prognose mit ihrer Bandbreite (p10 bis p90) und was Sunflow nach dem Gelernten erwartet, bevor die Planung für Unsicherheit vorsichtiger rechnet.")}</p>
+        <div class="legend">
+          <span class="legend-item"><span class="swatch" style="background:${colors.raw}"></span>${t("Rohprognose")}</span>
+          <span class="legend-item"><span class="swatch" style="background:${colors.measured}"></span>${t("Gemessen")}</span>
+          <span class="legend-item"><span class="swatch" style="background:${colors.expected}"></span>${t("Erwartet (gelernt)")}</span>
+        </div>
+        ${planes.map((plane) => {
+          const point = (name) => (p) => ({ start: p.start, end: p.end, value: p[name] });
+          return html`
+            <h3>${plane.name}</h3>
+            <p class="small muted">${t("Gemessen {measured} der Rohprognose ({days} Tage) · erwartet {expected}", {
+              measured: share(plane.measured_share),
+              days: this._pvPlaneDays,
+              expected: share(plane.expected_share),
+            })}${plane.strings ? nothing : html` · ${t("keine Strings zugeordnet")}`}</p>
+            ${lineChart(
+              [
+                { name: t("Rohprognose"), color: colors.raw, dashed: true, points: [...plane.history, ...plane.forecast].map(point("raw")) },
+                { name: t("Gemessen"), color: colors.measured, points: plane.history.map(point("measured")) },
+                { name: t("Erwartet (gelernt)"), color: colors.expected, points: plane.forecast.map(point("expected")) },
+              ],
+              {
+                label: t("{name}: gemessen und Prognose", { name: plane.name }),
+                formatY: kw,
+                now: plane.forecast.length ? new Date(plane.forecast[0].start) : null,
+                bands: [{ name: t("Bandbreite Rohprognose"), color: colors.raw, points: plane.forecast }],
+              },
+            )}
+          `;
+        })}
+      </section>
+    `;
   }
 
   _renderPvSun() {

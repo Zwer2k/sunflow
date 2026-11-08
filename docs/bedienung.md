@@ -166,6 +166,11 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
 - **Lernen**: wie gut die PV-Prognose ankommt (gesamt, je Bewölkung, je Stunde, je Fläche) und
   wie weit das Modell für den Hausverbrauch ist. Je Dachfläche setzt „Neu lernen ab heute“ das
   Lernen zurück, z. B. nach einem Baumschnitt.
+- **PV je Fläche**: je Dachfläche die gemessenen Strings gegen die rohe Solcast-Prognose, stündlich
+  über die letzten 3, 7 oder 14 Tage, und rechts davon die rohe Prognose mit Bandbreite (p10 bis p90)
+  und was Sunflow nach dem Gelernten erwartet. Darüber der Anteil: wie viel der Rohprognose
+  gemessen wurde und wie viel Sunflow für die nächsten Tage erwartet. Die Planung rechnet je nach
+  [PV-Risiko](einstellungen.md#planung) noch etwas vorsichtiger.
 - **PV nach Sonnenstand (Test)**: lernt je Dachfläche aus den vergangenen Solcast-Prognosen und den
   gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt, getrennt nach klar
   und bewölkt. Dazu lernt es, wie weit die Messung bei unsicherer Prognose (p10 weit unter dem

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.26
+
+- Analysis: new "PV per plane" – per roof plane the measured strings against Solcast's raw forecast, hourly over the last 3, 7 or 14 days, and ahead the raw forecast with its p10–p90 range and the expectation Sunflow learned. The shares above each chart say how much of the raw forecast came and how much is expected.
+
 ## 0.78.25
 
 - Live graphics use far less GPU and CPU: the animations of the diagram, house and 3D views stay paused and a clock moves them on 12 times a second, only while the graphic is in view and the tab is visible – instead of the browser redrawing the whole graphic 60 times a second. The glow on the sparks and the blending of the panel shimmer are gone.
