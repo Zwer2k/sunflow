@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.32
+
+- Cars that report their state of charge only now and then (e.g. a Fiat 500e through its cloud): between two reports Sunflow adds what the wallbox charged into the car since, for planning, control and the views. At each new report it compares and learns how much of the wallbox's energy reaches the battery (energy-weighted over the last ~60 kWh, kept across restarts). On by default, switchable per vehicle ("Estimate between reports"); estimated values show with "≈", the vehicle's card shows the last report, the energy since and what was learned.
+
 ## 0.78.31
 
 - Live quick controls on a phone: the modes (cost-optimal, PV only, now, pause) are one button showing the current mode with a dropdown, so the load's name stays on the same line; the car and target buttons are narrower there. A car that is not plugged in reads "unplugged".

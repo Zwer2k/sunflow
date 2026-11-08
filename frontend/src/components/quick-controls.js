@@ -122,7 +122,7 @@ class SunflowQuickControls extends LitElement {
     const next = device.windows?.[0];
     const status = [
       formatPower(device.power_w, device.power_display),
-      device.level !== null && device.level !== undefined ? `${Math.round(device.level)} ${unit}` : null,
+      device.level !== null && device.level !== undefined ? `${device.level_estimated ? "≈ " : ""}${Math.round(device.level)} ${unit}` : null,
       device.kind === "vehicle" && device.connected === false ? t("abgesteckt") : null,
       device.reason ? null : next ? t("ab {time}", { time: time.format(new Date(next.start)) }) : null,
     ].filter(Boolean);

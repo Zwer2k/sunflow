@@ -479,7 +479,7 @@ class SunflowControl extends LitElement {
     const targetOverride = device.override?.target ?? null;
     const status = [
       formatPower(device.power_w, device.power_display),
-      device.level !== null && device.level !== undefined ? `${Math.round(device.level)} ${unit}` : null,
+      device.level !== null && device.level !== undefined ? `${device.level_estimated ? "≈ " : ""}${Math.round(device.level)} ${unit}` : null,
       device.kind === "vehicle" && device.connected === false ? t("nicht angesteckt") : null,
     ].filter(Boolean);
     return html`

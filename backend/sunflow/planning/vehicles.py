@@ -13,6 +13,7 @@ from typing import Any
 
 from sunflow.config.models import DeviceConfig, SunflowConfig, Vehicle
 from sunflow.i18n import N_, t
+from sunflow.planning.vehicle_soc import estimator
 
 # States of a car's sensor that mean it is plugged in or at home
 PLUGGED = {"on", "true", "home", "connected", "plugged", "plugged_in", "charging"}
@@ -91,11 +92,8 @@ def vehicle_max_power(vehicle: Vehicle) -> float | None:
 
 
 def soc_of(vehicle: Vehicle, states: dict[str, dict[str, Any]]) -> float | None:
-    """The vehicle's state of charge in %, None while unreadable."""
-    try:
-        return float(states.get(vehicle.soc_entity or "", {}).get("state"))
-    except TypeError, ValueError:
-        return None
+    """The vehicle's state of charge in %, between its reports estimated from what was charged; None while unknown."""
+    return estimator.soc(vehicle, states)[0]
 
 
 def vehicle_at(

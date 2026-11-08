@@ -37,7 +37,8 @@ from sunflow.planning.pv_sun import (
     learn_planes as learn_sun_planes,
     refresh_levels,
 )
-from sunflow.planning.vehicles import soc_of, unplugged_choices
+from sunflow.planning.vehicle_soc import estimator
+from sunflow.planning.vehicles import recognize, soc_of, unplugged_choices
 from sunflow.shadow.counters import EnergyCounters
 
 from .store import Sample, ShadowStore, SlotRecorder, actual_action, slot_start
@@ -128,8 +129,6 @@ async def take_sample(
     config = store.load()
     profiles = library.profiles
     device = planned_battery(config.devices, profiles)
-    if device is None:
-        return None
     snapshot = await snapshots.get() if snapshots else await fetch_snapshot(client)
 
     def values(source: DeviceConfig | None) -> dict[str, float | None]:
@@ -145,6 +144,12 @@ async def take_sample(
             )
         }
 
+    consumers = consumer_powers(config, profiles, values)
+    # Also without a battery: the cars' SoC between their reports
+    estimator.observe(config.vehicles, snapshot.states, vehicle_charging(config, profiles, snapshot, consumers), datetime.now(UTC))
+    if device is None:
+        return None
+
     socs: dict[str, float] = {}
     powers: dict[str, float] = {}
     for battery in [d for d in config.devices if controls_battery(profiles[d.profile])]:
@@ -157,7 +162,6 @@ async def take_sample(
             socs[battery.id] = capacity * soc / 100
         if (power := roles.get("battery_power")) is not None:
             powers[battery.id] = power
-    consumers = consumer_powers(config, profiles, values)
     return Sample(
         # All batteries as one, like the plan; unknown while the first one's SoC is
         soc_wh=sum(socs.values()) if device.id in socs else None,
@@ -188,6 +192,25 @@ def string_powers(config: SunflowConfig, profiles: dict[str, Any], snapshot: Any
         for string in pv_strings(roles):
             result[f"{device.id}:{string['index']}"] = string["power_w"]
     return result
+
+
+def vehicle_charging(
+    config: SunflowConfig, profiles: dict[str, Any], snapshot: Any, consumers: dict[str, float]
+) -> dict[str, float]:
+    """What each car is charged with now (W by vehicle id), from the wallbox that recognized it."""
+    charging: dict[str, float] = {}
+    for device in config.devices:
+        if not config.vehicles_at(device.id) or not consumers.get(device.id):
+            continue
+        roles = {
+            r.role: r
+            for r in preview(
+                profiles[device.profile], snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()}
+            )
+        }
+        if (vehicle := recognize(config, device, roles, snapshot.states).vehicle) is not None:
+            charging[vehicle.id] = charging.get(vehicle.id, 0.0) + consumers[device.id]
+    return charging
 
 
 def consumer_levels(config: SunflowConfig, profiles: dict[str, Any], snapshot: Any) -> dict[str, float]:

@@ -32,7 +32,14 @@ Sources, arrangement on the roof and assignment of module optimizers: see [Optim
 What the car is, independent of the wallbox:
 
 - **Name**, **Battery capacity (usable)** and **Charging efficiency**.
-- **State of charge**: the sensor from the car's integration.
+- **State of charge**: the sensor from the car's integration. **Estimate between reports** (on by
+  default): many cars send their state of charge only now and then, e.g. a Fiat 500e through its
+  cloud. In between, Sunflow adds what the wallbox charged into this car since. With every new
+  report it compares the estimate with the real value and learns how much of the wallbox's energy
+  reaches the battery (first the charging efficiency, then learned, over roughly the last 60 kWh).
+  It only learns from reports after at least 1.5 kWh, not at 100 % and not when the car was driven
+  in between. Estimated values show with "≈"; the vehicle's card shows the last report, what was
+  charged since and what was learned.
 - **Plugged in / home** (optional, e.g. a `device_tracker`): Sunflow
   learns when the car usually comes home and leaves, and plans it as soon as it is at home.
   Without it, the plug-in times at the wallbox are used.

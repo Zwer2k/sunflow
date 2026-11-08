@@ -24,6 +24,7 @@ from sunflow.devices.resolver import preview
 from sunflow.devices.site import device_category, device_kind
 from sunflow.i18n import t
 from sunflow.planning.plan import DEFAULT_HOT_WATER_C, FlexInfo
+from sunflow.planning.vehicle_soc import estimator
 from sunflow.planning.vehicles import METHODS, scanned_card, vehicle_at
 from sunflow.shadow.runner import ShadowRunner
 
@@ -102,6 +103,7 @@ async def get_control(request: Request) -> dict[str, Any]:
                 else roles["vehicle_soc"].value
                 if "vehicle_soc" in roles
                 else None,
+                "level_estimated": vehicle is not None and vehicle_soc is not None and estimator.soc(vehicle, snapshot.states)[1],
                 "target": info.target if info else None,
                 "default_target": _default_target(config, device.id, kind, info, vehicle, roles),
                 "vehicles": [{"id": v.id, "name": v.name} for v in config.vehicles_at(device.id)],

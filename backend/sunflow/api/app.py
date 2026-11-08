@@ -35,6 +35,7 @@ from sunflow.i18n import t
 from sunflow.integration_link import announce, integration_token, running_peer
 from sunflow.mcp_key import McpKey
 from sunflow.planning.one_time import OneTimeLoads
+from sunflow.planning.vehicle_soc import estimator
 from sunflow.settings import Settings
 from sunflow.shadow.counters import EnergyCounters
 from sunflow.shadow.runner import ShadowRunner
@@ -137,6 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.integration_token = integration_token(settings.data_dir)
         app.state.mcp_key = McpKey(settings.data_dir)
         app.state.store = ConfigStore(settings.data_dir)
+        estimator.load(settings.data_dir)
         app.state.profiles = load_profiles(
             settings.profiles_dir, load_schema(settings.schema_dir)
         )

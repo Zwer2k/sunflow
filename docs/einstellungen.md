@@ -32,7 +32,14 @@ Quellen, Anordnung auf dem Dach und Zuordnung der Modul-Optimierer: siehe [Optim
 Was das Auto ist, unabhängig von der Wallbox:
 
 - **Name**, **Akkukapazität (nutzbar)** und **Ladewirkungsgrad**.
-- **Ladestand**: der Sensor aus der Integration des Autos.
+- **Ladestand**: der Sensor aus der Integration des Autos. **Zwischen den Meldungen berechnen**
+  (standardmäßig an): Viele Autos senden ihren Ladestand nur ab und zu, z. B. ein Fiat 500e über
+  die Cloud. Dazwischen zählt Sunflow dazu, was die Wallbox seitdem in dieses Auto geladen hat.
+  Mit jeder neuen Meldung vergleicht Sunflow die Rechnung mit dem echten Wert und lernt, wie viel
+  der Energie an der Wallbox im Akku ankommt (zunächst der Ladewirkungsgrad, dann gelernt, die
+  letzten etwa 60 kWh zählen). Gelernt wird nur aus Meldungen nach mindestens 1,5 kWh, nicht bei
+  100 % und nicht, wenn das Auto zwischendurch gefahren ist. Berechnete Werte stehen mit „≈“, die
+  Karte des Fahrzeugs zeigt die letzte Meldung, was seitdem geladen wurde und was gelernt ist.
 - **Angesteckt / zuhause** (optional, z. B. ein `device_tracker`): Damit lernt Sunflow, wann das
   Auto üblicherweise heimkommt und wegfährt, und plant es ein, sobald es zu Hause ist. Ohne
   Sensor gelten die Steckzeiten an der Wallbox.
