@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.36
+
+- Live on a phone: the line with losses and view switch, the quick controls and today's figures stay at the bottom above the menu bar while scrolling, as long as they take at most 60 % of the screen; the energy flow passes beneath. The quick controls' menus open upwards when there is no room below.
+
 ## 0.78.35
 
 - Live bars: the house shows once, at the "To" bar; the line below the bars keeps the battery's state of charge and what it does.
