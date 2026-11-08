@@ -66,6 +66,7 @@ const ICONS = {
   losses: "M8 20c-2-3 2-5 0-8s2-5 0-8M12 20c-2-3 2-5 0-8s2-5 0-8M16 20c-2-3 2-5 0-8s2-5 0-8",
 };
 
+const dayFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const hourFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
 
 /** Mouse drag scrolls the forecast sideways like a swipe does on touch screens. */
@@ -248,11 +249,15 @@ class SunflowLive extends LitElement {
   render() {
     const live = this._live;
     return html`
-      ${live?.weather && (live.display?.weather_mobile || live.display?.weather_desktop)
-        ? html`<div class="heading ${live.display.weather_mobile === false ? "hide-mobile" : ""} ${live.display.weather_desktop === false
-            ? "hide-desktop"
-            : ""}">${this._renderWeather(live.weather, live.display)}</div>`
-        : nothing}
+      <div class="heading">
+        <h1>Live</h1>
+        <span class="small muted subtitle"><span>${t("Aktuelle Energieflüsse")}</span>${live
+          ? html`<span class="stand">${t("Stand {time}", { time: dayFormat.format(new Date(live.time)) })}</span>`
+          : nothing}</span>
+        ${live?.weather && (live.display?.weather_mobile || live.display?.weather_desktop)
+          ? this._renderWeather(live.weather, live.display)
+          : nothing}
+      </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${live === null && !this._error ? html`<p class="muted">${t("Lade Live-Werte …")}</p>` : nothing}
       ${live ? this._renderFlow(live) : nothing}
@@ -843,6 +848,9 @@ class SunflowLive extends LitElement {
     /* Weather on the right of the title line; on narrow screens it wraps below */
     /* Breaks only between its two parts: at most two lines next to the weather */
     /* Gap only between parts on the same line; a wrapped line starts flush left */
+    .subtitle { flex: 0 1 auto; display: flex; flex-wrap: wrap; column-gap: 6px; }
+    .subtitle > span { white-space: nowrap; }
+    .subtitle .stand { opacity: 0.7; }
     .heading .weather { margin-left: auto; min-width: 0; max-width: 100%; }
     /* Wide screens: the forecast shrinks (scrolls) instead of pushing the weather below the title */
     @media (min-width: 601px) {
@@ -882,8 +890,8 @@ class SunflowLive extends LitElement {
     .soc-track { fill: none; stroke: var(--sf-border); stroke-width: 4; }
     .weather { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; }
     /* Hidden per screen size in the settings; same breakpoint as the layout above */
-    @media (max-width: 600px) { .weather.hide-mobile, .heading.hide-mobile { display: none; } }
-    @media (min-width: 601px) { .heading .weather.hide-desktop, .heading.hide-desktop { display: none; } }
+    @media (max-width: 600px) { .weather.hide-mobile { display: none; } }
+    @media (min-width: 601px) { .heading .weather.hide-desktop { display: none; } }
     .weather-now { display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
     .weather-symbol { font-size: 24px; line-height: 1; }
     .range { display: flex; flex: none; gap: 2px; background: var(--sf-subtle); padding: 2px; border-radius: 8px; }
