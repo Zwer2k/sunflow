@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.34
+
+- Live bars: each bar always fills the full width; the battery's state of charge is shown once (in the line below the bars) instead of three times; the legend text no longer grows on a phone (it picked up the diagram's label size).
+- Live on a phone: today's figures fit two rows (four narrow tiles per row with short names), and the view switch is one button with the current view's symbol that opens the choice.
+
 ## 0.78.33
 
 - Analysis → Shadow mode compares the measured state of charge with what the plan expected 6 hours before (also per battery). Before, the latest plan was shown, which starts from the measured SoC every quarter hour and so always matched. The plan from 6 hours before is recorded from this version on.

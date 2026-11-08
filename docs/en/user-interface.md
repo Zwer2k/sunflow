@@ -14,11 +14,13 @@ The energy flow shows what is flowing right now: PV (top, with one circle per st
 home battery, house and the controllable loads such as wallbox and hot water. Animated lines show
 where energy is going.
 
-Below the energy flow on the right you choose the view; each browser remembers its own:
+Below the energy flow on the right you choose the view; each browser remembers its own. On a phone
+this is one button with the current view's symbol that opens the choice:
 
 - **Diagram**: the large graphic with strings and animated lines.
 - **Bars**: two flat bars, "From" (PV, battery, grid import) and "To" (house, loads, battery,
-  export), on the same scale with the values below. Fits next to the quick controls.
+  export), each across the full width with the values below; the battery's state of charge is in
+  the line below. Fits next to the quick controls.
 - **Tiles**: one small tile per component and load with power, state and level; also shows more
   than four loads.
 - **House**: the site as an animated picture – sun (brighter and faster with more PV) or moon and

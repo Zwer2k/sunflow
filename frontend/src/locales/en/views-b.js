@@ -262,6 +262,8 @@ export default {
   "wird bis {time} nachgeladen": "topping up until {time}",
   "nicht angesteckt": "not plugged in",
   "abgesteckt": "unplugged",
+  "Verbrauch": "Consumed",
+  "Eigenverbr.": "Self-use",
   "Modus {name}": "Mode {name}",
   "Standard": "Default",
   "Ziel {name}": "Target {name}",
