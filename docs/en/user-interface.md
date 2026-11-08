@@ -49,7 +49,8 @@ Below the energy flow on the right you choose the view; each browser remembers i
   swipe or use the arrows. It can be hidden under [Settings → Display](settings.md#display).
 - **Quick controls** (below the energy flow): one row per load you pinned under Control, with
   power, state of charge and next charging window, and the modes as small buttons: € Cost-optimal,
-  PV PV only, ⚡ Now, ⏸ Pause. A change applies until midnight. For "Charge battery" without a plug
+  PV PV only, ⚡ Now, ⏸ Pause. On a phone one button shows the current mode and opens the choice,
+  so the name keeps its line. A change applies until midnight. For "Charge battery" without a plug
   sensor, 🔌 switches "plugged in now". At the wallbox a button with a car symbol shows the choice – "detect" or the chosen vehicle – and
   opens the list; 🎯 shows the target (state of charge or
   temperature) and opens a knob for any value up to the

@@ -261,6 +261,7 @@ export default {
   "nicht lesbar": "not readable",
   "wird bis {time} nachgeladen": "topping up until {time}",
   "nicht angesteckt": "not plugged in",
+  "abgesteckt": "unplugged",
   "Modus {name}": "Mode {name}",
   "Standard": "Default",
   "Ziel {name}": "Target {name}",
