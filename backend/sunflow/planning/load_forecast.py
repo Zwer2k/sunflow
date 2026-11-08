@@ -47,22 +47,25 @@ class LoadForecast:
 
 
 async def fetch_hourly_means(
-    client: HAClient, statistic_id: str, now: datetime, days: int = HISTORY_DAYS
+    client: HAClient, statistic_id: str, now: datetime, days: int = HISTORY_DAYS, kind: str = "mean"
 ) -> list[tuple[datetime, float]]:
-    """Return (hour start, mean W) from the recorder's hourly statistics, else from the recorded states."""
+    """Return (hour start, mean W) from the recorder's hourly statistics, else from the recorded states.
+
+    kind: "max" for the highest value of each hour from the statistics instead of the mean.
+    """
     result = await client.command(
         "recorder/statistics_during_period",
         start_time=(now - timedelta(days=days)).isoformat(),
         statistic_ids=[statistic_id],
         period="hour",
-        types=["mean"],
+        types=[kind],
         units={"power": "W"},
     )
     rows = []
     for row in result.get(statistic_id, []):
-        if row.get("mean") is None:
+        if row.get(kind) is None:
             continue
-        rows.append((datetime.fromtimestamp(row["start"] / 1000, UTC), float(row["mean"])))
+        rows.append((datetime.fromtimestamp(row["start"] / 1000, UTC), float(row[kind])))
     if rows:
         return rows
     # A sensor without statistics (no state_class): its states are kept for the purge period

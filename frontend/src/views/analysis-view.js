@@ -819,7 +819,7 @@ class SunflowAnalysis extends LitElement {
                 <div class="tile">
                   <div class="small muted">${t("Ladestand-Abweichung")}</div>
                   <div class="value">${e.soc_mae_wh === null ? "–" : formatValue(e.soc_mae_wh, "Wh")}</div>
-                  <div class="small muted">${t("mittlerer Abstand Plan zu Ist")}</div>
+                  <div class="small muted">${t("mittlerer Abstand des Plans von vor {hours} h zu Ist", { hours: e.soc_ahead_hours })}</div>
                 </div>
                 <div class="tile">
                   <div class="small muted">${t("Gleiche Entscheidung")}</div>
@@ -829,12 +829,12 @@ class SunflowAnalysis extends LitElement {
               </div>
               <div class="legend">
                 <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[0]}"></span>${t("Ladestand tatsächlich")}</span>
-                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>${t("Ladestand laut Plan")}</span>
+                <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[1]}"></span>${t("Ladestand laut Plan von vor {hours} h", { hours: e.soc_ahead_hours })}</span>
               </div>
               ${lineChart(
                 [
                   { name: t("Ist"), color: SERIES_COLORS[0], points: rows.map((r) => this._point(r, "actual_soc_wh")) },
-                  { name: t("Plan"), color: SERIES_COLORS[1], points: rows.map((r) => this._point(r, "planned_soc_wh")) },
+                  { name: t("Plan"), color: SERIES_COLORS[1], points: rows.map((r) => this._point(r, "ahead_soc_wh")) },
                 ],
                 { label: t("Ladestand Plan gegen Ist"), formatY: (v) => formatValue(v, "Wh") },
               )}
@@ -884,6 +884,8 @@ class SunflowAnalysis extends LitElement {
   /** Plan against actual for each battery, when several are planned together. */
   _renderBatteries(rows) {
     const ids = [...new Set(rows.flatMap((r) => Object.keys(r.planned_batteries ?? {})))];
+    // The plan from hours before: the latest one starts from the measured SoC
+    const planned = (row, id) => row.ahead_batteries?.[id] ?? null;
     if (ids.length < 2) return nothing;
     const name = (id) => this._batteryNames?.[id] ?? id;
     const soc = (row, column, id) => row[column]?.[id]?.soc_wh ?? null;
@@ -892,7 +894,7 @@ class SunflowAnalysis extends LitElement {
       return { start: start.toISOString(), end: new Date(start.getTime() + 15 * 60_000).toISOString(), value };
     };
     const deviation = (id) => {
-      const pairs = rows.map((r) => [soc(r, "planned_batteries", id), soc(r, "actual_batteries", id)]).filter(([a, b]) => a !== null && b !== null);
+      const pairs = rows.map((r) => [planned(r, id), soc(r, "actual_batteries", id)]).filter(([a, b]) => a !== null && b !== null);
       return pairs.length ? pairs.reduce((sum, [a, b]) => sum + Math.abs(a - b), 0) / pairs.length : null;
     };
     return html`
@@ -904,7 +906,7 @@ class SunflowAnalysis extends LitElement {
       ${lineChart(
         ids.flatMap((id, i) => [
           { name: t("{name} Ist", { name: name(id) }), color: SERIES_COLORS[i] ?? UNASSIGNED_COLOR, points: rows.map((r) => point(r, soc(r, "actual_batteries", id))) },
-          { name: t("{name} Plan", { name: name(id) }), color: SERIES_COLORS[i] ?? UNASSIGNED_COLOR, dashed: true, points: rows.map((r) => point(r, soc(r, "planned_batteries", id))) },
+          { name: t("{name} Plan", { name: name(id) }), color: SERIES_COLORS[i] ?? UNASSIGNED_COLOR, dashed: true, points: rows.map((r) => point(r, planned(r, id))) },
         ]),
         { label: t("Ladestand je Speicher, Plan gegen Ist"), formatY: (v) => formatValue(v, "Wh") },
       )}

@@ -188,5 +188,7 @@ How well do forecasts and decisions match reality?
   often it changes, also per optimizer (power and temperature per module). Checked at most hourly; **Check again** asks right away.
 - **Shadow mode**: every 15 minutes Sunflow records what it would do and what
   actually happened. The tiles compare PV and load forecast with the measurement, the chart the
-  planned with the actual state of charge. The table lists the sections where the decision
+  actual state of charge with the one the plan expected **6 hours before** (every new plan starts
+  from the measured state of charge, so the latest one would almost always match the
+  measurement). Values exist from 0.78.33 on. The table lists the sections where the decision
   differed. **Export data** and **Import export** are here.

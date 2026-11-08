@@ -195,5 +195,7 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   vorliegt und wie oft er sich ändert, auch je Optimierer (Leistung und Temperatur je Modul). Geprüft wird höchstens stündlich; **Neu prüfen** fragt sofort.
 - **Schattenbetrieb**: Sunflow zeichnet alle 15 Minuten auf, was es tun würde und was
   tatsächlich passiert ist. Die Kacheln vergleichen PV- und Lastprognose mit der Messung, das
-  Diagramm den geplanten mit dem tatsächlichen Ladestand. Die Tabelle zeigt die Abschnitte, in
+  Diagramm den tatsächlichen Ladestand mit dem, den der Plan **6 Stunden vorher** erwartet hat
+  (jeder neue Plan startet beim gemessenen Ladestand, der jüngste läge deshalb immer fast genau auf
+  der Messung). Werte gibt es ab 0.78.33. Die Tabelle zeigt die Abschnitte, in
   denen die Entscheidung abwich. Hier liegen auch **Daten exportieren** und **Export importieren**.
