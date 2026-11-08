@@ -170,9 +170,13 @@ class SunflowLive extends LitElement {
     this._stopToday = poll(() => this._loadToday(), TODAY_REFRESH_MS);
     this._onResize = () => {
       this._updateScroll();
+      this._fitHeight();
       this._checkDock();
     };
-    this._dockObserver = new ResizeObserver(() => this._checkDock());
+    this._dockObserver = new ResizeObserver(() => {
+      this._fitHeight();
+      this._checkDock();
+    });
     window.addEventListener("resize", this._onResize);
   }
 
@@ -322,6 +326,7 @@ class SunflowLive extends LitElement {
 
   updated() {
     this._updateScroll();
+    this._fitHeight();
     const dock = this.renderRoot.querySelector(".dock");
     if (dock !== this._dock) {
       this._dock = dock;
@@ -334,6 +339,13 @@ class SunflowLive extends LitElement {
       this._watched = graphic;
       this._unwatch = graphic ? animate(graphic) : null;
     }
+  }
+
+  /** Exactly the screen's height, from what lies above and below the view (header, menu bar), so nothing scrolls without content. */
+  _fitHeight() {
+    const top = this.getBoundingClientRect().top + window.scrollY;
+    const height = `${Math.max(window.innerHeight - top - spaceBelow(this), 0)}px`;
+    if (this.style.minHeight !== height) this.style.minHeight = height;
   }
 
   /** The dock sticks to the bottom while there is room for it (quick controls and today's figures grow). */
@@ -977,6 +989,27 @@ class SunflowLive extends LitElement {
     h2 .source { font-weight: 400; }
     .tile .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
   `;
+}
+
+/** Height the page has below an element: paddings, borders and following content of every ancestor, through shadow roots. */
+function spaceBelow(element) {
+  let space = 0;
+  let node = element;
+  while (node) {
+    const parent = node.parentElement ?? node.getRootNode()?.host ?? null;
+    space += parseFloat(getComputedStyle(node).marginBottom) || 0;
+    for (let next = node.nextElementSibling; next; next = next.nextElementSibling) {
+      const style = getComputedStyle(next);
+      if (style.position !== "fixed" && style.position !== "absolute" && style.display !== "none") {
+        space += next.getBoundingClientRect().height + (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+      }
+    }
+    if (!parent) break;
+    const style = getComputedStyle(parent);
+    space += (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+    node = parent;
+  }
+  return space;
 }
 
 customElements.define("sunflow-live", SunflowLive);

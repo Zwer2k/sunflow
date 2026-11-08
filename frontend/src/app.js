@@ -3086,7 +3086,8 @@ class SunflowApp extends LitElement {
   }
 
   static styles = css`
-    :host { display: block; min-height: 100vh; }
+    /* The room for the bottom bar on a phone lies within the screen height, not below it */
+    :host { display: block; min-height: 100vh; box-sizing: border-box; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
     h1 { margin: 0; font-size: 20px; line-height: 1.25; }
