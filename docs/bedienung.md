@@ -20,7 +20,7 @@ ist das ein Knopf mit dem Symbol der aktuellen Ansicht, der die Auswahl öffnet:
 - **Diagramm**: die große Grafik mit Strings und bewegten Linien.
 - **Balken**: zwei flache Balken „Woher“ (PV, Speicher, Netzbezug) und „Wohin“ (Haus,
   Verbraucher, Speicher, Einspeisung), jeder über die ganze Breite, mit den Werten darunter; der
-  Ladestand des Speichers steht in der Zeile darunter. Passt neben die Schnellsteuerung.
+  Ladestand des Speichers und ob er lädt steht in der Zeile darunter. Passt neben die Schnellsteuerung.
 - **Kacheln**: eine kleine Kachel je Teil und Verbraucher mit Leistung, Zustand und Ladestand;
   zeigt auch mehr als vier Verbraucher.
 - **Haus**: die Anlage als bewegtes Bild – Sonne (heller und schneller mit mehr PV) oder Mond und

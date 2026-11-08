@@ -19,8 +19,8 @@ this is one button with the current view's symbol that opens the choice:
 
 - **Diagram**: the large graphic with strings and animated lines.
 - **Bars**: two flat bars, "From" (PV, battery, grid import) and "To" (house, loads, battery,
-  export), each across the full width with the values below; the battery's state of charge is in
-  the line below. Fits next to the quick controls.
+  export), each across the full width with the values below; the battery's state of charge and
+  whether it charges are in the line below. Fits next to the quick controls.
 - **Tiles**: one small tile per component and load with power, state and level; also shows more
   than four loads.
 - **House**: the site as an animated picture – sun (brighter and faster with more PV) or moon and

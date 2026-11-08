@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.35
+
+- Live bars: the house shows once, at the "To" bar; the line below the bars keeps the battery's state of charge and what it does.
+
 ## 0.78.34
 
 - Live bars: each bar always fills the full width; the battery's state of charge is shown once (in the line below the bars) instead of three times; the legend text no longer grows on a phone (it picked up the diagram's label size).
