@@ -1,8 +1,8 @@
-"""Sudden changes of one plane (leaves, cleaning) while the other planes deliver as before.
+"""Soiling of one plane (snow, leaves, dirt) and its cleaning while the other planes deliver as before.
 
 Against the other planes a day's weather and the forecast's error cancel out; what is left is the plane itself.
-Leaves come and go all autumn: days after a drop are soiled, they are not learned, and the plane is planned
-at its current share of the clean days until it rises again.
+A sudden drop (snow) or, after a cleaning, a slow slide below the clean share (leaves gathering) is soiled:
+those days are not learned, and the plane is planned at its current share of the clean days until it recovers.
 """
 
 from collections import defaultdict
@@ -21,6 +21,10 @@ STEP_REFERENCE_DAYS = 14
 # Pooled change of the plane against the others, and of each confirming day
 STEP_RATIO = 1.4
 STEP_DAY_RATIO = 1.25
+# After a cleaning: its first days are the clean share, three days below this part of it are soiled
+CLEAN_DAYS = 7
+GRADUAL_DAYS = 3
+GRADUAL_LEVEL = 0.8
 # Forecast energy (Wh) of the plane and of the others for a day to count
 STEP_MIN_DAY_WH = 1000.0
 
@@ -135,20 +139,42 @@ def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str, pa
     state = PlaneState(changes=[{"since": days[i][0].isoformat(), "change": round(c, 2)} for i, c in starts[1:]])
     if len(starts) == 1:
         return state
-    # A regime after a drop is soiled, so is the first one when the first change is a rise
-    soiled_flags = [starts[1][1] > 1] + [c < 1 for _, c in starts[1:]]
     bounds = [i for i, _ in starts] + [len(days)]
-    clean: list[Day] = []
-    for index, soiled in enumerate(soiled_flags):
-        segment = values[bounds[index] : bounds[index + 1]]
-        if soiled:
-            end = days[bounds[index + 1]][0] if bounds[index + 1] < len(days) else None
-            state.soiled.append((days[bounds[index]][0], end))
-        else:
-            clean = segment
-    if soiled_flags[-1] and clean:
-        current = values[bounds[-2] :]
-        state.level = min(_pooled(current) / _pooled(clean[-STEP_REFERENCE_DAYS:]), 1.0)
+    soiled = [False] * len(days)
+    reference = None
+    level = 1.0
+    for index, (begin, change) in enumerate(starts):
+        end = bounds[index + 1]
+        if change is not None and change < 1:
+            # A drop: soiled until the next rise, at its share of the clean days before
+            soiled[begin:end] = [True] * (end - begin)
+            level = _pooled(values[begin:end]) / reference if reference else 1.0
+            continue
+        if change is None and starts[1][1] > 1:
+            # Before the first cleaning: soiled since the data began
+            soiled[begin:end] = [True] * (end - begin)
+            continue
+        if change is None:
+            reference = _pooled(values[max(begin, end - STEP_REFERENCE_DAYS) : end])
+            level = 1.0
+            continue
+        # After a cleaning its first days are the clean share; leaves then gather slowly
+        reference = _pooled(values[begin : min(end, begin + CLEAN_DAYS)])
+        level = 1.0
+        for day in range(begin + GRADUAL_DAYS, end + 1):
+            share = _pooled(values[day - GRADUAL_DAYS : day]) / reference
+            if share < GRADUAL_LEVEL:
+                soiled[day - GRADUAL_DAYS : day] = [True] * GRADUAL_DAYS
+            if day == end:
+                level = share if share < GRADUAL_LEVEL else 1.0
+    state.level = min(level, 1.0)
+    start = None
+    for index, flag in enumerate([*soiled, False]):
+        if flag and start is None:
+            start = index
+        elif not flag and start is not None:
+            state.soiled.append((days[start][0], days[index][0] if index < len(days) else None))
+            start = None
     return state
 
 
