@@ -91,6 +91,8 @@ function dragScroll(event) {
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const WEATHER_DAYS_KEY = "sunflow.live.weatherDays";
 const FLOW_VIEW_KEY = "sunflow.live.flowView";
+// On a phone the dock stays at the bottom while scrolling as long as it takes at most this share of the screen
+const DOCK_SHARE = 0.6;
 const FLOW_VIEWS = {
   diagram: [t("Diagramm"), "M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM5 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM10.5 8.5l-4 7M13.5 8.5l4 7M8 18h8"],
   bars: [t("Balken"), "M3 7h10M15 7h6M3 17h5M10 17h11"],
@@ -166,7 +168,11 @@ class SunflowLive extends LitElement {
     this._loadToday();
     this._stopLive = poll(() => this._loadLive(), REFRESH_MS);
     this._stopToday = poll(() => this._loadToday(), TODAY_REFRESH_MS);
-    this._onResize = () => this._updateScroll();
+    this._onResize = () => {
+      this._updateScroll();
+      this._checkDock();
+    };
+    this._dockObserver = new ResizeObserver(() => this._checkDock());
     window.addEventListener("resize", this._onResize);
   }
 
@@ -176,6 +182,8 @@ class SunflowLive extends LitElement {
     this._stopToday();
     window.removeEventListener("resize", this._onResize);
     document.removeEventListener("pointerdown", this._outside);
+    this._dockObserver.disconnect();
+    this._dock = null;
     this._unwatch?.();
     this._watched = null;
   }
@@ -314,12 +322,23 @@ class SunflowLive extends LitElement {
 
   updated() {
     this._updateScroll();
+    const dock = this.renderRoot.querySelector(".dock");
+    if (dock !== this._dock) {
+      this._dock = dock;
+      this._dockObserver.disconnect();
+      if (dock) this._dockObserver.observe(dock);
+    }
     const graphic = this.renderRoot.querySelector("svg.flow");
     if (graphic !== this._watched) {
       this._unwatch?.();
       this._watched = graphic;
       this._unwatch = graphic ? animate(graphic) : null;
     }
+  }
+
+  /** The dock sticks to the bottom while there is room for it (quick controls and today's figures grow). */
+  _checkDock() {
+    this._dock?.classList.toggle("stick", this._dock.offsetHeight <= window.innerHeight * DOCK_SHARE);
   }
 
   /** Arrows only where more forecast is hidden. */
@@ -788,6 +807,12 @@ class SunflowLive extends LitElement {
     @media (max-width: 700px) {
       /* Below the content sits the fixed menu bar */
       :host { min-height: calc(100dvh - 96px - env(safe-area-inset-bottom)); }
+      /* Above the menu bar while scrolling, the flow passes beneath */
+      .dock.stick {
+        position: sticky; bottom: calc(57px + env(safe-area-inset-bottom)); z-index: 5;
+        margin-inline: -8px; padding: 8px; background: var(--sf-surface);
+        box-shadow: 0 -6px 12px -8px rgb(0 0 0 / 0.25);
+      }
     }
     h1 { margin: 0; font-size: 20px; }
     h2 { margin: 0 0 8px; font-size: 16px; }

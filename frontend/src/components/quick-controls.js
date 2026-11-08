@@ -10,6 +10,8 @@ import { recall, remember } from "../lib/view-cache.js";
 const REFRESH_MS = 30 * 1000;
 const KEPT_MS = 10 * 60 * 1000;
 const MENU_WIDTH = 190;
+// Room a menu needs below its button, else it opens upwards (docked at the bottom of a phone)
+const MENU_HEIGHT = 220;
 // The plan is recomputed in the background after a change
 const REPLAN_DELAY_MS = 2500;
 // Overrides from the live view last until midnight, like the control tab's default
@@ -54,7 +56,9 @@ class SunflowQuickControls extends LitElement {
   _toggleMenu(menu, e) {
     if (this._menu === menu) return this._closeMenu();
     // Opens towards the side with room
-    this._menuLeft = e.currentTarget.getBoundingClientRect().left + MENU_WIDTH < window.innerWidth;
+    const box = e.currentTarget.getBoundingClientRect();
+    this._menuLeft = box.left + MENU_WIDTH < window.innerWidth;
+    this._menuUp = box.bottom + MENU_HEIGHT > window.innerHeight && box.top > MENU_HEIGHT;
     this._menu = menu;
     document.addEventListener("pointerdown", this._outside);
   }
@@ -172,7 +176,7 @@ class SunflowQuickControls extends LitElement {
         ${SHORT[mode]} <span aria-hidden="true">▾</span>
       </button>
       ${open
-        ? html`<ul class="menu ${this._menuLeft ? "left" : ""}" role="listbox" aria-label=${label}
+        ? html`<ul class="menu ${this._menuLeft ? "left" : ""} ${this._menuUp ? "up" : ""}" role="listbox" aria-label=${label}
             @keydown=${(e) => e.key === "Escape" && this._closeMenu()}>
             ${Object.entries(MODES).map(
               ([value, name]) => html`<li role="option" aria-selected=${mode === value}>
@@ -201,7 +205,7 @@ class SunflowQuickControls extends LitElement {
         <span aria-hidden="true">▾</span>
       </button>
       ${open
-        ? html`<ul class="menu ${this._menuLeft ? "left" : ""}" role="listbox" aria-label=${t("Fahrzeug an {name}", { name: device.name })}
+        ? html`<ul class="menu ${this._menuLeft ? "left" : ""} ${this._menuUp ? "up" : ""}" role="listbox" aria-label=${t("Fahrzeug an {name}", { name: device.name })}
             @keydown=${(e) => e.key === "Escape" && this._closeMenu()}>
             ${options.map(
               (o) => html`<li role="option" aria-selected=${o.id === selected}>
@@ -274,6 +278,7 @@ class SunflowQuickControls extends LitElement {
       border: 1px solid var(--sf-border); border-radius: 10px; background: var(--sf-surface); box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
     }
     .menu.left { right: auto; left: 0; }
+    .menu.up { top: auto; bottom: calc(100% + 4px); }
     .menu button {
       width: 100%; min-height: 36px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent;
       text-align: left; cursor: pointer; font-size: 14px;
