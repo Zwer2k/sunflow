@@ -134,6 +134,7 @@ class SunflowLive extends LitElement {
     _todayError: { state: true },
     _scroll: { state: true },
     _flowView: { state: true },
+    _viewMenu: { state: true },
   };
 
   constructor() {
@@ -153,6 +154,10 @@ class SunflowLive extends LitElement {
       this._flowView = null;
     }
     if (!(this._flowView in FLOW_VIEWS)) this._flowView = "diagram";
+    this._viewMenu = false;
+    this._outside = (e) => {
+      if (!e.composedPath().some((el) => el.classList?.contains("view-menu"))) this._closeViewMenu();
+    };
   }
 
   connectedCallback() {
@@ -170,6 +175,7 @@ class SunflowLive extends LitElement {
     this._stopLive();
     this._stopToday();
     window.removeEventListener("resize", this._onResize);
+    document.removeEventListener("pointerdown", this._outside);
     this._unwatch?.();
     this._watched = null;
   }
@@ -329,7 +335,19 @@ class SunflowLive extends LitElement {
     list?.scrollBy({ left: direction * list.clientWidth * 0.8, behavior: "smooth" });
   }
 
+  _toggleViewMenu() {
+    if (this._viewMenu) return this._closeViewMenu();
+    this._viewMenu = true;
+    document.addEventListener("pointerdown", this._outside);
+  }
+
+  _closeViewMenu() {
+    this._viewMenu = false;
+    document.removeEventListener("pointerdown", this._outside);
+  }
+
   _setFlowView(view) {
+    this._closeViewMenu();
     this._flowView = view;
     try {
       localStorage.setItem(FLOW_VIEW_KEY, view);
@@ -384,6 +402,7 @@ class SunflowLive extends LitElement {
         ${live.losses_w !== null && live.losses_w !== undefined
           ? html`<p class="small muted" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>${t("Verluste Wechselrichter/Speicher: {power} (Ø letzte Minuten)", { power: formatValue(live.losses_w, "W") })}</p>`
           : nothing}
+        ${this._renderViewMenu(view)}
         <div class="flow-switch range" role="group" aria-label=${t("Ansicht Energiefluss")}>
           ${Object.entries(FLOW_VIEWS).map(
             ([key, [label, icon]]) => html`<button class=${key === view ? "active" : ""} aria-pressed=${key === view}
@@ -393,6 +412,30 @@ class SunflowLive extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /** On a phone the views as one button with a dropdown, so the losses keep their line. */
+  _renderViewMenu(view) {
+    const [current, currentIcon] = FLOW_VIEWS[view];
+    const label = t("Ansicht Energiefluss");
+    return html`<div class="view-menu">
+      <button class="view-button" aria-haspopup="listbox" aria-expanded=${this._viewMenu}
+        title=${`${label}: ${current}`} aria-label=${`${label}: ${current}`} @click=${() => this._toggleViewMenu()}
+        @keydown=${(e) => e.key === "Escape" && this._closeViewMenu()}>
+        <svg viewBox="0 0 24 24" class="mini-icon" aria-hidden="true"><path d=${currentIcon}></path></svg>
+        <span aria-hidden="true">▾</span>
+      </button>
+      ${this._viewMenu
+        ? html`<ul class="menu" role="listbox" aria-label=${label} @keydown=${(e) => e.key === "Escape" && this._closeViewMenu()}>
+            ${Object.entries(FLOW_VIEWS).map(
+              ([key, [name, icon]]) => html`<li role="option" aria-selected=${key === view}>
+                <button class=${key === view ? "on" : ""} @click=${() => this._setFlowView(key)}>
+                  <svg viewBox="0 0 24 24" class="mini-icon" aria-hidden="true"><path d=${icon}></path></svg>${name}</button>
+              </li>`,
+            )}
+          </ul>`
+        : nothing}
+    </div>`;
   }
 
   _renderFlow(live) {
@@ -422,13 +465,13 @@ class SunflowLive extends LitElement {
     const soc = battery?.soc_pct === null || battery?.soc_pct === undefined ? "" : ` ${Math.round(battery.soc_pct)} %`;
     const sources = [
       ["pv", "PV", Math.max(live.pv_w ?? 0, 0), COLOR.pv, pvDisplay],
-      battery ? ["battery", `${t("Batterie")}${soc}`, discharge, COLOR.battery, battery.display] : null,
+      battery ? ["battery", t("Batterie"), discharge, COLOR.battery, battery.display] : null,
       ["grid", t("Netzbezug"), imported, COLOR.grid, displays.grid],
     ].filter(Boolean);
     const sinks = [
       ["home", t("Haus"), homeBase, COLOR.home, displays.load],
       ...consumers.map((c, i) => [c.kind in ICONS ? c.kind : "load", c.name, Math.max(c.power_w ?? 0, 0), COLOR.consumers[i], c.display]),
-      battery ? ["battery", `${t("Batterie")}${soc}`, charge, COLOR.battery, battery.display] : null,
+      battery ? ["battery", t("Batterie"), charge, COLOR.battery, battery.display] : null,
       ["grid", t("Einspeisung"), exported, COLOR.grid, displays.grid],
     ].filter(Boolean);
     const sum = (parts) => parts.reduce((s, [, , w]) => s + w, 0);
@@ -438,23 +481,24 @@ class SunflowLive extends LitElement {
     // Always listed, so the legend keeps its layout
     sinks.push(["losses", t("Verluste / Messdifferenz"), Math.max(rest, 0), "var(--sf-muted)", null, true]);
     sources.push(["losses", t("Messdifferenz"), Math.max(-rest, 0), "var(--sf-muted)", null, true]);
-    const total = Math.max(sum(sources), sum(sinks), ACTIVE_W);
     const restTitle = t("Bilanz minus gemessener Abgänge: Wandlungsverluste von Wechselrichter und Speicher und Zeitversatz der Messungen");
     const entry = ([icon, label, w, color, display, unknown]) => html`<span class="entry ${w > ACTIVE_W ? "" : "idle"} ${unknown ? "rest" : ""}"
       title=${unknown ? `${label}: ${restTitle}` : nothing}>
       <svg viewBox="0 0 24 24" class="mini-icon" style="stroke: ${color}" aria-hidden="true"><path d=${ICONS[icon]}></path></svg>
-      <span class="label ${icon === "grid" ? "long" : ""}">${label}</span>${icon === "grid" ? html`<span class="label short">${t("Netz")}</span>` : nothing}
+      <span class="entry-name ${icon === "grid" ? "long" : ""}">${label}</span>${icon === "grid" ? html`<span class="entry-name short">${t("Netz")}</span>` : nothing}
       <strong>${formatPower(w, display)}</strong>
     </span>`;
     // Grid and losses last and together, on one line on a phone too
     const row = (heading, parts) => {
+      // Each bar is the whole flow; nothing flowing: one empty track
       const active = parts.filter(([, , w]) => w > ACTIVE_W);
       return html`<div class="bar-row">
         <div class="bar-head small muted">${heading}</div>
         <div class="bar" aria-hidden="true">
-          ${active.map(([, label, w, color, , unknown]) => html`<span class="segment ${unknown ? "unknown" : ""}"
-            style="flex-grow: ${w}; ${unknown ? "" : `background: ${color}`}" title="${label}: ${formatValue(w, "W")}"></span>`)}
-          <span class="segment" style="flex-grow: ${Math.max(total - sum(active), 0)}"></span>
+          ${active.length
+            ? active.map(([, label, w, color, , unknown]) => html`<span class="segment ${unknown ? "unknown" : ""}"
+                style="flex-grow: ${w}; ${unknown ? "" : `background: ${color}`}" title="${label}: ${formatValue(w, "W")}"></span>`)
+            : html`<span class="segment empty"></span>`}
         </div>
         <ul class="bar-legend">
           ${parts.slice(0, -2).map((part) => html`<li>${entry(part)}</li>`)}
@@ -686,21 +730,22 @@ class SunflowLive extends LitElement {
           ? html`<p class="small warn-text" title=${this._todayError}>${t("Tageswerte nicht aktuell, Abruf fehlgeschlagen")}</p>`
           : nothing}
         <div class="tiles">
-          <div class="tile"><div class="small muted">${t("PV erzeugt")}</div><div class="value">${kwh(today.pv)}</div></div>
-          <div class="tile"><div class="small muted">${t("Verbraucht")}</div><div class="value">${kwh(today.consumption)}</div></div>
-          <div class="tile"><div class="small muted">${t("Netzbezug")}</div><div class="value">${kwh(today.imported)}</div></div>
-          <div class="tile"><div class="small muted">${t("Eingespeist")}</div><div class="value">${kwh(today.exported)}</div></div>
-          ${today.losses !== null && today.losses !== undefined
-            ? html`<div class="tile" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>
-                <div class="small muted">${t("Verluste WR/Speicher")}</div><div class="value">${kwh(today.losses)}</div>
-              </div>`
-            : nothing}
-          <div class="tile highlight" title=${t("Anteil des Verbrauchs ohne Netzbezug")}>
-            <div class="small muted">${t("Autarkie")}</div><div class="value">${pct(today.autarky)}</div>
-          </div>
-          <div class="tile highlight" title=${t("Anteil der PV-Erzeugung, der selbst genutzt wird")}>
-            <div class="small muted">${t("Eigenverbrauch")}</div><div class="value">${pct(today.selfConsumption)}</div>
-          </div>
+          ${[
+            [t("PV erzeugt"), t("PV"), kwh(today.pv)],
+            [t("Verbraucht"), t("Verbrauch"), kwh(today.consumption)],
+            [t("Netzbezug"), t("Bezug"), kwh(today.imported)],
+            [t("Eingespeist"), t("Einspeisung"), kwh(today.exported)],
+            today.losses !== null && today.losses !== undefined
+              ? [t("Verluste WR/Speicher"), t("Verluste"), kwh(today.losses), false,
+                t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")]
+              : null,
+            [t("Autarkie"), t("Autarkie"), pct(today.autarky), true, t("Anteil des Verbrauchs ohne Netzbezug")],
+            [t("Eigenverbrauch"), t("Eigenverbr."), pct(today.selfConsumption), true, t("Anteil der PV-Erzeugung, der selbst genutzt wird")],
+          ].filter(Boolean).map(([label, short, value, highlight, title]) => html`<div class="tile ${highlight ? "highlight" : ""}"
+            title=${title ?? label}>
+            <div class="small muted"><span class="long">${label}</span><span class="short">${short}</span></div>
+            <div class="value">${value}</div>
+          </div>`)}
         </div>
       </section>
     `;
@@ -833,11 +878,32 @@ class SunflowLive extends LitElement {
     .soc-ring { fill: none; stroke-width: 4; stroke-linecap: round; }
     .flow-foot { display: flex; align-items: center; gap: 8px; }
     .flow-switch { margin-left: auto; flex: none; }
+    .view-menu { display: none; position: relative; margin-left: auto; flex: none; }
+    .view-button {
+      display: flex; align-items: center; gap: 4px; min-height: 34px; padding: 0 8px; border: 1px solid var(--sf-border);
+      border-radius: 8px; background: transparent; color: var(--sf-text); cursor: pointer; font: inherit; font-size: 12px;
+    }
+    .view-menu .menu {
+      position: absolute; bottom: calc(100% + 4px); right: 0; z-index: 20; min-width: 150px; margin: 0; padding: 4px;
+      list-style: none; border: 1px solid var(--sf-border); border-radius: 10px; background: var(--sf-surface);
+      box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+    }
+    .view-menu .menu button {
+      display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 10px; border: 0;
+      border-radius: 7px; background: transparent; color: var(--sf-text); text-align: left; cursor: pointer; font: inherit; font-size: 14px;
+    }
+    .view-menu .menu button:hover { background: var(--sf-subtle); }
+    .view-menu .menu button.on { font-weight: 600; background: var(--sf-primary-bg); }
+    @media (max-width: 600px) {
+      .flow-switch { display: none; }
+      .view-menu { display: block; }
+    }
     .flow-switch button { display: flex; align-items: center; min-width: 32px; justify-content: center; }
     .bars { display: flex; flex-direction: column; gap: 12px; }
     .bar-row { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 4px 10px; }
     .bar { display: flex; gap: 2px; height: 16px; }
     .segment { min-width: 0; border-radius: 4px; }
+    .segment.empty { flex-grow: 1; background: var(--sf-subtle); }
     .segment.unknown {
       background: repeating-linear-gradient(135deg, var(--sf-muted) 0 3px, transparent 3px 6px);
       box-shadow: inset 0 0 0 1px var(--sf-muted);
@@ -851,7 +917,7 @@ class SunflowLive extends LitElement {
     .bar-legend .short { display: none; }
     @media (max-width: 600px) {
       /* Losses by their icon only and the grid as "Netz" (the row says which way), so both fit one line */
-      .bar-legend .rest .label, .bar-legend .long { display: none; }
+      .bar-legend .rest .entry-name, .bar-legend .long { display: none; }
       .bar-legend .short { display: inline; }
       .bar-legend li.pair { gap: 10px; }
     }
@@ -870,6 +936,17 @@ class SunflowLive extends LitElement {
     .level { height: 4px; border-radius: 2px; background: var(--sf-subtle); margin-top: 3px; overflow: hidden; }
     .level span { display: block; height: 100%; background: var(--tile-color); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+    .today .short { display: none; }
+    @media (max-width: 600px) {
+      /* Today's figures in two rows on a phone */
+      .today .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+      .today .tile { padding: 6px; min-width: 0; }
+      .today .long { display: none; }
+      .today .short { display: inline; }
+      .today .tile .small { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .today .tile .value { font-size: 15px; white-space: nowrap; }
+    }
+    @media (max-width: 380px) { .today .tile .value { font-size: 13px; } }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 8px 12px; }
     .tile.highlight { background: var(--sf-primary-bg); }
     h2 .source { font-weight: 400; }
