@@ -156,6 +156,11 @@ action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
 - **PV forecast**: Sunflow compares forecast and measurement per hour and cloud cover and learns a
   correction factor, per roof plane when strings are assigned to it. Recent days count more
   (half-life 30 days). "Relearn from today" discards old values of a plane.
+- **The day so far**: the PV measured in the last minutes carries on into the next hour. How much
+  of the raw forecast came in the last three hours carries the rest of the day, half of it after
+  three hours: a clear day above what was learned lifts the afternoon too, a dull one lowers it.
+  Sunflow then also plans these hours less cautiously. From tomorrow on what was learned applies
+  again.
 - **Uncertain forecast**: with "Cautious" Sunflow plans more with the bad case
   (Solcast p10), so it rather tops up cheaply at night than buys expensive power when the sun
   does not show.

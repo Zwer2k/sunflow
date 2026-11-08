@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.27
+
+- PV planning follows how the day went so far: the share of the raw forecast measured over the last three hours carries over to the rest of today (half of it after three hours), on top of the short live nowcast. A clear day above the learned correction no longer drops back to it for the afternoon; a dull one is lowered. Those hours also lean less towards the pessimistic forecast. Tomorrow keeps the learned correction.
+
 ## 0.78.26
 
 - Analysis: new "PV per plane" – per roof plane the measured strings against Solcast's raw forecast, hourly over the last 3, 7 or 14 days, and ahead the raw forecast with its p10–p90 range and the expectation Sunflow learned. The shares above each chart say how much of the raw forecast came and how much is expected.

@@ -159,6 +159,11 @@ zum günstigsten Zeitpunkt ein (siehe [Sunflow-Integration](integration.md)).
 - **PV-Prognose**: Sunflow vergleicht Prognose und Messung je Stunde und Bewölkung und lernt
   einen Korrekturfaktor, je Dachfläche, wenn ihr Strings zugeordnet sind. Neuere Tage zählen
   mehr (Halbwertszeit 30 Tage). „Neu lernen ab heute“ verwirft alte Werte einer Fläche.
+- **Der Tag bisher**: Die gemessene PV der letzten Minuten setzt die nächste Stunde fort. Wie viel
+  der Rohprognose in den letzten drei Stunden ankam, trägt den Rest des Tages, nach drei Stunden
+  noch halb: Ein klarer Tag, der über dem Gelernten liegt, hebt auch den Nachmittag, ein trüber
+  senkt ihn. Diese Stunden plant Sunflow dann auch weniger vorsichtig. Ab morgen gilt wieder
+  das Gelernte.
 - **Unsichere Prognose**: Mit „Vorsichtig“ plant Sunflow mehr mit dem schlechten Fall (Solcast
   p10), sodass es eher nachts günstig nachlädt, als bei wenig Sonne teuer nachzukaufen.
 - **Hausverbrauch**: Bis genug Verlauf vorliegt, rechnet Sunflow mit Stundenmitteln, danach
