@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.41
+
+- Live: no title "Live", subtitle and time of the values any more – the tab says where you are, and the room goes to the energy flow. The weather row stays where it is switched on.
+
 ## 0.78.40
 
 - Live on a PC: the diagram, house and 3D graphics take the height the heading, quick controls and today's figures leave (measured, instead of a fixed allowance), so the page no longer scrolls with several pinned loads or on a low screen; at least 160 px.
