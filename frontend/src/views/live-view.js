@@ -457,7 +457,7 @@ class SunflowLive extends LitElement {
   }
 
   /** Where the power comes from and where it goes, as two stacked bars on one scale. */
-  _renderBars(live, { battery, displays, pvDisplay, flows, consumers, homeBase, summary, batteryState }) {
+  _renderBars(live, { battery, displays, pvDisplay, consumers, homeBase, summary, batteryState }) {
     const charge = Math.max(battery?.power_w ?? 0, 0);
     const discharge = Math.max(-(battery?.power_w ?? 0), 0);
     const imported = Math.max(live.grid_w ?? 0, 0);
@@ -509,7 +509,7 @@ class SunflowLive extends LitElement {
     return html`<section class="bars" role="img" aria-label=${t("Energiefluss: {summary}", { summary })}>
       ${row(t("Woher"), sources)}
       ${row(t("Wohin"), sinks)}
-      ${battery ? html`<p class="small muted">${t("Batterie")}${soc} · ${batteryState}${flows.house ? html` · ${t("Haus gesamt {power}", { power: formatPower(flows.house, displays.load) })}` : nothing}</p>` : nothing}
+      ${battery ? html`<p class="small muted">${t("Batterie")}${soc} · ${batteryState}</p>` : nothing}
     </section>`;
   }
 
