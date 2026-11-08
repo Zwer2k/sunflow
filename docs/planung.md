@@ -159,14 +159,20 @@ zum günstigsten Zeitpunkt ein (siehe [Sunflow-Integration](integration.md)).
 - **PV-Prognose**: Sunflow vergleicht Prognose und Messung je Stunde und Bewölkung und lernt
   einen Korrekturfaktor, je Dachfläche, wenn ihr Strings zugeordnet sind. Neuere Tage zählen
   mehr (Halbwertszeit 30 Tage). „Neu lernen ab heute“ verwirft alte Werte einer Fläche.
-- **Laub und Säubern**: Bei zwei oder mehr Flächen vergleicht Sunflow jeden Tag, wie viel ihrer
-  Prognose jede Fläche gegenüber den anderen liefert; Wetter und Prognosefehler heben sich dabei
-  auf. Fällt eine Fläche an mindestens zwei Tagen um mehr als 30 % gegenüber den Tagen davor
-  zurück, gilt sie als verschmutzt: Diese Tage lernt sie nicht mit, und Sunflow plant sie mit dem
-  geringeren Anteil, bis sie wieder so viel liefert. Steigt sie sprunghaft (Laub geräumt), fallen
-  die Tage davor aus dem Lernen. So bleibt das Gelernte für die saubere Fläche erhalten, auch wenn
-  im Herbst immer wieder Laub fällt. Bei nur zwei Flächen gilt die als verändert, deren eigener
-  Anteil an der Prognose sich stärker bewegt hat.
+- **Schnee, Laub und Säubern**: Bei zwei oder mehr Flächen vergleicht Sunflow jeden Tag, wie viel
+  ihrer Prognose jede Fläche gegenüber den anderen liefert; Wetter und Prognosefehler heben sich
+  dabei auf. Als verschmutzt gilt eine Fläche,
+  - wenn sie an mindestens zwei Tagen um mehr als 30 % gegenüber den Tagen davor zurückfällt
+    (z. B. Schnee), oder
+  - wenn sie nach dem letzten Säubern über drei Tage unter 80 % dessen liefert, was sie in der
+    ersten Woche danach lieferte (Laub, das sich nach und nach sammelt).
+
+  Diese Tage lernt sie nicht mit, und Sunflow plant sie mit dem geringeren Anteil, bis sie wieder
+  so viel liefert. Steigt sie sprunghaft (Laub geräumt, Schnee getaut), fallen die Tage davor aus
+  dem Lernen. So bleibt das Gelernte für die saubere Fläche erhalten, auch wenn im Herbst immer
+  wieder Laub fällt. Ein langsames Nachlassen ohne erkanntes Säubern davor erkennt nur das Modell
+  nach Sonnenstand. Bei nur zwei Flächen gilt die als verändert, deren eigener Anteil an der
+  Prognose sich stärker bewegt hat.
 - **Der Tag bisher**: Die gemessene PV der letzten Minuten setzt die nächste Stunde fort. Wie viel
   der Rohprognose in den letzten drei Stunden ankam, trägt den Rest des Tages, nach drei Stunden
   noch halb: Ein klarer Tag, der über dem Gelernten liegt, hebt auch den Nachmittag, ein trüber

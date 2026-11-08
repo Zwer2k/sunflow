@@ -672,11 +672,11 @@ class SunflowAnalysis extends LitElement {
     if (!last) return nothing;
     const day = (iso) => new Date(iso).toLocaleDateString(locale());
     return html`<span class="muted">· ${last.to === null
-      ? t("liefert seit {date} nur {value} des sauberen Zustands (Laub o. Ä., gemessen an den anderen Flächen): plant damit und lernt diese Tage nicht mit", {
+      ? t("liefert seit {date} nur {value} des sauberen Zustands (Schnee, Laub o. Ä., gemessen an den anderen Flächen): plant damit und lernt diese Tage nicht mit", {
           date: day(last.from),
           value: pct(state.level),
         })
-      : t("seit {date} wieder sauber (gemessen an den anderen Flächen): die Tage davor mit Laub o. Ä. lernt Sunflow nicht mit", { date: day(last.to) })}</span>`;
+      : t("seit {date} wieder sauber (gemessen an den anderen Flächen): die Tage davor mit Schnee, Laub o. Ä. lernt Sunflow nicht mit", { date: day(last.to) })}</span>`;
   }
 
   _renderAppliances() {

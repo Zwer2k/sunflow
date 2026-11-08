@@ -159,7 +159,7 @@ How well do forecasts and decisions match reality?
 - **Efficiencies**: battery and inverter over 30 days, 90 days or a year.
 - **Learning**: how much of the PV forecast actually arrives (overall, per cloud cover,
   per hour, per plane) and how far the house consumption model is. Per roof plane, "Relearn from
-  today" resets learning, e.g. after trimming a tree. Sunflow notices leaves and cleaning itself
+  today" resets learning, e.g. after trimming a tree. Sunflow notices snow, leaves and cleaning itself
   against the other planes and shows it at the plane (see [Planning](planning.md#learning)).
 - **PV per plane**: per roof plane the measured strings against Solcast's raw forecast, hourly over
   the last 3, 7 or 14 days, and to the right the raw forecast with its range (p10 to p90) and what

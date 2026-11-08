@@ -15,6 +15,7 @@ LEAVES = [
     (735, 3602), (911, 2563), (1784, 5853), (620, 4160),
 ]  # fmt: skip
 CLEAR = [(1800, 2930), (2510, 4899)]
+SLIDE = [0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.7]
 ROOF = [
     (17753, 28246), (11888, 19359), (18825, 25217), (16461, 26081), (10114, 21752), (13477, 19976),
     (15821, 21955), (5745, 11831), (4993, 8514), (13785, 20872), (3215, 13764), (8678, 9719), (11784, 16416),
@@ -51,6 +52,25 @@ def clean(days: int) -> list[tuple[float, float]]:
                 "level": 0.551,
             },
             id="leaves again",
+        ),
+        pytest.param(
+            # Leaves gathering slowly after the cleaning
+            [*LEAVES, *CLEAR, *clean(3), *[(a * share, f) for (a, f), share in zip(clean(10)[3:], SLIDE, strict=True)]],
+            {
+                "changes": [{"since": "2026-11-06", "change": 1.56}],
+                "soiled": [{"from": "2026-10-27", "to": "2026-11-06"}, {"from": "2026-11-15", "to": None}],
+                "level": 0.708,
+            },
+            id="leaves gathering",
+        ),
+        pytest.param(
+            [*LEAVES, *CLEAR, *clean(5), *[(a * 0.2, f) for a, f in clean(8)[5:]]],
+            {
+                "changes": [{"since": "2026-11-06", "change": 1.56}, {"since": "2026-11-14", "change": 0.2}],
+                "soiled": [{"from": "2026-10-27", "to": "2026-11-06"}, {"from": "2026-11-14", "to": None}],
+                "level": 0.197,
+            },
+            id="snow",
         ),
         pytest.param([*LEAVES, CLEAR[0], LEAVES[0]], {"changes": [], "soiled": [], "level": 1.0}, id="one bright day"),
         pytest.param(LEAVES, {"changes": [], "soiled": [], "level": 1.0}, id="no change"),

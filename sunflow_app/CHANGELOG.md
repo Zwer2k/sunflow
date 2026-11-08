@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.29
+
+- Soiling per plane also catches leaves gathering bit by bit: after a cleaning was found, the plane's share in its first week is the clean share, and three days below 80 % of it count as soiled (not learned, planned at the lower share). A sudden drop now reads as snow, leaves or the like.
+
 ## 0.78.28
 
 - PV learning notices leaves and cleaning per plane: each day a plane's share of its forecast is compared with the other planes, so weather and forecast errors cancel out. A drop of more than 30 % on at least two days counts as soiled – those days are not learned and the plane is planned at its lower share until it recovers; a sudden rise (leaves cleared) drops the soiled days before it from learning. The learned clean state survives leaves coming back all autumn. Shown at the plane under Analysis → Learning. With two planes, the one whose own share moved more is the one that changed.
