@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.40
+
+- Live on a PC: the diagram, house and 3D graphics take the height the heading, quick controls and today's figures leave (measured, instead of a fixed allowance), so the page no longer scrolls with several pinned loads or on a low screen; at least 160 px.
+
 ## 0.78.39
 
 - On a phone pages no longer scroll by an empty 64 px: the room for the bottom bar was added below the screen height instead of within it. The live view now takes exactly the height between the header and the bottom bar, whatever lies above it.

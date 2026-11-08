@@ -91,6 +91,8 @@ function dragScroll(event) {
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const WEATHER_DAYS_KEY = "sunflow.live.weatherDays";
 const FLOW_VIEW_KEY = "sunflow.live.flowView";
+// The view's graphic, sized to the room left by heading and dock
+const GRAPHICS = "svg.flow, sf-house-scene, sf-iso-scene";
 // On a phone the dock stays at the bottom while scrolling as long as it takes at most this share of the screen
 const DOCK_SHARE = 0.6;
 const FLOW_VIEWS = {
@@ -344,8 +346,17 @@ class SunflowLive extends LitElement {
   /** Exactly the screen's height, from what lies above and below the view (header, menu bar), so nothing scrolls without content. */
   _fitHeight() {
     const top = this.getBoundingClientRect().top + window.scrollY;
-    const height = `${Math.max(window.innerHeight - top - spaceBelow(this), 0)}px`;
+    const available = Math.max(window.innerHeight - top - spaceBelow(this), 0);
+    const height = `${available}px`;
     if (this.style.minHeight !== height) this.style.minHeight = height;
+    // The graphic gets what heading, dock and the rest leave (the dock grows with quick controls)
+    const children = [...this.renderRoot.children].filter((el) => el.tagName !== "STYLE" && getComputedStyle(el).display !== "none");
+    const graphic = children.find((el) => el.matches(GRAPHICS));
+    if (!graphic) return;
+    const gap = parseFloat(getComputedStyle(this).rowGap) || 0;
+    const others = children.filter((el) => el !== graphic).reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
+    const room = `${Math.floor(available - others - gap * (children.length - 1))}px`;
+    if (this.style.getPropertyValue("--flow-room") !== room) this.style.setProperty("--flow-room", room);
   }
 
   /** The dock sticks to the bottom while there is room for it (quick controls and today's figures grow). */
@@ -847,7 +858,7 @@ class SunflowLive extends LitElement {
       .heading .weather { flex: 0 1 auto; flex-wrap: nowrap; justify-content: flex-end; }
     }
     /* Header, title and today's tiles stay visible below the diagram without scrolling */
-    .flow { width: 100%; max-width: 900px; height: auto; max-height: max(260px, calc(100dvh - 340px)); display: block; margin: 0 auto; }
+    .flow { width: 100%; max-width: 900px; height: auto; max-height: max(160px, var(--flow-room, calc(100dvh - 340px))); display: block; margin: 0 auto; }
     .edge { fill: none; stroke-linecap: round; }
     .edge.idle { stroke: var(--sf-border); stroke-width: 1.5; }
     .edge.base { opacity: 0.25; }
