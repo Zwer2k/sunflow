@@ -435,10 +435,18 @@ class SunflowLive extends LitElement {
     // What comes in but is not measured going out: mostly conversion losses, partly readings taken
     // at different moments; the other way round (more out than in) it can only be the readings
     const rest = sum(sources) - sum(sinks);
-    if (rest > ACTIVE_W) sinks.push(["losses", t("Verluste / Messdifferenz"), rest, "var(--sf-muted)", null, true]);
-    if (-rest > ACTIVE_W) sources.push(["losses", t("Messdifferenz"), -rest, "var(--sf-muted)", null, true]);
+    // Always listed, so the legend keeps its layout
+    sinks.push(["losses", t("Verluste / Messdifferenz"), Math.max(rest, 0), "var(--sf-muted)", null, true]);
+    sources.push(["losses", t("Messdifferenz"), Math.max(-rest, 0), "var(--sf-muted)", null, true]);
     const total = Math.max(sum(sources), sum(sinks), ACTIVE_W);
     const restTitle = t("Bilanz minus gemessener Abgänge: Wandlungsverluste von Wechselrichter und Speicher und Zeitversatz der Messungen");
+    const entry = ([icon, label, w, color, display, unknown]) => html`<span class="entry ${w > ACTIVE_W ? "" : "idle"} ${unknown ? "rest" : ""}"
+      title=${unknown ? `${label}: ${restTitle}` : nothing}>
+      <svg viewBox="0 0 24 24" class="mini-icon" style="stroke: ${color}" aria-hidden="true"><path d=${ICONS[icon]}></path></svg>
+      <span class="label ${icon === "grid" ? "long" : ""}">${label}</span>${icon === "grid" ? html`<span class="label short">${t("Netz")}</span>` : nothing}
+      <strong>${formatPower(w, display)}</strong>
+    </span>`;
+    // Grid and losses last and together, on one line on a phone too
     const row = (heading, parts) => {
       const active = parts.filter(([, , w]) => w > ACTIVE_W);
       return html`<div class="bar-row">
@@ -449,11 +457,8 @@ class SunflowLive extends LitElement {
           <span class="segment" style="flex-grow: ${Math.max(total - sum(active), 0)}"></span>
         </div>
         <ul class="bar-legend">
-          ${parts.map(([icon, label, w, color, display, unknown]) => html`<li class=${w > ACTIVE_W ? "" : "idle"}
-            title=${unknown ? restTitle : nothing}>
-            <svg viewBox="0 0 24 24" class="mini-icon" style="stroke: ${color}" aria-hidden="true"><path d=${ICONS[icon]}></path></svg>
-            <span>${label}</span> <strong>${formatPower(w, display)}</strong>
-          </li>`)}
+          ${parts.slice(0, -2).map((part) => html`<li>${entry(part)}</li>`)}
+          <li class="pair">${parts.slice(-2).map(entry)}</li>
         </ul>
       </div>`;
     };
@@ -840,8 +845,16 @@ class SunflowLive extends LitElement {
     .bar-legend {
       grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px;
     }
-    .bar-legend li { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-    .bar-legend li.idle { color: var(--sf-muted); }
+    .bar-legend li { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+    .bar-legend .entry { display: flex; align-items: center; gap: 4px; }
+    .bar-legend .idle { color: var(--sf-muted); }
+    .bar-legend .short { display: none; }
+    @media (max-width: 600px) {
+      /* Losses by their icon only and the grid as "Netz" (the row says which way), so both fit one line */
+      .bar-legend .rest .label, .bar-legend .long { display: none; }
+      .bar-legend .short { display: inline; }
+      .bar-legend li.pair { gap: 10px; }
+    }
     .bar-legend strong { font-weight: 600; font-variant-numeric: tabular-nums; }
     .mini-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .tile-wrap { display: grid; }

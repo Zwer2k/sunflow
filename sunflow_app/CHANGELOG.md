@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.30
+
+- Live bars: losses and measurement difference are always listed (0 W when there is none), so the legend no longer jumps. On a phone they sit on one line with grid import or export: the grid reads "Grid" there (the row says which way) and the losses show by their icon and value.
+
 ## 0.78.29
 
 - Soiling per plane also catches leaves gathering bit by bit: after a cleaning was found, the plane's share in its first week is the clean share, and three days below 80 % of it count as soiled (not learned, planned at the lower share). A sudden drop now reads as snow, leaves or the like.
