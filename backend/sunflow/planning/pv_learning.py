@@ -10,7 +10,10 @@ becomes specific as data accumulates.
 
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sunflow.planning.pv_steps import PlaneState
 
 # Forecast (W summed over 15 minute slots) that counts as much as the level above. The
 # overall factor needs a few days (single days are dominated by forecast misses of the
@@ -49,12 +52,14 @@ class PvCorrection:
     # Mean absolute deviation (W) of the forecast before and after the correction
     error_before: float | None = None
     error_after: float | None = None
+    # Share of the learned yield the plane delivers now (leaves on it); 1 when clean
+    level: float = 1.0
 
     def factor(self, hour: int, cloud: str | None) -> float:
         """Correction for a local hour and cloud class."""
         if cloud is not None and (hour, cloud) in self.by_hour_cloud:
-            return self.by_hour_cloud[(hour, cloud)]
-        return self.by_hour.get(hour, self.overall)
+            return self.by_hour_cloud[(hour, cloud)] * self.level
+        return self.by_hour.get(hour, self.overall) * self.level
 
     def as_dict(self) -> dict[str, Any]:
         """For the API."""
@@ -69,6 +74,7 @@ class PvCorrection:
             "slots": self.slots,
             "error_before": self.error_before,
             "error_after": self.error_after,
+            "level": self.level,
         }
 
 
@@ -86,20 +92,26 @@ def learn_planes(
     planes: dict[str, list[str]],
     tz: tzinfo,
     since: dict[str, datetime] | None = None,
+    states: dict[str, PlaneState] | None = None,
 ) -> dict[str, PvCorrection]:
     """A correction per forecast plane from the strings it is measured by.
 
     planes: plane key -> string keys. Rows need plane_forecasts and actual_strings.
     since: plane key -> learning restart; older rows do not count for that plane.
+    states: plane key -> soiled days (not learned) and the plane's share now.
     """
     result = {}
     for key, strings in planes.items():
         if not strings:
             continue
         start = (since or {}).get(key)
+        state = (states or {}).get(key)
         plane_rows = []
         for row in rows:
-            if start is not None and datetime.fromisoformat(row["start"]) < start:
+            moment = datetime.fromisoformat(row["start"])
+            if start is not None and moment < start:
+                continue
+            if state is not None and state.is_soiled(moment.astimezone(tz).date()):
                 continue
             forecast = (row.get("plane_forecasts") or {}).get(key)
             measured = row.get("actual_strings") or {}
@@ -114,6 +126,8 @@ def learn_planes(
                 }
             )
         result[key] = learn(plane_rows, tz)
+        if state is not None:
+            result[key].level = state.level
     return result
 
 

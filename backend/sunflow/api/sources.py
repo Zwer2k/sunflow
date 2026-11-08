@@ -414,6 +414,7 @@ async def get_pv_learning(request: Request) -> dict[str, Any]:
                 "name": plane.display_name,
                 "strings": len(plane.strings),
                 "learn_since": plane.learn_since.isoformat() if plane.learn_since else None,
+                "state": state.as_dict() if (state := runner.plane_states.get(plane.key)) else None,
             }
             | runner.plane_corrections[plane.key].as_dict()
             for plane in config.forecast_planes

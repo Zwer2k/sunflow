@@ -20,6 +20,7 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import pv_strings
 from sunflow.ha import HAClient, HACommandError
+from sunflow.planning.pv_steps import PlaneState
 
 from .sun import sun_position
 
@@ -468,9 +469,17 @@ def string_power_entities(
 
 
 async def learn_planes(
-    client: HAClient, config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot, tz: tzinfo
+    client: HAClient,
+    config: SunflowConfig,
+    profiles: dict[str, Any],
+    snapshot: Snapshot,
+    tz: tzinfo,
+    states: dict[str, PlaneState] | None = None,
 ) -> list[PlaneSun]:
-    """Learn every plane in use from its history (minutes on a Raspberry Pi: run in the background)."""
+    """Learn every plane in use from its history (minutes on a Raspberry Pi: run in the background).
+
+    states: soiled days per plane key from the comparison with the other planes; a short history leaves them out.
+    """
     ha_config = await client.command("get_config")
     latitude, longitude = ha_config["latitude"], ha_config["longitude"]
     now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
@@ -491,6 +500,10 @@ async def learn_planes(
         forecast, forecast10 = await solcast_hours(client, plane.ref, start, now)
         measured = await measured_hours(client, entities, start, now)
         samples = await asyncio.to_thread(samples_from, forecast, measured, latitude, longitude, forecast10)
+        state = (states or {}).get(plane.key)
+        if state is not None and len({s.start.astimezone(tz).date() for s in samples}) < MIN_DAYS_TO_PLAN:
+            # A long history finds its own soiled days against the years before
+            samples = [s for s in samples if not state.is_soiled(s.start.astimezone(tz).date())]
         recent = samples
         result.soiling, result.soiling_learned = await asyncio.to_thread(_soiling, samples, now, tz)
         if result.soiling is not None:

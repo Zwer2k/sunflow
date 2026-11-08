@@ -156,6 +156,13 @@ action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
 - **PV forecast**: Sunflow compares forecast and measurement per hour and cloud cover and learns a
   correction factor, per roof plane when strings are assigned to it. Recent days count more
   (half-life 30 days). "Relearn from today" discards old values of a plane.
+- **Leaves and cleaning**: with two or more planes Sunflow compares every day how much of its
+  forecast each plane delivers against the others; weather and forecast errors cancel out. If a
+  plane falls back by more than 30 % against the days before on at least two days, it counts as
+  soiled: these days are not learned, and Sunflow plans it with the lower share until it delivers
+  as much again. If it rises suddenly (leaves cleared), the days before drop out of learning. So
+  what was learned for the clean plane stays, even with leaves falling again and again in autumn.
+  With only two planes, the one whose own share of its forecast moved more counts as changed.
 - **The day so far**: the PV measured in the last minutes carries on into the next hour. How much
   of the raw forecast came in the last three hours carries the rest of the day, half of it after
   three hours: a clear day above what was learned lifts the afternoon too, a dull one lowers it.
