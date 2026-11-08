@@ -1,10 +1,11 @@
 """Tests for the room kept free for a sunnier day than planned."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from sunflow.planning.optimizer import BatterySpec, Plan, Settings, SlotInput, optimize
-from sunflow.planning.plan import pv_headrooms
+from sunflow.planning.plan import headroom_share, pv_headrooms
 
 START = datetime(2026, 11, 7, 22, 0, tzinfo=UTC)
 SLOT = timedelta(minutes=15)
@@ -61,3 +62,37 @@ def test_battery_covers_the_night_instead_of_holding_for_the_sun() -> None:
 
     assert _night_import(roomy) < _night_import(plain)
     assert roomy.slots[SUN[-1]].soc_wh < plain.slots[SUN[-1]].soc_wh
+
+
+@pytest.mark.parametrize(
+    ("strategy", "share"),
+    [
+        pytest.param("balanced", 0.3, id="balanced: as PV risk"),
+        pytest.param("pv_absorption", 0.7, id="absorb PV"),
+        pytest.param("storage", 0.7, id="battery use"),
+    ],
+)
+def test_headroom_share(strategy: str, share: float) -> None:
+    """"Battery use" keeps as much room for a sunnier day as "Absorb PV"."""
+    assert headroom_share(strategy, 0.3) == share
+
+
+def test_battery_use_leaves_room_for_the_sun() -> None:
+    """As on a site on Nov 7: a big buffer for the evening, a cheap night and a sunny morning.
+
+    With only 30 % of the upside as room the night charge fills the battery up to where the planned
+    PV just tops it off, so more sun than planned is lost; with 70 % less is charged at night.
+    """
+    big = BatterySpec(capacity_wh=20000, soc_wh=2600, min_soc_wh=6000, max_charge_w=5000, max_discharge_w=5000)
+    slots = _slots(2000.0)
+    # 7 kWh above the floor before the next cheap night, worth less than what spilling PV costs
+    settings = Settings(wear_ct_per_kwh=0.0, buffer=((NEXT_NIGHT[0] - 1, 7000.0, 0.045),))
+
+    def plan(share: float) -> Plan:
+        rooms = pv_headrooms(slots, _band(5000.0), share, 19600.0)
+        return optimize(slots, big, replace(settings, headroom=tuple((h.slot, h.max_wh, h.penalty) for h in rooms)))
+
+    narrow, wide = plan(0.3), plan(headroom_share("storage", 0.3))
+    # W per quarter hour: 2 kWh less from the grid at night
+    assert _night_import(wide) / 4 < _night_import(narrow) / 4 - 2000
+    assert wide.slots[SUN[-1]].soc_wh < narrow.slots[SUN[-1]].soc_wh

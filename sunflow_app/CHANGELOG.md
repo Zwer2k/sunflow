@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.38
+
+- "Battery use" keeps room for at least 70 % of the extra PV up to the optimistic forecast, like "Absorb PV" (before: the PV risk share, 30 % with "balanced"). Its large buffer for a worse day made the night charge fill the battery so far that the planned PV just topped it off, and a sunnier day than planned found it full by noon. On sunny-looking days the plan now charges less at night and keeps a smaller buffer; on dull ones the buffer stays.
+
 ## 0.78.37
 
 - Control on a phone: the four home battery strategies fit one row (short names Balanced, PV, Self-suff., Battery; the full name as tooltip).

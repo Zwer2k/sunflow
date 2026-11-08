@@ -946,9 +946,18 @@ def storage_buffers(
 
 
 # Room for a sunnier day: the same share of the way towards the optimistic forecast as the
-# planning goes towards the pessimistic one ("PV aufnehmen" at least this much)
+# planning goes towards the pessimistic one ("PV aufnehmen" and "Speichernutzung" at least this much)
 PV_ABSORPTION_HEADROOM = 0.7
 MIN_HEADROOM_WH = 300.0
+
+
+def headroom_share(strategy: str, risk: float) -> float:
+    """Share of the extra PV up to the optimistic forecast to keep room for.
+
+    "storage" charges for a day well below the forecast; without as much room the other way,
+    every sunnier day than planned finds the battery full by noon.
+    """
+    return max(risk, PV_ABSORPTION_HEADROOM) if strategy in ("pv_absorption", "storage") else risk
 
 
 def pv_headrooms(
@@ -1843,7 +1852,7 @@ async def compute_plan(
         )
         settings = replace(settings, buffer=tuple((b.slot, b.wh, b.penalty) for b in buffers))
     risk = PV_RISK[config.optimizer.pv_risk]
-    share = max(risk, PV_ABSORPTION_HEADROOM) if strategy == "pv_absorption" else risk
+    share = headroom_share(strategy, risk)
     limit_share = care.limit_wh / battery.capacity_wh if care.limit_wh is not None else 1.0
     headrooms = pv_headrooms(
         inputs, band, share, limit_share * sum(b.capacity_wh for b in batteries),
