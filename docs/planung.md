@@ -83,7 +83,9 @@ Darum hält der Plan am Ende jedes sonnigen Abschnitts Platz frei für einen Tei
 PV bis zur optimistischen Prognose (p90):
 
 - **Anteil**: derselbe wie das „PV-Risiko“ in die andere Richtung (erwartet 0 %, ausgewogen 30 %,
-  vorsichtig 70 %); bei „PV aufnehmen“ mindestens 70 %.
+  vorsichtig 70 %); bei „PV aufnehmen“ und „Speichernutzung“ mindestens 70 %. „Speichernutzung“
+  lädt für einen deutlich schlechteren Tag nach; ohne ebenso viel Platz in die andere Richtung
+  wäre der Speicher an jedem sonnigeren Tag schon mittags voll.
 - **Weich**: Jede kWh, die dann zu viel im Speicher wäre, zählt so viel, wie diese PV ersetzen
   würde (günstigster Preis danach minus Einspeisevergütung, bei „PV aufnehmen“ plus 5 ct). Der
   Speicher deckt dafür eher nachts das Haus, statt zu halten.

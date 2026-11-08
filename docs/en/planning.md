@@ -81,7 +81,9 @@ So at the end of each sunny period the plan keeps room for part of the extra PV 
 optimistic forecast (p90):
 
 - **Share**: the same as "PV risk" in the other direction (expected 0 %, balanced 30 %, cautious
-  70 %); with "Absorb PV" at least 70 %.
+  70 %); with "Absorb PV" and "Battery use" at least 70 %. "Battery use" charges for a clearly
+  worse day; without as much room the other way the battery would be full by noon on every sunnier
+  day.
 - **Soft**: each kWh that would then be too much in the battery counts what that PV would replace
   (the cheapest price after it less the feed-in tariff, with "Absorb PV" plus 5 ct). The battery
   rather covers the house at night instead of holding.
