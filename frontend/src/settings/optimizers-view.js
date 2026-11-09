@@ -99,7 +99,7 @@ class SunflowOptimizers extends LitElement {
     const tigo = data.sources.find((s) => s.key === "tigo");
     const plants = [...new Map(data.strings.map((s) => [s.device_id, s.plant])).entries()];
     const [tigoBefore, tigoAfter] = t("Über die Integration {link}, die den Bus zwischen CCA und TAP mitliest.").split("{link}");
-    return html`<section class="card">
+    return html`<section class="card help-card">
       <h2>${t("Quellen")}</h2>
       <ul class="sources">
         ${data.sources.map((s) => html`<li>

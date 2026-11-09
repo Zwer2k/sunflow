@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.55
+
+- Settings → Optimizers: with explanations hidden, the "?" sits behind the headings – each string's next to its name, all source explanations behind "Sources".
+
 ## 0.78.54
 
 - With explanations hidden, a settings card's explanations that belong to no field (e.g. below the fields of Own consumers or Connect device directly) also get their "?" behind the card title; a tap opens all of them where they are.

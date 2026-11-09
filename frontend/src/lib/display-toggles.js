@@ -22,6 +22,16 @@ const state = { help: stored("help"), suggestions: stored("suggestions") };
 
 // What counts as a heading: real headings, a settings card's title and a fieldset's legend
 const HEADING = "h1, h2, h3, h4, .device-title, legend";
+// A row holding a heading next to buttons
+const HEAD_ROW = ".section-head, .card-head";
+// Explanations of a card that belong to no input field
+const CARD_HELP = ".help:not(.field .help)";
+
+// The "?" placed after a heading, title or label
+const MARK = `
+    content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+    width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
+    font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;`;
 
 // Hidden explanations shrink to a small "?" at their place; a click shows that one ("help-open")
 const HELP_HIDDEN = `
@@ -33,32 +43,26 @@ const HELP_HIDDEN = `
     font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle;
   }
   .help.help-open { cursor: help; }
-  /* A paragraph below a heading or card title: the "?" after it, the text below it when opened */
-  :is(${HEADING}, .section-head) + .help:not(.help-open) { display: none !important; }
-  /* The heading may sit in a head row with buttons ("section-head") */
-  :is(:is(${HEADING}):has(+ .help), .section-head:has(+ .help) > :is(${HEADING}))::after {
-    content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
-    width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
-    font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
+  /* A paragraph below a heading or card title (or below the heading's row): the "?" after the heading */
+  :is(${HEADING}, ${HEAD_ROW}) + .help:not(.help-open) { display: none !important; }
+  :is(:is(${HEADING}):has(+ .help), :is(${HEAD_ROW}):has(+ .help) > :is(${HEADING}))::after {${MARK}
   }
-  :is(:is(${HEADING}):has(+ .help-open), .section-head:has(+ .help-open) > :is(${HEADING}))::after {
+  :is(:is(${HEADING}):has(+ .help-open), :is(${HEAD_ROW}):has(+ .help-open) > :is(${HEADING}))::after {
     color: var(--sf-primary);
   }
-  /* A card with a title: every explanation of the card that no field owns, behind the title */
+  /* A settings card with a title, or a card marked "help-card": all its explanations behind the title */
   .device:has(> .device-title) > .help:not(.help-open) { display: none !important; }
   .device:has(> .device-title) > .fields > .help:not(.help-open) { display: none !important; }
-  .device:has(> .help, > .fields > .help) > .device-title::after {
-    content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
-    width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
-    font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
+  .device:has(> .help, > .fields > .help) > .device-title::after {${MARK}
   }
   .device:has(> .help-open, > .fields > .help-open) > .device-title::after { color: var(--sf-primary); }
+  .help-card ${CARD_HELP}:not(.help-open) { display: none !important; }
+  .help-card:has(${CARD_HELP}) > :is(${HEADING})::after {${MARK}
+  }
+  .help-card:has(${CARD_HELP}.help-open) > :is(${HEADING})::after { color: var(--sf-primary); }
   /* A titled block (a strategy, an input field): the "?" after its title or label, the text where it is */
   :is(.help-host, .field:has(> .field-label)) > .help:not(.help-open) { display: none !important; }
-  :is(.help-host .help-title, .field:has(> .help) > .field-label)::after {
-    content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
-    width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
-    font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
+  :is(.help-host .help-title, .field:has(> .help) > .field-label)::after {${MARK}
   }
   :is(.help-host:has(> .help-open) .help-title, .field:has(> .help-open) > .field-label)::after { color: var(--sf-primary); }
 `;
@@ -91,9 +95,12 @@ function titledHelp(title) {
  */
 function headingHelp(heading) {
   if (!(heading instanceof Element) || !heading.matches(HEADING)) return [];
-  const card = heading.classList.contains("device-title") ? heading.parentElement : null;
-  if (card?.classList.contains("device")) return [...card.querySelectorAll(":scope > .help, :scope > .fields > .help")];
-  const head = heading.parentElement?.classList.contains("section-head") ? heading.parentElement : heading;
+  const parent = heading.parentElement;
+  if (heading.classList.contains("device-title") && parent?.classList.contains("device")) {
+    return [...parent.querySelectorAll(":scope > .help, :scope > .fields > .help")];
+  }
+  if (parent?.classList.contains("help-card")) return [...parent.querySelectorAll(CARD_HELP)];
+  const head = parent?.matches(HEAD_ROW) ? parent : heading;
   const next = head.nextElementSibling;
   return next?.classList.contains("help") ? [next] : [];
 }
