@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.47
+
+- A hidden explanation that is the paragraph under a heading puts its "?" behind the heading; the text opens below it.
+
 ## 0.78.46
 
 - Hidden explanations leave a small "?" in their place; a click shows just that text, another click hides it again (links, buttons and "What does … do?" inside an opened text keep working).
