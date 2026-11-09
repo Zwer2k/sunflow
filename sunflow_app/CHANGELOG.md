@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.78.51
+## 0.78.56
 
 - Live quick controls: every load takes one line. When the mode buttons do not fit beside a load's name and controls, all loads show the mode as one button with a dropdown (as on a phone) – measured, so it also applies in the narrower right column on a PC.
 
