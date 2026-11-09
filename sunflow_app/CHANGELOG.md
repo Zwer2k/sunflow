@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.54
+
+- With explanations hidden, a settings card's explanations that belong to no field (e.g. below the fields of Own consumers or Connect device directly) also get their "?" behind the card title; a tap opens all of them where they are.
+
 ## 0.78.53
 
 - With explanations hidden, settings card titles (e.g. Measurement sources, Own consumers) and group titles (e.g. Protect the 12 V battery) get their "?" behind the title like headings.
