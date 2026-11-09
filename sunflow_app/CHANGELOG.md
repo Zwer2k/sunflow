@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.49
+
+- Settings → Planning: with explanations hidden, each strategy's "?" sits behind its name; the explanation opens where it was, and the tap does not change the selected strategy.
+
 ## 0.78.48
 
 - The "?" of a collapsible explanation ("What does … do?") opens it completely at once.

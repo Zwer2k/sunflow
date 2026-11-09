@@ -12,7 +12,8 @@ brauchst; jeder Browser merkt sich seine Wahl, beide sind anfangs an:
 - **?** – Erklärtexte (Beschreibungen unter Überschriften und Feldern, „Was macht …?“). An ihrer
   Stelle bleibt ein kleines ?, das genau diesen Text per Klick ein- und wieder ausblendet; gehört der
   Text als Absatz zu einer Überschrift, steht das ? hinter der Überschrift und der Text darunter.
-  Aufklappbare Erklärungen („Was macht …?“) öffnet das ? gleich ganz.
+  Aufklappbare Erklärungen („Was macht …?“) öffnet das ? gleich ganz; bei den Strategien steht es
+  hinter dem Namen der Strategie.
 - **Glühbirne** – Empfehlungen unter „Analyse“ und ihre Zahl an „Analyse“.
 
 ## Live
