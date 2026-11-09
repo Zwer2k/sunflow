@@ -6,6 +6,7 @@ import { formatValue, fromDisplay, toDisplay } from "../lib/format.js";
 import { poll } from "../lib/poll.js";
 import "../components/picker.js";
 import { decimal, t } from "../lib/i18n.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 // Live values follow the car's sensors; they change slowly
 const REFRESH_MS = 30000;
@@ -138,7 +139,7 @@ class SunflowVehicles extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Fahrzeuge")}</h1>
-        <p class="muted">${t("Was das Auto ist: Akku und die Sensoren seiner eigenen Integration. An welcher Wallbox es mit welcher Karte und welchem Ziel lädt, steht unter „Laden“.")}</p>
+        <p class="muted help">${t("Was das Auto ist: Akku und die Sensoren seiner eigenen Integration. An welcher Wallbox es mit welcher Karte und welchem Ziel lädt, steht unter „Laden“.")}</p>
       </div>
       ${this._error ? html`<div class="alert error">${this._error}</div>` : nothing}
       ${data === null ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
@@ -213,14 +214,14 @@ class SunflowVehicles extends LitElement {
                 @change=${(e) => (this._form = { ...this._form, estimate_soc: e.target.checked })}>
               <span>${t("Zwischen den Meldungen berechnen")}</span>
             </label>
-            <span class="small muted">${t("Für Autos, die ihren Ladestand nur ab und zu senden: Sunflow zählt dazu, was die Wallbox seitdem geladen hat, und lernt bei jeder neuen Meldung, wie viel davon im Akku ankommt.")}</span>
+            <span class="small muted help">${t("Für Autos, die ihren Ladestand nur ab und zu senden: Sunflow zählt dazu, was die Wallbox seitdem geladen hat, und lernt bei jeder neuen Meldung, wie viel davon im Akku ankommt.")}</span>
           </div>
           <div class="field">
             <span class="field-label">${t("Angesteckt / zuhause (optional)")}</span>
             <sf-picker label=${t("Angesteckt")} empty-label=${t("keiner")} placeholder=${t("Sensor des Autos …")} .value=${form.plugged_entity}
               .options=${options(this._candidates?.presence, (c) => c.state ?? "–")}
               @change=${(e) => (this._form = withSuggestedName({ ...this._form, plugged_entity: e.detail.value }, (this._candidates?.presence ?? []).find((c) => c.entity_id === e.detail.value)))}></sf-picker>
-            <span class="small muted">${t("Am besten die Anwesenheit (z. B. ein device_tracker des Autos): Sunflow lernt daraus, wann es nach Hause kommt, und meldet, wenn sich das Einstecken lohnt.")}</span>
+            <span class="small muted help">${t("Am besten die Anwesenheit (z. B. ein device_tracker des Autos): Sunflow lernt daraus, wann es nach Hause kommt, und meldet, wenn sich das Einstecken lohnt.")}</span>
           </div>
         </div>
         ${this._renderAux(form, options)}
@@ -243,7 +244,7 @@ class SunflowVehicles extends LitElement {
     </label>`;
     return html`<fieldset class="group">
       <legend>${t("12-V-Batterie schützen")}</legend>
-      <p class="small muted">${t("Manche Autos (z. B. Fiat 500e) entladen ihre 12-V-Batterie, wenn sie lange angesteckt sind, ohne zu laden. Fällt die Spannung unter die Grenze, lädt die Wallbox für kurze Zeit mit der kleinsten Leistung – dabei lädt das Auto auch die 12-V-Batterie. Wirkt nur, solange Sunflow die Wallbox steuert.")}</p>
+      <p class="small muted help">${t("Manche Autos (z. B. Fiat 500e) entladen ihre 12-V-Batterie, wenn sie lange angesteckt sind, ohne zu laden. Fällt die Spannung unter die Grenze, lädt die Wallbox für kurze Zeit mit der kleinsten Leistung – dabei lädt das Auto auch die 12-V-Batterie. Wirkt nur, solange Sunflow die Wallbox steuert.")}</p>
       <div class="fields">
         <div class="field">
           <span class="field-label">${t("Spannung der 12-V-Batterie")}</span>
@@ -371,7 +372,7 @@ class SunflowVehicles extends LitElement {
     }
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: flex; flex-direction: column; gap: 12px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
@@ -412,7 +413,7 @@ class SunflowVehicles extends LitElement {
     .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     button:disabled { cursor: not-allowed; opacity: .6; }
-  `;
+  `];
 }
 
 /** "vor 3 min" for an ISO time, empty without one. */

@@ -34,6 +34,7 @@ import {
 } from "./lib/format.js";
 import { decimal, locale, t, tn } from "./lib/i18n.js";
 import { isOpen, setOpen } from "./lib/collapse.js";
+import { setShown, shown, toggleSheet } from "./lib/display-toggles.js";
 
 /** What the MCP server may read; matches the areas in the backend. */
 const MCP_AREAS = [
@@ -225,6 +226,8 @@ class SunflowApp extends LitElement {
     _discoveryError: { state: true },
     _pendingRestore: { state: true },
     _recommendationCount: { state: true },
+    _help: { state: true },
+    _suggestions: { state: true },
     _usages: { state: true },
     _restoring: { state: true },
     _measurements: { state: true },
@@ -327,6 +330,8 @@ class SunflowApp extends LitElement {
     this._stopRecommendations = poll(() => this._loadRecommendationCount(), 15 * 60 * 1000);
     // Views report changes of the count and ask to open another view
     this.addEventListener("sf-recommendations", (e) => (this._recommendationCount = e.detail.count));
+    this._help = shown("help");
+    this._suggestions = shown("suggestions");
     this.addEventListener("sf-navigate", (e) => {
       this._setView(e.detail.view);
       if (e.detail.step !== undefined) this._goTo(e.detail.step);
@@ -773,7 +778,7 @@ class SunflowApp extends LitElement {
     return html`
       <section class="device">
         <div class="device-title">${t("Messquellen")}</div>
-        <p class="small muted">${t("Welches Gerät liefert Leistung und Zählerstände? Gilt für Live, Verlauf, Energiebilanz und Schattenbetrieb. „Automatisch“ nimmt einen eigenen Zähler (z. B. am Stromzähler) vor dem Wechselrichter.")}</p>
+        <p class="small muted help">${t("Welches Gerät liefert Leistung und Zählerstände? Gilt für Live, Verlauf, Energiebilanz und Schattenbetrieb. „Automatisch“ nimmt einen eigenen Zähler (z. B. am Stromzähler) vor dem Wechselrichter.")}</p>
         ${entries.map(([quantity, m]) => {
           const auto = m.effective && !m.selected
             ? t("Automatisch ({name})", { name: byId[m.effective]?.name ?? m.options.find((o) => o.id === m.effective)?.name })
@@ -1037,6 +1042,21 @@ class SunflowApp extends LitElement {
     this._refreshPreviews();
   }
 
+  /** Explanations and recommendations shown or hidden in every view (each browser remembers its own). */
+  _renderDisplayToggles() {
+    const toggle = (key, value, label, icon) => html`<button class="display-toggle ${value ? "on" : ""}" aria-pressed=${value}
+      title=${label} aria-label=${label} @click=${() => {
+        setShown(key, !value);
+        this[key === "help" ? "_help" : "_suggestions"] = !value;
+      }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d=${icon}></path></svg></button>`;
+    return html`<div class="display-toggles">
+      ${toggle("help", this._help, this._help ? t("Erklärtexte ausblenden") : t("Erklärtexte einblenden"),
+        "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5h0")}
+      ${toggle("suggestions", this._suggestions, this._suggestions ? t("Empfehlungen ausblenden") : t("Empfehlungen einblenden"),
+        "M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z")}
+    </div>`;
+  }
+
   render() {
     return html`
       <header class=${EMBEDDED ? "bare" : ""}>
@@ -1069,12 +1089,13 @@ class SunflowApp extends LitElement {
               aria-label=${label} aria-current=${this._view === view ? "page" : "false"} @click=${() => this._setView(view)}>
               <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon}></path></svg>
               <span class="tab-label">${label}</span>
-              ${view === "analysis" && this._recommendationCount
+              ${view === "analysis" && this._recommendationCount && this._suggestions
                 ? html`<span class="badge" aria-label=${t("{count} Empfehlungen", { count: this._recommendationCount })}>${this._recommendationCount}</span>`
                 : nothing}
             </button>`,
           )}
         </nav>
+        ${this._renderDisplayToggles()}
       </header>
       ${EMBEDDED && this._haConnected === false
         ? html`<div class="restore-banner" role="alert">${t("Keine Verbindung zu Home Assistant – Werte sind evtl. veraltet.")}</div>`
@@ -1278,7 +1299,7 @@ class SunflowApp extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Gefundene Integrationen")}</h1>
-        <p class="muted">${t("In deinem Home Assistant laufen diese Integrationen. Wähle aus, was Sunflow nutzen soll.")}</p>
+        <p class="muted help">${t("In deinem Home Assistant laufen diese Integrationen. Wähle aus, was Sunflow nutzen soll.")}</p>
       </div>
       ${this._integrations.length === 0
         ? html`<p class="muted">${t("Keine unterstützte Integration gefunden.")}</p>`
@@ -1311,7 +1332,7 @@ class SunflowApp extends LitElement {
     const link = this._link;
     return html`<section class="device compact">
       <div class="device-title">${t("Sunflow-Integration in Home Assistant")}</div>
-      <p class="small muted">${t("Sie bringt die gelernte PV-Prognose ins Energie-Dashboard (je Fläche, Anlage und gesamt), Zähler je PV-String und Sensoren für eigene Automationen. Home Assistant bietet sie unter „Einstellungen → Geräte & Dienste“ als gefunden an; sonst von Hand mit Adresse und Schlüssel einrichten.")}</p>
+      <p class="small muted help">${t("Sie bringt die gelernte PV-Prognose ins Energie-Dashboard (je Fläche, Anlage und gesamt), Zähler je PV-String und Sensoren für eigene Automationen. Home Assistant bietet sie unter „Einstellungen → Geräte & Dienste“ als gefunden an; sonst von Hand mit Adresse und Schlüssel einrichten.")}</p>
       ${this._renderForecastKinds()}
       ${link
         ? html`<div class="fields">
@@ -1339,12 +1360,12 @@ class SunflowApp extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Anzeige")}</h1>
-        <p class="muted">${t("Was die Seiten zeigen – für Handy und größere Bildschirme getrennt.")}</p>
+        <p class="muted help">${t("Was die Seiten zeigen – für Handy und größere Bildschirme getrennt.")}</p>
       </div>
       <section class="device compact">
         <div class="device-title">${t("Wetter in der Live-Ansicht")}</div>
         <span class="choices">${option("weather_mobile", t("auf dem Handy"))} ${option("weather_desktop", t("auf Tablet und Computer"))}</span>
-        <p class="small muted">${t("Ausgeblendet bleibt mehr Platz für den Energiefluss. Ist es überall aus, fragt Sunflow die Wettervorhersage für die Live-Ansicht gar nicht erst ab.")}</p>
+        <p class="small muted help">${t("Ausgeblendet bleibt mehr Platz für den Energiefluss. Ist es überall aus, fragt Sunflow die Wettervorhersage für die Live-Ansicht gar nicht erst ab.")}</p>
       </section>
       <section class="device compact">
         <div class="device-title">${t("Sprache")}</div>
@@ -1353,7 +1374,7 @@ class SunflowApp extends LitElement {
             ([value, label]) => html`<option value=${value} ?selected=${(display.language ?? "auto") === value}>${label}</option>`,
           )}
         </select>
-        <p class="small muted">${t("Gilt für die Oberfläche und für Meldungen wie Planhinweise und Empfehlungen. Die Seite lädt danach neu.")}</p>
+        <p class="small muted help">${t("Gilt für die Oberfläche und für Meldungen wie Planhinweise und Empfehlungen. Die Seite lädt danach neu.")}</p>
       </section>
     `;
   }
@@ -1393,7 +1414,7 @@ class SunflowApp extends LitElement {
       <span class="choices">${kinds.map(([kind, label]) => html`<label class="inline">
         <input type="checkbox" .checked=${settings.forecast_kinds.includes(kind)}
           @change=${(e) => this._setForecastKind(kind, e.target.checked)}> ${label}</label>`)}</span>
-      <span class="small muted">${t("Jede gewählte Prognose wird ein eigenes Gerät in Home Assistant. Abgewählte verschwinden dort beim nächsten Abgleich (bis zu 15 Minuten).")}</span>
+      <span class="small muted help">${t("Jede gewählte Prognose wird ein eigenes Gerät in Home Assistant. Abgewählte verschwinden dort beim nächsten Abgleich (bis zu 15 Minuten).")}</span>
     </div>`;
   }
 
@@ -1420,7 +1441,7 @@ class SunflowApp extends LitElement {
     const created = mcp?.key_created ? new Date(mcp.key_created).toLocaleString(locale()) : null;
     return html`<section class="device compact">
       <div class="device-title">${t("MCP-Server für KI-Assistenten")}</div>
-      <p class="small muted">${t("Damit kann ein KI-Assistent (z. B. Claude Code) Plan, Verlauf, Aufzeichnung, Steuerungsprotokoll und Konfiguration lesen, um Fragen zu beantworten oder Fehler zu finden. Er kann nichts ändern oder steuern. Von außen erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist und ein Schlüssel erzeugt wurde.")}</p>
+      <p class="small muted help">${t("Damit kann ein KI-Assistent (z. B. Claude Code) Plan, Verlauf, Aufzeichnung, Steuerungsprotokoll und Konfiguration lesen, um Fragen zu beantworten oder Fehler zu finden. Er kann nichts ändern oder steuern. Von außen erreichbar erst, wenn in der App unter „Konfiguration → Netzwerk“ ein Port eingetragen ist und ein Schlüssel erzeugt wurde.")}</p>
       ${mcp
         ? html`<div class="fields">
               <label class="field"><span class="field-label">${t("Adresse")}</span>
@@ -1437,7 +1458,7 @@ class SunflowApp extends LitElement {
               <span class="choices">${MCP_AREAS.map(([area, label]) => html`<label class="inline">
                 <input type="checkbox" .checked=${mcp.areas.includes(area)} @change=${(e) => this._setMcpArea(area, e.target.checked)}>
                 ${label}</label>`)}</span>
-              <span class="small muted">${t("Version und Verbindung sind immer lesbar. Nicht freigegebene Bereiche fehlen in der Werkzeugliste des Assistenten.")}</span></div>
+              <span class="small muted help">${t("Version und Verbindung sind immer lesbar. Nicht freigegebene Bereiche fehlen in der Werkzeugliste des Assistenten.")}</span></div>
             ${mcp.key
               ? html`<p class="small">${t("Der Schlüssel wird nur jetzt angezeigt. Sunflow speichert ihn nicht, nur eine Prüfsumme.")}</p>
                   <label class="field"><span class="field-label">${t("Einrichten in Claude Code")}</span>
@@ -1489,7 +1510,7 @@ class SunflowApp extends LitElement {
     if (form === null) {
       return html`<section class="device compact">
         <div class="device-title">${t("Ohne Home-Assistant-Integration")}</div>
-        <p class="small muted">${t("Manche Wechselrichter liest und steuert Sunflow selbst über das Netzwerk (Modbus TCP), z. B. Victron über das GX-Gerät.")}</p>
+        <p class="small muted help">${t("Manche Wechselrichter liest und steuert Sunflow selbst über das Netzwerk (Modbus TCP), z. B. Victron über das GX-Gerät.")}</p>
         <div><button class="secondary" @click=${() => this._openDirect()}>${t("Gerät direkt anbinden …")}</button></div>
       </section>`;
     }
@@ -1528,7 +1549,7 @@ class SunflowApp extends LitElement {
               </label>`
             : nothing}
         </div>
-        <p class="small muted">${t("Sunflow liest das Gerät sofort einmal; danach erscheint es unter „Geräte“ mit seinen Live-Werten. Gesteuert wird es erst, wenn du es unter „Steuerung“ freigibst.")}</p>
+        <p class="small muted help">${t("Sunflow liest das Gerät sofort einmal; danach erscheint es unter „Geräte“ mit seinen Live-Werten. Gesteuert wird es erst, wenn du es unter „Steuerung“ freigibst.")}</p>
         <div class="actions">
           <button class="primary" ?disabled=${!form.profile || !form.host.trim() || this._busy.has("direct")}
             @click=${() => this._addDirect()}>${t("Anbinden")}</button>
@@ -1607,7 +1628,7 @@ class SunflowApp extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Geräte")}</h1>
-        <p class="muted">${t("Profile wurden automatisch erkannt. Prüfe die Live-Werte – passen sie zu dem, was deine Anlage gerade tut?")}</p>
+        <p class="muted help">${t("Profile wurden automatisch erkannt. Prüfe die Live-Werte – passen sie zu dem, was deine Anlage gerade tut?")}</p>
       </div>
       ${devices.length === 0 ? html`<p class="muted">${t("Keine Geräte mit passendem Profil ausgewählt.")}</p>` : nothing}
       ${CATEGORIES.map(([key, title]) => {
@@ -1638,7 +1659,7 @@ class SunflowApp extends LitElement {
           @change=${(e) => this._useOptimizers(integration, e.target.checked)}>
         ${t("von Sunflow nutzen")}
       </label>
-      <p class="small muted">${used
+      <p class="small muted help">${used
         ? t("Strings und Anordnung auf dem Dach legst du unter „Optimierer“ fest; die Werte zeigt die Live-Ansicht je Modul.")
         : t("Nicht genutzt: Sunflow zeigt die Module weder auf dem Dach noch in der Live-Ansicht. Zugeordnete Plätze bleiben gespeichert.")}</p>
     </section>`;
@@ -1672,7 +1693,7 @@ class SunflowApp extends LitElement {
     return html`
       <section class="device">
         <div class="device-title">${t("Eigene Verbraucher")}</div>
-        <p class="small muted">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant. Nicht steuerbare Geräte mit eigener Leistungsmessung (Herd, Waschmaschine …) lassen sich zum Lernen „nur messen“.")}</p>
+        <p class="small muted help">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant. Nicht steuerbare Geräte mit eigener Leistungsmessung (Herd, Waschmaschine …) lassen sich zum Lernen „nur messen“.")}</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
               (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
@@ -1708,7 +1729,7 @@ class SunflowApp extends LitElement {
                   </select>
                 </label>
                 ${measureOnly
-                  ? html`<p class="small muted field">${t("Sunflow schaltet das Gerät nie. Es lernt aus der Leistungsmessung, wann und wie viel es läuft (Analyse → Lernen).")}</p>`
+                  ? html`<p class="small muted field help">${t("Sunflow schaltet das Gerät nie. Es lernt aus der Leistungsmessung, wann und wie viel es läuft (Analyse → Lernen).")}</p>`
                   : html`<label class="field">
                       <span class="field-label">${t("Art")}</span>
                       <select @change=${(e) => set("kind", e.target.value)}>
@@ -1790,7 +1811,7 @@ class SunflowApp extends LitElement {
                           @input=${(e) => set("steps", { ...form.steps, [option]: fromDisplay(e.target.value, "W") })}><span class="muted">W</span></span>
                       </label>`)}
                     </div>
-                    <span class="small muted">${t("Aus den Namen der Optionen gelesen; 0 W ist „aus“. Sunflow wählt die größte Stufe, die in die geplante Leistung passt.")}</span>
+                    <span class="small muted help">${t("Aus den Namen der Optionen gelesen; 0 W ist „aus“. Sunflow wählt die größte Stufe, die in die geplante Leistung passt.")}</span>
                   </div>`
                 : nothing}
               <div class="actions">
@@ -2225,7 +2246,7 @@ class SunflowApp extends LitElement {
         </label>
         ${settings
           ? html`
-            <span class="small muted">${t("Sunflow plant ihn nur, wenn er ladebereit ist – mit PV-Überschuss oder günstigem Strom –, und schaltet ihn sonst aus. Ladebereit heißt: die Entität „angesteckt“ ist an, oder eine kurze Probeladung nach dem Auslöser hat Leistung gezeigt. Sinkt die Leistung beim Laden unter die Schwelle, gilt er als voll oder abgesteckt. Geschaltet wird nur, wenn Sunflow den Verbraucher steuert.")}</span>
+            <span class="small muted help">${t("Sunflow plant ihn nur, wenn er ladebereit ist – mit PV-Überschuss oder günstigem Strom –, und schaltet ihn sonst aus. Ladebereit heißt: die Entität „angesteckt“ ist an, oder eine kurze Probeladung nach dem Auslöser hat Leistung gezeigt. Sinkt die Leistung beim Laden unter die Schwelle, gilt er als voll oder abgesteckt. Geschaltet wird nur, wenn Sunflow den Verbraucher steuert.")}</span>
             <div class="fields">
               ${picker("connected_entity", t("Angesteckt (optional)"), this._candidates?.presence, t("keine"))}
               ${picker("soc_entity", t("Ladestand (optional)"), this._candidates?.percent, t("keiner"))}
@@ -2309,7 +2330,7 @@ class SunflowApp extends LitElement {
                 <span class="muted">min</span></span>`
             : nothing}
         </span>
-        <span class="small muted">${t("Manche Integrationen verbinden sich nach einem Ausfall nicht von selbst neu, z. B. nach einem Neustart von Home Assistant. Sunflow lädt dann den Eintrag der Integration in Home Assistant neu – höchstens alle 30 Minuten und 6-mal am Tag. An das Gerät wird dabei nichts geschrieben; alle Geräte dieser Integration verbinden sich neu.")}</span>
+        <span class="small muted help">${t("Manche Integrationen verbinden sich nach einem Ausfall nicht von selbst neu, z. B. nach einem Neustart von Home Assistant. Sunflow lädt dann den Eintrag der Integration in Home Assistant neu – höchstens alle 30 Minuten und 6-mal am Tag. An das Gerät wird dabei nichts geschrieben; alle Geräte dieser Integration verbinden sich neu.")}</span>
         ${status?.silent_since ? html`<span class="small warn-text">${t("Liefert seit {time} keine Werte", { time: at(status.silent_since) })}</span>` : nothing}
         ${status?.last_reload ? html`<span class="small muted">${t("Zuletzt neu geladen: {time}", { time: at(status.last_reload) })}</span>` : nothing}
       </div>
@@ -2383,7 +2404,7 @@ class SunflowApp extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Verbraucher")}</h1>
-        <p class="muted">${t("Wie Sunflow Warmwasser, eigene Verbraucher und Wallboxen einplant. Fahrzeuge an Wallboxen haben ihre eigenen Vorgaben unter „Laden“; die hier gelten für eine Wallbox ohne zugeordnete Fahrzeuge.")}</p>
+        <p class="muted help">${t("Wie Sunflow Warmwasser, eigene Verbraucher und Wallboxen einplant. Fahrzeuge an Wallboxen haben ihre eigenen Vorgaben unter „Laden“; die hier gelten für eine Wallbox ohne zugeordnete Fahrzeuge.")}</p>
       </div>
       ${consumers.length === 0 ? html`<p class="muted">${t("Keine steuerbaren Verbraucher eingerichtet.")}</p>` : nothing}
       ${CATEGORIES.map(([key, title]) => {
@@ -2478,7 +2499,7 @@ class SunflowApp extends LitElement {
                     @input=${(e) => set("target", fromDisplay(e.target.value, ""))}>
                   <span class="muted">${kind === "heater" ? "°C" : "%"}</span>
                 </span>
-                <span class="small muted">${t("Leer = Wert aus evcc. Ein aktiver evcc-Ladeplan hat Vorrang.")}</span>
+                <span class="small muted help">${t("Leer = Wert aus evcc. Ein aktiver evcc-Ladeplan hat Vorrang.")}</span>
               </label>
               <label class="field">
                 <span class="field-label">${t("Höchstes Ziel von Hand")}</span>
@@ -2488,7 +2509,7 @@ class SunflowApp extends LitElement {
                     @input=${(e) => set("target_max", fromDisplay(e.target.value, ""))}>
                   <span class="muted">${kind === "heater" ? "°C" : "%"}</span>
                 </span>
-                <span class="small muted">${kind === "heater"
+                <span class="small muted help">${kind === "heater"
                   ? t("Bis hierhin lässt sich das Ziel in Steuerung und Live wählen. Leer = 60 °C; darüber Verbrühungsgefahr am Wasserhahn.")
                   : t("Bis hierhin lässt sich das Ziel in Steuerung und Live wählen. Leer = 100 %.")}</span>
               </label>`
@@ -2498,7 +2519,7 @@ class SunflowApp extends LitElement {
             <span class="input-unit">
               <input type="time" .value=${flex.ready_by ?? ""} @change=${(e) => set("ready_by", e.target.value || null)}>
             </span>
-            <span class="small muted">${kind === "vehicle" ? t("Leer = bis zum Ende des Planungszeitraums.") : t("Leer = innerhalb von 24 h.")}</span>
+            <span class="small muted help">${kind === "vehicle" ? t("Leer = bis zum Ende des Planungszeitraums.") : t("Leer = innerhalb von 24 h.")}</span>
           </label>
           ${kind === "heater"
             ? html`<label class="field">
@@ -2509,7 +2530,7 @@ class SunflowApp extends LitElement {
                     @input=${(e) => set("alternative_cost_ct", fromDisplay(e.target.value, "ct"))}>
                   <span class="muted">${t("ct/kWh Wärme")}</span>
                 </span>
-                <span class="small muted">${t("Elektrisch geheizt wird nur, wenn es günstiger ist; den Rest übernimmt die Alternative.")}</span>
+                <span class="small muted help">${t("Elektrisch geheizt wird nur, wenn es günstiger ist; den Rest übernimmt die Alternative.")}</span>
               </label>`
             : nothing}
           <label class="field">
@@ -2518,7 +2539,7 @@ class SunflowApp extends LitElement {
               <input type="checkbox" .checked=${flex.uses_battery} @change=${(e) => set("uses_battery", e.target.checked)}>
               ${t("Hausspeicher darf in diesen Verbraucher entladen")}
             </span>
-            <span class="small muted">${kind === "heater"
+            <span class="small muted help">${kind === "heater"
               ? t("Aus: der Speicher versorgt nur das Haus; geheizt wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")
               : t("Aus: der Speicher versorgt nur das Haus; geladen wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")}</span>
           </label>
@@ -2570,7 +2591,7 @@ class SunflowApp extends LitElement {
           <option value="3" ?selected=${value === 3}>${t("immer 3 Phasen")}</option>
           <option value="1" ?selected=${value === 1}>${t("immer 1 Phase")}</option>
         </select>
-        <span class="small muted">${t("Automatisch lädt das Auto schon bei wenig PV-Überschuss (1 Phase ab ≈ 1,4 kW) und schaltet bei genug Sonne auf 3 Phasen.")}</span>
+        <span class="small muted help">${t("Automatisch lädt das Auto schon bei wenig PV-Überschuss (1 Phase ab ≈ 1,4 kW) und schaltet bei genug Sonne auf 3 Phasen.")}</span>
       </label>
     `;
   }
@@ -2626,7 +2647,7 @@ class SunflowApp extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Bilanzprüfung")}</h1>
-        <p class="muted">${t("Wie hängen deine Geräte zusammen? Sunflow prüft damit die Messwerte gegeneinander und zählt keine PV-Leistung doppelt.")}</p>
+        <p class="muted help">${t("Wie hängen deine Geräte zusammen? Sunflow prüft damit die Messwerte gegeneinander und zählt keine PV-Leistung doppelt.")}</p>
       </div>
       ${pvOnly.length && measuring.length
         ? html`
@@ -2697,7 +2718,7 @@ class SunflowApp extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Tarif und Prognose")}</h1>
-        <p class="muted">${t("Strompreis und PV-Prognose kommen aus deinen vorhandenen Integrationen.")}</p>
+        <p class="muted help">${t("Strompreis und PV-Prognose kommen aus deinen vorhandenen Integrationen.")}</p>
       </div>
       ${this._renderPriceSource(sources)}
       ${this._renderForecastSource(sources)}
@@ -2769,7 +2790,7 @@ class SunflowApp extends LitElement {
     const edit = this._surchargeEdit ?? {};
     const set = (key, value) => (this._surchargeEdit = { ...edit, [key]: value });
     return html`
-      <p class="small muted">${t("Diese Quelle liefert den reinen Börsenpreis. Für die Planung zählt, was du zahlst: Börsenpreis plus Netzentgelt, Umlagen und Gebühr des Anbieters, darauf die Mehrwertsteuer. Die Werte stehen auf deiner Rechnung bzw. im Preisblatt des Anbieters.")}</p>
+      <p class="small muted help">${t("Diese Quelle liefert den reinen Börsenpreis. Für die Planung zählt, was du zahlst: Börsenpreis plus Netzentgelt, Umlagen und Gebühr des Anbieters, darauf die Mehrwertsteuer. Die Werte stehen auf deiner Rechnung bzw. im Preisblatt des Anbieters.")}</p>
       <div class="fields">
         <label class="field">
           <span class="field-label">${t("Aufschlag netto")}</span>
@@ -2840,7 +2861,7 @@ class SunflowApp extends LitElement {
         ${sources.forecast_planes.length === 0
           ? html`<p class="muted">${t("Keine Prognose gefunden. Unterstützt werden Solcast und Forecast.Solar.")}</p>`
           : html`
-              <p class="small muted">${t("Ordne jede Prognosefläche der Anlage zu, deren Module dort liegen. Gibt es eine Dachfläche bei mehreren Anbietern, verwende sie nur einmal – sonst wird sie doppelt gezählt.")}</p>
+              <p class="small muted help">${t("Ordne jede Prognosefläche der Anlage zu, deren Module dort liegen. Gibt es eine Dachfläche bei mehreren Anbietern, verwende sie nur einmal – sonst wird sie doppelt gezählt.")}</p>
               <div class="fields">
                 ${sources.forecast_planes.map(
                   (plane) => html`
@@ -2883,7 +2904,7 @@ class SunflowApp extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Gerätetest")}</h1>
-        <p class="muted">${t("Ein kurzer Test prüft, ob die Steuerung beim Wechselrichter ankommt und die Vorzeichen stimmen. Danach geht der Speicher zurück auf Eigenverbrauch.")}</p>
+        <p class="muted help">${t("Ein kurzer Test prüft, ob die Steuerung beim Wechselrichter ankommt und die Vorzeichen stimmen. Danach geht der Speicher zurück auf Eigenverbrauch.")}</p>
       </div>
       ${devices.length === 0
         ? html`<p class="muted">${t("Kein steuerbares Gerät übernommen – für reine PV-Wechselrichter ist kein Test nötig.")}</p>`
@@ -3085,7 +3106,7 @@ class SunflowApp extends LitElement {
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     /* The room for the bottom bar on a phone lies within the screen height, not below it */
     :host { display: block; min-height: 100vh; box-sizing: border-box; }
     * { box-sizing: border-box; }
@@ -3105,6 +3126,13 @@ class SunflowApp extends LitElement {
     }
     .brand { grid-column: 1; }
     .tabs { grid-column: 2; }
+    .display-toggles { grid-column: 3; justify-self: end; display: flex; gap: 4px; }
+    .display-toggle {
+      display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0;
+      border: 1px solid var(--sf-border); border-radius: 8px; background: transparent; color: var(--sf-muted); cursor: pointer;
+    }
+    .display-toggle.on { color: var(--sf-primary-text); background: var(--sf-primary-bg); border-color: var(--sf-primary); }
+    .display-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .brand { display: flex; align-items: center; gap: 12px; color: var(--sf-primary); }
     .brand .title { font-weight: 700; font-size: 17px; color: var(--sf-text); }
     .brand .subtitle { font-size: 13px; color: var(--sf-muted); }
@@ -3175,6 +3203,7 @@ class SunflowApp extends LitElement {
     @media (max-width: 700px) {
       /* Without the own brand (inside Home Assistant) the header is only the bottom bar */
       header { position: static; display: flex; padding: 4px 8px; border-bottom: 0; }
+      .display-toggles { margin-left: auto; }
       header.bare { padding: 0; }
       .brand .subtitle { display: none; }
       /* Phones: icon bar fixed at the bottom, within thumb reach */
@@ -3364,7 +3393,7 @@ class SunflowApp extends LitElement {
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
-  `;
+  `];
 }
 
 customElements.define("sunflow-app", SunflowApp);

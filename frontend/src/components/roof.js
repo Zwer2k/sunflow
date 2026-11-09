@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { locale, t } from "../lib/i18n.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 /** Values an optimizer can report, in display order: short label and decimals. */
 export const OPTIMIZER_VALUES = {
@@ -162,7 +163,7 @@ class SunflowRoof extends LitElement {
     this.dispatchEvent(new CustomEvent("move", { detail: { id, row, col } }));
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: block; overflow-x: auto; --module-width: 64px; }
     .roof { display: flex; flex-direction: column; gap: 4px; padding: 4px; width: max-content; }
     .row { display: flex; gap: 4px; align-items: center; min-height: var(--module-width); }
@@ -224,7 +225,7 @@ class SunflowRoof extends LitElement {
     }
     .value { font-size: 10px; color: var(--sf-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .value.main { font-size: 12px; font-weight: 600; }
-  `;
+  `];
 }
 
 customElements.define("sf-roof", SunflowRoof);

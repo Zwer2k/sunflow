@@ -7,6 +7,7 @@ import { formatValue } from "../lib/format.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
 import "../components/battery-planner.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const REFRESH_MS = 5 * 60 * 1000;
@@ -168,7 +169,7 @@ class SunflowAnalysis extends LitElement {
     if (!list?.length) return nothing;
     const actionLabel = (a) => (a.type === "navigate" ? t("Öffnen") : t("Übernehmen"));
     return html`
-      <section>
+      <section class="suggestion">
         <h2>${t("Empfehlungen")}</h2>
         <div class="recommendations">
           ${list.map(
@@ -244,7 +245,7 @@ class SunflowAnalysis extends LitElement {
             : t("ohne PV und Speicher (alles aus dem Netz)")}</span>`)}
         </div>
         ${lineChart(lines, { label: t("Stromkosten pro Tag"), formatY: (v) => euro.format(v), yMin: lowest })}
-        <p class="small muted">${t("Aus Energiezählern und dem Preisverlauf der Tarif-Entität; Einspeisung zur eingestellten Vergütung.")}
+        <p class="small muted help">${t("Aus Energiezählern und dem Preisverlauf der Tarif-Entität; Einspeisung zur eingestellten Vergütung.")}
           ${incomplete ? t("{count} Tag(e) mit Lücken in der Statistik.", { count: incomplete }) : ""}</p>
       </section>
     `;
@@ -270,7 +271,7 @@ class SunflowAnalysis extends LitElement {
       <div class="heading">
         <div>
           <h1>${t("Analyse")}</h1>
-          <p class="muted">${t("Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?")}</p>
+          <p class="muted help">${t("Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?")}</p>
         </div>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
@@ -389,7 +390,7 @@ class SunflowAnalysis extends LitElement {
                       ${t("Neu lernen ab heute")}</button></li>`,
                 )}
               </ul>`
-          : html`<p class="small muted">${t("Tipp: Unter Einstellungen → Tarif & Prognose lassen sich Dachflächen ihren PV-Strings zuordnen; dann lernt Sunflow jede Fläche einzeln (z. B. Verschattung).")}</p>`}
+          : html`<p class="small muted help">${t("Tipp: Unter Einstellungen → Tarif & Prognose lassen sich Dachflächen ihren PV-Strings zuordnen; dann lernt Sunflow jede Fläche einzeln (z. B. Verschattung).")}</p>`}
         ${this._renderAppliances()}
         <h3>${t("Hausverbrauch")}</h3>
         ${l.load_model
@@ -440,7 +441,7 @@ class SunflowAnalysis extends LitElement {
             )}
           </div>
         </div>
-        <p class="small muted">${t("Je Dachfläche die gemessenen Strings gegen die rohe Prognose (Solcast), stündlich. Rechts der senkrechten Linie: die rohe Prognose mit ihrer Bandbreite (p10 bis p90) und was Sunflow nach dem Gelernten erwartet, bevor die Planung für Unsicherheit vorsichtiger rechnet.")}</p>
+        <p class="small muted help">${t("Je Dachfläche die gemessenen Strings gegen die rohe Prognose (Solcast), stündlich. Rechts der senkrechten Linie: die rohe Prognose mit ihrer Bandbreite (p10 bis p90) und was Sunflow nach dem Gelernten erwartet, bevor die Planung für Unsicherheit vorsichtiger rechnet.")}</p>
         <div class="legend">
           <span class="legend-item"><span class="swatch" style="background:${colors.raw}"></span>${t("Rohprognose")}</span>
           <span class="legend-item"><span class="swatch" style="background:${colors.measured}"></span>${t("Gemessen")}</span>
@@ -485,7 +486,7 @@ class SunflowAnalysis extends LitElement {
           <button class="secondary" ?disabled=${data.computing} @click=${() => this._loadPvSun(true)}>
             ${data.computing ? t("Lernt …") : t("Neu lernen")}</button>
         </div>
-        <p class="small muted">${t("Lernt aus den vergangenen Solcast-Prognosen und den gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt. Der Backtest lernt ohne die letzten 3 Wochen und prüft auf diesen.")}
+        <p class="small muted help">${t("Lernt aus den vergangenen Solcast-Prognosen und den gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt. Der Backtest lernt ohne die letzten 3 Wochen und prüft auf diesen.")}
           ${data.enabled
             ? t("Die Planung nutzt es, wo es aus mindestens 60 Tagen gelernt hat und im Backtest besser ist.")
             : t("Läuft im Schattenbetrieb; einschalten unter Einstellungen → Planung → PV-Prognose.")}</p>
@@ -545,7 +546,7 @@ class SunflowAnalysis extends LitElement {
           : nothing}
       </div>
       ${weights["0"] !== undefined
-        ? html`<p class="small muted">${t("Ist Solcast sehr unsicher (p10 unter 30 % des Mittelwerts), kommt erfahrungsgemäß p10 plus {pct} % des Abstands zum Mittelwert an; die Planung rechnet so.", { pct: Math.round(weights["0"] * 100) })}</p>`
+        ? html`<p class="small muted help">${t("Ist Solcast sehr unsicher (p10 unter 30 % des Mittelwerts), kommt erfahrungsgemäß p10 plus {pct} % des Abstands zum Mittelwert an; die Planung rechnet so.", { pct: Math.round(weights["0"] * 100) })}</p>`
         : nothing}
       ${this._shadeMap(c)}
     `;
@@ -586,7 +587,7 @@ class SunflowAnalysis extends LitElement {
           <span class="legend-item"><span class="swatch" style="background:${color(1)}"></span>${t("wie prognostiziert")}</span>
           <span class="legend-item"><span class="swatch" style="background:${color(1.4)}"></span>${t("mehr")}</span>
         </div>
-        <p class="small muted">${t("Nach rechts die Sonnenrichtung, nach oben die Sonnenhöhe; nur klare Stunden.")}</p>
+        <p class="small muted help">${t("Nach rechts die Sonnenrichtung, nach oben die Sonnenhöhe; nur klare Stunden.")}</p>
       </div>
     `;
   }
@@ -616,7 +617,7 @@ class SunflowAnalysis extends LitElement {
           <h2>${t("Datenbestand fürs Lernen")}</h2>
           <button class="secondary" @click=${() => this._loadInventory(true)}>${t("Neu prüfen")}</button>
         </div>
-        <p class="small muted">${t("Wie weit Home Assistant zurück Messwerte, Wetter und Prognosen aufhebt. Daraus kann Sunflow rückwirkend lernen, statt erst Wochen zu sammeln.")}</p>
+        <p class="small muted help">${t("Wie weit Home Assistant zurück Messwerte, Wetter und Prognosen aufhebt. Daraus kann Sunflow rückwirkend lernen, statt erst Wochen zu sammeln.")}</p>
         ${this._inventoryError ? html`<div class="alert error" role="alert">${this._inventoryError}</div>` : nothing}
         ${inv
           ? html`
@@ -699,7 +700,7 @@ class SunflowAnalysis extends LitElement {
           })}${usual.length ? ` · ${usual.join(" · ")}` : ""} <span class="muted">(${t("{days} Tage", { days: u.days })})</span></li>`;
         })}
       </ul>
-      <p class="small muted">${t("Aus den Stundenwerten der letzten 8 Wochen. Sunflow schaltet diese Geräte nicht; die Planung nutzt das noch nicht.")}</p>
+      <p class="small muted help">${t("Aus den Stundenwerten der letzten 8 Wochen. Sunflow schaltet diese Geräte nicht; die Planung nutzt das noch nicht.")}</p>
     `;
   }
 
@@ -750,7 +751,7 @@ class SunflowAnalysis extends LitElement {
             )}
           </div>
         </div>
-        <p class="small muted">${t("Pro Tag aus den Energiezählern.")}
+        <p class="small muted help">${t("Pro Tag aus den Energiezählern.")}
           ${t("Speicher: Zyklus einschließlich Eigenverbrauch, um die Änderung des Ladestands bereinigt.")}
           ${t("Wechselrichter: Wechselstrom-Ertrag geteilt durch Gleichstrom-Eingang.")}
           ${t("Tage mit wenig Energie (Speicher unter 20 % der Kapazität geladen, Wechselrichter unter 0,5 kWh) werden mit den folgenden zu einem Wert zusammengefasst; Tage mit Lücken in den Daten bleiben leer.")}</p>
@@ -941,7 +942,7 @@ class SunflowAnalysis extends LitElement {
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: flex; flex-direction: column; gap: 16px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
@@ -1050,7 +1051,7 @@ class SunflowAnalysis extends LitElement {
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
-  `;
+  `];
 }
 
 customElements.define("sunflow-analysis", SunflowAnalysis);

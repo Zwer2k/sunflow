@@ -10,6 +10,7 @@ import { decimal, locale, t } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
 import "../components/target-dial.js";
 import { MODES, currentMode, defaultTarget, targetRange, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const REFRESH_MS = 30 * 1000;
 // The plan is recomputed in the background after a change
@@ -167,7 +168,7 @@ class SunflowControl extends LitElement {
       <div class="heading">
         <div>
           <h1>${t("Steuerung")}</h1>
-          <p class="muted">${t("Vorübergehende Eingriffe – danach gilt wieder der Standard aus den Einstellungen.")}
+          <p class="muted help">${t("Vorübergehende Eingriffe – danach gilt wieder der Standard aus den Einstellungen.")}
             ${t("Sunflow plant nach jeder Änderung sofort neu.")}</p>
         </div>
         <label class="duration">
@@ -208,7 +209,7 @@ class SunflowControl extends LitElement {
         <div class="card-head">
           <div>
             <h2>${t("Protokoll")}</h2>
-            <p class="small muted">${t("Was Sunflow an den gesteuerten Geräten geschrieben hat, mit Schreibfehlern (ein Fehler, der jede Minute wiederkommt, steht einmal da) – und Änderungen, die nicht von Sunflow kamen, mit dem, was Home Assistant über den Auslöser weiß.")}
+            <p class="small muted help">${t("Was Sunflow an den gesteuerten Geräten geschrieben hat, mit Schreibfehlern (ein Fehler, der jede Minute wiederkommt, steht einmal da) – und Änderungen, die nicht von Sunflow kamen, mit dem, was Home Assistant über den Auslöser weiß.")}
               ${t("Geprüft wird jede Minute.")}</p>
           </div>
         </div>
@@ -269,7 +270,7 @@ class SunflowControl extends LitElement {
               <h2>${t("Sunflow steuert")}</h2>
             </button>
             ${open
-              ? html`<p class="small muted">${takeover.enabled
+              ? html`<p class="small muted help">${takeover.enabled
                   ? t("Sunflow setzt den Plan an den Geräten um. Ausschalten gibt sie zurück: Speicher in Eigenverbrauch und vorherigen Modus, Ladepunkte an ihre eigene Logik.")
                   : t("Aus: Sunflow plant nur, die Geräte arbeiten wie bisher.")}</p>`
               : html`<p class="small muted">${summary}${problems
@@ -315,7 +316,7 @@ class SunflowControl extends LitElement {
                       : ""} · ${s.reason}${s.last_write ? ` · ${t("zuletzt geschrieben {time}", { time: time(s.last_write) })}` : ""}`
                     : s?.reason ?? t("startet mit der nächsten Minute")}</span>
               ${d.kind === "loadpoint" && d.enabled && takeover.enabled
-                ? html`<span class="small muted">${t("Wird der Ladepunkt auch an anderer Stelle gesteuert (z. B. eine Automation oder ein Zeitplan), dort ausschalten – sonst schalten zwei Steuerungen gegeneinander.")}</span>`
+                ? html`<span class="small muted help">${t("Wird der Ladepunkt auch an anderer Stelle gesteuert (z. B. eine Automation oder ein Zeitplan), dort ausschalten – sonst schalten zwei Steuerungen gegeneinander.")}</span>`
                 : nothing}
               ${s?.error ? html`<span class="small warn-text">${t("Fehler: {error} – nächster Versuch in einer Minute", { error: s.error })}</span>` : nothing}
               ${s?.note ? html`<span class="small muted">${s.note}</span>` : nothing}
@@ -568,7 +569,7 @@ class SunflowControl extends LitElement {
     return html`
       <section class="card">
         <h2>${t("Priorität")}</h2>
-        <p class="small muted">${t("Reicht der PV-Überschuss nicht für alle, bekommt der obere Eintrag zuerst.")}
+        <p class="small muted help">${t("Reicht der PV-Überschuss nicht für alle, bekommt der obere Eintrag zuerst.")}
           ${t("Verbraucher unterhalb des Hausspeichers erhalten Überschuss erst, wenn der Speicher ihn nicht mehr aufnimmt.")}
           ${t("Mit „Grenzen“ wartet ein Eintrag, bis höher eingestufte Speicher (Hausspeicher, Auto, Warmwasser) einen Stand erreicht haben – bis dahin nutzt er nur Netzstrom, falls sein Ziel das verlangt.")}</p>
         <ol class="priorities">
@@ -631,7 +632,7 @@ class SunflowControl extends LitElement {
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: flex; flex-direction: column; gap: 16px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
@@ -748,7 +749,7 @@ class SunflowControl extends LitElement {
     }
     button:disabled { cursor: not-allowed; opacity: 0.5; }
     button:focus-visible, select:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
-  `;
+  `];
 }
 
 customElements.define("sunflow-control", SunflowControl);

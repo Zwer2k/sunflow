@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import { t } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const DETECTION = [
   ["card", t("Karte an der Wallbox"), t("Die gescannte Karte bestimmt das Fahrzeug.")],
@@ -59,7 +60,7 @@ class SunflowCharging extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Laden")}</h1>
-        <p class="muted">${t("Je Wallbox: welche Fahrzeuge dort laden, mit welcher Karte, bis zu welchem Ladestand und wann sie fertig sein sollen – und wie die Wallbox das angesteckte Fahrzeug erkennt.")}</p>
+        <p class="muted help">${t("Je Wallbox: welche Fahrzeuge dort laden, mit welcher Karte, bis zu welchem Ladestand und wann sie fertig sein sollen – und wie die Wallbox das angesteckte Fahrzeug erkennt.")}</p>
       </div>
       ${this._error ? html`<div class="alert error">${this._error}</div>` : nothing}
       ${data === null ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
@@ -183,7 +184,7 @@ class SunflowCharging extends LitElement {
                     <input type="checkbox" .checked=${d.authorize} @change=${(e) => set("authorize", e.target.checked)}>
                     ${t("Ladevorgang ohne Karte freigeben, wenn das Fahrzeug sicher erkannt ist (Sensor oder Auswahl)")}</label>`
                 : nothing}
-              <span class="small muted">${t("Unbekanntes Fahrzeug (fremde Karte, nichts erkannt): Die Wallbox regelt selbst.")}</span>`
+              <span class="small muted help">${t("Unbekanntes Fahrzeug (fremde Karte, nichts erkannt): Die Wallbox regelt selbst.")}</span>`
           : nothing}
       </div>
     `;
@@ -223,7 +224,7 @@ class SunflowCharging extends LitElement {
     return !this._dirty.size;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: flex; flex-direction: column; gap: 12px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
@@ -256,7 +257,7 @@ class SunflowCharging extends LitElement {
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     button:disabled { cursor: not-allowed; opacity: .6; }
-  `;
+  `];
 }
 
 customElements.define("sf-charging", SunflowCharging);

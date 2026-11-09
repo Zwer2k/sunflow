@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { STRATEGIES } from "../lib/strategies.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 // Numeric fields of a scenario: key, label, unit shown, optional
 const FIELDS = [
@@ -170,7 +171,7 @@ class SunflowBatteryPlanner extends LitElement {
             </div>`
           : nothing}
       </div>
-      <p class="small muted">${t("Was ein Speicher in den letzten Tagen gespart hätte – mit deinen gemessenen Netz- und Speicherwerten und dem Preisverlauf. Zum Vergleich vor einem Kauf, für eine Erweiterung oder um den vorhandenen Speicher mit anderen Einstellungen durchzurechnen. Sunflow steuert dabei nichts.")}</p>
+      <p class="small muted help">${t("Was ein Speicher in den letzten Tagen gespart hätte – mit deinen gemessenen Netz- und Speicherwerten und dem Preisverlauf. Zum Vergleich vor einem Kauf, für eine Erweiterung oder um den vorhandenen Speicher mit anderen Einstellungen durchzurechnen. Sunflow steuert dabei nichts.")}</p>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${this._edits ? this._renderEditor() : this._renderResult()}
     </section>`;
@@ -266,11 +267,11 @@ class SunflowBatteryPlanner extends LitElement {
         <button class="secondary" @click=${() => (this._edits = null)}>${t("Abbrechen")}</button>
         <button class="primary" ?disabled=${this._busy} @click=${() => this._save()}>${t("Speichern und rechnen")}</button>
       </div>
-      <p class="small muted">${t("„Vorhandenen Speicher übernehmen“ legt deinen Speicher mit seinen Werten als Variante „statt des vorhandenen“ an – ändere dann z. B. Netzladen, Verschleiß oder Leistung, um zu sehen, was das gebracht hätte.")}</p>
+      <p class="small muted help">${t("„Vorhandenen Speicher übernehmen“ legt deinen Speicher mit seinen Werten als Variante „statt des vorhandenen“ an – ändere dann z. B. Netzladen, Verschleiß oder Leistung, um zu sehen, was das gebracht hätte.")}</p>
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: block; }
     * { box-sizing: border-box; }
     section { display: flex; flex-direction: column; gap: 10px; }
@@ -323,7 +324,7 @@ class SunflowBatteryPlanner extends LitElement {
     }
     .modes { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
     .radio { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
-  `;
+  `];
 }
 
 customElements.define("sf-battery-planner", SunflowBatteryPlanner);

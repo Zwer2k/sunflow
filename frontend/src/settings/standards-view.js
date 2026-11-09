@@ -5,6 +5,7 @@ import { fromDisplay, toDisplay } from "../lib/format.js";
 import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 import { t } from "../lib/i18n.js";
 import "./learning-sources.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 
 /** Default planning settings (settings area "Planung"). */
@@ -56,7 +57,7 @@ class SunflowStandards extends LitElement {
       <div class="heading">
         <div>
           <h1>${t("Planung")}</h1>
-          <p class="muted">${t("Wie Sunflow den Speicher plant: Strategie, Schonung, netzdienliches Verhalten. Vorübergehende Änderungen machst du im Tab „Steuerung“.")}</p>
+          <p class="muted help">${t("Wie Sunflow den Speicher plant: Strategie, Schonung, netzdienliches Verhalten. Vorübergehende Änderungen machst du im Tab „Steuerung“.")}</p>
         </div>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
@@ -212,7 +213,7 @@ class SunflowStandards extends LitElement {
                 @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">%</span>
             </span>
-            <span class="small muted">${settings.max_soc_mode === "unless_poor_days"
+            <span class="small muted help">${settings.max_soc_mode === "unless_poor_days"
               ? t("Schont die Zellen: höher lädt Sunflow nur für eine fällige Vollladung oder vor Tagen mit wenig PV. 100 % = keine Grenze.")
               : t("Schont die Zellen: höher lädt Sunflow nur für eine fällige Vollladung. 100 % = keine Grenze.")}</span>
           </label>
@@ -234,7 +235,7 @@ class SunflowStandards extends LitElement {
                       </select>
                     </span>`
                   : nothing}
-                <span class="small muted">${t("Sagt die PV-Prognose für die nächsten Tage weniger Ertrag als den Tagesverbrauch voraus, setzt Sunflow die Grenze aus und speichert, was die Sonne vorher noch liefert.")}</span>
+                <span class="small muted help">${t("Sagt die PV-Prognose für die nächsten Tage weniger Ertrag als den Tagesverbrauch voraus, setzt Sunflow die Grenze aus und speichert, was die Sonne vorher noch liefert.")}</span>
               </label>`
             : nothing}
           <label class="field">
@@ -245,7 +246,7 @@ class SunflowStandards extends LitElement {
                 @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">${t("Tage")}</span>
             </span>
-            <span class="small muted">${t("Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt.")}</span>
+            <span class="small muted help">${t("Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt.")}</span>
           </label>
           <label class="field">
             <span class="field-label">${t("Spätestens nach … aus dem Netz")}</span>
@@ -255,7 +256,7 @@ class SunflowStandards extends LitElement {
                 @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">${t("Tage")}</span>
             </span>
-            <span class="small muted">${t("War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll – auch wenn Netzladen sonst aus ist. Leer = nie.")}</span>
+            <span class="small muted help">${t("War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll – auch wenn Netzladen sonst aus ist. Leer = nie.")}</span>
           </label>
           <div class="field">
             <span class="field-label">${t("Alterung bei hohem Ladestand")}</span>
@@ -280,7 +281,7 @@ class SunflowStandards extends LitElement {
                     </span>`
                 : html`${t("einrechnen")}`}
             </span>
-            <span class="small muted">${t("Zellen altern schneller, je länger sie voll stehen (kalendarische Alterung). Jede kWh über der Schwelle kostet im Plan je Stunde diesen Betrag – Sunflow lädt dann möglichst kurz vor dem Bedarf, z. B. am Ende des günstigen Nachtfensters statt ab Mitternacht. Beispiel: 4 kWh über der Schwelle für 10 Stunden kosten bei 0,1 ct rund 4 ct. Die Alterung, die mit der Zeit ohnehin eintritt, ist darin nicht enthalten, weil sie nicht vom Betrieb abhängt.")}</span>
+            <span class="small muted help">${t("Zellen altern schneller, je länger sie voll stehen (kalendarische Alterung). Jede kWh über der Schwelle kostet im Plan je Stunde diesen Betrag – Sunflow lädt dann möglichst kurz vor dem Bedarf, z. B. am Ende des günstigen Nachtfensters statt ab Mitternacht. Beispiel: 4 kWh über der Schwelle für 10 Stunden kosten bei 0,1 ct rund 4 ct. Die Alterung, die mit der Zeit ohnehin eintritt, ist darin nicht enthalten, weil sie nicht vom Betrieb abhängt.")}</span>
           </div>
           <div class="field">
             <span class="field-label">${t("Notstrom-Reserve")}</span>
@@ -297,7 +298,7 @@ class SunflowStandards extends LitElement {
                   </span>`
                 : html`${t("freihalten")}`}
             </span>
-            <span class="small muted">${t("Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand, die Reserve bleibt dem Notstrom (EPS) bei Stromausfall vorbehalten. Liegt der Speicher darunter, lädt Sunflow ihn vorrangig wieder auf – aus dem Netz, wenn Laden aus dem Netz erlaubt ist, unabhängig vom Preis.")}</span>
+            <span class="small muted help">${t("Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand, die Reserve bleibt dem Notstrom (EPS) bei Stromausfall vorbehalten. Liegt der Speicher darunter, lädt Sunflow ihn vorrangig wieder auf – aus dem Netz, wenn Laden aus dem Netz erlaubt ist, unabhängig vom Preis.")}</span>
           </div>
           <label class="field">
             <span class="field-label">${t("Hausverbrauch pro Tag (Startwert)")}</span>
@@ -308,7 +309,7 @@ class SunflowStandards extends LitElement {
                 @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">${t("kWh/Tag")}</span>
             </span>
-            <span class="small muted">${t("Gilt nur, solange weniger als 7 Tage Verbrauchsverlauf vorliegen; danach plant Sunflow mit den gemessenen Werten (ab 14 Tagen mit dem gelernten Modell). Ohne große Verbraucher wie Wallbox und Heizstab.")}</span>
+            <span class="small muted help">${t("Gilt nur, solange weniger als 7 Tage Verbrauchsverlauf vorliegen; danach plant Sunflow mit den gemessenen Werten (ab 14 Tagen mit dem gelernten Modell). Ohne große Verbraucher wie Wallbox und Heizstab.")}</span>
             ${this._historyKwh
               ? html`<span class="small">${t("Aus dem Verlauf:")} <strong>${toDisplay(Math.round(this._historyKwh * 10) / 10, "ct")} ${t("kWh/Tag")}</strong>
                   · <button class="link" @click=${() => (this._daily = toDisplay(Math.round(this._historyKwh * 10) / 10, "ct"))}>${t("übernehmen")}</button></span>`
@@ -323,11 +324,11 @@ class SunflowStandards extends LitElement {
                 @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">kW</span>
             </span>
-            <span class="small muted">${t("Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose, damit seltene Spitzen den Alltag nicht verzerren. Wallbox, Heizstab und andere Verbraucher in Sunflow rechnet es ohnehin heraus. Leer = nichts ausklammern.")}</span>
+            <span class="small muted help">${t("Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose, damit seltene Spitzen den Alltag nicht verzerren. Wallbox, Heizstab und andere Verbraucher in Sunflow rechnet es ohnehin heraus. Leer = nichts ausklammern.")}</span>
           </label>
           <div class="field wide">
             <span class="field-label">${t("Verschleißkosten Speicher")}</span>
-            <span class="small muted">${t("Stellst du je Speicher ein: Einstellungen → Geräte → Speicher.")}</span>
+            <span class="small muted help">${t("Stellst du je Speicher ein: Einstellungen → Geräte → Speicher.")}</span>
           </div>
           <label class="field">
             <span class="field-label">${t("Laden aus dem Netz")}</span>
@@ -344,13 +345,13 @@ class SunflowStandards extends LitElement {
                 @change=${(e) => this._saveSettings({ pv_learning: e.target.checked })}>
               ${t("an die Anlage anpassen (aus Messwerten lernen)")}
             </span>
-            <span class="small muted">${t("Vergleicht Prognose und Messung je Stunde und Bewölkung, Details unter „Analyse“.")}</span>
+            <span class="small muted help">${t("Vergleicht Prognose und Messung je Stunde und Bewölkung, Details unter „Analyse“.")}</span>
             <span class="inline">
               <input type="checkbox" .checked=${settings.pv_sun} ?disabled=${this._saving}
                 @change=${(e) => this._saveSettings({ pv_sun: e.target.checked })}>
               ${t("nach Sonnenstand korrigieren (Test)")}
             </span>
-            <span class="small muted">${t("Für Flächen mit Solcast-Historie: lernt aus bis zu zwei Jahren, wie viel je Sonnenhöhe und -richtung ankommt, und erkennt so Verschattung, die mit der Jahreszeit wandert. Ersetzt für diese Flächen die Korrektur nach Uhrzeit; Backtest und Verschattungskarte unter „Analyse“.")}</span>
+            <span class="small muted help">${t("Für Flächen mit Solcast-Historie: lernt aus bis zu zwei Jahren, wie viel je Sonnenhöhe und -richtung ankommt, und erkennt so Verschattung, die mit der Jahreszeit wandert. Ersetzt für diese Flächen die Korrektur nach Uhrzeit; Backtest und Verschattungskarte unter „Analyse“.")}</span>
           </label>
           <div class="field wide">
             <span class="field-label">${t("Netzdienlich")}</span>
@@ -359,7 +360,7 @@ class SunflowStandards extends LitElement {
                 @change=${(e) => this._saveSettings({ grid_friendly: e.target.checked })}>
               ${t("Einspeise- und Bezugsspitzen vermeiden, wo es wenig kostet")}
             </span>
-            <span class="small muted">${t("Weiches Ziel, keine harte Grenze: Sunflow verschiebt Speicherladen und Verbraucher, damit möglichst wenig über den Werten liegt. Jede kWh darüber zählt in der Planung wie 20 ct Mehrkosten (nicht in den angezeigten Kosten). Lässt sich eine Spitze nicht vermeiden – Speicher voll, kein Verbraucher –, wird sie trotzdem zugelassen; PV wird nie abgeregelt.")}</span>
+            <span class="small muted help">${t("Weiches Ziel, keine harte Grenze: Sunflow verschiebt Speicherladen und Verbraucher, damit möglichst wenig über den Werten liegt. Jede kWh darüber zählt in der Planung wie 20 ct Mehrkosten (nicht in den angezeigten Kosten). Lässt sich eine Spitze nicht vermeiden – Speicher voll, kein Verbraucher –, wird sie trotzdem zugelassen; PV wird nie abgeregelt.")}</span>
             ${settings.grid_friendly
               ? html`<div class="fields">
                   <label class="field">
@@ -368,7 +369,7 @@ class SunflowStandards extends LitElement {
                       .value=${this._exportLimit ?? toDisplay(settings.export_limit_w === null ? null : settings.export_limit_w / 1000, "kW")}
                       @input=${(e) => (this._exportLimit = e.target.value)}
                 @change=${() => this._saveNumbers(this._settings)}><span class="muted">kW</span></span>
-                    <span class="small muted">${t("Der Speicher wird morgens nicht schon voll, sondern nimmt die Mittagsspitze auf; Wallbox und Heizstab laufen bevorzugt dann. Ersetzt keine vorgeschriebene Begrenzung im Wechselrichter (Solarspitzengesetz: oft 60 % der PV-Leistung).")}</span>
+                    <span class="small muted help">${t("Der Speicher wird morgens nicht schon voll, sondern nimmt die Mittagsspitze auf; Wallbox und Heizstab laufen bevorzugt dann. Ersetzt keine vorgeschriebene Begrenzung im Wechselrichter (Solarspitzengesetz: oft 60 % der PV-Leistung).")}</span>
                   </label>
                   <label class="field">
                     <span class="field-label">${t("Netzbezug möglichst unter")}</span>
@@ -376,7 +377,7 @@ class SunflowStandards extends LitElement {
                       .value=${this._importLimit ?? toDisplay(settings.import_limit_w === null ? null : settings.import_limit_w / 1000, "kW")}
                       @input=${(e) => (this._importLimit = e.target.value)}
                 @change=${() => this._saveNumbers(this._settings)}><span class="muted">kW</span></span>
-                    <span class="small muted">${t("Wallbox, Heizstab und Laden aus dem Netz laufen dann eher nacheinander als gleichzeitig, z. B. damit der Hausanschluss nicht überlastet wird.")}</span>
+                    <span class="small muted help">${t("Wallbox, Heizstab und Laden aus dem Netz laufen dann eher nacheinander als gleichzeitig, z. B. damit der Hausanschluss nicht überlastet wird.")}</span>
                   </label>
                 </div>`
               : nothing}
@@ -391,7 +392,7 @@ class SunflowStandards extends LitElement {
                 ["cautious", t("Vorsichtig")],
               ].map(([value, label]) => html`<option value=${value} ?selected=${settings.pv_risk === value}>${label}</option>`)}
             </select>
-            <span class="small muted">${t("Vorsichtig plant mehr mit dem schlechten Fall der Prognose (Solcast p10): lieber nachts günstig nachladen, als bei weniger Sonne teuer nachzukaufen.")}</span>
+            <span class="small muted help">${t("Vorsichtig plant mehr mit dem schlechten Fall der Prognose (Solcast p10): lieber nachts günstig nachladen, als bei weniger Sonne teuer nachzukaufen.")}</span>
           </div>
           <div class="field">
             <span class="field-label">${t("Wetter für die Bewölkung")}</span>
@@ -403,16 +404,16 @@ class SunflowStandards extends LitElement {
                 detail: [w.provider, w.cloud_coverage ? null : t("ohne Bewölkungsangabe")].filter(Boolean).join(" · "),
               }))}
               @change=${(e) => this._saveSettings({ weather_entity: e.detail.value || null })}></sf-picker>
-            <span class="small muted">${t("Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.")}</span>
+            <span class="small muted help">${t("Liefert die Entität keine Bewölkung, lernt Sunflow nur je Stunde.")}</span>
           </div>
         </div>
-        <p class="small muted">${t("Änderungen gelten sofort; Zahlen, sobald du das Feld verlässt oder Enter drückst. Danach plant Sunflow neu.")}</p>
+        <p class="small muted help">${t("Änderungen gelten sofort; Zahlen, sobald du das Feld verlässt oder Enter drückst. Danach plant Sunflow neu.")}</p>
         ${this._saved ? html`<div class="saved" role="status">${t("Gespeichert – Plan wird neu berechnet")}</div>` : nothing}
       </section>
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: flex; flex-direction: column; gap: 16px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
@@ -525,7 +526,7 @@ class SunflowStandards extends LitElement {
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
-  `;
+  `];
 }
 
 customElements.define("sf-standards", SunflowStandards);

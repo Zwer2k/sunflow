@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.45
+
+- Two switches at the far right of the menu bar, both on by default and remembered per browser: "?" shows or hides the explanations in every view (descriptions below headings and fields, "What does … do?"), the light bulb the recommendations under Analysis and their count on the tab.
+
 ## 0.78.44
 
 - Live on a PC: the energy flow (diagram, bars, tiles, house, 3D) with the losses line and view switch on the left (60 %), the quick controls on the right (40 %); today's figures stay below across the width, the weather at the top. Without pinned loads the graphic takes the whole width. Phones unchanged.

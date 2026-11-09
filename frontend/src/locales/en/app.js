@@ -1,5 +1,9 @@
 // English texts of app, keyed by the German source text.
 export default {
+  "Erklärtexte ausblenden": "Hide explanations",
+  "Erklärtexte einblenden": "Show explanations",
+  "Empfehlungen ausblenden": "Hide recommendations",
+  "Empfehlungen einblenden": "Show recommendations",
   "Live, Plan, Preise und Prognosen": "Live, plan, prices and forecasts",
   "Verlauf, Aufzeichnung und Auswertung (mit SQL)": "History, recording and analysis (with SQL)",
   "Konfiguration und Geräte": "Configuration and devices",

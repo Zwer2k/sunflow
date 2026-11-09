@@ -58,7 +58,7 @@ export const STRATEGIES = {
 /** Collapsible description of one strategy. */
 export function strategyDetails(key) {
   const strategy = STRATEGIES[key];
-  return html`<details class="strategy-details">
+  return html`<details class="strategy-details help">
     <summary class="small">${t("Was macht „{label}“?", { label: strategy.label })}</summary>
     <ul class="small muted">${strategy.details.map((line) => html`<li>${line}</li>`)}</ul>
   </details>`;

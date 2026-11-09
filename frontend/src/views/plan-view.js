@@ -7,6 +7,7 @@ import { plugInHints } from "../lib/plug-in.js";
 import { decimal, locale, t, tn } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
 import { ACTIONS } from "../lib/actions.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const LOAD_QUALITY = {
   day_type: t("nach Wochentag"),
@@ -270,7 +271,7 @@ class SunflowPlan extends LitElement {
       <div class="heading">
         <div>
           <h1>${t("Planung")}</h1>
-          <p class="muted">${t("Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.")}
+          <p class="muted help">${t("Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.")}
             ${plan ? this._controlNote(plan) : nothing}</p>
         </div>
         <button class="secondary" ?disabled=${this._loading} @click=${() => this._load(true)}>
@@ -407,7 +408,7 @@ class SunflowPlan extends LitElement {
             </div>
           </div>
         </div>
-        <p class="small muted window-label">${dayTime.format(this._range.start)} – ${dayTime.format(this._range.end)}${this._range.end > new Date(slots.at(-1).end)
+        <p class="small muted window-label help">${dayTime.format(this._range.start)} – ${dayTime.format(this._range.end)}${this._range.end > new Date(slots.at(-1).end)
           ? ` · ${t("nach dem Planende nur die PV-Prognose")}`
           : ""} · ${t("zum Verschieben ein Diagramm seitlich ziehen")}</p>
         ${this._historyError
@@ -418,7 +419,7 @@ class SunflowPlan extends LitElement {
         <div class="legend">
           <span class="legend-item"><span class="line solid"></span>${t("gemessen")}</span>
           <span class="legend-item"><span class="line dashed"></span>${t("Prognose / Planung")}</span>
-          <span class="legend-item muted">${t("Klick auf eine Zahl der Leistungsachse skaliert bis dorthin, erneuter Klick zeigt wieder alles")}</span>
+          <span class="legend-item muted help">${t("Klick auf eine Zahl der Leistungsachse skaliert bis dorthin, erneuter Klick zeigt wieder alles")}</span>
         </div>
       </section>
 
@@ -930,7 +931,7 @@ class SunflowPlan extends LitElement {
                 @click=${() => (this._levelFocus = active ? null : l.key)}>
                 <span class="swatch" style="background:${l.color}"></span>${l.name}</button>`;
             })}
-            <span class="legend-item muted">${focus ? t("Klick zeigt wieder alle in %") : t("alle in % · Klick zeigt einen in kWh bzw. °C")}</span>
+            <span class="legend-item muted help">${focus ? t("Klick zeigt wieder alle in %") : t("alle in % · Klick zeigt einen in kWh bzw. °C")}</span>
           </div>`
         : nothing}
       ${lineChart(series, { label: t("Ladestand gemessen und erwartet"), now, range: this._range, ...options })}
@@ -1081,7 +1082,7 @@ class SunflowPlan extends LitElement {
     }
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     .band-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; opacity: 0.25; margin: 0 4px 0 8px; vertical-align: middle; }
     :host { display: flex; flex-direction: column; gap: 16px; }
     * { box-sizing: border-box; }
@@ -1197,7 +1198,7 @@ class SunflowPlan extends LitElement {
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
-  `;
+  `];
 }
 
 customElements.define("sunflow-plan", SunflowPlan);

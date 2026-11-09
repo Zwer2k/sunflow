@@ -6,6 +6,7 @@ import "./target-dial.js";
 import { MODES, currentMode, defaultTarget, targetRange, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
 import { locale, t } from "../lib/i18n.js";
 import { recall, remember } from "../lib/view-cache.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const REFRESH_MS = 30 * 1000;
 const KEPT_MS = 10 * 60 * 1000;
@@ -226,7 +227,7 @@ class SunflowQuickControls extends LitElement {
       label=${t("Ziel {name}", { name: device.name })} @change=${(e) => this._setTarget(device, e.detail.value)}></sf-target-dial>`;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: block; }
     section {
       display: flex; flex-direction: column; border: 1px solid var(--sf-border); border-radius: 12px;
@@ -286,7 +287,7 @@ class SunflowQuickControls extends LitElement {
     .menu button:hover { background: var(--sf-subtle); }
     .menu button.on { font-weight: 600; background: var(--sf-primary-bg); }
     .plug.on { filter: none; opacity: 1; border-color: var(--sf-ok); background: var(--sf-ok-bg); }
-  `;
+  `];
 }
 
 customElements.define("sf-quick-controls", SunflowQuickControls);

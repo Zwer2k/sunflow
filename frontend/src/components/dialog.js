@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { t } from "../lib/i18n.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 /**
  * Sunflow's own confirmation dialog instead of the browser's confirm().
@@ -59,7 +60,7 @@ class SunflowDialog extends LitElement {
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     dialog {
       padding: 0; border: 0; border-radius: 12px; max-width: min(520px, calc(100vw - 32px));
       background: var(--sf-surface); color: var(--sf-text); box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
@@ -74,7 +75,7 @@ class SunflowDialog extends LitElement {
     .confirm { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
     .confirm.danger { background: var(--sf-error-text); color: var(--sf-surface); }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
-  `;
+  `];
 }
 
 customElements.define("sf-dialog", SunflowDialog);
