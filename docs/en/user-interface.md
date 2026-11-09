@@ -9,7 +9,8 @@ recommendations.
 At the far right of the menu bar two switches hide in every view what you no longer need; each
 browser remembers its choice, both start switched on:
 
-- **?** – explanations (descriptions below headings and fields, "What does … do?").
+- **?** – explanations (descriptions below headings and fields, "What does … do?"). A small ? stays
+  in their place and shows or hides just that text on a click.
 - **Light bulb** – recommendations under "Analysis" and their number on "Analysis".
 
 ## Live

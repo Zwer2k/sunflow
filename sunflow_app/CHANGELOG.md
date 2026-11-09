@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.46
+
+- Hidden explanations leave a small "?" in their place; a click shows just that text, another click hides it again (links, buttons and "What does … do?" inside an opened text keep working).
+
 ## 0.78.45
 
 - Two switches at the far right of the menu bar, both on by default and remembered per browser: "?" shows or hides the explanations in every view (descriptions below headings and fields, "What does … do?"), the light bulb the recommendations under Analysis and their count on the tab.

@@ -1,6 +1,7 @@
 /**
  * Switches in the menu bar: explanations (elements with class "help") and recommendations
  * (class "suggestion") shown or hidden in every view at once. Each browser remembers its own.
+ * A hidden explanation leaves a small "?" that shows it on a tap.
  *
  * Every component adopts `toggleSheet`; changing it reaches all shadow roots without a render.
  */
@@ -19,12 +20,43 @@ function stored(key) {
 
 const state = { help: stored("help"), suggestions: stored("suggestions") };
 
+// Hidden explanations shrink to a small "?" at their place; a click shows that one ("help-open")
+const HELP_HIDDEN = `
+  .help:not(.help-open) { font-size: 0 !important; line-height: 0 !important; cursor: help; }
+  .help:not(.help-open) > * { display: none !important; }
+  .help:not(.help-open)::before {
+    content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+    width: 16px; height: 16px; border: 1px solid currentColor; border-radius: 50%;
+    font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle;
+  }
+  .help.help-open { cursor: help; }
+`;
+
 function apply() {
-  toggleSheet.replaceSync(
-    `${state.help ? "" : ".help { display: none !important; }"}${state.suggestions ? "" : ".suggestion { display: none !important; }"}`,
-  );
+  toggleSheet.replaceSync(`${state.help ? "" : HELP_HIDDEN}${state.suggestions ? "" : ".suggestion { display: none !important; }"}`);
 }
 apply();
+
+const INTERACTIVE = new Set(["A", "BUTTON", "SUMMARY", "INPUT", "SELECT", "TEXTAREA", "LABEL"]);
+
+// Through shadow roots: the path of the click names the explanation that was tapped
+document.addEventListener(
+  "click",
+  (e) => {
+    if (state.help) return;
+    const path = e.composedPath();
+    const index = path.findIndex((el) => el.classList?.contains("help"));
+    if (index < 0) return;
+    const help = path[index];
+    // An opened text keeps its own links, buttons and "What does … do?"
+    if (help.classList.contains("help-open") && path.slice(0, index).some((el) => INTERACTIVE.has(el.tagName))) return;
+    // Inside a label or button the tap only opens or closes the text
+    e.preventDefault();
+    e.stopPropagation();
+    help.classList.toggle("help-open");
+  },
+  true,
+);
 
 /** Whether explanations ("help") or recommendations ("suggestions") are shown. */
 export function shown(key) {
