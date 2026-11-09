@@ -432,7 +432,7 @@ def before_battery(config: SunflowConfig, device_id: str, live: Any, capacity_wh
     """The consumer comes before the battery: ranked above it, or its battery conditions are met."""
     if BATTERY_PRIORITY_ID not in config.ranked_above(device_id):
         return True
-    levels = [c.min_pct for c in config.valid_conditions(device_id) if c.device_id == BATTERY_PRIORITY_ID]
+    levels = [config.battery_limit_pct(c.min_pct) for c in config.valid_conditions(device_id) if c.device_id == BATTERY_PRIORITY_ID]
     if not levels or not capacity_wh or live is None or live.soc_wh is None:
         return False
     return live.soc_wh / capacity_wh * 100 >= max(levels)
@@ -450,15 +450,17 @@ def unmet_limit(config: SunflowConfig, device_id: str, live: Any, capacity_wh: f
         if condition.device_id == BATTERY_PRIORITY_ID:
             if not capacity_wh or live is None or live.soc_wh is None:
                 continue
-            if live.soc_wh / capacity_wh * 100 < condition.min_pct - SOC_TOLERANCE_PCT:
-                return t("Grenze: Hausspeicher unter {level} %", level=number(condition.min_pct))
+            level = config.battery_limit_pct(condition.min_pct)
+            if live.soc_wh / capacity_wh * 100 < level - SOC_TOLERANCE_PCT:
+                return t("Grenze: Hausspeicher unter {level} %", level=number(level))
             continue
         info = infos.get(condition.device_id)
         if info is None:
             continue
         if info.unknown_vehicle:
             return t("Grenze: Ladestand von {name} unbekannt", name=info.name)
-        if info.reason or info.current is None:
+        # Not plugged in, also when only expected back: holds nothing back
+        if info.reason or info.current is None or info.expected_arrival is not None:
             continue
         key = f"vehicle:{info.vehicle_id}" if info.vehicle_id else condition.device_id
         current = levels.get(key, info.current)

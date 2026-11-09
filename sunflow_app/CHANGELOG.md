@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.78.43
+
+- Priority limits on the home battery above its everyday charge limit (e.g. 100 % at 98 %) count as met at the charge limit, in the plan and in control; before, such a limit was hardly ever met and the load got no PV at all.
+- A limit on a car only holds back while it is plugged in, also when the plan expects it back.
+- Limits can be set in 1 % steps (before 5 %).
+- Plan: the expected saving shows its parts – electricity, backup heating (if set) and the value of what is left in the battery at the end.
+
 ## 0.78.42
 
 - Live: title, subtitle and the time of the values are back (undoes 0.78.41).

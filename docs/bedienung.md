@@ -101,8 +101,11 @@ auf Weiteres. Nach jeder Änderung plant Sunflow sofort neu.
   Mit **Grenzen** wartet ein Verbraucher, bis höher stehende Speicher einen Stand erreicht haben,
   z. B. Warmwasser erst ab 90 % Hausspeicher. Bis dahin bekommt er keinen PV- oder Speicherstrom,
   nur Netzstrom, wenn der Plan ihn dafür vorsieht. Die Steuerung prüft die Grenzen bei jedem
-  Schritt mit den gemessenen Werten, nicht nur mit der Prognose. Ein Auto, das angesteckt, aber
-  noch nicht erkannt ist (Ladestand unbekannt), hält wartende Verbraucher zurück.
+  Schritt mit den gemessenen Werten, nicht nur mit der Prognose. Grenzen gehen in 1-%-Schritten.
+  Eine Grenze auf den Hausspeicher über seiner Ladegrenze (z. B. 100 % bei 98 %) gilt als
+  erreicht, sobald er die Ladegrenze erreicht – sonst wäre sie fast nie erfüllt. Ein Auto hält nur
+  zurück, solange es angesteckt ist, nicht unterwegs oder nur erwartet. Ein Auto, das angesteckt,
+  aber noch nicht erkannt ist (Ladestand unbekannt), hält wartende Verbraucher zurück.
 - **Protokoll**: was Sunflow an Geräte geschrieben hat, mit Grund und Fehlern, und Änderungen
   von anderer Seite mit ihrem Auslöser. Filter nach Gerät, Zeitraum, „nur fremde Änderungen“
   und „nur Fehler und Warnungen“.
@@ -116,7 +119,9 @@ auf Weiteres. Nach jeder Änderung plant Sunflow sofort neu.
 Links von „jetzt“ stehen gemessene Werte, rechts die Prognose und der Plan.
 
 - **Kopfzeile**: geplante Steuerung jetzt (und was tatsächlich passiert), erwartete Ersparnis
-  gegenüber reinem Eigenverbrauch, erwartete Stromkosten und erwarteter Ladestand am Planende.
+  gegenüber reinem Eigenverbrauch – aufgeteilt in Strom, Ersatzheizung (falls eingestellt) und den
+  Wert dessen, was am Planende mehr im Speicher ist –, erwartete Stromkosten und erwarteter
+  Ladestand am Planende.
   **Neu berechnen** plant sofort neu.
 - **Hinweise** in Gelb, z. B. wenn eine PV-Prognose nicht so weit reicht wie der Plan.
 - **Geplante Steuerung**: die Abschnitte des Plans mit Aktion (Eigenverbrauch, Speicher halten,

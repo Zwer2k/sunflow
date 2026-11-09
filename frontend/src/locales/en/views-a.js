@@ -132,6 +132,11 @@ export default {
   "Erwartete Energiekosten": "Expected energy cost",
   "Erwartete Stromkosten": "Expected electricity cost",
   "ohne Sunflow {cost}": "without Sunflow {cost}",
+  "Strom": "Electricity",
+  "Ersatzheizung": "Backup heating",
+  "Speicher am Ende": "Battery at the end",
+  "Positiv: zugunsten von Sunflow. Speicher am Ende: Wert der Energie, die am Ende des Plans mehr im Speicher ist.":
+    "Positive: in favour of Sunflow. Battery at the end: value of the energy left in the battery at the end of the plan beyond what self-consumption leaves.",
   "inkl. Ersatzheizung {planned} bzw. {baseline}": "incl. backup heating {planned} and {baseline}",
   "Erwarteter Ladestand am Ende": "Expected SoC at the end",
   "Geplante Steuerung": "Planned control",

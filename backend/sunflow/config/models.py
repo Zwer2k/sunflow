@@ -623,6 +623,10 @@ class SunflowConfig(BaseModel):
         order = self.priority_order()
         return set(order[: order.index(device_id)]) if device_id in order else set()
 
+    def battery_limit_pct(self, min_pct: float) -> float:
+        """A limit on the home battery, at most its everyday charge limit: 100 % at a 98 % limit would never be met."""
+        return min(min_pct, self.optimizer.max_soc_pct)
+
     def valid_conditions(self, device_id: str) -> list[PriorityCondition]:
         """Conditions that apply: those referring to entries ranked above the consumer.
 

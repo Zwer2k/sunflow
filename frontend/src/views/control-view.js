@@ -613,7 +613,7 @@ class SunflowControl extends LitElement {
                           : s.kind === "heater"
                             ? html` <span class="small muted">(${t("Wassertemperatur")})</span>`
                             : nothing}</span>
-                        <span class="pct"><input type="number" name=${s.id} min="0" max="100" step=${s.unit === "°C" ? 1 : 5}
+                        <span class="pct"><input type="number" name=${s.id} min="0" max="100" step="1"
                           placeholder="–" aria-label=${t("{name} in {unit}", { name: s.name, unit: s.unit ?? "%" })}
                           .value=${current ? String(current.min_pct) : ""}> ${s.unit ?? "%"}</span>
                       </label>`;

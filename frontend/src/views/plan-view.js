@@ -30,6 +30,7 @@ const RAW_PV_KEY = "sunflow.plan.rawPv";
 const time = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
 const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const euro = new Intl.NumberFormat(locale(), { style: "currency", currency: "EUR" });
+const signedEuro = new Intl.NumberFormat(locale(), { style: "currency", currency: "EUR", signDisplay: "exceptZero" });
 
 /** Name of the forecast source(s) in use, e.g. "Solcast" or "Solcast + Forecast.Solar". */
 function rawLabel(plan) {
@@ -346,6 +347,7 @@ class SunflowPlan extends LitElement {
           <div class="small muted">${t("Erwartete Ersparnis (nächste {hours} h)", { hours: Math.round(slots.length / 4) })}</div>
           <div class="value">${euro.format(plan.savings ?? 0)}</div>
           <div class="small muted">${t("gegenüber reinem Eigenverbrauch")}</div>
+          ${this._renderSavingsParts(plan)}
         </div>
         <div class="tile">
           <div class="small muted">${plan.alternative_cost || plan.baseline_alternative_cost ? t("Erwartete Energiekosten") : t("Erwartete Stromkosten")}</div>
@@ -620,6 +622,19 @@ class SunflowPlan extends LitElement {
         </div>
       </section>
     `;
+  }
+
+  /** Where the saving comes from, each part in favour of Sunflow when positive. */
+  _renderSavingsParts(plan) {
+    const alternative = (plan.baseline_alternative_cost ?? 0) - (plan.alternative_cost ?? 0);
+    const parts = [
+      [t("Strom"), (plan.baseline_cost - (plan.baseline_alternative_cost ?? 0)) - (plan.cost - (plan.alternative_cost ?? 0))],
+      plan.alternative_cost || plan.baseline_alternative_cost ? [t("Ersatzheizung"), alternative] : null,
+      [t("Speicher am Ende"), (plan.terminal_value ?? 0) - (plan.baseline_terminal_value ?? 0)],
+    ].filter(Boolean);
+    return html`<div class="small muted savings-parts" title=${t("Positiv: zugunsten von Sunflow. Speicher am Ende: Wert der Energie, die am Ende des Plans mehr im Speicher ist.")}>
+      ${parts.map(([label, value]) => `${label} ${signedEuro.format(value)}`).join(" · ")}
+    </div>`;
   }
 
   _renderCostCurve(plan, slots) {

@@ -96,8 +96,10 @@ further notice. Sunflow replans immediately after every change.
   first. With **Limits** a load waits until storages ranked higher reach a level,
   e.g. hot water only above 90 % home battery. Until then it gets no PV or battery power, only grid
   power where the plan provides it. Control checks the limits at every step against the measured
-  values, not only the forecast. A car plugged in but not recognized yet (level unknown) holds
-  waiting loads back.
+  values, not only the forecast. Limits go in 1 % steps. A limit on the home battery above its
+  charge limit (e.g. 100 % at 98 %) counts as met once it reaches the charge limit – otherwise it
+  would hardly ever be met. A car only holds back while plugged in, not on the way or only
+  expected. A car plugged in but not recognized yet (level unknown) holds waiting loads back.
 - **Log**: what Sunflow wrote to devices, with reason and errors, and changes made by
   others with their trigger. Filters by device, period, "only external changes" and "only errors
   and warnings".
@@ -111,8 +113,9 @@ further notice. Sunflow replans immediately after every change.
 Left of "now" are measured values, right of it forecast and plan.
 
 - **Header**: planned action now (and what actually happens), expected savings compared to plain
-  self-consumption, expected electricity cost and expected state of charge at the end of the
-  plan. **Recalculate** replans immediately.
+  self-consumption – split into electricity, backup heating (if set) and the value of what is left
+  in the battery beyond self-consumption at the end of the plan –, expected electricity cost and
+  expected state of charge at the end of the plan. **Recalculate** replans immediately.
 - **Notices** in yellow, e.g. when a PV forecast does not reach as far as the plan.
 - **Planned control**: the sections of the plan with their action
   (self-consumption, hold battery, charge from grid, limited discharge …) and state of charge
