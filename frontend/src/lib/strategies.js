@@ -55,10 +55,13 @@ export const STRATEGIES = {
   },
 };
 
-/** Collapsible description of one strategy. */
-export function strategyDetails(key) {
+/**
+ * Collapsible description of one strategy. `alwaysShown` keeps it out of the explanations
+ * switch: already folded to one line, it stays visible.
+ */
+export function strategyDetails(key, { alwaysShown = false } = {}) {
   const strategy = STRATEGIES[key];
-  return html`<details class="strategy-details help">
+  return html`<details class=${alwaysShown ? "strategy-details" : "strategy-details help"}>
     <summary class="small">${t("Was macht „{label}“?", { label: strategy.label })}</summary>
     <ul class="small muted">${strategy.details.map((line) => html`<li>${line}</li>`)}</ul>
   </details>`;

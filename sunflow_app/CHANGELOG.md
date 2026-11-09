@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.51
+
+- Control → Home battery: the collapsed "What does … do?" of the active strategy stays visible when explanations are hidden.
+
 ## 0.78.50
 
 - With explanations hidden, an input field's "?" sits behind its label; it opens all of the field's hints below the field as before, without focusing or ticking the field.
