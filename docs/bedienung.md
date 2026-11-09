@@ -9,7 +9,8 @@ zeigt offene Empfehlungen.
 Ganz rechts in der Menüleiste blenden zwei Schalter in allen Ansichten aus, was du nicht mehr
 brauchst; jeder Browser merkt sich seine Wahl, beide sind anfangs an:
 
-- **?** – Erklärtexte (Beschreibungen unter Überschriften und Feldern, „Was macht …?“).
+- **?** – Erklärtexte (Beschreibungen unter Überschriften und Feldern, „Was macht …?“). An ihrer
+  Stelle bleibt ein kleines ?, das genau diesen Text per Klick ein- und wieder ausblendet.
 - **Glühbirne** – Empfehlungen unter „Analyse“ und ihre Zahl an „Analyse“.
 
 ## Live
