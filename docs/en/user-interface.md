@@ -51,7 +51,7 @@ as they take at most 60 % of the screen:
   </details>
 - **Weather**: current conditions and forecast, switchable between **Hours** and **Days**;
   swipe or use the arrows. It can be hidden under [Settings → Display](settings.md#display).
-- **Quick controls** (below the energy flow): one row per load you pinned under Control, with
+- **Quick controls** (on a PC to the right of the energy flow, which takes 60 % of the width on the left; on a phone below it): one row per load you pinned under Control, with
   power, state of charge and next charging window, and the modes as small buttons: € Cost-optimal,
   PV PV only, ⚡ Now, ⏸ Pause. On a phone one button shows the current mode and opens the choice,
   so the name keeps its line. A change applies until midnight. For "Charge battery" without a plug

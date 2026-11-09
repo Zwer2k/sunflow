@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.44
+
+- Live on a PC: the energy flow (diagram, bars, tiles, house, 3D) with the losses line and view switch on the left (60 %), the quick controls on the right (40 %); today's figures stay below across the width, the weather at the top. Without pinned loads the graphic takes the whole width. Phones unchanged.
+
 ## 0.78.43
 
 - Priority limits on the home battery above its everyday charge limit (e.g. 100 % at 98 %) count as met at the charge limit, in the plan and in control; before, such a limit was hardly ever met and the load got no PV at all.
