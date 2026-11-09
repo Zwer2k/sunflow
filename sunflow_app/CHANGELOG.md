@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.57
+
+- Live quick controls: the mode dropdown buttons and the target buttons have the same width in every row, so they line up; dropdown entries stay on one line (also on a phone), and a long vehicle name ends with "…".
+
 ## 0.78.56
 
 - Live quick controls: every load takes one line. When the mode buttons do not fit beside a load's name and controls, all loads show the mode as one button with a dropdown (as on a phone) – measured, so it also applies in the narrower right column on a PC.
