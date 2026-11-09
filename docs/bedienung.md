@@ -13,7 +13,8 @@ brauchst; jeder Browser merkt sich seine Wahl, beide sind anfangs an:
   Stelle bleibt ein kleines ?, das genau diesen Text per Klick ein- und wieder ausblendet; gehört der
   Text als Absatz zu einer Überschrift, steht das ? hinter der Überschrift und der Text darunter.
   Aufklappbare Erklärungen („Was macht …?“) öffnet das ? gleich ganz; bei den Strategien steht es
-  hinter dem Namen der Strategie.
+  hinter dem Namen der Strategie, bei Eingabefeldern hinter ihrer Bezeichnung (der Text bleibt
+  unter dem Feld).
 - **Glühbirne** – Empfehlungen unter „Analyse“ und ihre Zahl an „Analyse“.
 
 ## Live

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.50
+
+- With explanations hidden, an input field's "?" sits behind its label; it opens all of the field's hints below the field as before, without focusing or ticking the field.
+
 ## 0.78.49
 
 - Settings → Planning: with explanations hidden, each strategy's "?" sits behind its name; the explanation opens where it was, and the tap does not change the selected strategy.
