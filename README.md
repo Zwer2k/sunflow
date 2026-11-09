@@ -35,8 +35,9 @@ den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
 - **Hot water and own loads**: heating rods, switches, power levels and target
   currents; learned hot water demand; one-off loads such as a washing machine at the
   cheapest time.
-- **Learns** the PV forecast per roof plane and cloud cover, house consumption, car
-  and hot water usage.
+- **Learns** the PV forecast per roof plane, cloud cover and sun position (shading), spots a
+  soiled plane (snow, leaves) against the others, house consumption, car and hot water usage,
+  and estimates a car's state of charge between its reports.
 - **Dynamic tariffs**: Tibber, Nord Pool, EPEX Spot (aWATTar, smartENERGY,
   Energy-Charts …), ENTSO-E, Octopus; price estimate beyond the published prices.
 - **Shadow mode first**: Sunflow records what it would do before you hand over

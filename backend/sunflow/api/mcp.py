@@ -128,10 +128,10 @@ TOOLS = [
         path="/forecast/series",
         params={"hours": HOURS | {"description": "Stunden voraus"}},
     ),
-    Tool(name="get_pv_learning", area="live", description="Stand des PV-Lernens je Fläche.", path="/pv-learning"),
+    Tool(name="get_pv_learning", area="live", description="Stand des PV-Lernens je Fläche, mit Verschmutzung (state: Sprünge, verschmutzte Tage, Niveau).", path="/pv-learning"),
     Tool(
         name="get_pv_sun", area="history",
-        description="PV-Korrektur nach Sonnenstand je Fläche (Schattenbetrieb): Faktoren je Sonnenhöhe/-richtung und Backtest gegen Rohprognose und Stundenmodell. Rechnet im Hintergrund; computing=true heißt später erneut fragen.",
+        description="PV-Korrektur nach Sonnenstand je Fläche; plant mit, wenn eingeschaltet und die Fläche plannable ist: Faktoren je Sonnenhöhe/-richtung und Backtest gegen Rohprognose und Stundenmodell. Rechnet im Hintergrund; computing=true heißt später erneut fragen.",
         path="/pv-learning/sun",
     ),
     Tool(name="get_vehicles", area="config", description="Fahrzeuge und Ladeeinstellungen.", path="/config/vehicles"),

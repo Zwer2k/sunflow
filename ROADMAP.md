@@ -18,12 +18,12 @@ Sammlung sinnvoller Erweiterungen, grob nach Nutzen geordnet. Noch nichts davon 
 
 | Bereich | Heute |
 |---|---|
-| PV-Prognose | Korrekturfaktor je Dachfläche, Stunde und Bewölkung (3 Klassen), neuere Tage zählen mehr (Halbwertszeit 30 Tage) |
+| PV-Prognose | Korrekturfaktor je Dachfläche, Stunde und Bewölkung (3 Klassen), neuere Tage zählen mehr (Halbwertszeit 30 Tage); Korrektur nach Sonnenstand (Test, abschaltbar); Verschmutzung einer Fläche (Schnee, Laub) im Vergleich mit den anderen |
 | Hausverbrauch | Regression aus Uhrzeit, Wochentag und Temperatur, ab 14 Tagen Daten |
-| Auto | Verbrauch je Stunde (Werktag und Wochenende), Ankunft und Abfahrt aus Steckzeiten oder Anwesenheit |
+| Auto | Verbrauch je Stunde (Werktag und Wochenende), Ankunft und Abfahrt aus Steckzeiten oder Anwesenheit; Ladestand zwischen den Meldungen aus der Wallbox-Energie, Ladewirkungsgrad gelernt |
 | Warmwasser | Verbrauch je Stunde (Werktag und Wochenende) |
 | Speicher | Wirkungsgrad und Eigenverbrauch aus den Energiezählern |
-| Planung | Gemischt-ganzzahlige Optimierung über bis zu 96 h; optimal für die gegebene Prognose |
+| Planung | Gemischt-ganzzahlige Optimierung über bis zu 96 h; optimal für die gegebene Prognose. Der Ladestand des Plans von 6 h vorher wird zum Vergleich aufgezeichnet |
 
 ## 1. PV über das Jahr lernen
 
@@ -33,17 +33,24 @@ Sammlung sinnvoller Erweiterungen, grob nach Nutzen geordnet. Noch nichts davon 
    Frühjahr wieder; die Uhrzeit-Faktoren müssen nicht jedes Jahr neu lernen. Daten: Prognose je
    Fläche und Messung je String liegen in der Aufzeichnung seit dem 24.10.2026 vor, also auch
    rückwirkend nutzbar. Fehlt ein Feld noch, gilt der heutige Faktor.
+   *Umgesetzt (0.75.29) als „Nach Sonnenstand korrigieren (Test)“: plant für Flächen mit mindestens
+   60 Tagen, wenn der Backtest besser ist.*
 2. **Wetter mit mehr Merkmalen**: Modultemperatur (Leistung steigt bei Kälte), Diffus- und
    Direktanteil, wo die Quelle sie liefert. Bewölkung als Zahl statt drei Klassen.
 3. **Schnee auf den Modulen erkennen**: Nach Schneefall bei Frost liefert die Anlage trotz Sonne
    fast nichts. Sunflow erkennt das an Messung, Temperatur und Niederschlag und senkt die Prognose,
    bis die Module wieder liefern. Sonst plant es tagelang mit PV, die nicht kommt.
+   *Teilweise umgesetzt (0.78.28): Bricht eine Fläche gegenüber den anderen ein, plant Sunflow sie
+   mit dem geringeren Anteil. Liegt Schnee auf allen Flächen, fehlt noch der Vergleich, dafür
+   braucht es Temperatur und Niederschlag.*
 4. **Unsicherheit lernen**: Statt nur Solcast p10 die eigene Fehlerverteilung je Wetterlage, Fläche
    und Vorlauf lernen. Die Planung kann damit gezielt vorsichtig sein, wenn die Prognose bei dieser
    Wetterlage oft danebenliegt.
 5. **Langzeitverlauf je String**: Leistung über Monate bei klarem Himmel vergleichen und
    Verschmutzung oder Alterung erkennen, z. B. die Empfehlung „String 2 liefert 8 % weniger als im
    Vorjahr – Module reinigen?“.
+   *Teilweise umgesetzt (0.78.28): Laub, das sich nach einem Säubern sammelt, erkennt Sunflow im
+   Vergleich mit den anderen Flächen. Alterung über Jahre und die Empfehlung fehlen noch.*
 6. **Konfiguration prüfen**: Passt die gemessene Kurve einer Fläche zu Ausrichtung und Neigung in
    Solcast/Forecast.Solar? Ein Hinweis, wenn etwa eine Ost-Fläche als Süd eingetragen ist.
 
