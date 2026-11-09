@@ -53,7 +53,7 @@ stehen, solange sie höchstens 60 % des Bildschirms brauchen:
 - **Wetter**: aktuelle Bedingungen und Vorhersage, umschaltbar zwischen Stunden und Tagen;
   wischen oder mit den Pfeilen blättern. Unter [Einstellungen → Anzeige](einstellungen.md#anzeige)
   lässt es sich ausblenden.
-- **Schnellsteuerung** (unter dem Energiefluss): je Verbraucher, den du unter Steuerung mit der
+- **Schnellsteuerung** (am PC rechts neben dem Energiefluss, der links 60 % der Breite nimmt; auf dem Handy darunter): je Verbraucher, den du unter Steuerung mit der
   Stecknadel angeheftet hast, eine Zeile mit Leistung, Ladestand und nächstem Ladefenster und den
   Betriebsarten als kleine Knöpfe: € Kostenoptimal, PV Nur PV, ⚡ Sofort, ⏸ Pause. Auf dem Handy
   zeigt ein Knopf die aktuelle Betriebsart und öffnet die Auswahl, damit der Name in die Zeile

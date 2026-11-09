@@ -91,6 +91,8 @@ function dragScroll(event) {
 // Remembered per browser; storage may be unavailable (private mode, previews)
 const WEATHER_DAYS_KEY = "sunflow.live.weatherDays";
 const FLOW_VIEW_KEY = "sunflow.live.flowView";
+// Graphic and quick controls side by side from here on
+const WIDE = "(min-width: 701px)";
 // The view's graphic, sized to the room left by heading and dock
 const GRAPHICS = "svg.flow, sf-house-scene, sf-iso-scene";
 // On a phone the dock stays at the bottom while scrolling as long as it takes at most this share of the screen
@@ -260,11 +262,13 @@ class SunflowLive extends LitElement {
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${live === null && !this._error ? html`<p class="muted">${t("Lade Live-Werte …")}</p>` : nothing}
-      ${live ? this._renderFlow(live) : nothing}
-      <div class="dock">
-        ${live ? this._renderFlowFoot(live) : nothing}
-        <sf-quick-controls></sf-quick-controls>
-        ${this._renderToday()}
+      <div class="stage">
+        <div class="flow-col">${live ? this._renderFlow(live) : nothing}</div>
+        <div class="dock">
+          ${live ? this._renderFlowFoot(live) : nothing}
+          <sf-quick-controls></sf-quick-controls>
+          ${this._renderToday()}
+        </div>
       </div>
       ${this._optimizers
         ? html`<sf-optimizer-view .string=${this._optimizers.key} .heading=${t("Optimierer · {name}", { name: this._optimizers.name })}
@@ -333,7 +337,10 @@ class SunflowLive extends LitElement {
     if (dock !== this._dock) {
       this._dock = dock;
       this._dockObserver.disconnect();
-      if (dock) this._dockObserver.observe(dock);
+      if (dock) {
+        this._dockObserver.observe(dock);
+        this._dockObserver.observe(dock.querySelector("sf-quick-controls"));
+      }
     }
     const graphic = this.renderRoot.querySelector("svg.flow");
     if (graphic !== this._watched) {
@@ -349,13 +356,28 @@ class SunflowLive extends LitElement {
     const available = Math.max(window.innerHeight - top - spaceBelow(this), 0);
     const height = `${available}px`;
     if (this.style.minHeight !== height) this.style.minHeight = height;
-    // The graphic gets what heading, dock and the rest leave (the dock grows with quick controls)
-    const children = [...this.renderRoot.children].filter((el) => el.tagName !== "STYLE" && getComputedStyle(el).display !== "none");
-    const graphic = children.find((el) => el.matches(GRAPHICS));
+    const stage = this.renderRoot.querySelector(".stage");
+    const quick = stage?.querySelector("sf-quick-controls");
+    // Without pinned loads the graphic takes the whole width
+    stage?.classList.toggle("no-quick", !quick?.getBoundingClientRect().height);
+    const graphic = stage?.querySelector(GRAPHICS);
     if (!graphic) return;
-    const gap = parseFloat(getComputedStyle(this).rowGap) || 0;
-    const others = children.filter((el) => el !== graphic).reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
-    const room = `${Math.floor(available - others - gap * (children.length - 1))}px`;
+    // The graphic gets what heading, dock and the rest leave (the dock grows with quick controls)
+    const size = (el) => (el && getComputedStyle(el).display !== "none" ? el.getBoundingClientRect().height : 0);
+    const gap = (el) => parseFloat(getComputedStyle(el).rowGap) || 0;
+    const above = [...this.renderRoot.children].filter(
+      (el) => el.tagName !== "STYLE" && el !== stage && getComputedStyle(el).position !== "fixed" && size(el) > 0,
+    );
+    let used = above.reduce((sum, el) => sum + size(el) + gap(this), 0);
+    const flowCol = stage.querySelector(".flow-col");
+    used += [...flowCol.children].filter((el) => el !== graphic && size(el) > 0).reduce((sum, el) => sum + size(el) + gap(flowCol), 0);
+    if (window.matchMedia(WIDE).matches) {
+      // Beside the quick controls: below the graphic only the losses line and today's figures
+      used += size(stage.querySelector(".flow-foot")) + size(stage.querySelector(".today")) + 2 * gap(stage);
+    } else {
+      used += size(this._dock) + gap(this);
+    }
+    const room = `${Math.floor(available - used)}px`;
     if (this.style.getPropertyValue("--flow-room") !== room) this.style.setProperty("--flow-room", room);
   }
 
@@ -825,8 +847,25 @@ class SunflowLive extends LitElement {
     .part-power { font-size: 10px; fill: var(--sf-muted); font-variant-numeric: tabular-nums; }
     /* Fills the screen: the diagram on top, today's figures at the bottom */
     :host { display: flex; flex-direction: column; gap: 16px; min-height: calc(100dvh - 110px); }
-    /* Losses, view switch, quick controls and today's figures sit together at the bottom */
+    /* Phone: graphic, then losses, view switch, quick controls and today's figures together at the bottom */
+    .stage { display: contents; }
+    .flow-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     .dock { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+    /* PC: graphic left (60 %), quick controls right (40 %), today's figures below across the width */
+    @media (min-width: 701px) {
+      .stage {
+        display: grid; flex: 1; gap: 12px 24px; align-items: start;
+        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); grid-template-rows: 1fr auto auto;
+      }
+      .stage.no-quick { grid-template-columns: minmax(0, 1fr); }
+      .dock { display: contents; }
+      .flow-col { grid-column: 1; grid-row: 1; align-self: center; }
+      .flow-foot { grid-column: 1; grid-row: 2; }
+      sf-quick-controls { grid-column: 2; grid-row: 1 / span 2; }
+      /* Kept in the layout (empty, no height) so it is noticed once loads are pinned */
+      .stage.no-quick sf-quick-controls { grid-column: 1; grid-row: 2; }
+      .today { grid-column: 1 / -1; grid-row: 3; }
+    }
     @media (max-width: 700px) {
       /* Below the content sits the fixed menu bar */
       :host { min-height: calc(100dvh - 96px - env(safe-area-inset-bottom)); }
