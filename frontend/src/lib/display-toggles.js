@@ -31,13 +31,16 @@ const HELP_HIDDEN = `
   }
   .help.help-open { cursor: help; }
   /* A paragraph below a heading: the "?" after the heading, the text below it when opened */
-  :is(h1, h2, h3, h4) + .help:not(.help-open) { display: none !important; }
-  :is(h1, h2, h3, h4):has(+ .help)::after {
+  :is(h1, h2, h3, h4, .section-head) + .help:not(.help-open) { display: none !important; }
+  /* The heading may sit in a head row with buttons ("section-head") */
+  :is(:is(h1, h2, h3, h4):has(+ .help), .section-head:has(+ .help) > :is(h1, h2, h3, h4))::after {
     content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
     width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
     font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
   }
-  :is(h1, h2, h3, h4):has(+ .help-open)::after { color: var(--sf-primary); }
+  :is(:is(h1, h2, h3, h4):has(+ .help-open), .section-head:has(+ .help-open) > :is(h1, h2, h3, h4))::after {
+    color: var(--sf-primary);
+  }
   /* A titled block (a strategy, an input field): the "?" after its title or label, the text where it is */
   :is(.help-host, .field:has(> .field-label)) > .help:not(.help-open) { display: none !important; }
   :is(.help-host .help-title, .field:has(> .help) > .field-label)::after {
@@ -71,6 +74,15 @@ function titledHelp(title) {
 }
 
 const HEADINGS = new Set(["H1", "H2", "H3", "H4"]);
+
+/** The explanation right below a heading, or below the head row the heading sits in. */
+function headingHelp(heading) {
+  if (!HEADINGS.has(heading?.tagName)) return null;
+  const head = heading.parentElement?.classList.contains("section-head") ? heading.parentElement : heading;
+  const next = head.nextElementSibling;
+  return next?.classList.contains("help") ? next : null;
+}
+
 const INTERACTIVE = new Set(["A", "BUTTON", "SUMMARY", "INPUT", "SELECT", "TEXTAREA", "LABEL"]);
 
 // Through shadow roots: the path of the click names the explanation that was tapped
@@ -81,9 +93,8 @@ document.addEventListener(
     const path = e.composedPath();
     // The "?" behind a heading or a title: right of its text
     const title = path[0];
-    const targets = HEADINGS.has(title?.tagName) && title.nextElementSibling?.classList.contains("help")
-      ? [title.nextElementSibling]
-      : titledHelp(title);
+    const below = headingHelp(title);
+    const targets = below ? [below] : titledHelp(title);
     if (targets.length) {
       const text = document.createRange();
       text.selectNodeContents(title);

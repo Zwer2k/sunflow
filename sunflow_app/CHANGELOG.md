@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.52
+
+- With explanations hidden, a heading in a row with buttons (Plan → History and forecast, Battery planner, Analysis cards) gets its "?" behind the heading like the other headings.
+
 ## 0.78.51
 
 - Control → Home battery: the collapsed "What does … do?" of the active strategy stays visible when explanations are hidden.
