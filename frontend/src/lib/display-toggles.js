@@ -45,6 +45,12 @@ function apply() {
 }
 apply();
 
+/** Show or hide one explanation; a collapsible one ("What does … do?") opens right away. */
+function toggleHelp(help) {
+  const open = help.classList.toggle("help-open");
+  if (help.tagName === "DETAILS") help.open = open;
+}
+
 const HEADINGS = new Set(["H1", "H2", "H3", "H4"]);
 const INTERACTIVE = new Set(["A", "BUTTON", "SUMMARY", "INPUT", "SELECT", "TEXTAREA", "LABEL"]);
 
@@ -62,7 +68,7 @@ document.addEventListener(
       if (e.clientX > text.getBoundingClientRect().right) {
         e.preventDefault();
         e.stopPropagation();
-        heading.nextElementSibling.classList.toggle("help-open");
+        toggleHelp(heading.nextElementSibling);
       }
       return;
     }
@@ -74,7 +80,7 @@ document.addEventListener(
     // Inside a label or button the tap only opens or closes the text
     e.preventDefault();
     e.stopPropagation();
-    help.classList.toggle("help-open");
+    toggleHelp(help);
   },
   true,
 );

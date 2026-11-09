@@ -11,7 +11,8 @@ browser remembers its choice, both start switched on:
 
 - **?** – explanations (descriptions below headings and fields, "What does … do?"). A small ? stays
   in their place and shows or hides just that text on a click; for a paragraph under a heading the
-  ? sits behind the heading and the text below it.
+  ? sits behind the heading and the text below it. Collapsible ones ("What does … do?") open
+  completely on the ?.
 - **Light bulb** – recommendations under "Analysis" and their number on "Analysis".
 
 ## Live
