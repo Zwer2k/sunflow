@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.51
+
+- Live quick controls: every load takes one line. When the mode buttons do not fit beside a load's name and controls, all loads show the mode as one button with a dropdown (as on a phone) – measured, so it also applies in the narrower right column on a PC.
+
 ## 0.78.55
 
 - Settings → Optimizers: with explanations hidden, the "?" sits behind the headings – each string's next to its name, all source explanations behind "Sources".

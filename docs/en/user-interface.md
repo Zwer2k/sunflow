@@ -66,8 +66,8 @@ as they take at most 60 % of the screen:
   swipe or use the arrows. It can be hidden under [Settings → Display](settings.md#display).
 - **Quick controls** (on a PC to the right of the energy flow, which takes 60 % of the width on the left; on a phone below it): one row per load you pinned under Control, with
   power, state of charge and next charging window, and the modes as small buttons: € Cost-optimal,
-  PV PV only, ⚡ Now, ⏸ Pause. On a phone one button shows the current mode and opens the choice,
-  so the name keeps its line. A change applies until midnight. For "Charge battery" without a plug
+  PV PV only, ⚡ Now, ⏸ Pause. Each load takes one line; if the buttons do not fit for one of
+  them (e.g. on a phone), one button per load shows the current mode and opens the choice. A change applies until midnight. For "Charge battery" without a plug
   sensor, 🔌 switches "plugged in now". At the wallbox a button with a car symbol shows the choice – "detect" or the chosen vehicle – and
   opens the list; 🎯 shows the target (state of charge or
   temperature) and opens a knob for any value up to the
