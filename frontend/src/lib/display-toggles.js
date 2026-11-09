@@ -44,6 +44,15 @@ const HELP_HIDDEN = `
   :is(:is(${HEADING}):has(+ .help-open), .section-head:has(+ .help-open) > :is(${HEADING}))::after {
     color: var(--sf-primary);
   }
+  /* A card with a title: every explanation of the card that no field owns, behind the title */
+  .device:has(> .device-title) > .help:not(.help-open) { display: none !important; }
+  .device:has(> .device-title) > .fields > .help:not(.help-open) { display: none !important; }
+  .device:has(> .help, > .fields > .help) > .device-title::after {
+    content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+    width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
+    font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
+  }
+  .device:has(> .help-open, > .fields > .help-open) > .device-title::after { color: var(--sf-primary); }
   /* A titled block (a strategy, an input field): the "?" after its title or label, the text where it is */
   :is(.help-host, .field:has(> .field-label)) > .help:not(.help-open) { display: none !important; }
   :is(.help-host .help-title, .field:has(> .help) > .field-label)::after {
@@ -76,12 +85,17 @@ function titledHelp(title) {
   return [...(host?.children ?? [])].filter((el) => el.classList.contains("help"));
 }
 
-/** The explanation right below a heading, or below the head row the heading sits in. */
+/**
+ * The explanations a heading stands for: the one right below it (or below its head row), and
+ * for a card's title every explanation of the card that no field owns.
+ */
 function headingHelp(heading) {
-  if (!(heading instanceof Element) || !heading.matches(HEADING)) return null;
+  if (!(heading instanceof Element) || !heading.matches(HEADING)) return [];
+  const card = heading.classList.contains("device-title") ? heading.parentElement : null;
+  if (card?.classList.contains("device")) return [...card.querySelectorAll(":scope > .help, :scope > .fields > .help")];
   const head = heading.parentElement?.classList.contains("section-head") ? heading.parentElement : heading;
   const next = head.nextElementSibling;
-  return next?.classList.contains("help") ? next : null;
+  return next?.classList.contains("help") ? [next] : [];
 }
 
 const INTERACTIVE = new Set(["A", "BUTTON", "SUMMARY", "INPUT", "SELECT", "TEXTAREA", "LABEL"]);
@@ -95,7 +109,7 @@ document.addEventListener(
     // The "?" behind a heading or a title: right of its text
     const title = path[0];
     const below = headingHelp(title);
-    const targets = below ? [below] : titledHelp(title);
+    const targets = below.length ? below : titledHelp(title);
     if (targets.length) {
       const text = document.createRange();
       text.selectNodeContents(title);
