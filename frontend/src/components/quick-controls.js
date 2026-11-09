@@ -10,7 +10,7 @@ import { toggleSheet } from "../lib/display-toggles.js";
 
 const REFRESH_MS = 30 * 1000;
 const KEPT_MS = 10 * 60 * 1000;
-const MENU_WIDTH = 190;
+const MENU_WIDTH = 240;
 // Room a load's name keeps beside its controls before the mode buttons become a dropdown
 const NAME_MIN_PX = 96;
 // Room a menu needs below its button, else it opens upwards (docked at the bottom of a phone)
@@ -227,7 +227,7 @@ class SunflowQuickControls extends LitElement {
         title=${t("Fahrzeug an {name}", { name: device.name })} @click=${(e) => this._toggleMenu(`${device.id}:vehicle`, e)}
         @keydown=${(e) => e.key === "Escape" && this._closeMenu()}>
         <svg class="car" viewBox="0 0 24 24" role="img" aria-label=${t("Fahrzeug")}><path d="M3 16v-4l2-5h14l2 5v4zM3 16v3h3v-3M18 16v3h3v-3M7 12h0M17 12h0"></path></svg>
-        ${selected ? device.vehicles.find((v) => v.id === selected)?.name ?? selected : t("erkennen")}
+        <span class="vehicle-name">${selected ? device.vehicles.find((v) => v.id === selected)?.name ?? selected : t("erkennen")}</span>
         <span aria-hidden="true">▾</span>
       </button>
       ${open
@@ -282,8 +282,9 @@ class SunflowQuickControls extends LitElement {
     }
     .dropdown { position: relative; }
     .mode-menu { display: none; }
-    .symbol { display: inline-block; min-width: 22px; }
+    .symbol { display: inline-block; min-width: 24px; margin-right: 6px; text-align: center; }
     .menu-button { display: inline-flex; align-items: center; gap: 5px; }
+    .vehicle-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .car { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
     .menu-button, sf-target-dial::part(button) {
       min-height: 38px; padding: 0 10px; border: 1px solid var(--sf-border); border-radius: 9px; background: transparent;
@@ -292,14 +293,14 @@ class SunflowQuickControls extends LitElement {
     sf-target-dial::part(button) { color: var(--sf-text); font-weight: 400; box-shadow: none; }
     sf-target-dial[active]::part(button) { border-color: var(--sf-primary); background: var(--sf-primary-bg); font-weight: 600; }
     .menu {
-      position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 170px; margin: 0; padding: 4px; list-style: none;
+      position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 170px; width: max-content; margin: 0; padding: 4px; list-style: none;
       border: 1px solid var(--sf-border); border-radius: 10px; background: var(--sf-surface); box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
     }
     .menu.left { right: auto; left: 0; }
     .menu.up { top: auto; bottom: calc(100% + 4px); }
     .menu button {
       width: 100%; min-height: 36px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent;
-      text-align: left; cursor: pointer; font-size: 14px;
+      text-align: left; cursor: pointer; font-size: 14px; white-space: nowrap;
     }
     .menu button:hover { background: var(--sf-subtle); }
     .menu button.on { font-weight: 600; background: var(--sf-primary-bg); }
@@ -310,6 +311,9 @@ class SunflowQuickControls extends LitElement {
     .compact .vehicle .menu-button { max-width: 92px; }
     .compact .segmented { display: none; }
     .compact .mode-menu { display: block; }
+    /* The same width in every row, so the buttons line up */
+    .compact .mode-menu .menu-button { width: 58px; justify-content: center; padding: 0 4px; }
+    .compact sf-target-dial::part(button) { min-width: 80px; }
   `];
 }
 
