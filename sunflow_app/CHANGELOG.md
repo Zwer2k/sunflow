@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.53
+
+- With explanations hidden, settings card titles (e.g. Measurement sources, Own consumers) and group titles (e.g. Protect the 12 V battery) get their "?" behind the title like headings.
+
 ## 0.78.52
 
 - With explanations hidden, a heading in a row with buttons (Plan → History and forecast, Battery planner, Analysis cards) gets its "?" behind the heading like the other headings.
