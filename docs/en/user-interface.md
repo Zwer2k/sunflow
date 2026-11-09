@@ -13,7 +13,8 @@ browser remembers its choice, both start switched on:
   in their place and shows or hides just that text on a click; for a paragraph under a heading the
   ? sits behind the heading and the text below it. Collapsible ones ("What does … do?") open
   completely on the ?; for the strategies it sits behind the strategy's name, for input fields
-  behind their label (the text stays below the field).
+  behind their label (the text stays below the field). The collapsed explanation of the active
+  strategy under "Control → Home battery" always stays visible.
 - **Light bulb** – recommendations under "Analysis" and their number on "Analysis".
 
 ## Live

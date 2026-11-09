@@ -381,7 +381,7 @@ class SunflowControl extends LitElement {
               <span class="long">${short}</span><span class="tiny">${tiny}</span></button>`,
           )}
         </div>
-        ${strategyDetails(strategy.effective)}
+        ${strategyDetails(strategy.effective, { alwaysShown: true })}
         ${strategy.override
           ? html`<button class="link" @click=${() => this._apply(() => api.clearStrategyOverride())}>${t("Zurück zum Standard")}</button>`
           : nothing}
