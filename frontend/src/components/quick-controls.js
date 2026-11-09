@@ -11,6 +11,8 @@ import { toggleSheet } from "../lib/display-toggles.js";
 const REFRESH_MS = 30 * 1000;
 const KEPT_MS = 10 * 60 * 1000;
 const MENU_WIDTH = 190;
+// Room a load's name keeps beside its controls before the mode buttons become a dropdown
+const NAME_MIN_PX = 96;
 // Room a menu needs below its button, else it opens upwards (docked at the bottom of a phone)
 const MENU_HEIGHT = 220;
 // The plan is recomputed in the background after a change
@@ -44,13 +46,36 @@ class SunflowQuickControls extends LitElement {
     super.connectedCallback();
     this._load();
     this._stop = poll(() => this._load(), REFRESH_MS);
+    this._resize = new ResizeObserver(() => this._fit());
+    this._resize.observe(this);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._resize.disconnect();
     this._stop?.();
     clearTimeout(this._replanTimer);
     document.removeEventListener("pointerdown", this._outside);
+  }
+
+  updated() {
+    this._fit();
+  }
+
+  /** The full mode buttons where every load fits one line with them, else the dropdown for all. */
+  _fit() {
+    const section = this.renderRoot.querySelector("section");
+    if (!section) return;
+    const compact = section.classList.contains("compact");
+    // Measured with the full buttons; the class goes back on in the same frame
+    section.classList.remove("compact");
+    const tooWide = [...section.querySelectorAll(".device")].some((row) => {
+      const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+      return row.querySelector(".controls").getBoundingClientRect().width + NAME_MIN_PX + gap > row.clientWidth;
+    });
+    section.classList.toggle("compact", tooWide);
+    // An open dropdown of the mode closes when the full buttons come back
+    if (compact && !tooWide && this._menu?.endsWith(":mode")) this._closeMenu();
   }
 
   /** menu: "<device id>:vehicle" or "<device id>:mode". */
@@ -233,16 +258,17 @@ class SunflowQuickControls extends LitElement {
       display: flex; flex-direction: column; border: 1px solid var(--sf-border); border-radius: 12px;
       background: var(--sf-surface); padding: 2px 12px;
     }
-    .device { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 0; }
+    /* One line per load: the name gives way (ellipsis), the controls keep their width */
+    .device { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 0; }
     .device + .device { border-top: 1px solid var(--sf-border); }
-    .name { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+    .name { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; gap: 1px; }
     .name strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .small { font-size: 12px; }
     .muted { color: var(--sf-muted); }
     .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .changed { font-size: 12px; cursor: help; }
     .error { color: var(--sf-error-text); margin: 6px 0 0; }
-    .controls { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
+    .controls { display: flex; flex-wrap: nowrap; flex: none; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
     .segmented { display: flex; gap: 2px; background: var(--sf-subtle); padding: 3px; border-radius: 9px; }
     button { font: inherit; color: inherit; }
     .segmented button {
@@ -257,15 +283,6 @@ class SunflowQuickControls extends LitElement {
     .dropdown { position: relative; }
     .mode-menu { display: none; }
     .symbol { display: inline-block; min-width: 22px; }
-    @media (max-width: 600px) {
-      .device { flex-wrap: nowrap; }
-      .name { flex: 1 1 auto; }
-      .controls { flex-wrap: nowrap; flex: none; gap: 4px; }
-      .menu-button, sf-target-dial::part(button) { padding: 0 7px; }
-      .vehicle .menu-button { max-width: 92px; }
-      .segmented { display: none; }
-      .mode-menu { display: block; }
-    }
     .menu-button { display: inline-flex; align-items: center; gap: 5px; }
     .car { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
     .menu-button, sf-target-dial::part(button) {
@@ -287,6 +304,12 @@ class SunflowQuickControls extends LitElement {
     .menu button:hover { background: var(--sf-subtle); }
     .menu button.on { font-weight: 600; background: var(--sf-primary-bg); }
     .plug.on { filter: none; opacity: 1; border-color: var(--sf-ok); background: var(--sf-ok-bg); }
+    /* Not all in one line somewhere: every load gets the mode as one button with a dropdown */
+    .compact .controls { gap: 4px; }
+    .compact .menu-button, .compact sf-target-dial::part(button) { padding: 0 7px; }
+    .compact .vehicle .menu-button { max-width: 92px; }
+    .compact .segmented { display: none; }
+    .compact .mode-menu { display: block; }
   `];
 }
 
