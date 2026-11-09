@@ -12,7 +12,7 @@ browser remembers its choice, both start switched on:
 - **?** – explanations (descriptions below headings and fields, "What does … do?"). A small ? stays
   in their place and shows or hides just that text on a click; for a paragraph under a heading the
   ? sits behind the heading and the text below it, also when buttons share the heading's row
-  (for example "History and forecast"). Collapsible ones ("What does … do?") open
+  (for example "History and forecast"); card titles in the settings count as headings. Collapsible ones ("What does … do?") open
   completely on the ?; for the strategies it sits behind the strategy's name, for input fields
   behind their label (the text stays below the field). The collapsed explanation of the active
   strategy under "Control → Home battery" always stays visible.

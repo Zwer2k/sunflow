@@ -20,6 +20,9 @@ function stored(key) {
 
 const state = { help: stored("help"), suggestions: stored("suggestions") };
 
+// What counts as a heading: real headings, a settings card's title and a fieldset's legend
+const HEADING = "h1, h2, h3, h4, .device-title, legend";
+
 // Hidden explanations shrink to a small "?" at their place; a click shows that one ("help-open")
 const HELP_HIDDEN = `
   .help:not(.help-open) { font-size: 0 !important; line-height: 0 !important; cursor: help; }
@@ -30,15 +33,15 @@ const HELP_HIDDEN = `
     font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle;
   }
   .help.help-open { cursor: help; }
-  /* A paragraph below a heading: the "?" after the heading, the text below it when opened */
-  :is(h1, h2, h3, h4, .section-head) + .help:not(.help-open) { display: none !important; }
+  /* A paragraph below a heading or card title: the "?" after it, the text below it when opened */
+  :is(${HEADING}, .section-head) + .help:not(.help-open) { display: none !important; }
   /* The heading may sit in a head row with buttons ("section-head") */
-  :is(:is(h1, h2, h3, h4):has(+ .help), .section-head:has(+ .help) > :is(h1, h2, h3, h4))::after {
+  :is(:is(${HEADING}):has(+ .help), .section-head:has(+ .help) > :is(${HEADING}))::after {
     content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
     width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
     font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
   }
-  :is(:is(h1, h2, h3, h4):has(+ .help-open), .section-head:has(+ .help-open) > :is(h1, h2, h3, h4))::after {
+  :is(:is(${HEADING}):has(+ .help-open), .section-head:has(+ .help-open) > :is(${HEADING}))::after {
     color: var(--sf-primary);
   }
   /* A titled block (a strategy, an input field): the "?" after its title or label, the text where it is */
@@ -73,11 +76,9 @@ function titledHelp(title) {
   return [...(host?.children ?? [])].filter((el) => el.classList.contains("help"));
 }
 
-const HEADINGS = new Set(["H1", "H2", "H3", "H4"]);
-
 /** The explanation right below a heading, or below the head row the heading sits in. */
 function headingHelp(heading) {
-  if (!HEADINGS.has(heading?.tagName)) return null;
+  if (!(heading instanceof Element) || !heading.matches(HEADING)) return null;
   const head = heading.parentElement?.classList.contains("section-head") ? heading.parentElement : heading;
   const next = head.nextElementSibling;
   return next?.classList.contains("help") ? next : null;

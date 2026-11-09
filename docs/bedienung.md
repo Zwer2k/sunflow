@@ -12,7 +12,8 @@ brauchst; jeder Browser merkt sich seine Wahl, beide sind anfangs an:
 - **?** – Erklärtexte (Beschreibungen unter Überschriften und Feldern, „Was macht …?“). An ihrer
   Stelle bleibt ein kleines ?, das genau diesen Text per Klick ein- und wieder ausblendet; gehört der
   Text als Absatz zu einer Überschrift, steht das ? hinter der Überschrift und der Text darunter, auch wenn neben der Überschrift
-  Knöpfe stehen (z. B. „Verlauf und Prognose“).
+  Knöpfe stehen (z. B. „Verlauf und Prognose“); Kartentitel in den Einstellungen zählen als
+  Überschrift.
   Aufklappbare Erklärungen („Was macht …?“) öffnet das ? gleich ganz; bei den Strategien steht es
   hinter dem Namen der Strategie, bei Eingabefeldern hinter ihrer Bezeichnung (der Text bleibt
   unter dem Feld). Die eingeklappte Erklärung der aktiven Strategie unter „Steuerung → Hausspeicher“
