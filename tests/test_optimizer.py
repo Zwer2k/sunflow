@@ -611,6 +611,44 @@ def test_with_conditions(
     assert not result["ev"].gated
 
 
+@pytest.mark.parametrize(
+    ("condition", "expected_car", "battery_wh", "after"),
+    [
+        # 100 % with a 98 % charge limit would never be met: it counts at the limit
+        pytest.param(("battery", 100.0), False, 19600.0, [], id="battery above its charge limit"),
+        pytest.param(("battery", 78.0), False, 15600.0, [], id="battery in 1 % steps"),
+        pytest.param(("ev", 90.0), True, None, [], id="car only expected back"),
+        pytest.param(("ev", 90.0), False, None, [("Auto", 20 * 400.0)], id="car plugged in"),
+    ],
+)
+def test_conditions_that_can_be_met(
+    condition: tuple[str, float], expected_car: bool, battery_wh: float | None, after: list[tuple[str, float]]
+) -> None:
+    """Limits the battery cannot reach or a car away cannot hold back do not block a load for good."""
+    from sunflow.config.models import DeviceConfig, OptimizerConfig, PriorityCondition
+    from sunflow.planning.optimizer import FlexLoad
+    from sunflow.planning.plan import with_conditions
+
+    devices = [
+        DeviceConfig(id="ev", ha_device_id="x", profile="evcc_intg/loadpoint", profile_version=1, name="Auto"),
+        DeviceConfig(id="ww", ha_device_id="y", profile="evcc_intg/loadpoint", profile_version=1, name="Warmwasser"),
+    ]
+    config = SunflowConfig(
+        devices=devices,
+        optimizer=OptimizerConfig(max_soc_pct=98.0),
+        priorities=["battery", "ev", "ww"],
+        priority_conditions={"ww": [PriorityCondition(device_id=condition[0], min_pct=condition[1])]},
+    )
+    loads = {
+        "ev": FlexLoad(name="Auto", energy_wh=10000, max_power_w=11000, available=[True] * 4, expected=expected_car),
+        "ww": FlexLoad(name="Warmwasser", energy_wh=3000, max_power_w=2800, available=[True] * 4),
+    }
+    result = with_conditions(config, loads, {"ev": (70.0, 90.0, 400.0)}, 20000.0, START)
+
+    assert result["ww"].gate_battery_wh == battery_wh
+    assert result["ww"].gate_after == after
+
+
 def test_battery_gate_waits_for_vehicle() -> None:
     """A battery ranked below the car only charges from PV once the car got its energy."""
     from sunflow.planning.optimizer import FlexLoad

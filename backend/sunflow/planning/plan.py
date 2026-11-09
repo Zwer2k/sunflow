@@ -523,8 +523,8 @@ def storage_gates(
     """Energy (Wh) the planned vehicles and tanks above an entry must get before it is released."""
     gates = []
     for condition in config.valid_conditions(device_id):
-        # A vehicle not plugged in or a storage that is not planned does not hold anything back
-        if condition.device_id in storages and condition.device_id in by_device:
+        # A vehicle not plugged in (also one only expected back) or a storage that is not planned does not hold anything back
+        if condition.device_id in storages and condition.device_id in by_device and not by_device[condition.device_id].expected:
             current, target, wh_per_unit = storages[condition.device_id]
             # A condition above the storage's target is met once the target is reached
             required = max(min(condition.min_pct, target) - current, 0) * wh_per_unit
@@ -555,7 +555,7 @@ def with_conditions(
         battery_wh: float | None = None
         for condition in config.valid_conditions(device_id):
             if condition.device_id == BATTERY_PRIORITY_ID and battery_capacity_wh:
-                battery_wh = max(battery_wh or 0.0, battery_capacity_wh * condition.min_pct / 100)
+                battery_wh = max(battery_wh or 0.0, battery_capacity_wh * config.battery_limit_pct(condition.min_pct) / 100)
         after = list(storage_gates(config, device_id, by_device, storages))
         closed = any(c.device_id in unknown for c in config.valid_conditions(device_id))
         result[device_id] = (
