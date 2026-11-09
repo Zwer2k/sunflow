@@ -6,6 +6,12 @@ Oben wählst du eine der fünf Ansichten: **Live**, **Steuerung**, **Planung**, 
 **Einstellungen**. Auf dem Handy liegen sie als Symbole am unteren Rand. Eine Zahl an „Analyse“
 zeigt offene Empfehlungen.
 
+Ganz rechts in der Menüleiste blenden zwei Schalter in allen Ansichten aus, was du nicht mehr
+brauchst; jeder Browser merkt sich seine Wahl, beide sind anfangs an:
+
+- **?** – Erklärtexte (Beschreibungen unter Überschriften und Feldern, „Was macht …?“).
+- **Glühbirne** – Empfehlungen unter „Analyse“ und ihre Zahl an „Analyse“.
+
 ## Live
 
 ![Live](images/live.png)

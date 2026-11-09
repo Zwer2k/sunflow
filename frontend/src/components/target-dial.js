@@ -1,5 +1,6 @@
 import { LitElement, html, css, svg, nothing } from "../../vendor/lit-all.min.js";
 import { t } from "../lib/i18n.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const R = 46;
 const START = 135;
@@ -171,7 +172,7 @@ class SunflowTargetDial extends LitElement {
     </div>`;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { position: relative; display: inline-block; }
     button { font: inherit; color: inherit; cursor: pointer; }
     button:disabled { cursor: default; opacity: 0.6; }
@@ -204,7 +205,7 @@ class SunflowTargetDial extends LitElement {
     .actions button { flex: 1; min-height: 34px; font-size: 13px; }
     .std { display: block; font-size: 11px; color: var(--sf-muted); }
     .actions .primary { background: var(--sf-primary); border-color: var(--sf-primary); color: var(--sf-on-primary, #fff); }
-  `;
+  `];
 }
 
 customElements.define("sf-target-dial", SunflowTargetDial);

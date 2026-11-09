@@ -3,6 +3,7 @@ import "../components/picker.js";
 import { api } from "../lib/api.js";
 import "../components/roof.js";
 import { t, tn } from "../lib/i18n.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const TIGO_REPO = "https://github.com/Zwer2k/ha-tigo-rs485";
 
@@ -85,7 +86,7 @@ class SunflowOptimizers extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Optimierer")}</h1>
-        <p class="muted">${t("Optimierer an den PV-Modulen: welchem String sie angehören und wo sie auf dem Dach sitzen. In der Live-Ansicht öffnet ein Klick auf einen String seine Module mit den aktuellen Werten.")}</p>
+        <p class="muted help">${t("Optimierer an den PV-Modulen: welchem String sie angehören und wo sie auf dem Dach sitzen. In der Live-Ansicht öffnet ein Klick auf einen String seine Module mit den aktuellen Werten.")}</p>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${data === null && !this._error ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
@@ -109,8 +110,8 @@ class SunflowOptimizers extends LitElement {
               ? t("Integration eingerichtet, Optimierer nicht genutzt – unter „Integrationen“ auswählen und unter „Geräte“ nutzen")
               : t("Integration nicht eingerichtet")}</span>
           ${s.key === "huawei"
-            ? html`<span class="small muted">${t("Über die Integration „Huawei Solar“; Optimierer erscheinen als Unter-Geräte des Wechselrichters. Ist nur ein String in Betrieb, ordnet Sunflow sie ihm zu.")}</span>`
-            : html`<span class="small muted">${tigoBefore}<a href=${TIGO_REPO} target="_blank" rel="noopener">Tigo RS485</a>${tigoAfter}
+            ? html`<span class="small muted help">${t("Über die Integration „Huawei Solar“; Optimierer erscheinen als Unter-Geräte des Wechselrichters. Ist nur ein String in Betrieb, ordnet Sunflow sie ihm zu.")}</span>`
+            : html`<span class="small muted help">${tigoBefore}<a href=${TIGO_REPO} target="_blank" rel="noopener">Tigo RS485</a>${tigoAfter}
                 ${t("Dort jedem Optimierer ein Label geben: „A1“ ist String A, Modul 1 – danach ordnet Sunflow ihn zu.")}</span>`}
         </li>`)}
       </ul>
@@ -121,7 +122,7 @@ class SunflowOptimizers extends LitElement {
               empty-label=${t("automatisch ({name})", { name: plants.find(([id]) => id === data.tigo_plant)?.[1] ?? t("keiner") })}
               .value=${data.tigo_plant_chosen ?? ""} .options=${plants.map(([id, name]) => ({ value: id, label: name }))}
               @change=${(e) => this._save({}, e.detail.value)}></sf-picker>
-            <span class="small muted">${t("String A ist dessen String 1, B String 2 usw.")}</span>
+            <span class="small muted help">${t("String A ist dessen String 1, B String 2 usw.")}</span>
           </label>`
         : nothing}
     </section>`;
@@ -141,7 +142,7 @@ class SunflowOptimizers extends LitElement {
           <h2>${s.name} <span class="small muted">· ${tn(s.optimizers.length, "{count} Optimierer", { count: s.optimizers.length })}</span></h2>
           <button class="secondary" ?disabled=${this._saving} @click=${() => this._reset(s.optimizers)}>${t("Vorschlag wiederherstellen")}</button>
         </div>
-        <p class="small muted">${t("So anordnen, wie die Module auf dem Dach liegen (oben = First): Modul auf einen freien Platz ziehen – oder antippen und dann den Platz antippen. Auf ein anderes Modul gezogen tauschen beide. Ein ausgewähltes Modul lässt sich quer legen. Zwischen zwei Reihen setzt „+ Trenner“ die Reihen darunter ab, das schmale „+“ zwischen zwei Plätzen die Plätze rechts davon in allen Reihen (z. B. ein anderes Dachstück).")}</p>
+        <p class="small muted help">${t("So anordnen, wie die Module auf dem Dach liegen (oben = First): Modul auf einen freien Platz ziehen – oder antippen und dann den Platz antippen. Auf ein anderes Modul gezogen tauschen beide. Ein ausgewähltes Modul lässt sich quer legen. Zwischen zwei Reihen setzt „+ Trenner“ die Reihen darunter ab, das schmale „+“ zwischen zwei Plätzen die Plätze rechts davon in allen Reihen (z. B. ein anderes Dachstück).")}</p>
         <sf-roof editable .optimizers=${s.optimizers} .visible=${["power"]}
           .breaks=${data.layouts[s.key]?.row_breaks ?? []}
           .colBreaks=${data.layouts[s.key]?.col_breaks ?? []}
@@ -183,7 +184,7 @@ class SunflowOptimizers extends LitElement {
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: flex; flex-direction: column; gap: 16px; }
     * { box-sizing: border-box; }
     button, select, input { font: inherit; color: inherit; }
@@ -214,7 +215,7 @@ class SunflowOptimizers extends LitElement {
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--sf-border); vertical-align: middle; }
     th { font-size: 13px; color: var(--sf-muted); font-weight: 600; }
     tr.open td:first-child { color: var(--sf-warn-text); font-weight: 600; }
-  `;
+  `];
 }
 
 customElements.define("sf-optimizers", SunflowOptimizers);

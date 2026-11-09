@@ -6,6 +6,12 @@ The top bar switches between the five views: **Live**, **Control**, **Planning**
 and **Settings**. On phones they are icons at the bottom. A number on "Analysis" shows open
 recommendations.
 
+At the far right of the menu bar two switches hide in every view what you no longer need; each
+browser remembers its choice, both start switched on:
+
+- **?** – explanations (descriptions below headings and fields, "What does … do?").
+- **Light bulb** – recommendations under "Analysis" and their number on "Analysis".
+
 ## Live
 
 ![Live](../images/en/live.png)

@@ -11,6 +11,7 @@ import { recall, remember } from "../lib/view-cache.js";
 import { MOTION, animate } from "../lib/motion.js";
 import { decimal, locale, t, tc } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const REFRESH_MS = 5000;
 const TODAY_REFRESH_MS = 5 * 60 * 1000;
@@ -840,7 +841,7 @@ class SunflowLive extends LitElement {
     });
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     .part-shell { fill: none; stroke-width: 1.5; }
     .part-cap { fill: var(--sf-muted); }
     .part-label { font-size: 11px; font-weight: 600; fill: var(--sf-text); }
@@ -1038,7 +1039,7 @@ class SunflowLive extends LitElement {
     .tile.highlight { background: var(--sf-primary-bg); }
     h2 .source { font-weight: 400; }
     .tile .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  `;
+  `];
 }
 
 /** Height the page has below an element: paddings, borders and following content of every ancestor, through shadow roots. */

@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { t } from "../lib/i18n.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const MAX_RESULTS = 50;
 const LIST_HEIGHT = 280;
@@ -187,7 +188,7 @@ class SunflowPicker extends LitElement {
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: block; position: relative; min-width: 0; }
     .box { position: relative; }
     input {
@@ -212,7 +213,7 @@ class SunflowPicker extends LitElement {
     .detail.plain { font-family: inherit; }
     input:disabled { opacity: .6; cursor: not-allowed; }
     .empty { color: var(--sf-muted); cursor: default; font-size: 13px; }
-  `;
+  `];
 }
 
 customElements.define("sf-picker", SunflowPicker);

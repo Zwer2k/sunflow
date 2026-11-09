@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { formatSigned, formatValue, fromDisplay, toDisplay } from "../lib/format.js";
 import { t, tn } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 /** Batteries of the inverters with their modules (setup step "Geräte", category "Speicher"). */
 class SunflowBatteries extends LitElement {
@@ -110,7 +111,7 @@ class SunflowBatteries extends LitElement {
         <span class="field-label">${t("Kurzbezeichnung")}</span>
         <span class="input-unit"><input maxlength="8" .value=${b.short_name ?? ""} placeholder=${(b.inverter.split(" ")[0] ?? "").slice(0, 6)}
           ?disabled=${this._busy} @change=${(e) => this._saveShortName(b, e.target.value)}></span>
-        <span class="small muted">${t("Bis 8 Zeichen, für die Live-Ansicht mit mehreren Speichern.")}</span>
+        <span class="small muted help">${t("Bis 8 Zeichen, für die Live-Ansicht mit mehreren Speichern.")}</span>
       </label>
     `;
   }
@@ -190,7 +191,7 @@ class SunflowBatteries extends LitElement {
             @change=${(e) => this._saveCost(b, { ...b.cost, include: e.target.checked })}>
           ${t("In der Planung berücksichtigen")}
         </label>
-        <span class="small muted">${b.cost.include
+        <span class="small muted help">${b.cost.include
           ? t("Je entladener kWh – verhindert Zyklen für Kleinstbeträge.")
           : t("Ausgeschaltet zählen Zyklen dieses Speichers als kostenlos: er wird auch für kleine Preisunterschiede genutzt.")}</span>
         ${b.cost.include ? html`
@@ -270,7 +271,7 @@ class SunflowBatteries extends LitElement {
     }
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: flex; flex-direction: column; gap: 12px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
@@ -313,7 +314,7 @@ class SunflowBatteries extends LitElement {
     .ok { min-height: 44px; padding: 0 18px; border-radius: 8px; cursor: pointer; font-weight: 600; border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     button:disabled { cursor: not-allowed; opacity: .6; }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
-  `;
+  `];
 }
 
 customElements.define("sf-batteries", SunflowBatteries);

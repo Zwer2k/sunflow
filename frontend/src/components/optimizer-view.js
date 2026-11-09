@@ -5,6 +5,7 @@ import { formatPower } from "../lib/format.js";
 import { OPTIMIZER_VALUES } from "./roof.js";
 import "./roof.js";
 import { t, tn } from "../lib/i18n.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const REFRESH_MS = 10 * 1000;
 // Remembered per browser; storage may be unavailable (private mode, previews)
@@ -125,7 +126,7 @@ class SunflowOptimizerView extends LitElement {
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     dialog {
       padding: 0; border: 0; border-radius: 12px; max-width: min(960px, calc(100vw - 16px)); width: max-content;
       background: var(--sf-surface); color: var(--sf-text); box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
@@ -148,7 +149,7 @@ class SunflowOptimizerView extends LitElement {
     .chip input { margin: 0; }
     .actions { display: flex; justify-content: flex-end; }
     .link { border: 0; background: transparent; color: var(--sf-primary); cursor: pointer; font: inherit; font-size: 14px; padding: 6px 0; }
-  `;
+  `];
 }
 
 customElements.define("sf-optimizer-view", SunflowOptimizerView);

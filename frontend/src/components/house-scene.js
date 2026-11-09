@@ -2,6 +2,7 @@ import { LitElement, svg, css, nothing, unsafeCSS } from "../../vendor/lit-all.m
 import { formatPower } from "../lib/format.js";
 import { t } from "../lib/i18n.js";
 import { MOTION, animate } from "../lib/motion.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 const ACTIVE_W = 20;
 const COLOR = {
@@ -222,7 +223,7 @@ class SunflowHouseScene extends LitElement {
     this._unwatch();
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: block; }
     * { ${unsafeCSS(MOTION)} }
     .scene { width: 100%; max-width: 900px; height: auto; max-height: max(160px, var(--flow-room, calc(100dvh - 340px))); display: block; margin: 0 auto; border-radius: 14px; }
@@ -286,7 +287,7 @@ class SunflowHouseScene extends LitElement {
       .rays, .star, .clouds, .panel-shine .panel, .battery.active .battery-fill, .steam, .wallbox.charging { animation: none; }
       .spark { animation: none; stroke-dasharray: none; opacity: 0.8; }
     }
-  `;
+  `];
 }
 
 customElements.define("sf-house-scene", SunflowHouseScene);

@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import "../components/picker.js";
 import { api } from "../lib/api.js";
 import { locale, t, tn } from "../lib/i18n.js";
+import { toggleSheet } from "../lib/display-toggles.js";
 
 // Below this share of plausible values the source is shown as doubtful
 const QUALITY_WARN_PCT = 80;
@@ -142,7 +143,7 @@ class SunflowLearningSources extends LitElement {
     return html`
       <section>
         <h2>${t("Lernquellen")}</h2>
-        <p class="small muted">${t("Zusätzliche Sensoren machen die gelernten Prognosen genauer. Keiner ist nötig. Unter jeder Auswahl steht, wie weit Home Assistant ihre Werte zurück aufhebt.")}</p>
+        <p class="small muted help">${t("Zusätzliche Sensoren machen die gelernten Prognosen genauer. Keiner ist nötig. Unter jeder Auswahl steht, wie weit Home Assistant ihre Werte zurück aufhebt.")}</p>
         ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
         <div class="fields">
           ${KINDS.map((kind) => html`<div class="field">
@@ -154,7 +155,7 @@ class SunflowLearningSources extends LitElement {
         </div>
         ${planes.length
           ? html`<h3>${t("Modultemperatur je Dachfläche")}</h3>
-              <p class="small muted">${t("Ein Fühler an den Modulen der Fläche. Warme Module liefern weniger, etwa 0,4 % je Grad über 25 °C. Hat die Fläche Optimierer, nimmt Sunflow ohne eigene Wahl das Mittel ihrer Temperaturen; sonst wird sie aus Außentemperatur und Einstrahlung geschätzt.")}</p>
+              <p class="small muted help">${t("Ein Fühler an den Modulen der Fläche. Warme Module liefern weniger, etwa 0,4 % je Grad über 25 °C. Hat die Fläche Optimierer, nimmt Sunflow ohne eigene Wahl das Mittel ihrer Temperaturen; sonst wird sie aus Außentemperatur und Einstrahlung geschätzt.")}</p>
               <div class="fields">
                 ${planes.map((plane) => {
                   const value = sources.module_temperature[plane.key];
@@ -178,7 +179,7 @@ class SunflowLearningSources extends LitElement {
     `;
   }
 
-  static styles = css`
+  static styles = [toggleSheet, css`
     :host { display: block; }
     * { box-sizing: border-box; }
     section { border-top: 1px solid var(--sf-border); padding-top: 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -197,7 +198,7 @@ class SunflowLearningSources extends LitElement {
       min-height: 40px; padding: 0 10px; font: inherit; font-size: 14px; border: 1px solid var(--sf-border-strong);
       border-radius: 8px; background: var(--sf-surface); color: var(--sf-text); max-width: 100%;
     }
-  `;
+  `];
 }
 
 customElements.define("sunflow-learning-sources", SunflowLearningSources);
