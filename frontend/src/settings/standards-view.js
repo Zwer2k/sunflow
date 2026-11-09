@@ -193,11 +193,11 @@ class SunflowStandards extends LitElement {
           <legend class="field-label">${t("Strategie des Hausspeichers (Standard)")}</legend>
           ${Object.entries(STRATEGIES).map(
             ([value, { label, hint }]) => html`
-              <div class="option ${settings.strategy === value ? "selected" : ""}">
+              <div class="option help-host ${settings.strategy === value ? "selected" : ""}">
                 <label class="option-choice">
                   <input type="radio" name="strategy" .checked=${settings.strategy === value} ?disabled=${this._saving}
                     @change=${() => this._saveSettings({ strategy: value })}>
-                  <span><strong>${label}</strong><br><span class="small muted">${hint}</span></span>
+                  <span><strong class="help-title">${label}</strong><br><span class="small muted">${hint}</span></span>
                 </label>
                 ${strategyDetails(value)}
               </div>

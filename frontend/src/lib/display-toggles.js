@@ -38,6 +38,14 @@ const HELP_HIDDEN = `
     font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
   }
   :is(h1, h2, h3, h4):has(+ .help-open)::after { color: var(--sf-primary); }
+  /* A titled block (a strategy): the "?" after its title, the text where it is */
+  .help-host > .help:not(.help-open) { display: none !important; }
+  .help-host .help-title::after {
+    content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+    width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
+    font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
+  }
+  .help-host:has(> .help-open) .help-title::after { color: var(--sf-primary); }
 `;
 
 function apply() {
@@ -60,15 +68,21 @@ document.addEventListener(
   (e) => {
     if (state.help) return;
     const path = e.composedPath();
-    // The "?" behind a heading: right of its text
-    const heading = path[0];
-    if (HEADINGS.has(heading?.tagName) && heading.nextElementSibling?.classList.contains("help")) {
+    // The "?" behind a heading or a title: right of its text
+    const title = path[0];
+    const target = HEADINGS.has(title?.tagName) && title.nextElementSibling?.classList.contains("help")
+      ? title.nextElementSibling
+      : title?.classList?.contains("help-title")
+        ? [...(title.closest(".help-host")?.children ?? [])].find((el) => el.classList.contains("help"))
+        : null;
+    if (target) {
       const text = document.createRange();
-      text.selectNodeContents(heading);
+      text.selectNodeContents(title);
       if (e.clientX > text.getBoundingClientRect().right) {
+        // Inside a label: no choice, only the text
         e.preventDefault();
         e.stopPropagation();
-        toggleHelp(heading.nextElementSibling);
+        toggleHelp(target);
       }
       return;
     }
