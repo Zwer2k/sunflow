@@ -10,7 +10,8 @@ At the far right of the menu bar two switches hide in every view what you no lon
 browser remembers its choice, both start switched on:
 
 - **?** – explanations (descriptions below headings and fields, "What does … do?"). A small ? stays
-  in their place and shows or hides just that text on a click.
+  in their place and shows or hides just that text on a click; for a paragraph under a heading the
+  ? sits behind the heading and the text below it.
 - **Light bulb** – recommendations under "Analysis" and their number on "Analysis".
 
 ## Live

@@ -30,6 +30,14 @@ const HELP_HIDDEN = `
     font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle;
   }
   .help.help-open { cursor: help; }
+  /* A paragraph below a heading: the "?" after the heading, the text below it when opened */
+  :is(h1, h2, h3, h4) + .help:not(.help-open) { display: none !important; }
+  :is(h1, h2, h3, h4):has(+ .help)::after {
+    content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+    width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
+    font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
+  }
+  :is(h1, h2, h3, h4):has(+ .help-open)::after { color: var(--sf-primary); }
 `;
 
 function apply() {
@@ -37,6 +45,7 @@ function apply() {
 }
 apply();
 
+const HEADINGS = new Set(["H1", "H2", "H3", "H4"]);
 const INTERACTIVE = new Set(["A", "BUTTON", "SUMMARY", "INPUT", "SELECT", "TEXTAREA", "LABEL"]);
 
 // Through shadow roots: the path of the click names the explanation that was tapped
@@ -45,6 +54,18 @@ document.addEventListener(
   (e) => {
     if (state.help) return;
     const path = e.composedPath();
+    // The "?" behind a heading: right of its text
+    const heading = path[0];
+    if (HEADINGS.has(heading?.tagName) && heading.nextElementSibling?.classList.contains("help")) {
+      const text = document.createRange();
+      text.selectNodeContents(heading);
+      if (e.clientX > text.getBoundingClientRect().right) {
+        e.preventDefault();
+        e.stopPropagation();
+        heading.nextElementSibling.classList.toggle("help-open");
+      }
+      return;
+    }
     const index = path.findIndex((el) => el.classList?.contains("help"));
     if (index < 0) return;
     const help = path[index];
