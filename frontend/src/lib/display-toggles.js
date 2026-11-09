@@ -38,14 +38,14 @@ const HELP_HIDDEN = `
     font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
   }
   :is(h1, h2, h3, h4):has(+ .help-open)::after { color: var(--sf-primary); }
-  /* A titled block (a strategy): the "?" after its title, the text where it is */
-  .help-host > .help:not(.help-open) { display: none !important; }
-  .help-host .help-title::after {
+  /* A titled block (a strategy, an input field): the "?" after its title or label, the text where it is */
+  :is(.help-host, .field:has(> .field-label)) > .help:not(.help-open) { display: none !important; }
+  :is(.help-host .help-title, .field:has(> .help) > .field-label)::after {
     content: "?"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
     width: 16px; height: 16px; margin-left: 8px; border: 1px solid currentColor; border-radius: 50%;
     font-size: 11px; line-height: 1; font-weight: 600; color: var(--sf-muted); vertical-align: middle; cursor: help;
   }
-  .help-host:has(> .help-open) .help-title::after { color: var(--sf-primary); }
+  :is(.help-host:has(> .help-open) .help-title, .field:has(> .help-open) > .field-label)::after { color: var(--sf-primary); }
 `;
 
 function apply() {
@@ -54,9 +54,20 @@ function apply() {
 apply();
 
 /** Show or hide one explanation; a collapsible one ("What does … do?") opens right away. */
-function toggleHelp(help) {
-  const open = help.classList.toggle("help-open");
+function toggleHelp(help, force) {
+  const open = help.classList.toggle("help-open", force);
   if (help.tagName === "DETAILS") help.open = open;
+}
+
+/** The explanations a strategy's title or a field's label stands for (all of the field's). */
+function titledHelp(title) {
+  const classes = title?.classList;
+  const host = classes?.contains("help-title")
+    ? title.closest(".help-host")
+    : classes?.contains("field-label") && title.parentElement?.classList.contains("field")
+      ? title.parentElement
+      : null;
+  return [...(host?.children ?? [])].filter((el) => el.classList.contains("help"));
 }
 
 const HEADINGS = new Set(["H1", "H2", "H3", "H4"]);
@@ -70,19 +81,18 @@ document.addEventListener(
     const path = e.composedPath();
     // The "?" behind a heading or a title: right of its text
     const title = path[0];
-    const target = HEADINGS.has(title?.tagName) && title.nextElementSibling?.classList.contains("help")
-      ? title.nextElementSibling
-      : title?.classList?.contains("help-title")
-        ? [...(title.closest(".help-host")?.children ?? [])].find((el) => el.classList.contains("help"))
-        : null;
-    if (target) {
+    const targets = HEADINGS.has(title?.tagName) && title.nextElementSibling?.classList.contains("help")
+      ? [title.nextElementSibling]
+      : titledHelp(title);
+    if (targets.length) {
       const text = document.createRange();
       text.selectNodeContents(title);
       if (e.clientX > text.getBoundingClientRect().right) {
-        // Inside a label: no choice, only the text
+        // Inside a label: no choice and no focus, only the text
         e.preventDefault();
         e.stopPropagation();
-        toggleHelp(target);
+        const open = !targets[0].classList.contains("help-open");
+        targets.forEach((help) => toggleHelp(help, open));
       }
       return;
     }
