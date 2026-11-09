@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.58
+
+- Docs: roadmap status brought up to date (sun position correction, soiled planes, vehicle state of charge between reports, plan from 6 hours before); README feature list and quick controls description updated.
+- MCP: `get_pv_sun` no longer calls the correction shadow-only (it plans when switched on), `get_pv_learning` mentions the soiling state.
+
 ## 0.78.57
 
 - Live quick controls: the mode dropdown buttons and the target buttons have the same width in every row, so they line up; dropdown entries stay on one line (also on a phone), and a long vehicle name ends with "…".
