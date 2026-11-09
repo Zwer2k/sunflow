@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.48
+
+- The "?" of a collapsible explanation ("What does … do?") opens it completely at once.
+
 ## 0.78.47
 
 - A hidden explanation that is the paragraph under a heading puts its "?" behind the heading; the text opens below it.
