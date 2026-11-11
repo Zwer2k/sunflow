@@ -231,3 +231,21 @@ def test_site_orientation(attributes: dict[str, object], expected: dict[str, flo
 
     snapshot = SimpleNamespace(states={"sensor.roof": {"attributes": attributes}})
     assert site_orientation(snapshot, "ab-cd") == expected
+
+
+def test_learned_expectation_only_for_planes_with_a_long_history() -> None:
+    """A plane learned from many days is expected at its factor for the sun's position; others at the raw forecast."""
+    from sunflow.planning.pv_sun import PlaneSun, SunCorrection, learned_expectation
+
+    planes = [
+        PlaneSun(key="roof", name="Roof", source="solcast", correction=SunCorrection(overall=0.6, days=400)),
+        PlaneSun(key="carport", name="Carport", source="solcast", correction=SunCorrection(overall=0.3, days=6)),
+    ]
+    expected = learned_expectation(planes, 50.0, 8.0)
+    noon = datetime(2026, 6, 1, 11, tzinfo=UTC)
+    assert expected is not None
+    assert expected("roof", noon, 1000.0) == pytest.approx(600.0)
+    assert expected("carport", noon, 1000.0) == 1000.0
+    # At night nothing is corrected
+    assert expected("roof", datetime(2026, 6, 1, 0, tzinfo=UTC), 1000.0) == 1000.0
+    assert learned_expectation(planes[1:], 50.0, 8.0) is None

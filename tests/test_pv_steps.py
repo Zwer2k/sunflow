@@ -133,3 +133,25 @@ def test_three_planes_only_the_one_furthest_from_the_others_changed(plane: str, 
     """A carport cleared of leaves must not make a roof look soiled against the sum of the others."""
     history = {FIRST + timedelta(days=i): {key: days[i] for key, days in SITE.items()} for i in range(16)}
     assert plane_state(history, plane).changes == changes
+
+
+def test_daily_energy_against_the_learned_expectation() -> None:
+    """With an expectation per plane the forecast side is what the plane delivers when clean."""
+    from datetime import datetime
+
+    from sunflow.planning.pv_steps import daily_energy
+
+    rows = [
+        {
+            "start": f"2026-11-07T{hour:02d}:00:00+00:00",
+            "plane_forecasts": {"roof": 2000.0, "carport": 1000.0},
+            "actual_strings": {"a:1": 1200.0, "b:1": 500.0},
+        }
+        for hour in (10, 11)
+    ]
+
+    def expected(key: str, start: datetime, forecast_w: float) -> float:
+        return forecast_w * {"roof": 0.6}.get(key, 1.0)
+
+    energy = daily_energy(rows, {"roof": ["a:1"], "carport": ["b:1"]}, TZ, expected)
+    assert energy == {date(2026, 11, 7): {"roof": (600.0, 600.0), "carport": (250.0, 500.0)}}

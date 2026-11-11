@@ -22,7 +22,7 @@ from sunflow.devices.site import pv_strings
 from sunflow.ha import HAClient, HACommandError
 from sunflow.planning.pv_episodes import SoilingHistory, daily_energy, soiling_history
 from sunflow.planning.pv_season import snow_on_all
-from sunflow.planning.pv_steps import PlaneState
+from sunflow.planning.pv_steps import Expected, PlaneState
 
 from .sun import sun_position
 
@@ -58,6 +58,8 @@ SOILING_RATIO_RAW = 0.5
 # Hours with a low sun say little (shade); days with little expected energy are left out
 SOILING_MIN_ELEVATION = 10.0
 SOILING_MIN_DAY_WH = 500.0
+# Length of a recorded slot
+EXPECTED_SLOT = timedelta(minutes=15)
 # Direction check: clear hours with the sun above the surroundings, and how many of them it needs
 ORIENTATION_MIN_ELEVATION = 20.0
 ORIENTATION_MIN_HOURS = 200
@@ -483,6 +485,23 @@ def sun_shift(samples: list[Sample]) -> float | None:
     return sum(s.azimuth * s.actual_wh for s in clear) / actual - sum(s.azimuth * s.forecast_wh for s in clear) / forecast
 
 
+def learned_expectation(planes: list[PlaneSun], latitude: float, longitude: float) -> Expected | None:
+    """What each plane with a long history delivers for a forecast when clean; other planes keep the raw forecast."""
+    learned = {p.key: p.correction for p in planes if p.correction is not None and p.correction.days >= MIN_DAYS_TO_PLAN}
+    if not learned:
+        return None
+
+    def expected(key: str, start: datetime, forecast_w: float) -> float:
+        if (correction := learned.get(key)) is None:
+            return forecast_w
+        elevation, azimuth = sun_position(start + EXPECTED_SLOT / 2, latitude, longitude)
+        if elevation <= 0:
+            return forecast_w
+        return forecast_w * correction.factor(elevation, azimuth, is_clear(forecast_w, elevation, azimuth, correction.top))
+
+    return expected
+
+
 def string_power_entities(
     config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot, plane: ForecastPlane
 ) -> list[str]:
@@ -587,7 +606,8 @@ async def learn_planes(
         result.first = min(s.start for s in samples) if samples else None
         result.sun_shift = sun_shift(samples)
         ratios[plane.key] = dict(await asyncio.to_thread(daily_ratios, recent, result.correction, tz))
-    return planes, await _episodes(client, config, history, ratios, now, tz)
+    learned = {p.key: p.correction for p in planes if p.correction is not None and p.correction.days >= MIN_DAYS_TO_PLAN}
+    return planes, await _episodes(client, config, history, ratios, now, tz, learned)
 
 
 async def _episodes(
@@ -597,6 +617,7 @@ async def _episodes(
     ratios: dict[str, dict[date, float]],
     now: datetime,
     tz: tzinfo,
+    learned: dict[str, SunCorrection],
 ) -> SoilingHistory:
     """The soiled periods of the history, with the outdoor temperature when a source is chosen."""
     temps = None
@@ -606,7 +627,7 @@ async def _episodes(
             temps = await daily_lows(client, entity_id, first, now, tz)
         except HACommandError:
             temps = None
-    energy = await asyncio.to_thread(daily_energy, history, tz)
+    energy = await asyncio.to_thread(daily_energy, history, tz, learned)
     return await asyncio.to_thread(soiling_history, energy, ratios, temps, now.astimezone(tz).date())
 
 

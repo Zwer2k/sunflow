@@ -19,7 +19,7 @@ from sunflow.planning.pv_steps import (
 )
 
 if TYPE_CHECKING:
-    from sunflow.planning.pv_sun import Sample
+    from sunflow.planning.pv_sun import Sample, SunCorrection
 
 # Hours with a low sun or little forecast say little about soiling
 MIN_ELEVATION = 10.0
@@ -68,16 +68,28 @@ class SoilingHistory:
     covered: dict[str, list[date]] = field(default_factory=dict)
 
 
-def daily_energy(samples: dict[str, list[Sample]], tz: tzinfo) -> dict[date, dict[str, tuple[float, float]]]:
-    """Measured and forecast energy (Wh) per local day and plane, from the hourly history."""
+def daily_energy(
+    samples: dict[str, list[Sample]], tz: tzinfo, corrections: dict[str, SunCorrection] | None = None
+) -> dict[date, dict[str, tuple[float, float]]]:
+    """Measured and forecast energy (Wh) per local day and plane, from the hourly history.
+
+    corrections: per plane with a long history its learned correction; the forecast is then what the plane
+    delivers at that sun position and sky when clean, so weather and direction do not look like soiling.
+    """
     days: dict[date, dict[str, list[float]]] = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))
     for key, plane in samples.items():
+        learned = (corrections or {}).get(key)
         for s in plane:
             if s.elevation < MIN_ELEVATION or s.forecast_wh < MIN_HOUR_WH:
                 continue
+            factor = (
+                learned.factor(s.elevation, s.azimuth, s.clear) * learned.spread_factor(s.forecast_wh, s.forecast10_wh)
+                if learned is not None
+                else 1.0
+            )
             total = days[s.start.astimezone(tz).date()][key]
             total[0] += s.actual_wh
-            total[1] += s.forecast_wh
+            total[1] += s.forecast_wh * factor
     return {day: {key: (a, f) for key, (a, f) in values.items()} for day, values in days.items()}
 
 

@@ -6,6 +6,7 @@ those days are not learned, and the plane is planned at its current share of the
 """
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, tzinfo
 import math
@@ -56,22 +57,31 @@ class PlaneState:
         }
 
 
+# What a plane is expected to deliver in a slot: (plane key, slot start, raw forecast W) -> W
+Expected = Callable[[str, datetime, float], float]
+
+
 def daily_energy(
-    rows: list[dict[str, Any]], planes: dict[str, list[str]], tz: tzinfo
+    rows: list[dict[str, Any]], planes: dict[str, list[str]], tz: tzinfo, expected: Expected | None = None
 ) -> dict[date, dict[str, tuple[float, float]]]:
-    """Measured and raw forecast energy (Wh) per local day and plane, from 15-minute shadow rows."""
+    """Measured and forecast energy (Wh) per local day and plane, from 15-minute shadow rows.
+
+    expected: the forecast as the plane's own history corrects it (shade, clear or cloudy). Against the raw
+    forecast a clear week lifts a south roof and not a north roof, which then looks soiled.
+    """
     days: dict[date, dict[str, list[float]]] = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))
     for row in rows:
         forecasts = row.get("plane_forecasts") or {}
         measured = row.get("actual_strings") or {}
-        day = datetime.fromisoformat(row["start"]).astimezone(tz).date()
+        start = datetime.fromisoformat(row["start"])
+        day = start.astimezone(tz).date()
         for key, strings in planes.items():
             forecast = forecasts.get(key)
             if not strings or forecast is None or forecast < MIN_FORECAST_W or not all(s in measured for s in strings):
                 continue
             total = days[day][key]
             total[0] += max(sum(measured[s] for s in strings), 0.0) / 4
-            total[1] += forecast / 4
+            total[1] += (expected(key, start, forecast) if expected is not None else forecast) / 4
     return {day: {key: (a, f) for key, (a, f) in values.items()} for day, values in days.items()}
 
 
@@ -203,10 +213,12 @@ def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str, pa
     return state
 
 
-def plane_states(rows: list[dict[str, Any]], planes: dict[str, list[str]], tz: tzinfo) -> dict[str, PlaneState]:
+def plane_states(
+    rows: list[dict[str, Any]], planes: dict[str, list[str]], tz: tzinfo, expected: Expected | None = None
+) -> dict[str, PlaneState]:
     """The state of every plane with a change; needs at least two measured planes."""
     measured = {key: strings for key, strings in planes.items() if strings}
     if len(measured) < 2:
         return {}
-    energy = daily_energy(rows, measured, tz)
+    energy = daily_energy(rows, measured, tz, expected)
     return {key: state for key in measured if (state := plane_state(energy, key, len(measured) == 2)).changes}

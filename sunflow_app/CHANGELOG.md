@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.64
+
+- Soiling detection and the soiling archive compare planes with a long history against their learned yield (by sun position and sky) instead of the raw forecast. Against the raw forecast a clear week in autumn lifted a south-east roof but not a north-west roof; in the archive the north-west roof then looked soiled and the cleaned carport did not.
+
 ## 0.78.63
 
 - Analysis → PV by sun position: per plane the direction and tilt entered at Solcast, and whether the measured day curve fits them. If a plane delivers clearly earlier or later along the sun's course than forecast with a clear sky, Sunflow asks whether the direction is right.
