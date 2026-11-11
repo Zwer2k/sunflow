@@ -28,10 +28,10 @@ from sunflow.devices.site import (
 from sunflow.ha import HAClient, HAError
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
-from sunflow.planning.plan import SLOT_HOURS, PlanResult, compute_plan
+from sunflow.planning.plan import SLOT_HOURS, PlanResult, compute_plan, weather_entity
 from sunflow.planning.pv_episodes import SoilingHistory
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
-from sunflow.planning.pv_season import PlaneSeason, compare, day_levels, season_profile
+from sunflow.planning.pv_season import PlaneSeason, compare, day_levels, season_profile, snow_ahead
 from sunflow.planning.pv_steps import PlaneState, daily_energy, plane_states
 from sunflow.planning.pv_sun import (
     PlaneSun,
@@ -300,6 +300,8 @@ class ShadowRunner:
         self.seasons: dict[str, PlaneSeason] = {}
         # Snow on all planes over the last days (shadow mode: shown, not planned with)
         self.snow: dict[str, Any] | None = None
+        # Snow the weather forecast expects in the next days
+        self.snow_ahead: dict[str, Any] | None = None
         self.sun_learned_at: datetime | None = None
         self._sun_level_at: datetime | None = None
         self.sun_error: str | None = None
@@ -566,6 +568,7 @@ class ShadowRunner:
             tz = await local_timezone(self._client)
             await refresh_levels(self._client, config, self._library.profiles, snapshot, self.sun_planes, tz)
             self.snow = await snow_now(self._client, config, snapshot, self.sun_planes, tz)
+            self.snow_ahead = await self._snow_ahead(config, snapshot)
         except (HAError, KeyError, TypeError, ValueError) as err:
             _LOGGER.warning("Updating the state of the PV planes failed: %s", err)
         self._sun_level_at = datetime.now(UTC)
@@ -580,6 +583,7 @@ class ShadowRunner:
             )
             self.seasons = season_profile(self.soiling, datetime.now(tz).date())
             self.snow = await snow_now(self._client, config, snapshot, self.sun_planes, tz)
+            self.snow_ahead = await self._snow_ahead(config, snapshot)
             self.sun_error = None
             self._sun_level_at = datetime.now(UTC)
         except (HAError, KeyError, TypeError, ValueError) as err:
@@ -588,6 +592,18 @@ class ShadowRunner:
         self.sun_learned_at = datetime.now(UTC)
         if self._store.load().optimizer.pv_sun:
             self.request_replan()
+
+    async def _snow_ahead(self, config: SunflowConfig, snapshot: Snapshot) -> dict[str, Any] | None:
+        """Snow in the hourly forecast of the weather entity; None without one."""
+        if (entity_id := weather_entity(config, snapshot)) is None:
+            return None
+        try:
+            response = await self._client.call_service(
+                "weather", "get_forecasts", {"type": "hourly"}, target={"entity_id": entity_id}, return_response=True
+            )
+            return snow_ahead(response["response"][entity_id]["forecast"])
+        except (HAError, KeyError, TypeError):
+            return None
 
     def pv_recent(self) -> tuple[float, float] | None:
         """Measured and raw forecast PV energy (Wh) of the last hours, for how the day goes."""

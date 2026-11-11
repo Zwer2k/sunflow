@@ -217,7 +217,12 @@ How well do forecasts and decisions match reality?
   (keeping the current state): "Comparison" shows the mean deviation of both from 7 days on.
   Planning does not use it yet. If in the last days all planes delivered at most half of the
   learned yield in frost although the brightness (learning source) was high, the hint "Snow on all
-  planes?" appears.
+  planes?" appears. If the hourly weather forecast expects precipitation in frost (from 1 mm) or
+  reports snow, "Snowfall expected from …" is shown there; planning does not account for it yet.
+  Per plane it also shows what is entered at Solcast (direction as a compass point, tilt) and
+  whether the measured day curve fits: if the plane delivers clearly earlier or later along the
+  sun's course than forecast with a clear sky (from 15°), Sunflow asks whether the direction is
+  right. Shade in the morning or evening shifts the value as well.
 - **Data for learning**: how far back Home Assistant keeps what Sunflow can learn from: history at
   full resolution (the recorder's retention), long-term statistics, weather with or without cloud
   coverage, and Solcast's past forecasts. Below, per measurement, since when it is there and how

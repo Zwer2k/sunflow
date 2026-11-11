@@ -45,7 +45,7 @@ Der Port ist im Heimnetz ohne Verschlüsselung (HTTP) erreichbar. Gib ihn nicht 
 | `get_energy`, `get_costs`, `get_efficiency` | Bilanzen, Kosten, Wirkungsgrad |
 | `get_data_inventory` | wie weit die HA-Historie und vergangene Solcast-Prognosen zurückreichen |
 | `get_learning_sources`, `get_learning_source_quality` | gewählte Lernquellen und wie plausibel ihre Werte sind |
-| `get_pv_sun` | PV-Korrektur nach Sonnenstand je Fläche mit Backtest, Verschmutzung in der Historie, Erwartung nach Jahreszeit mit Vergleich, Schnee auf allen Flächen |
+| `get_pv_sun` | PV-Korrektur nach Sonnenstand je Fläche mit Backtest, Verschmutzung in der Historie, Erwartung nach Jahreszeit mit Vergleich, Schnee auf allen Flächen und laut Wetterprognose, Ausrichtung aus Solcast |
 | `get_appliances` | nur gemessene Verbraucher: Verbrauch je Tag, aktive Tage, übliche Stunden |
 | `get_config`, `get_vehicles`, `get_batteries`, `get_site` | Konfiguration |
 | `get_sources`, `get_tariff_series`, `get_forecast_series`, `get_pv_learning` | Preise und PV-Prognose |

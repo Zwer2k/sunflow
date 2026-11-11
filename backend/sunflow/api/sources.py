@@ -262,6 +262,7 @@ async def get_pv_sun(request: Request, refresh: bool = False) -> dict[str, Any]:
         "episodes": [episode.as_dict() for episode in runner.soiling.episodes],
         "season": await _season(request, runner),
         "snow": runner.snow,
+        "snow_ahead": runner.snow_ahead,
     }
 
 

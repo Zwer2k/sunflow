@@ -350,4 +350,13 @@ export default {
   "noch zu wenige Tage": "too few days yet",
   "Verschmutzt je Monat: Anteil der Tage, in Klammern der Ertrag in der Zeit. Nächste Tage: erwarteter Anteil des sauberen Ertrags.": "Soiled per month: share of the days, in brackets the yield meanwhile. Next days: expected share of the clean yield.",
   "Plan von vor {hours} h: ±{mae} je Viertelstunde, im Mittel {bias}": "Plan from {hours} h before: ±{mae} per quarter hour, {bias} on average",
+  "N": "N",
+  "NO": "NE",
+  "NW": "NW",
+  "In Solcast eingetragen: Ausrichtung {direction} ({degrees}°), Neigung {tilt}°.": "Entered at Solcast: facing {direction} ({degrees}°), tilt {tilt}°.",
+  "In Solcast eingetragen: Ausrichtung {direction} ({degrees}°).": "Entered at Solcast: facing {direction} ({degrees}°).",
+  "Der gemessene Tagesverlauf passt dazu.": "The measured day curve fits.",
+  "Schneefall erwartet ab {time}: etwa {mm} Niederschlag bei Frost. Die Planung rechnet das noch nicht ein.": "Snowfall expected from {time}: about {mm} of precipitation in frost. Planning does not account for it yet.",
+  "Die Fläche liefert bei klarem Himmel deutlich später am Tag als prognostiziert ({degrees}° im Sonnenlauf) – zeigt sie weiter nach Westen als eingetragen?": "With a clear sky the plane delivers clearly later in the day than forecast ({degrees}° of the sun's course) – does it face further west than entered?",
+  "Die Fläche liefert bei klarem Himmel deutlich früher am Tag als prognostiziert ({degrees}° im Sonnenlauf) – zeigt sie weiter nach Osten als eingetragen?": "With a clear sky the plane delivers clearly earlier in the day than forecast ({degrees}° of the sun's course) – does it face further east than entered?",
 };

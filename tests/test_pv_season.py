@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from sunflow.planning.pv_episodes import soiling_history
-from sunflow.planning.pv_season import Month, PlaneSeason, compare, day_levels, season_profile, snow_on_all
+from sunflow.planning.pv_season import Month, PlaneSeason, compare, day_levels, season_profile, snow_ahead, snow_on_all
 from sunflow.planning.pv_steps import plane_state
 from sunflow.shadow.store import ShadowStore
 from test_pv_steps import CLEAR, LEAVES, SLIDE, clean, energy
@@ -102,3 +102,28 @@ def test_snow_on_all(
 ) -> None:
     """Snow on all planes needs every plane far below, frost and, where measured, light."""
     assert snow_on_all(levels, low, bright, unit) == expected
+
+
+def _hour(hour: int, temperature: float, precipitation: float, condition: str = "cloudy") -> dict[str, object]:
+    return {"datetime": f"2026-11-13T{hour:02d}:00:00+00:00", "temperature": temperature, "precipitation": precipitation, "condition": condition}
+
+
+@pytest.mark.parametrize(
+    ("forecast", "expected"),
+    [
+        pytest.param(
+            [_hour(1, 3.0, 0.5), _hour(2, 0.2, 0.8), _hour(3, -0.5, 0.6), _hour(4, -1.0, 0.0)],
+            {"from": "2026-11-13T02:00:00+00:00", "hours": 2, "precipitation": 1.4},
+            id="precipitation in frost",
+        ),
+        pytest.param(
+            [_hour(5, 1.5, 1.2, "snowy")], {"from": "2026-11-13T05:00:00+00:00", "hours": 1, "precipitation": 1.2}, id="forecast says snow"
+        ),
+        pytest.param([_hour(1, 4.0, 3.0, "rainy")], None, id="rain"),
+        pytest.param([_hour(1, -2.0, 0.3)], None, id="a few flakes"),
+        pytest.param([_hour(1, -5.0, 0.0, "sunny")], None, id="dry frost"),
+    ],
+)
+def test_snow_ahead(forecast: list[dict[str, object]], expected: dict[str, object] | None) -> None:
+    """Snow the weather forecast expects, from 1 mm on."""
+    assert snow_ahead(forecast) == expected

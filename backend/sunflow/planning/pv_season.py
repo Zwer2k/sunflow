@@ -166,3 +166,27 @@ def snow_on_all(levels: dict[str, float], low: float | None, bright: float | Non
         "unit": unit if threshold is not None else None,
     }
 
+
+# Snow ahead in the weather forecast: precipitation in frost, or the forecast says snow; from this much on
+SNOW_CONDITIONS = ("snowy", "snowy-rainy")
+SNOW_AHEAD_FROST_C = 0.5
+SNOW_AHEAD_MIN_MM = 1.0
+
+
+def snow_ahead(forecast: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """When the hourly weather forecast expects snow to fall, and how much precipitation (mm) it brings."""
+    hours = [
+        item
+        for item in forecast
+        if item.get("datetime")
+        and (item.get("precipitation") or 0.0) > 0
+        and (
+            item.get("condition") in SNOW_CONDITIONS
+            or (item.get("temperature") is not None and item["temperature"] <= SNOW_AHEAD_FROST_C)
+        )
+    ]
+    total = sum(item["precipitation"] for item in hours)
+    if total < SNOW_AHEAD_MIN_MM:
+        return None
+    return {"from": min(item["datetime"] for item in hours), "hours": len(hours), "precipitation": round(total, 1)}
+

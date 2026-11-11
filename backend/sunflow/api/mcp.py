@@ -131,7 +131,7 @@ TOOLS = [
     Tool(name="get_pv_learning", area="live", description="Stand des PV-Lernens je Fläche, mit Verschmutzung (state: Sprünge, verschmutzte Tage, Niveau).", path="/pv-learning"),
     Tool(
         name="get_pv_sun", area="history",
-        description="PV-Korrektur nach Sonnenstand je Fläche; plant mit, wenn eingeschaltet und die Fläche plannable ist: Faktoren je Sonnenhöhe/-richtung und Backtest gegen Rohprognose und Stundenmodell; episodes: Verschmutzung (Laub, Schnee) über die ganze Historie je Fläche (plane null: alle Flächen, Schnee); season: Verschmutzung je Monat, Erwartung der nächsten Tage und Vergleich mit dem heutigen Stand (check: mittlere Abweichung); snow: Schnee auf allen Flächen erkannt. Alles Schattenbetrieb. Rechnet im Hintergrund; computing=true heißt später erneut fragen.",
+        description="PV-Korrektur nach Sonnenstand je Fläche; plant mit, wenn eingeschaltet und die Fläche plannable ist: Faktoren je Sonnenhöhe/-richtung und Backtest gegen Rohprognose und Stundenmodell; episodes: Verschmutzung (Laub, Schnee) über die ganze Historie je Fläche (plane null: alle Flächen, Schnee); season: Verschmutzung je Monat, Erwartung der nächsten Tage und Vergleich mit dem heutigen Stand (check: mittlere Abweichung); snow: Schnee auf allen Flächen erkannt; snow_ahead: Schneefall laut Wetterprognose; je Fläche orientation (Ausrichtung als Kompassgrad, Neigung aus Solcast) und sun_shift (Messung liegt so viele Grad weiter westlich im Sonnenlauf als die Prognose). Alles Schattenbetrieb. Rechnet im Hintergrund; computing=true heißt später erneut fragen.",
         path="/pv-learning/sun",
     ),
     Tool(name="get_vehicles", area="config", description="Fahrzeuge und Ladeeinstellungen.", path="/config/vehicles"),
