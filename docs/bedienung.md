@@ -213,6 +213,13 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   Leistung und stellt sich von selbst wieder um, sobald sie mehr liefert (alle 3 Stunden geprüft).
   „Neu lernen ab heute“ verwirft auch die Historie nach Sonnenstand, deshalb nur nach Baumschnitt
   oder Modultausch, nicht nach dem Säubern.
+  **Verschmutzung in der Historie** listet, was Sunflow in der ganzen Historie (bis zu zwei Jahre)
+  findet: Zeiträume, in denen eine Fläche gegenüber den anderen deutlich weniger lieferte (plötzlich
+  wie bei Schnee, nach und nach wie bei Laub, oder bis zu einer Reinigung), und Tage, an denen bei
+  Frost alle Flächen fast nichts lieferten (Schnee auf allen). Dazu der Ertrag in der Zeit als Anteil
+  des sauberen Ertrags und die tiefste Außentemperatur (wenn unter Lernquellen gewählt). Nur zur
+  Auswertung: Die Planung nutzt die Liste nicht; daraus soll Sunflow später lernen, wann Laub oder
+  Schnee zu erwarten ist.
 - **Datenbestand fürs Lernen**: wie weit Home Assistant zurück aufhebt, woraus Sunflow lernen
   kann: Verlauf in voller Auflösung (Aufbewahrung des Recorders), Langzeitstatistik, Wetter mit
   oder ohne Bewölkung und die vergangenen Solcast-Prognosen. Darunter je Messwert, seit wann er

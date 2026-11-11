@@ -1,6 +1,6 @@
 name: Sunflow Edge
 # Bump with every change on main: a new version makes the Supervisor rebuild from main
-version: "0.78.58"
+version: "0.78.59"
 slug: sunflow_edge
 description: Development version of Sunflow (main branch) for testing; run either this or Sunflow
 url: https://github.com/Zwer2k/sunflow

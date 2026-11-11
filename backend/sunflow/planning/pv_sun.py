@@ -20,6 +20,7 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import pv_strings
 from sunflow.ha import HAClient, HACommandError
+from sunflow.planning.pv_episodes import Episode, daily_energy, episodes
 from sunflow.planning.pv_steps import PlaneState
 
 from .sun import sun_position
@@ -468,6 +469,24 @@ def string_power_entities(
     return entities
 
 
+async def daily_lows(client: HAClient, entity_id: str, start: datetime, end: datetime, tz: tzinfo) -> dict[date, float]:
+    """Lowest temperature (°C) per local day from the long-term statistics."""
+    result = await client.command(
+        "recorder/statistics_during_period",
+        start_time=start.isoformat(),
+        end_time=end.isoformat(),
+        statistic_ids=[entity_id],
+        period="day",
+        types=["min"],
+        units={"temperature": "°C"},
+    )
+    return {
+        datetime.fromtimestamp(row["start"] / 1000, tz).date(): row["min"]
+        for row in result.get(entity_id, [])
+        if row.get("min") is not None
+    }
+
+
 async def learn_planes(
     client: HAClient,
     config: SunflowConfig,
@@ -475,15 +494,18 @@ async def learn_planes(
     snapshot: Snapshot,
     tz: tzinfo,
     states: dict[str, PlaneState] | None = None,
-) -> list[PlaneSun]:
+) -> tuple[list[PlaneSun], list[Episode]]:
     """Learn every plane in use from its history (minutes on a Raspberry Pi: run in the background).
 
     states: soiled days per plane key from the comparison with the other planes; a short history leaves them out.
+    Also returns the soiled periods found in the whole history.
     """
     ha_config = await client.command("get_config")
     latitude, longitude = ha_config["latitude"], ha_config["longitude"]
     now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
     planes = []
+    history: dict[str, list[Sample]] = {}
+    ratios: dict[str, dict[date, float]] = {}
     for plane in config.forecast_planes:
         if not plane.device_id:
             continue
@@ -500,6 +522,7 @@ async def learn_planes(
         forecast, forecast10 = await solcast_hours(client, plane.ref, start, now)
         measured = await measured_hours(client, entities, start, now)
         samples = await asyncio.to_thread(samples_from, forecast, measured, latitude, longitude, forecast10)
+        history[plane.key] = samples
         state = (states or {}).get(plane.key)
         if state is not None and len({s.start.astimezone(tz).date() for s in samples}) < MIN_DAYS_TO_PLAN:
             # A long history finds its own soiled days against the years before
@@ -521,7 +544,28 @@ async def learn_planes(
             # Only used where it predicts better than the sun position alone
             result.correction.spread_weights = {}
         result.first = min(s.start for s in samples) if samples else None
-    return planes
+        ratios[plane.key] = dict(await asyncio.to_thread(daily_ratios, recent, result.correction, tz))
+    return planes, await _episodes(client, config, history, ratios, now, tz)
+
+
+async def _episodes(
+    client: HAClient,
+    config: SunflowConfig,
+    history: dict[str, list[Sample]],
+    ratios: dict[str, dict[date, float]],
+    now: datetime,
+    tz: tzinfo,
+) -> list[Episode]:
+    """The soiled periods of the history, with the outdoor temperature when a source is chosen."""
+    temps = None
+    if (entity_id := config.learning_sources.outdoor_temperature) and history:
+        first = min((s.start for samples in history.values() for s in samples), default=now)
+        try:
+            temps = await daily_lows(client, entity_id, first, now, tz)
+        except HACommandError:
+            temps = None
+    energy = await asyncio.to_thread(daily_energy, history, tz)
+    return await asyncio.to_thread(episodes, energy, ratios, temps, now.astimezone(tz).date())
 
 
 def _soiling(samples: list[Sample], now: datetime, tz: tzinfo) -> tuple[dict[str, Any] | None, bool]:

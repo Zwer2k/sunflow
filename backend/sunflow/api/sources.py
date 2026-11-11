@@ -257,6 +257,7 @@ async def get_pv_sun(request: Request, refresh: bool = False) -> dict[str, Any]:
         "computed_at": runner.sun_learned_at.isoformat() if runner.sun_learned_at else None,
         "error": runner.sun_error,
         "planes": [plane.as_dict() for plane in runner.sun_planes],
+        "episodes": [episode.as_dict() for episode in runner.sun_episodes],
     }
 
 

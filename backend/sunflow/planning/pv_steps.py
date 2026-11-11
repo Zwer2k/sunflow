@@ -28,7 +28,8 @@ GRADUAL_LEVEL = 0.8
 # Forecast energy (Wh) of the plane and of the others for a day to count
 STEP_MIN_DAY_WH = 1000.0
 
-Day = tuple[float, float, float, float]
+# Measured and forecast energy of the plane and of the others, and how many other planes there are
+Day = tuple[float, float, float, float, int]
 
 
 @dataclass(kw_only=True)
@@ -38,6 +39,8 @@ class PlaneState:
     changes: list[dict[str, Any]] = field(default_factory=list)
     # Soiled periods as local days, the end exclusive (None: up to now)
     soiled: list[tuple[date, date | None]] = field(default_factory=list)
+    # Per soiled period: "drop" (sudden), "gradual" (after a cleaning) or "before_cleaning" (since the data began)
+    kinds: list[str] = field(default_factory=list)
     level: float = 1.0
 
     def is_soiled(self, day: date) -> bool:
@@ -80,7 +83,7 @@ def _relative(day: dict[str, tuple[float, float]], key: str) -> Day | None:
     other_actual, other_forecast = sum(a for a, _ in others), sum(f for _, f in others)
     if other_forecast < STEP_MIN_DAY_WH or other_actual <= 0:
         return None
-    return (*day[key], other_actual, other_forecast)
+    return (*day[key], other_actual, other_forecast, len(others))
 
 
 def _pooled(days: list[Day]) -> float:
@@ -97,8 +100,8 @@ def _own(days: list[Day], index: int) -> float:
 def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None:
     """The change at split against the regime since start, when the confirming days all agree.
 
-    pair: only one other plane, which then shows the same change the other way round; the plane whose own
-    share of its forecast moved more is the one that changed.
+    pair: only one other plane (always, or on all these days), which then shows the same change the other
+    way round; the plane whose own share of its forecast moved more is the one that changed.
     """
     reference = _pooled(days[max(start, split - STEP_REFERENCE_DAYS) : split])
     confirm = days[split : split + STEP_CONFIRM_DAYS]
@@ -112,6 +115,7 @@ def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None
     if any(sign * math.log(_pooled([d]) / reference) < math.log(STEP_DAY_RATIO) for d in confirm):
         return None
     before = days[max(start, split - STEP_REFERENCE_DAYS) : split]
+    pair = pair or all(d[4] == 1 for d in before + confirm)
     if pair and abs(math.log(_own(confirm, 0) / _own(before, 0))) < abs(math.log(_own(confirm, 2) / _own(before, 2))):
         return None
     return change
@@ -140,19 +144,19 @@ def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str, pa
     if len(starts) == 1:
         return state
     bounds = [i for i, _ in starts] + [len(days)]
-    soiled = [False] * len(days)
+    soiled: list[str | None] = [None] * len(days)
     reference = None
     level = 1.0
     for index, (begin, change) in enumerate(starts):
         end = bounds[index + 1]
         if change is not None and change < 1:
             # A drop: soiled until the next rise, at its share of the clean days before
-            soiled[begin:end] = [True] * (end - begin)
+            soiled[begin:end] = ["drop"] * (end - begin)
             level = _pooled(values[begin:end]) / reference if reference else 1.0
             continue
         if change is None and starts[1][1] > 1:
             # Before the first cleaning: soiled since the data began
-            soiled[begin:end] = [True] * (end - begin)
+            soiled[begin:end] = ["before_cleaning"] * (end - begin)
             continue
         if change is None:
             reference = _pooled(values[max(begin, end - STEP_REFERENCE_DAYS) : end])
@@ -164,16 +168,17 @@ def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str, pa
         for day in range(begin + GRADUAL_DAYS, end + 1):
             share = _pooled(values[day - GRADUAL_DAYS : day]) / reference
             if share < GRADUAL_LEVEL:
-                soiled[day - GRADUAL_DAYS : day] = [True] * GRADUAL_DAYS
+                soiled[day - GRADUAL_DAYS : day] = ["gradual"] * GRADUAL_DAYS
             if day == end:
                 level = share if share < GRADUAL_LEVEL else 1.0
     state.level = min(level, 1.0)
     start = None
-    for index, flag in enumerate([*soiled, False]):
-        if flag and start is None:
+    for index, kind in enumerate([*soiled, None]):
+        if kind and start is None:
             start = index
-        elif not flag and start is not None:
+        elif not kind and start is not None:
             state.soiled.append((days[start][0], days[index][0] if index < len(days) else None))
+            state.kinds.append(soiled[start] or "")
             start = None
     return state
 

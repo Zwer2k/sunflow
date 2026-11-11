@@ -29,6 +29,7 @@ from sunflow.ha import HAClient, HAError
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import SLOT_HOURS, PlanResult, compute_plan
+from sunflow.planning.pv_episodes import Episode
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
 from sunflow.planning.pv_steps import PlaneState, plane_states
 from sunflow.planning.pv_sun import (
@@ -41,7 +42,14 @@ from sunflow.planning.vehicle_soc import estimator
 from sunflow.planning.vehicles import recognize, soc_of, unplugged_choices
 from sunflow.shadow.counters import EnergyCounters
 
-from .store import PLAN_AHEAD, Sample, ShadowStore, SlotRecorder, actual_action, slot_start
+from .store import (
+    PLAN_AHEAD,
+    Sample,
+    ShadowStore,
+    SlotRecorder,
+    actual_action,
+    slot_start,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -285,6 +293,7 @@ class ShadowRunner:
         self.plane_states: dict[str, PlaneState] = {}
         # PV correction by sun position per plane, learned in the background
         self.sun_planes: list[PlaneSun] = []
+        self.sun_episodes: list[Episode] = []
         self.sun_learned_at: datetime | None = None
         self._sun_level_at: datetime | None = None
         self.sun_error: str | None = None
@@ -559,7 +568,7 @@ class ShadowRunner:
             snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
             config = self._store.load()
             tz = await local_timezone(self._client)
-            self.sun_planes = await learn_sun_planes(
+            self.sun_planes, self.sun_episodes = await learn_sun_planes(
                 self._client, config, self._library.profiles, snapshot, tz, self.plane_states
             )
             self.sun_error = None
