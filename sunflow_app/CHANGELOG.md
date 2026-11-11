@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.60
+
+- Analysis → PV by sun position: "Expectation by season (test)" learns from the soiling archive per plane and month how often and how deeply it was soiled, and after how many days leaves came back after a cleaning; it shows the expected share of the clean yield for the next 7 days. Each day the expectation for tomorrow is recorded (new table `soiling_ahead` in the shadow database) and compared with keeping the current state once measured. Shadow mode only, planning is unchanged.
+- Snow on all planes: if in the last days all planes delivered at most half of their learned yield in frost while the brightness source was high, a hint appears. Also in the MCP tool `get_pv_sun` (`season`, `snow`).
+
 ## 0.78.59
 
 - Analysis → PV by sun position: new table "Soiling in the history" lists every soiled period found in the whole history (up to two years): one plane clearly below the others (sudden like snow, gradual like leaves, or until a cleaning) and frosty days on which all planes delivered almost nothing (snow on all). With the yield as a share of the clean yield and the lowest outdoor temperature. For analysis only, planning does not use it yet; also in the MCP tool `get_pv_sun`.

@@ -20,7 +20,8 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import pv_strings
 from sunflow.ha import HAClient, HACommandError
-from sunflow.planning.pv_episodes import Episode, daily_energy, episodes
+from sunflow.planning.pv_episodes import SoilingHistory, daily_energy, soiling_history
+from sunflow.planning.pv_season import snow_on_all
 from sunflow.planning.pv_steps import PlaneState
 
 from .sun import sun_position
@@ -494,7 +495,7 @@ async def learn_planes(
     snapshot: Snapshot,
     tz: tzinfo,
     states: dict[str, PlaneState] | None = None,
-) -> tuple[list[PlaneSun], list[Episode]]:
+) -> tuple[list[PlaneSun], SoilingHistory]:
     """Learn every plane in use from its history (minutes on a Raspberry Pi: run in the background).
 
     states: soiled days per plane key from the comparison with the other planes; a short history leaves them out.
@@ -555,7 +556,7 @@ async def _episodes(
     ratios: dict[str, dict[date, float]],
     now: datetime,
     tz: tzinfo,
-) -> list[Episode]:
+) -> SoilingHistory:
     """The soiled periods of the history, with the outdoor temperature when a source is chosen."""
     temps = None
     if (entity_id := config.learning_sources.outdoor_temperature) and history:
@@ -565,7 +566,7 @@ async def _episodes(
         except HACommandError:
             temps = None
     energy = await asyncio.to_thread(daily_energy, history, tz)
-    return await asyncio.to_thread(episodes, energy, ratios, temps, now.astimezone(tz).date())
+    return await asyncio.to_thread(soiling_history, energy, ratios, temps, now.astimezone(tz).date())
 
 
 def _soiling(samples: list[Sample], now: datetime, tz: tzinfo) -> tuple[dict[str, Any] | None, bool]:
@@ -607,3 +608,26 @@ async def refresh_levels(
             for s in samples
         ]
         plane.correction.level = current_level(daily_ratios(samples, plane.correction, tz), now.astimezone(tz).date())
+
+
+async def snow_now(
+    client: HAClient, config: SunflowConfig, snapshot: Snapshot, planes: list[PlaneSun], tz: tzinfo
+) -> dict[str, Any] | None:
+    """Snow on all learned planes over the last days: frost, light, and every plane far below its learned yield."""
+    levels = {p.key: p.correction.level for p in planes if p.correction is not None}
+    sources = config.learning_sources
+    if not levels or not sources.outdoor_temperature:
+        return None
+    now = datetime.now(UTC)
+    start = now - timedelta(days=LEVEL_DAYS)
+    try:
+        lows = await daily_lows(client, sources.outdoor_temperature, start, now, tz)
+        bright = None
+        if sources.irradiance:
+            hours = await measured_hours(client, [sources.irradiance], start, now)
+            bright = max(hours.values(), default=None)
+    except HACommandError:
+        return None
+    unit = (snapshot.states.get(sources.irradiance or "") or {}).get("attributes", {}).get("unit_of_measurement")
+    return snow_on_all(levels, min(lows.values(), default=None), bright, unit)
+

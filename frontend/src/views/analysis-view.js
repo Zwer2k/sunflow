@@ -519,8 +519,59 @@ class SunflowAnalysis extends LitElement {
             : nothing}
         `)}
         ${this._renderEpisodes(data)}
+        ${this._renderSeason(data)}
         ${data.computed_at ? html`<p class="small muted">${t("Gelernt {time}", { time: dayTime.format(new Date(data.computed_at)) })}</p>` : nothing}
       </section>
+    `;
+  }
+
+  /** Soiling to expect by season per plane and how it compared with keeping the current level (shadow mode). */
+  _renderSeason(data) {
+    const season = data.season ?? {};
+    const keys = Object.keys(season);
+    if (!keys.length && !data.snow) return nothing;
+    const names = Object.fromEntries(data.planes.map((p) => [p.key, p.name]));
+    const pct = (v) => `${Math.round(v * 100)} %`;
+    const month = (m) => new Date(2026, m - 1, 1).toLocaleDateString(locale(), { month: "short" });
+    const weekday = (iso) => new Date(iso).toLocaleDateString(locale(), { weekday: "short" });
+    const snow = data.snow;
+    return html`
+      <h3>${t("Erwartung nach Jahreszeit (Test)")}</h3>
+      <p class="small muted help">${t("Aus der Verschmutzung in der Historie: je Monat der verschmutzte Anteil der Tage und wie viel die Fläche dann lieferte, und nach wie vielen Tagen Laub nach einer Reinigung zurückkam. Die Planung rechnet weiter mit dem aktuellen Stand; der Vergleich zeigt, welche Erwartung näher an der Messung lag.")}</p>
+      ${snow
+        ? html`<p class="small warn-text">${snow.bright !== null
+            ? t("Schnee auf allen Flächen? Bei {temp} lieferten alle Flächen höchstens {pct} des Gelernten, obwohl es hell war.", {
+                temp: formatValue(snow.min_temp, "°C"), pct: pct(Math.max(...Object.values(snow.levels))) })
+            : t("Schnee auf allen Flächen? Bei {temp} lieferten alle Flächen höchstens {pct} des Gelernten (Helligkeit nicht gemessen).", {
+                temp: formatValue(snow.min_temp, "°C"), pct: pct(Math.max(...Object.values(snow.levels))) })}</p>`
+        : nothing}
+      ${keys.length
+        ? html`<div class="table-wrap">
+            <table>
+              <thead><tr><th>${t("Fläche")}</th><th>${t("Verschmutzt je Monat")}</th><th>${t("Laub zurück nach")}</th>
+                <th>${t("Nächste Tage")}</th><th>${t("Vergleich")}</th></tr></thead>
+              <tbody>
+                ${keys.map((key) => {
+                  const s = season[key];
+                  const soiled = Object.entries(s.months).filter(([, m]) => m.soiled_days > 0);
+                  return html`<tr>
+                    <td>${names[key] ?? key}</td>
+                    <td>${soiled.length
+                      ? soiled.map(([m, v]) => `${month(Number(m))} ${pct(v.soiled_days / v.days)}${v.depth !== null ? ` (${pct(v.depth)})` : ""}`).join(" · ")
+                      : t("nie")}</td>
+                    <td>${s.regrowth_days !== null ? t("{days} Tagen", { days: s.regrowth_days }) : "–"}</td>
+                    <td>${s.next_days.map((d) => `${weekday(d.day)} ${pct(d.expected)}`).join(" · ")}</td>
+                    <td>${s.check
+                      ? t("{days} Tage: Jahreszeit ±{season}, aktueller Stand ±{current}", {
+                          days: s.check.days, season: pct(s.check.season), current: pct(s.check.current) })
+                      : t("noch zu wenige Tage")}</td>
+                  </tr>`;
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p class="small muted help">${t("Verschmutzt je Monat: Anteil der Tage, in Klammern der Ertrag in der Zeit. Nächste Tage: erwarteter Anteil des sauberen Ertrags.")}</p>`
+        : nothing}
     `;
   }
 

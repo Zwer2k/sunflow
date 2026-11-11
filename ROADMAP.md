@@ -55,7 +55,11 @@ Sammlung sinnvoller Erweiterungen, grob nach Nutzen geordnet. Noch nichts davon 
    Kalenderwoche lernen, wie wahrscheinlich Verschmutzung ist und wie schnell Laub nach dem Räumen
    zurückkommt, und das für die kommenden Tage einplanen, statt erst nach drei schlechten Tagen zu
    reagieren. Erst im Schattenbetrieb. *Schritt 1 umgesetzt (0.78.59): Unter Analyse listet
-   „Verschmutzung in der Historie“ die Episoden der ganzen Historie mit Tiefe und Frost.*
+   „Verschmutzung in der Historie“ die Episoden der ganzen Historie mit Tiefe und Frost.
+   Schritte 2–4 umgesetzt (0.78.60) im Schattenbetrieb: Erwartung je Monat und Wiederkehr nach dem
+   Räumen, täglicher Vergleich mit dem aktuellen Stand, Hinweis auf Schnee auf allen Flächen aus
+   Frost, Helligkeit und Ertrag. Offen: in die Planung übernehmen, sobald der Vergleich es trägt;
+   Wetterprognose (Schneefall) für die kommenden Tage.*
 6. **Konfiguration prüfen**: Passt die gemessene Kurve einer Fläche zu Ausrichtung und Neigung in
    Solcast/Forecast.Solar? Ein Hinweis, wenn etwa eine Ost-Fläche als Süd eingetragen ist.
 

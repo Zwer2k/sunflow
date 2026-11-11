@@ -210,6 +210,14 @@ How well do forecasts and decisions match reality?
   nothing in frost (snow on all of them). With the yield meanwhile as a share of the clean yield and
   the lowest outdoor temperature (when chosen under learning sources). For analysis only: planning
   does not use the list; Sunflow is to learn from it later when leaves or snow are to be expected.
+  **Expectation by season (test)** learns from it per plane and month on which part of the days it
+  was soiled and how much it delivered then, and after how many days leaves came back after a
+  cleaning. From that follows the expected share of the clean yield for the next 7 days. Each day
+  Sunflow keeps what it expects for tomorrow and, once measured, compares it with today's approach
+  (keeping the current state): "Comparison" shows the mean deviation of both from 7 days on.
+  Planning does not use it yet. If in the last days all planes delivered at most half of the
+  learned yield in frost although the brightness (learning source) was high, the hint "Snow on all
+  planes?" appears.
 - **Data for learning**: how far back Home Assistant keeps what Sunflow can learn from: history at
   full resolution (the recorder's retention), long-term statistics, weather with or without cloud
   coverage, and Solcast's past forecasts. Below, per measurement, since when it is there and how

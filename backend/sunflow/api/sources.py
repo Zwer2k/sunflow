@@ -118,6 +118,8 @@ QUALITY_DAYS = 100
 # Below this the optimizers often have too little light to run
 OPTIMIZER_MIN_ELEVATION = 5.0
 QUALITY_TTL = timedelta(hours=1)
+# Days ahead the season expectation is shown for
+SEASON_DAYS = 7
 
 
 @router.get("/config/learning-sources/quality")
@@ -257,8 +259,26 @@ async def get_pv_sun(request: Request, refresh: bool = False) -> dict[str, Any]:
         "computed_at": runner.sun_learned_at.isoformat() if runner.sun_learned_at else None,
         "error": runner.sun_error,
         "planes": [plane.as_dict() for plane in runner.sun_planes],
-        "episodes": [episode.as_dict() for episode in runner.sun_episodes],
+        "episodes": [episode.as_dict() for episode in runner.soiling.episodes],
+        "season": await _season(request, runner),
+        "snow": runner.snow,
     }
+
+
+async def _season(request: Request, runner: ShadowRunner) -> dict[str, Any]:
+    """Per plane: soiling by month, the expectation for the next days and how it compared so far."""
+    today = datetime.now(await _local_tz(request)).date()
+    check = await runner.soiling_check()
+    result = {}
+    for key, season in runner.seasons.items():
+        current, cleaned = runner.soiling_now(key)
+        days = [today + timedelta(days=i) for i in range(1, SEASON_DAYS + 1)]
+        result[key] = season.as_dict() | {
+            "current": round(current, 3),
+            "next_days": [{"day": d.isoformat(), "expected": round(season.expected(d, current, cleaned), 3)} for d in days],
+            "check": check.get(key),
+        }
+    return result
 
 
 @router.get("/tariff/series")

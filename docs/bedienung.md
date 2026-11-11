@@ -220,6 +220,14 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   des sauberen Ertrags und die tiefste Außentemperatur (wenn unter Lernquellen gewählt). Nur zur
   Auswertung: Die Planung nutzt die Liste nicht; daraus soll Sunflow später lernen, wann Laub oder
   Schnee zu erwarten ist.
+  **Erwartung nach Jahreszeit (Test)** lernt daraus je Fläche und Monat, an welchem Anteil der Tage
+  sie verschmutzt war und wie viel sie dann lieferte, und nach wie vielen Tagen Laub nach einer
+  Reinigung zurückkam. Daraus folgt der erwartete Anteil des sauberen Ertrags für die nächsten 7 Tage.
+  Sunflow hält jeden Tag fest, was es für morgen erwartet, und vergleicht es, sobald gemessen, mit
+  dem heutigen Vorgehen (aktuellen Stand beibehalten): „Vergleich“ zeigt die mittlere Abweichung
+  beider ab 7 Tagen. Die Planung nutzt es noch nicht. Lieferten in den letzten Tagen bei Frost alle
+  Flächen höchstens die Hälfte des Gelernten, obwohl die Helligkeit (Lernquelle) hoch war, erscheint
+  der Hinweis „Schnee auf allen Flächen?“.
 - **Datenbestand fürs Lernen**: wie weit Home Assistant zurück aufhebt, woraus Sunflow lernen
   kann: Verlauf in voller Auflösung (Aufbewahrung des Recorders), Langzeitstatistik, Wetter mit
   oder ohne Bewölkung und die vergangenen Solcast-Prognosen. Darunter je Messwert, seit wann er
