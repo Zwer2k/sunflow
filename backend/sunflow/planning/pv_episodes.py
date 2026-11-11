@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, Any
 
 from sunflow.planning.pv_steps import (
     STEP_REFERENCE_DAYS,
-    _pooled,
     _relative,
     plane_state,
+    relative_share,
 )
 
 if TYPE_CHECKING:
@@ -125,7 +125,7 @@ def _plane(
         clean = [v for day, v in days if day < start and not state.is_soiled(day)][-STEP_REFERENCE_DAYS:] or [
             v for day, v in days if day >= stop and not state.is_soiled(day)
         ][:STEP_REFERENCE_DAYS]
-        depth = _pooled(inside) / _pooled(clean) if inside and clean else None
+        depth = relative_share(inside, clean) if inside and clean else None
         low, frost = _weather(temps, start, stop)
         result.append(
             Episode(plane=key, kind=kind, start=start, end=end, days=(stop - start).days, depth=depth, min_temp=low, frost_days=frost)

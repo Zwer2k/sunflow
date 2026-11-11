@@ -155,3 +155,13 @@ def test_daily_energy_against_the_learned_expectation() -> None:
 
     energy = daily_energy(rows, {"roof": ["a:1"], "carport": ["b:1"]}, TZ, expected)
     assert energy == {date(2026, 11, 7): {"roof": (600.0, 600.0), "carport": (250.0, 500.0)}}
+
+
+def test_a_plane_that_joins_later_is_no_step_for_the_others() -> None:
+    """A new carport far below its forecast changes what "the others" deliver; the roofs did not change."""
+    history = {
+        FIRST + timedelta(days=i): {"south_east": (9000.0, 10000.0), "north_west": (4500.0, 5000.0)} for i in range(40)
+    }
+    for i in range(30, 40):
+        history[FIRST + timedelta(days=i)]["carport"] = (1500.0, 6000.0)
+    assert [plane_state(history, key).changes for key in ("south_east", "north_west", "carport")] == [[], [], []]

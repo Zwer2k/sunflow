@@ -176,7 +176,8 @@ action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
   lifts the sum of the others and must not make a roof look soiled. Planes whose correction by sun
   position has learned from at least 60 days enter the comparison with their learned yield instead
   of the raw forecast: otherwise a clear week in autumn lifts a south roof but not a north roof,
-  and the north roof would look soiled.
+  and the north roof would look soiled. A plane is only compared with the planes measured on all
+  the days looked at: a plane that joins later is no step of the others.
 - **The day so far**: the PV measured in the last minutes carries on into the next hour. How much
   of the raw forecast came in the last three hours carries the rest of the day, half of it after
   three hours: a clear day above what was learned lifts the afternoon too, a dull one lowers it.

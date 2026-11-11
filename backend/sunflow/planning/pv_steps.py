@@ -99,7 +99,33 @@ def _relative(day: dict[str, tuple[float, float]], key: str) -> Day | None:
 def _pooled(days: list[Day]) -> float:
     """The plane's share of its forecast against the other planes' share."""
     actual, forecast, other_actual, other_forecast = (sum(d[i] for d in days) for i in range(4))
-    return max((actual / forecast) / (other_actual / other_forecast), 1e-6)
+    return max((actual / forecast) / (max(other_actual, 1e-6) / other_forecast), 1e-6)
+
+
+def same_others(*parts: list[Day]) -> list[list[Day]] | None:
+    """The day lists against only the other planes measured on all of their days; None when there is none.
+
+    A plane that joins later (a new carport) changes what "the others" deliver and would look like a step.
+    """
+    days = [d for part in parts for d in part]
+    if not days:
+        return None
+    keys = set.intersection(*({k for k, _, _ in d[4]} for d in days))
+    if not keys:
+        return None
+
+    def only(d: Day) -> Day:
+        others = tuple(o for o in d[4] if o[0] in keys)
+        return (d[0], d[1], sum(a for _, a, _ in others), sum(f for _, _, f in others), others)
+
+    return [[only(d) for d in part] for part in parts]
+
+
+def relative_share(part: list[Day], base: list[Day]) -> float | None:
+    """The plane's share against the others in part, relative to base, with the same other planes in both."""
+    if (same := same_others(part, base)) is None:
+        return None
+    return _pooled(same[0]) / _pooled(same[1])
 
 
 def _own(days: list[Day], index: int) -> float:
@@ -125,10 +151,13 @@ def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None
     With more planes the change must also show against each of them alone, on every confirming day: a
     cleaned carport lifts the sum of the others and must not make a roof look soiled.
     """
-    reference = _pooled(days[max(start, split - STEP_REFERENCE_DAYS) : split])
     confirm = days[split : split + STEP_CONFIRM_DAYS]
     if len(confirm) < STEP_MIN_AFTER:
         return None
+    if (same := same_others(days[max(start, split - STEP_REFERENCE_DAYS) : split], confirm)) is None:
+        return None
+    before, confirm = same
+    reference = _pooled(before)
     change = _pooled(confirm) / reference
     sign = 1 if change > 1 else -1
     if sign * math.log(change) < math.log(STEP_RATIO):
@@ -136,7 +165,6 @@ def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None
     # One bright day is no change
     if any(sign * math.log(_pooled([d]) / reference) < math.log(STEP_DAY_RATIO) for d in confirm):
         return None
-    before = days[max(start, split - STEP_REFERENCE_DAYS) : split]
     pair = pair or all(len(d[4]) == 1 for d in before + confirm)
     own = math.log(_own(confirm, 0) / _own(before, 0))
     if pair and abs(own) < abs(math.log(_own(confirm, 2) / _own(before, 2))):
@@ -175,28 +203,29 @@ def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str, pa
         return state
     bounds = [i for i, _ in starts] + [len(days)]
     soiled: list[str | None] = [None] * len(days)
-    reference = None
+    # The clean days a soiled share is measured against
+    reference: list[Day] = []
     level = 1.0
     for index, (begin, change) in enumerate(starts):
         end = bounds[index + 1]
         if change is not None and change < 1:
             # A drop: soiled until the next rise, at its share of the clean days before
             soiled[begin:end] = ["drop"] * (end - begin)
-            level = _pooled(values[begin:end]) / reference if reference else 1.0
+            level = relative_share(values[begin:end], reference) or 1.0
             continue
         if change is None and starts[1][1] > 1:
             # Before the first cleaning: soiled since the data began
             soiled[begin:end] = ["before_cleaning"] * (end - begin)
             continue
         if change is None:
-            reference = _pooled(values[max(begin, end - STEP_REFERENCE_DAYS) : end])
+            reference = values[max(begin, end - STEP_REFERENCE_DAYS) : end]
             level = 1.0
             continue
         # After a cleaning its first days are the clean share; leaves then gather slowly
-        reference = _pooled(values[begin : min(end, begin + CLEAN_DAYS)])
+        reference = values[begin : min(end, begin + CLEAN_DAYS)]
         level = 1.0
         for day in range(begin + GRADUAL_DAYS, end + 1):
-            share = _pooled(values[day - GRADUAL_DAYS : day]) / reference
+            share = relative_share(values[day - GRADUAL_DAYS : day], reference) or 1.0
             if share < GRADUAL_LEVEL:
                 soiled[day - GRADUAL_DAYS : day] = ["gradual"] * GRADUAL_DAYS
             if day == end:

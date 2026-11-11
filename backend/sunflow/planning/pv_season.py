@@ -16,8 +16,8 @@ from sunflow.planning.pv_episodes import SoilingHistory
 from sunflow.planning.pv_steps import (
     STEP_REFERENCE_DAYS,
     PlaneState,
-    _pooled,
     _relative,
+    relative_share,
 )
 
 # Judged days of a calendar month (over all years) before it says anything
@@ -126,7 +126,7 @@ def day_levels(energy: dict[date, dict[str, tuple[float, float]]], key: str, sta
     for index, (day, values) in enumerate(days):
         clean = [v for d, v in days[:index] if not state.is_soiled(d)][-STEP_REFERENCE_DAYS:]
         if len(clean) >= STEP_REFERENCE_DAYS // 2:
-            result[day] = min(_pooled([values]) / _pooled(clean), 1.5)
+            result[day] = min(relative_share([values], clean) or 1.0, 1.5)
     return result
 
 
