@@ -187,3 +187,47 @@ def test_uncertain_forecasts_lean_towards_p10() -> None:
     result = backtest(samples, UTC)
     assert result is not None
     assert result["by_spread"] < result["by_sun"]
+
+
+@pytest.mark.parametrize(
+    ("measured_peak", "expected"),
+    [
+        pytest.param(180.0, 0.0, id="as forecast"),
+        pytest.param(230.0, 38.0, id="delivers later: faces further west than entered"),
+    ],
+)
+def test_sun_shift(measured_peak: float, expected: float) -> None:
+    """Forecast for a south plane; a plane that really faces south-west delivers further along the sun's course."""
+    from sunflow.planning.pv_sun import Sample, sun_shift
+
+    def power(azimuth: float, peak: float) -> float:
+        return max(1000 * math.cos(math.radians(azimuth - peak)), 0.0)
+
+    samples = [
+        Sample(
+            start=datetime(2026, 6, 1, tzinfo=UTC) + timedelta(hours=i), forecast_wh=power(azimuth, 180.0),
+            actual_wh=power(azimuth, measured_peak), elevation=40.0, azimuth=azimuth, clear=True,
+        )
+        for i, azimuth in enumerate(a for _ in range(30) for a in range(100, 270, 20))
+    ]
+    assert sun_shift(samples) == pytest.approx(expected, abs=0.5)
+    assert sun_shift(samples[:50]) is None
+
+
+@pytest.mark.parametrize(
+    ("attributes", "expected"),
+    [
+        pytest.param({"resource_id": "ab-cd", "azimuth": 45, "tilt": 30}, {"azimuth": 315.0, "tilt": 30.0}, id="north-west"),
+        pytest.param({"resource_id": "ab-cd", "azimuth": -135}, {"azimuth": 135.0}, id="south-east without tilt"),
+        pytest.param({"resource_id": "other", "azimuth": 45}, None, id="another site"),
+        pytest.param({"resource_id": "ab-cd"}, None, id="older integration without direction"),
+    ],
+)
+def test_site_orientation(attributes: dict[str, object], expected: dict[str, float] | None) -> None:
+    """Solcast counts from north with west positive; shown as a compass direction."""
+    from types import SimpleNamespace
+
+    from sunflow.planning.pv_sun import site_orientation
+
+    snapshot = SimpleNamespace(states={"sensor.roof": {"attributes": attributes}})
+    assert site_orientation(snapshot, "ab-cd") == expected

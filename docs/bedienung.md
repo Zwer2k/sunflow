@@ -227,7 +227,13 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   dem heutigen Vorgehen (aktuellen Stand beibehalten): „Vergleich“ zeigt die mittlere Abweichung
   beider ab 7 Tagen. Die Planung nutzt es noch nicht. Lieferten in den letzten Tagen bei Frost alle
   Flächen höchstens die Hälfte des Gelernten, obwohl die Helligkeit (Lernquelle) hoch war, erscheint
-  der Hinweis „Schnee auf allen Flächen?“.
+  der Hinweis „Schnee auf allen Flächen?“. Erwartet die stündliche Wetterprognose Niederschlag bei
+  Frost (ab 1 mm) oder meldet sie Schnee, steht dort „Schneefall erwartet ab …“; die Planung rechnet
+  das noch nicht ein.
+  Je Fläche steht außerdem, was in Solcast eingetragen ist (Ausrichtung als Himmelsrichtung,
+  Neigung), und ob der gemessene Tagesverlauf dazu passt: Liefert die Fläche bei klarem Himmel
+  deutlich früher oder später im Sonnenlauf als prognostiziert (ab 15°), fragt Sunflow, ob die
+  Ausrichtung stimmt. Verschattung am Morgen oder Abend verschiebt den Wert ebenfalls.
 - **Datenbestand fürs Lernen**: wie weit Home Assistant zurück aufhebt, woraus Sunflow lernen
   kann: Verlauf in voller Auflösung (Aufbewahrung des Recorders), Langzeitstatistik, Wetter mit
   oder ohne Bewölkung und die vergangenen Solcast-Prognosen. Darunter je Messwert, seit wann er

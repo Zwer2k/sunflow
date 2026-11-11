@@ -58,9 +58,11 @@ Sammlung sinnvoller Erweiterungen, grob nach Nutzen geordnet. Noch nichts davon 
    „Verschmutzung in der Historie“ die Episoden der ganzen Historie mit Tiefe und Frost.
    Schritte 2–4 umgesetzt (0.78.60) im Schattenbetrieb: Erwartung je Monat und Wiederkehr nach dem
    Räumen, täglicher Vergleich mit dem aktuellen Stand, Hinweis auf Schnee auf allen Flächen aus
-   Frost, Helligkeit und Ertrag. Offen: in die Planung übernehmen, sobald der Vergleich es trägt;
-   Wetterprognose (Schneefall) für die kommenden Tage.*
-6. **Konfiguration prüfen**: Passt die gemessene Kurve einer Fläche zu Ausrichtung und Neigung in
+   Frost, Helligkeit und Ertrag. 0.78.63: Hinweis auf Schneefall aus der Wetterprognose. Offen: in die Planung übernehmen, sobald
+   der Vergleich es trägt.*
+6. **Konfiguration prüfen** *(erster Schritt umgesetzt, 0.78.63: Ausrichtung und Neigung aus Solcast
+   werden angezeigt, und Sunflow fragt nach, wenn die Fläche deutlich früher oder später im Sonnenlauf
+   liefert als prognostiziert)*: Passt die gemessene Kurve einer Fläche zu Ausrichtung und Neigung in
    Solcast/Forecast.Solar? Ein Hinweis, wenn etwa eine Ost-Fläche als Süd eingetragen ist.
 
 ## 2. Verbrauch mit Kontext

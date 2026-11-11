@@ -12,6 +12,8 @@ import { toggleSheet } from "../lib/display-toggles.js";
 const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const REFRESH_MS = 5 * 60 * 1000;
 const PV_SUN_POLL_MS = 10_000;
+// Degrees the measured day curve may lie off the forecast before the entered direction is questioned
+const ORIENTATION_WARN_DEG = 15;
 
 /** Shadow mode evaluation: forecasts and decisions against reality, export/import. */
 class SunflowAnalysis extends LitElement {
@@ -502,6 +504,7 @@ class SunflowAnalysis extends LitElement {
                 pct: Math.round(plane.soiling.ratio * 100),
               })}</p>`
             : nothing}
+          ${this._renderOrientation(plane)}
           ${plane.level
             ? html`<p class="small warn-text">${t("Liefert in den letzten Tagen {pct} % des Gelernten – die Planung rechnet mit dieser Leistung, bis die Fläche wieder mehr liefert.", { pct: Math.round(plane.level * 100) })}</p>`
             : nothing}
@@ -525,11 +528,36 @@ class SunflowAnalysis extends LitElement {
     `;
   }
 
+  /** Direction and tilt as entered at Solcast, and whether the measured day curve fits them. */
+  _renderOrientation(plane) {
+    const o = plane.orientation;
+    const shift = plane.sun_shift;
+    if (!o && (shift === undefined || shift === null)) return nothing;
+    const names = [t("N"), t("NO"), t("O"), t("SO"), t("S"), t("SW"), t("W"), t("NW")];
+    const entered = o
+      ? o.tilt !== undefined
+        ? t("In Solcast eingetragen: Ausrichtung {direction} ({degrees}°), Neigung {tilt}°.", {
+            direction: names[Math.round(o.azimuth / 45) % 8], degrees: Math.round(o.azimuth), tilt: Math.round(o.tilt) })
+        : t("In Solcast eingetragen: Ausrichtung {direction} ({degrees}°).", {
+            direction: names[Math.round(o.azimuth / 45) % 8], degrees: Math.round(o.azimuth) })
+      : "";
+    const off = shift !== undefined && shift !== null && Math.abs(shift) >= ORIENTATION_WARN_DEG;
+    const measured = shift === undefined || shift === null
+      ? ""
+      : off
+        ? t(shift > 0
+            ? "Die Fläche liefert bei klarem Himmel deutlich später am Tag als prognostiziert ({degrees}° im Sonnenlauf) – zeigt sie weiter nach Westen als eingetragen?"
+            : "Die Fläche liefert bei klarem Himmel deutlich früher am Tag als prognostiziert ({degrees}° im Sonnenlauf) – zeigt sie weiter nach Osten als eingetragen?", {
+            degrees: Math.round(Math.abs(shift)) })
+        : t("Der gemessene Tagesverlauf passt dazu.");
+    return html`<p class="small ${off ? "warn-text" : "muted"}">${entered} ${measured}</p>`;
+  }
+
   /** Soiling to expect by season per plane and how it compared with keeping the current level (shadow mode). */
   _renderSeason(data) {
     const season = data.season ?? {};
     const keys = Object.keys(season);
-    if (!keys.length && !data.snow) return nothing;
+    if (!keys.length && !data.snow && !data.snow_ahead) return nothing;
     const names = Object.fromEntries(data.planes.map((p) => [p.key, p.name]));
     const pct = (v) => `${Math.round(v * 100)} %`;
     const month = (m) => new Date(2026, m - 1, 1).toLocaleDateString(locale(), { month: "short" });
@@ -538,6 +566,10 @@ class SunflowAnalysis extends LitElement {
     return html`
       <h3>${t("Erwartung nach Jahreszeit (Test)")}</h3>
       <p class="small muted help">${t("Aus der Verschmutzung in der Historie: je Monat der verschmutzte Anteil der Tage und wie viel die Fläche dann lieferte, und nach wie vielen Tagen Laub nach einer Reinigung zurückkam. Die Planung rechnet weiter mit dem aktuellen Stand; der Vergleich zeigt, welche Erwartung näher an der Messung lag.")}</p>
+      ${data.snow_ahead
+        ? html`<p class="small warn-text">${t("Schneefall erwartet ab {time}: etwa {mm} Niederschlag bei Frost. Die Planung rechnet das noch nicht ein.", {
+            time: dayTime.format(new Date(data.snow_ahead.from)), mm: formatValue(data.snow_ahead.precipitation, "mm") })}</p>`
+        : nothing}
       ${snow
         ? html`<p class="small warn-text">${snow.bright !== null
             ? t("Schnee auf allen Flächen? Bei {temp} lieferten alle Flächen höchstens {pct} des Gelernten, obwohl es hell war.", {

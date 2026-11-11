@@ -58,6 +58,9 @@ SOILING_RATIO_RAW = 0.5
 # Hours with a low sun say little (shade); days with little expected energy are left out
 SOILING_MIN_ELEVATION = 10.0
 SOILING_MIN_DAY_WH = 500.0
+# Direction check: clear hours with the sun above the surroundings, and how many of them it needs
+ORIENTATION_MIN_ELEVATION = 20.0
+ORIENTATION_MIN_HOURS = 200
 # The current state (e.g. autumn leaves come and go): the last days, the latest counting most
 LEVEL_DAYS = 3
 LEVEL_HALF_LIFE_DAYS = 1.0
@@ -415,6 +418,10 @@ class PlaneSun:
     soiling: dict[str, Any] | None = None
     # Compared with the plane's own history (else with the raw forecast)
     soiling_learned: bool = False
+    # As entered at the forecast provider: compass direction the plane faces (°) and its tilt
+    orientation: dict[str, float] | None = None
+    # Degrees the measured power lies further west (east: negative) over the sun's course than the forecast
+    sun_shift: float | None = None
 
     @property
     def plannable(self) -> bool:
@@ -435,6 +442,10 @@ class PlaneSun:
             result["soiling"] = self.soiling | {"learned": self.soiling_learned}
         if self.correction is not None and self.correction.level < 1:
             result["level"] = round(self.correction.level, 3)
+        if self.orientation is not None:
+            result["orientation"] = self.orientation
+        if self.sun_shift is not None:
+            result["sun_shift"] = round(self.sun_shift, 1)
         if self.correction is not None:
             result |= {
                 "correction": self.correction.as_dict(),
@@ -442,6 +453,34 @@ class PlaneSun:
                 "first": self.first.isoformat() if self.first else None,
             }
         return result
+
+
+def site_orientation(snapshot: Snapshot, ref: str) -> dict[str, float] | None:
+    """Direction and tilt of a Solcast site from its sensor; Solcast counts the azimuth from north, west positive."""
+    for state in snapshot.states.values():
+        attributes = state.get("attributes", {})
+        if attributes.get("resource_id") != ref or attributes.get("azimuth") is None:
+            continue
+        try:
+            result = {"azimuth": round(-float(attributes["azimuth"]) % 360, 1)}
+            if attributes.get("tilt") is not None:
+                result["tilt"] = float(attributes["tilt"])
+        except TypeError, ValueError:
+            return None
+        return result
+    return None
+
+
+def sun_shift(samples: list[Sample]) -> float | None:
+    """Where over the sun's course the measured power lies against the forecast (°, west positive), clear hours.
+
+    A plane entered with the wrong direction delivers earlier or later in the day than its forecast.
+    """
+    clear = [s for s in samples if s.clear and s.elevation >= ORIENTATION_MIN_ELEVATION]
+    actual, forecast = sum(s.actual_wh for s in clear), sum(s.forecast_wh for s in clear)
+    if len(clear) < ORIENTATION_MIN_HOURS or actual <= 0 or forecast <= 0:
+        return None
+    return sum(s.azimuth * s.actual_wh for s in clear) / actual - sum(s.azimuth * s.forecast_wh for s in clear) / forecast
 
 
 def string_power_entities(
@@ -516,6 +555,7 @@ async def learn_planes(
         if plane.source != "solcast":
             result.missing = "no_history"
             continue
+        result.orientation = site_orientation(snapshot, plane.ref)
         if not entities:
             result.missing = "no_string_power"
             continue
@@ -545,6 +585,7 @@ async def learn_planes(
             # Only used where it predicts better than the sun position alone
             result.correction.spread_weights = {}
         result.first = min(s.start for s in samples) if samples else None
+        result.sun_shift = sun_shift(samples)
         ratios[plane.key] = dict(await asyncio.to_thread(daily_ratios, recent, result.correction, tz))
     return planes, await _episodes(client, config, history, ratios, now, tz)
 

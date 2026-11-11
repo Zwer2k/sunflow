@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.63
+
+- Analysis → PV by sun position: per plane the direction and tilt entered at Solcast, and whether the measured day curve fits them. If a plane delivers clearly earlier or later along the sun's course than forecast with a clear sky, Sunflow asks whether the direction is right.
+- Snowfall ahead: if the hourly weather forecast expects precipitation in frost (from 1 mm) or reports snow, a hint appears under "Expectation by season". Planning does not account for it yet. Both also in the MCP tool `get_pv_sun`.
+
 ## 0.78.62
 
 - Soiling detection with three or more planes: a change must also show against each other plane alone on every confirming day. A carport cleared of leaves no longer makes a roof look soiled against the sum of the others.
