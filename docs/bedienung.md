@@ -236,5 +236,8 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   tatsächlich passiert ist. Die Kacheln vergleichen PV- und Lastprognose mit der Messung, das
   Diagramm den tatsächlichen Ladestand mit dem, den der Plan **6 Stunden vorher** erwartet hat
   (jeder neue Plan startet beim gemessenen Ladestand, der jüngste läge deshalb immer fast genau auf
-  der Messung). Werte gibt es ab 0.78.33. Die Tabelle zeigt die Abschnitte, in
+  der Messung). Werte gibt es ab 0.78.33. Aus demselben Grund steht unter PV- und Lastprognose
+  auch, wie weit der Plan von vor 6 Stunden danebenlag (mittlere Abweichung je Viertelstunde und
+  ob er im Mittel zu hoch oder zu niedrig war; ab 0.78.62): Der Plan der Viertelstunde selbst folgt
+  schon dem bisherigen Tag und liegt deshalb fast immer richtig. Die Tabelle zeigt die Abschnitte, in
   denen die Entscheidung abwich. Hier liegen auch **Daten exportieren** und **Export importieren**.

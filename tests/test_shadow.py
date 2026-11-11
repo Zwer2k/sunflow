@@ -66,8 +66,8 @@ def test_store_and_evaluate(tmp_path: Path) -> None:
                 start, {"action": planned, "power": None, "soc": 10400, "pv": 2000, "load": 1000, "price": 0.3}
             )
             # Six hours before the slot the plan expected 10000 Wh; a later plan does not replace it
-            store.store_ahead(start, 10000, {"battery": 10000})
-            store.store_ahead(start, 10400, {"battery": 10400})
+            store.store_ahead(start, 10000, {"battery": 10000}, 1500, 900)
+            store.store_ahead(start, 10400, {"battery": 10400}, 2000, 1000)
             if actual:
                 store.store_actual(
                     start,
@@ -92,6 +92,9 @@ def test_store_and_evaluate(tmp_path: Path) -> None:
     assert evaluation["agreement"] == pytest.approx(2 / 3)
     assert evaluation["soc_mae_wh"] == pytest.approx(800 / 3)
     assert rows[0]["ahead_batteries"] == {"battery": 10000}
+    # Six hours before: 1500 W PV expected, 1800 W measured
+    assert evaluation["pv_ahead_mae_w"] == pytest.approx(300)
+    assert evaluation["pv_ahead_bias_w"] == pytest.approx(-300)
     assert evaluation["pv_forecast_kwh"] == pytest.approx(2 * 2000 * 0.25 / 1000)
 
 

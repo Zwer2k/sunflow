@@ -705,4 +705,6 @@ class ShadowRunner:
                 ahead.start,
                 ahead.soc_wh,
                 {key: share.soc_wh for key, share in ahead.batteries.items()},
+                ahead.pv_w,
+                ahead.load_w,
             )

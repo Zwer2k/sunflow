@@ -28,8 +28,8 @@ GRADUAL_LEVEL = 0.8
 # Forecast energy (Wh) of the plane and of the others for a day to count
 STEP_MIN_DAY_WH = 1000.0
 
-# Measured and forecast energy of the plane and of the others, and how many other planes there are
-Day = tuple[float, float, float, float, int]
+# Measured and forecast energy of the plane and of the others together, and of each other plane (key, measured, forecast)
+Day = tuple[float, float, float, float, tuple[tuple[str, float, float], ...]]
 
 
 @dataclass(kw_only=True)
@@ -79,11 +79,11 @@ def _relative(day: dict[str, tuple[float, float]], key: str) -> Day | None:
     """The plane's and the other planes' measured and forecast energy of a day, when both are large enough."""
     if key not in day or day[key][1] < STEP_MIN_DAY_WH:
         return None
-    others = [v for k, v in day.items() if k != key]
-    other_actual, other_forecast = sum(a for a, _ in others), sum(f for _, f in others)
+    others = tuple((k, *v) for k, v in sorted(day.items()) if k != key)
+    other_actual, other_forecast = sum(a for _, a, _ in others), sum(f for _, _, f in others)
     if other_forecast < STEP_MIN_DAY_WH or other_actual <= 0:
         return None
-    return (*day[key], other_actual, other_forecast, len(others))
+    return (*day[key], other_actual, other_forecast, others)
 
 
 def _pooled(days: list[Day]) -> float:
@@ -97,11 +97,23 @@ def _own(days: list[Day], index: int) -> float:
     return max(sum(d[index] for d in days), 1e-6) / sum(d[index + 1] for d in days)
 
 
+def _against_each(before: list[Day], confirm: list[Day]) -> list[tuple[list[Day], list[Day]]]:
+    """The same days against each other plane alone, for the planes measured on all of them."""
+    keys = set.intersection(*({k for k, _, _ in d[4]} for d in before + confirm))
+
+    def alone(days: list[Day], key: str) -> list[Day]:
+        return [(d[0], d[1], a, f, ((k, a, f),)) for d in days for k, a, f in d[4] if k == key and a > 0]
+
+    return [(alone(before, key), alone(confirm, key)) for key in sorted(keys)]
+
+
 def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None:
     """The change at split against the regime since start, when the confirming days all agree.
 
     pair: only one other plane (always, or on all these days), which then shows the same change the other
     way round; the plane whose own share of its forecast moved more is the one that changed.
+    With more planes the change must also show against each of them alone, on every confirming day: a
+    cleaned carport lifts the sum of the others and must not make a roof look soiled.
     """
     reference = _pooled(days[max(start, split - STEP_REFERENCE_DAYS) : split])
     confirm = days[split : split + STEP_CONFIRM_DAYS]
@@ -115,9 +127,17 @@ def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None
     if any(sign * math.log(_pooled([d]) / reference) < math.log(STEP_DAY_RATIO) for d in confirm):
         return None
     before = days[max(start, split - STEP_REFERENCE_DAYS) : split]
-    pair = pair or all(d[4] == 1 for d in before + confirm)
-    if pair and abs(math.log(_own(confirm, 0) / _own(before, 0))) < abs(math.log(_own(confirm, 2) / _own(before, 2))):
+    pair = pair or all(len(d[4]) == 1 for d in before + confirm)
+    own = math.log(_own(confirm, 0) / _own(before, 0))
+    if pair and abs(own) < abs(math.log(_own(confirm, 2) / _own(before, 2))):
         return None
+    singles = _against_each(before, confirm)
+    for one_before, one_confirm in singles if len(singles) > 1 else []:
+        if len(one_before) < len(before) or len(one_confirm) < len(confirm):
+            continue
+        one = _pooled(one_before)
+        if any(sign * math.log(_pooled([d]) / one) < math.log(STEP_DAY_RATIO) for d in one_confirm):
+            return None
     return change
 
 

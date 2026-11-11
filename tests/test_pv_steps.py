@@ -100,3 +100,36 @@ def test_soiled_days_are_not_learned() -> None:
     assert learned.overall > learn_planes(rows, planes, TZ)["carport"].overall
     # Without a second plane nothing to compare with
     assert plane_states(rows, {"carport": ["c:1"]}, TZ) == {}
+
+
+# Measured on a site, Oct 27 to Nov 11 (Wh per day: measured, forecast); the carport was cleared on Nov 7,
+# a few leaves lay on the north-west roof
+SITE = {
+    "north_west": [
+        (6231, 8850), (4541, 9073), (7587, 9407), (5732, 9235), (4002, 7404), (5196, 8273), (5184, 6276), (2690, 5519),
+        (2336, 4185), (5341, 8468), (1479, 6609), (3839, 4787), (4790, 7934), (3165, 5835), (1776, 3045), (2531, 2772),
+    ],
+    "south_east": [
+        (11502, 19393), (7328, 10262), (11177, 15780), (10645, 16812), (6037, 14267), (8226, 11689), (10596, 15636),
+        (2994, 6244), (2603, 4306), (8444, 12396), (1736, 7136), (4839, 4922), (9176, 11006), (6393, 7414), (2092, 3136),
+        (3063, 2858),
+    ],
+    "carport": [
+        (1622, 8410), (1294, 5659), (2454, 7335), (2290, 7545), (1866, 6804), (1978, 6116), (2194, 7054), (731, 3582),
+        (908, 2557), (1784, 5851), (620, 4155), (1800, 2926), (2805, 5514), (2034, 4061), (635, 1856), (944, 1689),
+    ],
+}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("plane", "changes"),
+    [
+        pytest.param("carport", [{"since": "2026-11-07", "change": 1.54}], id="the cleaned carport changed"),
+        pytest.param("north_west", [], id="the roof next to it did not"),
+        pytest.param("south_east", [], id="nor the other roof"),
+    ],
+)
+def test_three_planes_only_the_one_furthest_from_the_others_changed(plane: str, changes: list[dict[str, object]]) -> None:
+    """A carport cleared of leaves must not make a roof look soiled against the sum of the others."""
+    history = {FIRST + timedelta(days=i): {key: days[i] for key, days in SITE.items()} for i in range(16)}
+    assert plane_state(history, plane).changes == changes
