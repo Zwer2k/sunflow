@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.59
+
+- Analysis → PV by sun position: new table "Soiling in the history" lists every soiled period found in the whole history (up to two years): one plane clearly below the others (sudden like snow, gradual like leaves, or until a cleaning) and frosty days on which all planes delivered almost nothing (snow on all). With the yield as a share of the clean yield and the lowest outdoor temperature. For analysis only, planning does not use it yet; also in the MCP tool `get_pv_sun`.
+- Soiling detection: where only one other plane is there to compare with (e.g. before a third plane was added), the plane whose own share moved more is the one that changed, also when there are more planes today.
+
 ## 0.78.58
 
 - Docs: roadmap status brought up to date (sun position correction, soiled planes, vehicle state of charge between reports, plan from 6 hours before); README feature list and quick controls description updated.

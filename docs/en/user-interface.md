@@ -204,6 +204,12 @@ How well do forecasts and decisions match reality?
   back by itself as soon as it delivers more (checked every 3 hours). "Relearn from today" also
   drops the history by sun position, so use it after trimming a tree or replacing modules, not
   after cleaning.
+  **Soiling in the history** lists what Sunflow finds in the whole history (up to two years):
+  periods in which one plane delivered clearly less than the others (suddenly as with snow,
+  gradually as with leaves, or until a cleaning), and days on which all planes delivered almost
+  nothing in frost (snow on all of them). With the yield meanwhile as a share of the clean yield and
+  the lowest outdoor temperature (when chosen under learning sources). For analysis only: planning
+  does not use the list; Sunflow is to learn from it later when leaves or snow are to be expected.
 - **Data for learning**: how far back Home Assistant keeps what Sunflow can learn from: history at
   full resolution (the recorder's retention), long-term statistics, weather with or without cloud
   coverage, and Solcast's past forecasts. Below, per measurement, since when it is there and how

@@ -518,8 +518,45 @@ class SunflowAnalysis extends LitElement {
                 : nothing}${this._renderPvSunPlane(plane)}`
             : nothing}
         `)}
+        ${this._renderEpisodes(data)}
         ${data.computed_at ? html`<p class="small muted">${t("Gelernt {time}", { time: dayTime.format(new Date(data.computed_at)) })}</p>` : nothing}
       </section>
+    `;
+  }
+
+  /** Soiled periods found in the whole history, the latest first. */
+  _renderEpisodes(data) {
+    const found = data.episodes ?? [];
+    if (!data.planes.some((p) => p.correction)) return nothing;
+    const names = Object.fromEntries(data.planes.map((p) => [p.key, p.name]));
+    const kinds = {
+      drop: t("plötzlich (Schnee?)"),
+      gradual: t("nach und nach (Laub?)"),
+      before_cleaning: t("bis zur Reinigung"),
+      all_planes: t("alle Flächen bei Frost (Schnee)"),
+    };
+    const day = (iso) => new Date(iso).toLocaleDateString(locale());
+    // The end is exclusive: the last soiled day is the one before
+    const until = (iso) => day(new Date(new Date(iso).getTime() - 86_400_000).toISOString().slice(0, 10));
+    return html`
+      <h3>${t("Verschmutzung in der Historie")}</h3>
+      <p class="small muted help">${t("Zeiträume, in denen eine Fläche gegenüber den anderen deutlich weniger lieferte, oder alle Flächen bei Frost fast nichts. Nur zur Auswertung: Daraus soll Sunflow später lernen, wann Laub oder Schnee zu erwarten ist.")}</p>
+      ${found.length
+        ? html`<div class="table-wrap">
+            <table>
+              <thead><tr><th>${t("Fläche")}</th><th>${t("Art")}</th><th>${t("Zeitraum")}</th><th>${t("Ertrag")}</th><th>${t("Tiefste Temperatur")}</th></tr></thead>
+              <tbody>
+                ${found.map((e) => html`<tr>
+                  <td>${e.plane ? names[e.plane] ?? e.plane : t("alle")}</td>
+                  <td>${kinds[e.kind] ?? e.kind}</td>
+                  <td>${e.to ? `${day(e.from)} – ${until(e.to)}` : t("seit {date}", { date: day(e.from) })} · ${t("{days} Tage", { days: e.days })}</td>
+                  <td>${e.depth !== null ? `${Math.round(e.depth * 100)} %` : "–"}</td>
+                  <td>${e.min_temp !== null ? formatValue(e.min_temp, "°C") : "–"}${e.frost_days ? ` · ${t("{days} Frosttage", { days: e.frost_days })}` : ""}</td>
+                </tr>`)}
+              </tbody>
+            </table>
+          </div>`
+        : html`<p class="small muted">${t("Keine gefunden.")}</p>`}
     `;
   }
 

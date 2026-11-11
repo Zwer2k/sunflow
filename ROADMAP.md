@@ -51,6 +51,11 @@ Sammlung sinnvoller Erweiterungen, grob nach Nutzen geordnet. Noch nichts davon 
    Vorjahr – Module reinigen?“.
    *Teilweise umgesetzt (0.78.28): Laub, das sich nach einem Säubern sammelt, erkennt Sunflow im
    Vergleich mit den anderen Flächen. Alterung über Jahre und die Empfehlung fehlen noch.*
+7. **Laub und Schnee nach Jahreszeit erwarten**: Aus den Episoden der Historie je Fläche und
+   Kalenderwoche lernen, wie wahrscheinlich Verschmutzung ist und wie schnell Laub nach dem Räumen
+   zurückkommt, und das für die kommenden Tage einplanen, statt erst nach drei schlechten Tagen zu
+   reagieren. Erst im Schattenbetrieb. *Schritt 1 umgesetzt (0.78.59): Unter Analyse listet
+   „Verschmutzung in der Historie“ die Episoden der ganzen Historie mit Tiefe und Frost.*
 6. **Konfiguration prüfen**: Passt die gemessene Kurve einer Fläche zu Ausrichtung und Neigung in
    Solcast/Forecast.Solar? Ein Hinweis, wenn etwa eine Ost-Fläche als Süd eingetragen ist.
 

@@ -173,8 +173,9 @@ zum günstigsten Zeitpunkt ein (siehe [Sunflow-Integration](integration.md)).
   so viel liefert. Steigt sie sprunghaft (Laub geräumt, Schnee getaut), fallen die Tage davor aus
   dem Lernen. So bleibt das Gelernte für die saubere Fläche erhalten, auch wenn im Herbst immer
   wieder Laub fällt. Ein langsames Nachlassen ohne erkanntes Säubern davor erkennt nur das Modell
-  nach Sonnenstand. Bei nur zwei Flächen gilt die als verändert, deren eigener Anteil an der
-  Prognose sich stärker bewegt hat.
+  nach Sonnenstand. Gibt es nur eine andere Fläche zum Vergleich (immer oder in diesem Zeitraum,
+  z. B. bevor eine dritte dazukam), gilt die als verändert, deren eigener Anteil an der Prognose
+  sich stärker bewegt hat.
 - **Der Tag bisher**: Die gemessene PV der letzten Minuten setzt die nächste Stunde fort. Wie viel
   der Rohprognose in den letzten drei Stunden ankam, trägt den Rest des Tages, nach drei Stunden
   noch halb: Ein klarer Tag, der über dem Gelernten liegt, hebt auch den Nachmittag, ein trüber
