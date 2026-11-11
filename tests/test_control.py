@@ -820,19 +820,15 @@ def _window(storage: str) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    ("storage", "expected"),
+    ("storage", "load_w", "expected"),
     [
-        pytest.param(
-            "volatile",
-            [("limit_discharge", 5000), ("limit_discharge", 5000), ("limit_discharge", 5000), ("limit_discharge", 4000),
-             ("limit_discharge", 2000), ("hold", None)],
-            id="ram-covers-the-peak-until-the-energy-is-used",
-        ),
-        pytest.param("eeprom", [("limit_discharge", 1000)] * 6, id="flash-keeps-the-planned-limit"),
+        pytest.param("volatile", 2000.0, [1000] * 6, id="ram-spreads-the-energy-evenly"),
+        pytest.param("volatile", 500.0, [1000, 1100, 1100, 1200, 1300, 1500], id="ram-lower-load-raises-the-rest"),
+        pytest.param("eeprom", 2000.0, [1000] * 6, id="flash-keeps-the-planned-limit"),
     ],
 )
-async def test_partial_discharge_is_energy_for_the_slot(tmp_path: Path, storage: str, expected: list) -> None:
-    """1000 W planned for the rest of the slot (10 min, ~167 Wh): a 2 kW peak gets it all, then the battery holds."""
+async def test_partial_discharge_is_energy_for_the_slot(tmp_path: Path, storage: str, load_w: float, expected: list) -> None:
+    """1000 W planned for the rest of the slot (10 min, ~167 Wh): the battery follows the limit up to the load."""
     written: list[tuple[str, float | None]] = []
 
     async def plan(action: str, runtime: dict) -> tuple:
@@ -844,12 +840,13 @@ async def test_partial_discharge_is_energy_for_the_slot(tmp_path: Path, storage:
 
     access = DeviceAccess(plan=plan, run=run, release=None)
     controller = PlanController(TakeoverMarker(tmp_path), lambda d: access, lambda: {"sofar": _window(storage)})
-    peak = SimpleNamespace(battery_w=-2000.0)
+    live = SimpleNamespace(battery_w=None)
 
     for minute in range(6):
-        await controller.tick(_config(), _plan("limit_discharge", 1000), NOW, SNAPSHOT, NOW + timedelta(minutes=minute), peak)
+        await controller.tick(_config(), _plan("limit_discharge", 1000), NOW, SNAPSHOT, NOW + timedelta(minutes=minute), live)
+        live.battery_w = -min(written[-1][1], load_w)
 
-    assert written[: len(expected)] == expected
+    assert written == [("limit_discharge", p) for p in expected]
 
 
 async def test_replan_within_the_slot_starts_a_new_budget(tmp_path: Path) -> None:
@@ -872,8 +869,8 @@ async def test_replan_within_the_slot_starts_a_new_budget(tmp_path: Path) -> Non
 
     await controller.tick(_config(), _plan("limit_discharge", 600), NOW, SNAPSHOT, NOW + timedelta(minutes=6), peak)
 
-    # 600 W for the 4 minutes left: 40 Wh, at most 2.4 kW for the next minute
-    assert written[-1] == ("limit_discharge", 2400)
+    # 600 W for the 4 minutes left: 40 Wh, spread over them
+    assert written[-1] == ("limit_discharge", 600)
 
 
 @pytest.mark.parametrize(

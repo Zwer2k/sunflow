@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.61
+
+- Partial discharge on the Sofar (passive mode): the quarter hour's planned energy is no longer released at once (battery covering the whole house until it is used up, then the grid taking everything), but spread evenly over the rest of the quarter hour and recalculated every minute. The grid draw stays steady instead of jumping between 0 and the full load; if the house needed less so far, the limit rises for the rest. Cost is unchanged.
+
 ## 0.78.60
 
 - Analysis → PV by sun position: "Expectation by season (test)" learns from the soiling archive per plane and month how often and how deeply it was soiled, and after how many days leaves came back after a cleaning; it shows the expected share of the clean yield for the next 7 days. Each day the expectation for tomorrow is recorded (new table `soiling_ahead` in the shadow database) and compared with keeping the current state once measured. Shadow mode only, planning is unchanged.
