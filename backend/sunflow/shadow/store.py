@@ -6,7 +6,7 @@ first slot of a fresh plan is what Sunflow would command right now.
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 import json
 from pathlib import Path
 import sqlite3
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
@@ -56,6 +56,8 @@ SCHEMA_STEPS: dict[int, list[str]] = {
     3: ["ALTER TABLE slots ADD COLUMN planned_batteries TEXT", "ALTER TABLE slots ADD COLUMN actual_batteries TEXT"],
     # The SoC a plan made PLAN_AHEAD before a slot expected at its end, in total and per battery
     4: ["CREATE TABLE plan_ahead (start TEXT PRIMARY KEY, soc_wh REAL, batteries TEXT)"],
+    # Per plane and local day: the share of its clean yield expected the day before, by season and as now
+    5: ["CREATE TABLE soiling_ahead (day TEXT, plane TEXT, expected REAL, current REAL, PRIMARY KEY (day, plane))"],
 }
 # Stored as JSON objects (key -> W)
 JSON_COLUMNS = (
@@ -242,6 +244,26 @@ class ShadowStore:
                 (start.astimezone(UTC).isoformat(), soc_wh, json.dumps(batteries)),
             )
             self._db.commit()
+
+    def store_soiling_ahead(self, day: date, plane: str, expected: float, current: float) -> None:
+        """Keep the expectation for a day; the first one made stays."""
+        with self._lock:
+            self._db.execute(
+                "INSERT OR IGNORE INTO soiling_ahead (day, plane, expected, current) VALUES (?, ?, ?, ?)",
+                (day.isoformat(), plane, expected, current),
+            )
+            self._db.commit()
+
+    def soiling_ahead(self, since: date) -> dict[str, dict[date, tuple[float, float]]]:
+        """Stored expectations per plane: day -> (by season, as now)."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT day, plane, expected, current FROM soiling_ahead WHERE day >= ?", (since.isoformat(),)
+            ).fetchall()
+        result: dict[str, dict[date, tuple[float, float]]] = {}
+        for day, plane, expected, current in rows:
+            result.setdefault(plane, {})[date.fromisoformat(day)] = (expected, current)
+        return result
 
     def store_actual(self, start: datetime, actual: dict[str, Any]) -> None:
         """Store the measured averages of a finished slot."""

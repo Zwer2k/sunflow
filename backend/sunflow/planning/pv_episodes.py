@@ -6,7 +6,7 @@ how deep and how long they were is what a later model can learn from.
 """
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta, tzinfo
 from statistics import median
 from typing import TYPE_CHECKING, Any
@@ -59,6 +59,15 @@ class Episode:
         }
 
 
+@dataclass(kw_only=True)
+class SoilingHistory:
+    """The soiled periods of the history, the cleanings per plane and the days each plane could be judged."""
+
+    episodes: list[Episode] = field(default_factory=list)
+    cleanings: dict[str, list[date]] = field(default_factory=dict)
+    covered: dict[str, list[date]] = field(default_factory=dict)
+
+
 def daily_energy(samples: dict[str, list[Sample]], tz: tzinfo) -> dict[date, dict[str, tuple[float, float]]]:
     """Measured and forecast energy (Wh) per local day and plane, from the hourly history."""
     days: dict[date, dict[str, list[float]]] = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))
@@ -86,8 +95,16 @@ def plane_episodes(
     energy: dict[date, dict[str, tuple[float, float]]], key: str, today: date, temps: dict[date, float] | None
 ) -> list[Episode]:
     """The plane's soiled periods with their depth against the clean days before."""
+    return _plane(energy, key, today, temps)[0]
+
+
+def _plane(
+    energy: dict[date, dict[str, tuple[float, float]]], key: str, today: date, temps: dict[date, float] | None
+) -> tuple[list[Episode], list[date], list[date]]:
+    """Soiled periods, cleanings (sudden rises) and the days the plane could be compared."""
     state = plane_state(energy, key)
     days = [(day, values) for day in sorted(energy) if (values := _relative(energy[day], key)) is not None]
+    cleanings = [date.fromisoformat(c["since"]) for c in state.changes if c["change"] > 1]
     result = []
     for (start, end), kind in zip(state.soiled, state.kinds, strict=True):
         stop = end or today + timedelta(days=1)
@@ -101,7 +118,7 @@ def plane_episodes(
         result.append(
             Episode(plane=key, kind=kind, start=start, end=end, days=(stop - start).days, depth=depth, min_temp=low, frost_days=frost)
         )
-    return result
+    return result, cleanings, [day for day, _ in days]
 
 
 def all_plane_episodes(ratios: dict[str, dict[date, float]], temps: dict[date, float] | None) -> list[Episode]:
@@ -132,6 +149,24 @@ def all_plane_episodes(ratios: dict[str, dict[date, float]], temps: dict[date, f
     return result
 
 
+def soiling_history(
+    energy: dict[date, dict[str, tuple[float, float]]],
+    ratios: dict[str, dict[date, float]],
+    temps: dict[date, float] | None,
+    today: date,
+) -> SoilingHistory:
+    """Every soiled period found in the history (the latest first), with the cleanings and judged days."""
+    history = SoilingHistory()
+    keys = sorted({key for values in energy.values() for key in values})
+    found = []
+    for key in keys if len(keys) > 1 else []:
+        plane, history.cleanings[key], history.covered[key] = _plane(energy, key, today, temps)
+        found += plane
+    found += all_plane_episodes(ratios, temps)
+    history.episodes = sorted(found, key=lambda e: e.start, reverse=True)
+    return history
+
+
 def episodes(
     energy: dict[date, dict[str, tuple[float, float]]],
     ratios: dict[str, dict[date, float]],
@@ -139,7 +174,4 @@ def episodes(
     today: date,
 ) -> list[Episode]:
     """Every soiled period found in the history, the latest first."""
-    keys = sorted({key for values in energy.values() for key in values})
-    found = [e for key in keys for e in plane_episodes(energy, key, today, temps)] if len(keys) > 1 else []
-    found += all_plane_episodes(ratios, temps)
-    return sorted(found, key=lambda e: e.start, reverse=True)
+    return soiling_history(energy, ratios, temps, today).episodes

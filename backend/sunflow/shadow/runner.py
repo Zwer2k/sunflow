@@ -4,7 +4,7 @@ import asyncio
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 import json
 import logging
 from typing import Any
@@ -29,14 +29,16 @@ from sunflow.ha import HAClient, HAError
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import SLOT_HOURS, PlanResult, compute_plan
-from sunflow.planning.pv_episodes import Episode
+from sunflow.planning.pv_episodes import SoilingHistory
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
-from sunflow.planning.pv_steps import PlaneState, plane_states
+from sunflow.planning.pv_season import PlaneSeason, compare, day_levels, season_profile
+from sunflow.planning.pv_steps import PlaneState, daily_energy, plane_states
 from sunflow.planning.pv_sun import (
     PlaneSun,
     SunCorrection,
     learn_planes as learn_sun_planes,
     refresh_levels,
+    snow_now,
 )
 from sunflow.planning.vehicle_soc import estimator
 from sunflow.planning.vehicles import recognize, soc_of, unplugged_choices
@@ -293,7 +295,11 @@ class ShadowRunner:
         self.plane_states: dict[str, PlaneState] = {}
         # PV correction by sun position per plane, learned in the background
         self.sun_planes: list[PlaneSun] = []
-        self.sun_episodes: list[Episode] = []
+        self.soiling = SoilingHistory()
+        # Soiling to expect by season per plane, compared in shadow mode
+        self.seasons: dict[str, PlaneSeason] = {}
+        # Snow on all planes over the last days (shadow mode: shown, not planned with)
+        self.snow: dict[str, Any] | None = None
         self.sun_learned_at: datetime | None = None
         self._sun_level_at: datetime | None = None
         self.sun_error: str | None = None
@@ -556,9 +562,10 @@ class ShadowRunner:
     async def _refresh_sun_levels(self) -> None:
         try:
             snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
-            await refresh_levels(
-                self._client, self._store.load(), self._library.profiles, snapshot, self.sun_planes, await local_timezone(self._client)
-            )
+            config = self._store.load()
+            tz = await local_timezone(self._client)
+            await refresh_levels(self._client, config, self._library.profiles, snapshot, self.sun_planes, tz)
+            self.snow = await snow_now(self._client, config, snapshot, self.sun_planes, tz)
         except (HAError, KeyError, TypeError, ValueError) as err:
             _LOGGER.warning("Updating the state of the PV planes failed: %s", err)
         self._sun_level_at = datetime.now(UTC)
@@ -568,9 +575,11 @@ class ShadowRunner:
             snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
             config = self._store.load()
             tz = await local_timezone(self._client)
-            self.sun_planes, self.sun_episodes = await learn_sun_planes(
+            self.sun_planes, self.soiling = await learn_sun_planes(
                 self._client, config, self._library.profiles, snapshot, tz, self.plane_states
             )
+            self.seasons = season_profile(self.soiling, datetime.now(tz).date())
+            self.snow = await snow_now(self._client, config, snapshot, self.sun_planes, tz)
             self.sun_error = None
             self._sun_level_at = datetime.now(UTC)
         except (HAError, KeyError, TypeError, ValueError) as err:
@@ -602,6 +611,7 @@ class ShadowRunner:
             config = self._store.load()
             strings = {plane.key: plane.strings for plane in config.forecast_planes if plane.strings}
             self.plane_states = plane_states(rows, strings, tz)
+            self._store_soiling_ahead(tz)
             self.plane_corrections = learn_planes(
                 rows,
                 strings,
@@ -614,6 +624,37 @@ class ShadowRunner:
             )
             self._correction_at = now
         return self._correction
+
+    def _store_soiling_ahead(self, tz: tzinfo) -> None:
+        """Keep tomorrow's expected share per plane, by season and as now, to compare once it is measured."""
+        tomorrow = datetime.now(tz).date() + timedelta(days=1)
+        for key, season in self.seasons.items():
+            current, cleaned = self.soiling_now(key)
+            self.shadow.store_soiling_ahead(tomorrow, key, season.expected(tomorrow, current, cleaned), current)
+
+    def soiling_now(self, key: str) -> tuple[float, date | None]:
+        """The plane's current share of its clean yield and its latest cleaning, from the recorded days."""
+        state = self.plane_states.get(key)
+        if state is None:
+            return 1.0, None
+        cleanings = [date.fromisoformat(c["since"]) for c in state.changes if c["change"] > 1]
+        return state.level, max(cleanings, default=None)
+
+    async def soiling_check(self) -> dict[str, dict[str, Any] | None]:
+        """Per plane: how close the season expectation and keeping the current level came to the measured share."""
+        tz = await local_timezone(self._client)
+        since = datetime.now(tz).date() - timedelta(days=LEARNING_WINDOW.days)
+        stored = await asyncio.to_thread(self.shadow.soiling_ahead, since)
+        if not stored:
+            return {}
+        rows = await asyncio.to_thread(self.shadow.rows, datetime.now(UTC) - LEARNING_WINDOW)
+        strings = {plane.key: plane.strings for plane in self._store.load().forecast_planes if plane.strings}
+        energy = daily_energy(rows, strings, tz)
+        states = plane_states(rows, strings, tz)
+        return {
+            key: compare(expected, day_levels(energy, key, states.get(key) or PlaneState()))
+            for key, expected in stored.items()
+        }
 
     async def _replan(self, start: datetime) -> None:
         await i18n.update_language(self._client, self._store.load().display.language)
