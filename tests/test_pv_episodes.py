@@ -47,3 +47,16 @@ def test_one_other_plane_in_the_window_decides_by_own_share() -> None:
         history[FIRST - timedelta(days=30 - i)] = {"roof": (14000, 20000), "west": (7000, 10000)}
     assert plane_state(history, "roof").as_dict() == {"changes": [], "soiled": [], "level": 1.0}
     assert plane_state(history, "carport").kinds == ["before_cleaning"]
+
+
+def test_history_against_what_the_plane_has_learned() -> None:
+    """A plane with a long history is compared with its learned yield, a new one with the raw forecast."""
+    from datetime import UTC, datetime
+    from zoneinfo import ZoneInfo
+
+    from sunflow.planning.pv_episodes import daily_energy
+    from sunflow.planning.pv_sun import Sample, SunCorrection
+
+    hour = Sample(start=datetime(2026, 6, 1, 10, tzinfo=UTC), forecast_wh=1000.0, actual_wh=600.0, elevation=40.0, azimuth=150.0)
+    energy = daily_energy({"roof": [hour], "carport": [hour]}, ZoneInfo("Europe/Berlin"), {"roof": SunCorrection(overall=0.6)})
+    assert energy == {date(2026, 6, 1): {"roof": (600.0, 600.0), "carport": (600.0, 1000.0)}}

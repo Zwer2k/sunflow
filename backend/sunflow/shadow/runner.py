@@ -31,12 +31,19 @@ from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import SLOT_HOURS, PlanResult, compute_plan, weather_entity
 from sunflow.planning.pv_episodes import SoilingHistory
 from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
-from sunflow.planning.pv_season import PlaneSeason, compare, day_levels, season_profile, snow_ahead
-from sunflow.planning.pv_steps import PlaneState, daily_energy, plane_states
+from sunflow.planning.pv_season import (
+    PlaneSeason,
+    compare,
+    day_levels,
+    season_profile,
+    snow_ahead,
+)
+from sunflow.planning.pv_steps import Expected, PlaneState, daily_energy, plane_states
 from sunflow.planning.pv_sun import (
     PlaneSun,
     SunCorrection,
     learn_planes as learn_sun_planes,
+    learned_expectation,
     refresh_levels,
     snow_now,
 )
@@ -302,6 +309,7 @@ class ShadowRunner:
         self.snow: dict[str, Any] | None = None
         # Snow the weather forecast expects in the next days
         self.snow_ahead: dict[str, Any] | None = None
+        self._location: tuple[float, float] | None = None
         self.sun_learned_at: datetime | None = None
         self._sun_level_at: datetime | None = None
         self.sun_error: str | None = None
@@ -582,6 +590,10 @@ class ShadowRunner:
                 self._client, config, self._library.profiles, snapshot, tz, self.plane_states
             )
             self.seasons = season_profile(self.soiling, datetime.now(tz).date())
+            location = await self._client.command("get_config")
+            self._location = (location["latitude"], location["longitude"])
+            # The planes' states then compare with what each plane has learned to deliver
+            self.relearn()
             self.snow = await snow_now(self._client, config, snapshot, self.sun_planes, tz)
             self.snow_ahead = await self._snow_ahead(config, snapshot)
             self.sun_error = None
@@ -626,7 +638,7 @@ class ShadowRunner:
             self._correction = learn(rows, tz)
             config = self._store.load()
             strings = {plane.key: plane.strings for plane in config.forecast_planes if plane.strings}
-            self.plane_states = plane_states(rows, strings, tz)
+            self.plane_states = plane_states(rows, strings, tz, self._plane_expected())
             self._store_soiling_ahead(tz)
             self.plane_corrections = learn_planes(
                 rows,
@@ -640,6 +652,10 @@ class ShadowRunner:
             )
             self._correction_at = now
         return self._correction
+
+    def _plane_expected(self) -> Expected | None:
+        """The forecast per plane as its history corrects it; None until learned."""
+        return learned_expectation(self.sun_planes, *self._location) if self._location is not None else None
 
     def _store_soiling_ahead(self, tz: tzinfo) -> None:
         """Keep tomorrow's expected share per plane, by season and as now, to compare once it is measured."""
@@ -665,8 +681,9 @@ class ShadowRunner:
             return {}
         rows = await asyncio.to_thread(self.shadow.rows, datetime.now(UTC) - LEARNING_WINDOW)
         strings = {plane.key: plane.strings for plane in self._store.load().forecast_planes if plane.strings}
-        energy = daily_energy(rows, strings, tz)
-        states = plane_states(rows, strings, tz)
+        expected = self._plane_expected()
+        energy = daily_energy(rows, strings, tz, expected)
+        states = plane_states(rows, strings, tz, expected)
         return {
             key: compare(expected, day_levels(energy, key, states.get(key) or PlaneState()))
             for key, expected in stored.items()
