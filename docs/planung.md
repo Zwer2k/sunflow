@@ -180,7 +180,8 @@ zum günstigsten Zeitpunkt ein (siehe [Sunflow-Integration](integration.md)).
   und soll kein Dach verschmutzt aussehen lassen. Flächen, für die die Korrektur nach Sonnenstand
   aus mindestens 60 Tagen gelernt hat, gehen mit ihrem gelernten Ertrag in den Vergleich statt mit
   der Rohprognose: Sonst hebt eine klare Woche im Herbst ein Süddach, aber kein Norddach, und das
-  Norddach sähe verschmutzt aus.
+  Norddach sähe verschmutzt aus. Verglichen wird immer nur mit den Flächen, die an allen
+  betrachteten Tagen gemessen wurden: Eine Fläche, die später dazukommt, ist kein Sprung der anderen.
 - **Der Tag bisher**: Die gemessene PV der letzten Minuten setzt die nächste Stunde fort. Wie viel
   der Rohprognose in den letzten drei Stunden ankam, trägt den Rest des Tages, nach drei Stunden
   noch halb: Ein klarer Tag, der über dem Gelernten liegt, hebt auch den Nachmittag, ein trüber

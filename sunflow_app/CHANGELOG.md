@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.65
+
+- Soiling detection: a plane is only compared with the planes measured on all the days looked at. In the archive the day a new plane's data began (a carport far below its forecast) looked like a step of a roof, which was then listed as soiled for the whole time before.
+
 ## 0.78.64
 
 - Soiling detection and the soiling archive compare planes with a long history against their learned yield (by sun position and sky) instead of the raw forecast. Against the raw forecast a clear week in autumn lifted a south-east roof but not a north-west roof; in the archive the north-west roof then looked soiled and the cleaned carport did not.
