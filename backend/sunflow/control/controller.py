@@ -101,8 +101,9 @@ MIN_CURTAIL_W = 100.0
 LIMIT_STEP_W = 100.0
 # How often the hand-back calls for the integration's watchdog are planned again
 FALLBACK_REFRESH = timedelta(minutes=10)
-# A planned partial discharge is energy for the slot: written every minute, the limit covers
-# load peaks fully until that energy is used (only where the limit is not stored in flash)
+# A planned partial discharge is energy for the slot: written every minute, the limit spreads what is
+# left evenly over the rest of the slot, so the grid draw stays steady (only where the limit is not
+# stored in flash)
 BUDGET_STEP_W = 100.0
 BUDGET_MIN_WH = 5.0
 BUDGET_MAX_STEP = timedelta(minutes=5)
@@ -1017,7 +1018,7 @@ class PlanController:
     def _discharge_budget(
         self, device_id: str, slot: Any, power: float, now: datetime, live: Any, max_discharge: float | None
     ) -> tuple[str, float | None]:
-        """Limit of a planned partial discharge: open while the slot's energy lasts, holding once it is used."""
+        """Limit of a planned partial discharge: the slot's energy left, spread over the rest of the slot."""
         if slot is None:
             return "limit_discharge", power
         start, end = datetime.fromisoformat(str(slot.start)), datetime.fromisoformat(str(slot.end))
@@ -1034,8 +1035,9 @@ class PlanController:
         remaining_wh = budget.energy_wh - budget.used_wh
         if remaining_wh < BUDGET_MIN_WH:
             return "hold", None
-        # At most what is left until the next step a minute later
-        limit = math.floor(round(remaining_wh * 60 / BUDGET_STEP_W, 6)) * BUDGET_STEP_W
+        # Less used so far (lower load) raises the limit for the rest; the last minute counts as a whole one
+        hours_left = max((end - now).total_seconds(), 60.0) / 3600
+        limit = max(math.floor(remaining_wh / hours_left / BUDGET_STEP_W + 0.5), 1) * BUDGET_STEP_W
         return "limit_discharge", min(limit, max_discharge) if max_discharge else limit
 
     async def _charge(
