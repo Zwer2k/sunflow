@@ -226,5 +226,8 @@ How well do forecasts and decisions match reality?
   actually happened. The tiles compare PV and load forecast with the measurement, the chart the
   actual state of charge with the one the plan expected **6 hours before** (every new plan starts
   from the measured state of charge, so the latest one would almost always match the
-  measurement). Values exist from 0.78.33 on. The table lists the sections where the decision
+  measurement). Values exist from 0.78.33 on. For the same reason the PV and load forecast tiles
+  also show how far the plan from 6 hours before was off (mean deviation per quarter hour and
+  whether it was too high or too low on average; from 0.78.62 on): the plan of the quarter hour
+  itself already follows the day so far and is therefore almost always right. The table lists the sections where the decision
   differed. **Export data** and **Import export** are here.

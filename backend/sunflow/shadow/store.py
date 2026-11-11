@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
@@ -58,6 +58,8 @@ SCHEMA_STEPS: dict[int, list[str]] = {
     4: ["CREATE TABLE plan_ahead (start TEXT PRIMARY KEY, soc_wh REAL, batteries TEXT)"],
     # Per plane and local day: the share of its clean yield expected the day before, by season and as now
     5: ["CREATE TABLE soiling_ahead (day TEXT, plane TEXT, expected REAL, current REAL, PRIMARY KEY (day, plane))"],
+    # PV and house load that plan expected for the slot: the plan of the slot itself is corrected by the day so far
+    6: ["ALTER TABLE plan_ahead ADD COLUMN pv_w REAL", "ALTER TABLE plan_ahead ADD COLUMN load_w REAL"],
 }
 # Stored as JSON objects (key -> W)
 JSON_COLUMNS = (
@@ -236,12 +238,14 @@ class ShadowStore:
             )
             self._db.commit()
 
-    def store_ahead(self, start: datetime, soc_wh: float, batteries: dict[str, float]) -> None:
-        """Keep the SoC the plan expects at the end of the slot at start; the first plan to say so stays."""
+    def store_ahead(
+        self, start: datetime, soc_wh: float, batteries: dict[str, float], pv_w: float | None = None, load_w: float | None = None
+    ) -> None:
+        """Keep what the plan expects for the slot at start (SoC at its end, PV, load); the first plan to say so stays."""
         with self._lock:
             self._db.execute(
-                "INSERT OR IGNORE INTO plan_ahead (start, soc_wh, batteries) VALUES (?, ?, ?)",
-                (start.astimezone(UTC).isoformat(), soc_wh, json.dumps(batteries)),
+                "INSERT OR IGNORE INTO plan_ahead (start, soc_wh, batteries, pv_w, load_w) VALUES (?, ?, ?, ?, ?)",
+                (start.astimezone(UTC).isoformat(), soc_wh, json.dumps(batteries), pv_w, load_w),
             )
             self._db.commit()
 
@@ -310,7 +314,8 @@ class ShadowStore:
         """Return all slots starting at or after since, oldest first."""
         with self._lock:
             cursor = self._db.execute(
-                "SELECT slots.*, plan_ahead.soc_wh AS ahead_soc_wh, plan_ahead.batteries AS ahead_batteries"
+                "SELECT slots.*, plan_ahead.soc_wh AS ahead_soc_wh, plan_ahead.batteries AS ahead_batteries,"
+                " plan_ahead.pv_w AS ahead_pv_w, plan_ahead.load_w AS ahead_load_w"
                 " FROM slots LEFT JOIN plan_ahead USING (start) WHERE start >= ? ORDER BY start",
                 (since.astimezone(UTC).isoformat(),),
             )
@@ -365,6 +370,10 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         pairs = [(r.get(planned), r[actual]) for r in complete if r.get(planned) is not None and r[actual] is not None]
         return fmean(abs(p - a) for p, a in pairs) if pairs else None
 
+    def bias(planned: str, actual: str) -> float | None:
+        pairs = [(r.get(planned), r[actual]) for r in complete if r.get(planned) is not None and r[actual] is not None]
+        return fmean(p - a for p, a in pairs) if pairs else None
+
     differing = [
         r
         for r in complete
@@ -380,6 +389,10 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "load_actual_kwh": energy("actual_base_load_w"),
         "load_mae_w": mae("planned_load_w", "actual_base_load_w"),
         "soc_mae_wh": mae("ahead_soc_wh", "actual_soc_wh"),
+        "pv_ahead_mae_w": mae("ahead_pv_w", "actual_pv_w"),
+        "pv_ahead_bias_w": bias("ahead_pv_w", "actual_pv_w"),
+        "load_ahead_mae_w": mae("ahead_load_w", "actual_base_load_w"),
+        "load_ahead_bias_w": bias("ahead_load_w", "actual_base_load_w"),
         "soc_ahead_hours": PLAN_AHEAD.total_seconds() / 3600,
         "agreement": 1 - len(differing) / len(complete) if complete else None,
         "differing_slots": len(differing),

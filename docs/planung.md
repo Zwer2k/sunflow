@@ -175,7 +175,9 @@ zum günstigsten Zeitpunkt ein (siehe [Sunflow-Integration](integration.md)).
   wieder Laub fällt. Ein langsames Nachlassen ohne erkanntes Säubern davor erkennt nur das Modell
   nach Sonnenstand. Gibt es nur eine andere Fläche zum Vergleich (immer oder in diesem Zeitraum,
   z. B. bevor eine dritte dazukam), gilt die als verändert, deren eigener Anteil an der Prognose
-  sich stärker bewegt hat.
+  sich stärker bewegt hat. Bei drei oder mehr Flächen muss sich die Änderung an jedem der Tage
+  auch gegen jede andere Fläche einzeln zeigen: Ein geräumtes Carport hebt die Summe der anderen
+  und soll kein Dach verschmutzt aussehen lassen.
 - **Der Tag bisher**: Die gemessene PV der letzten Minuten setzt die nächste Stunde fort. Wie viel
   der Rohprognose in den letzten drei Stunden ankam, trägt den Rest des Tages, nach drei Stunden
   noch halb: Ein klarer Tag, der über dem Gelernten liegt, hebt auch den Nachmittag, ein trüber

@@ -3,7 +3,7 @@ import { api, renewIngressSession } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
 import { poll } from "../lib/poll.js";
 import { lineChart, SERIES_COLORS, UNASSIGNED_COLOR } from "../components/charts.js";
-import { formatValue } from "../lib/format.js";
+import { formatSigned, formatValue } from "../lib/format.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { ACTIONS } from "../lib/actions.js";
 import "../components/battery-planner.js";
@@ -899,11 +899,13 @@ class SunflowAnalysis extends LitElement {
                   <div class="small muted">${t("PV-Prognose")}</div>
                   <div class="value">${kwh(e.pv_forecast_kwh)}</div>
                   <div class="small muted">${t("tatsächlich {actual} ({deviation})", { actual: kwh(e.pv_actual_kwh), deviation: deviation(e.pv_forecast_kwh, e.pv_actual_kwh) })}</div>
+                  ${this._aheadLine(e, "pv")}
                 </div>
                 <div class="tile">
                   <div class="small muted">${t("Lastprognose (ohne steuerbare Verbraucher)")}</div>
                   <div class="value">${kwh(e.load_forecast_kwh)}</div>
                   <div class="small muted">${t("tatsächlich {actual} ({deviation})", { actual: kwh(e.load_actual_kwh), deviation: deviation(e.load_forecast_kwh, e.load_actual_kwh) })}</div>
+                  ${this._aheadLine(e, "load")}
                 </div>
                 <div class="tile">
                   <div class="small muted">${t("Ladestand-Abweichung")}</div>
@@ -1007,6 +1009,16 @@ class SunflowAnalysis extends LitElement {
     return { start: start.toISOString(), end: new Date(start.getTime() + 15 * 60_000).toISOString(), value: row[key] ?? 0 };
   }
 
+
+  /** How far the plan made hours before was off: the plan of the slot itself already follows the day so far. */
+  _aheadLine(e, kind) {
+    const mae = e[`${kind}_ahead_mae_w`];
+    const bias = e[`${kind}_ahead_bias_w`];
+    if (mae === null || mae === undefined) return nothing;
+    return html`<div class="small muted">${t("Plan von vor {hours} h: ±{mae} je Viertelstunde, im Mittel {bias}", {
+      hours: e.soc_ahead_hours, mae: formatValue(mae, "W"), bias: formatSigned(Math.round(bias), "W"),
+    })}</div>`;
+  }
 
   _renderDifferences(rows) {
     const differing = rows.filter((r) => r.planned_action !== r.actual_action).slice(-12).reverse();

@@ -171,7 +171,9 @@ action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
   So what was learned for the clean plane stays, even with leaves falling again and again in
   autumn. A slow decline without a cleaning found before it is only noticed by the model by sun
   position. With only one other plane to compare with (always, or in that period, e.g. before a
-  third one was added), the one whose own share of its forecast moved more counts as changed.
+  third one was added), the one whose own share of its forecast moved more counts as changed. With three or more planes
+  the change must also show against each other plane alone on each of the days: a cleared carport
+  lifts the sum of the others and must not make a roof look soiled.
 - **The day so far**: the PV measured in the last minutes carries on into the next hour. How much
   of the raw forecast came in the last three hours carries the rest of the day, half of it after
   three hours: a clear day above what was learned lifts the afternoon too, a dull one lowers it.

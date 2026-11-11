@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.62
+
+- Soiling detection with three or more planes: a change must also show against each other plane alone on every confirming day. A carport cleared of leaves no longer makes a roof look soiled against the sum of the others.
+- Analysis → Shadow mode: the PV and load forecast tiles also show how far the plan from 6 hours before was off (mean deviation per quarter hour and its direction). The plan of the quarter hour itself follows the day so far and is almost always right, which said little. Recorded from this version on (shadow database schema 7).
+
 ## 0.78.61
 
 - Partial discharge on the Sofar (passive mode): the quarter hour's planned energy is no longer released at once (battery covering the whole house until it is used up, then the grid taking everything), but spread evenly over the rest of the quarter hour and recalculated every minute. The grid draw stays steady instead of jumping between 0 and the full load; if the house needed less so far, the limit rises for the rest. Cost is unchanged.

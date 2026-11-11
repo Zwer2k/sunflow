@@ -349,4 +349,5 @@ export default {
   "{days} Tage: Jahreszeit ±{season}, aktueller Stand ±{current}": "{days} days: season ±{season}, current state ±{current}",
   "noch zu wenige Tage": "too few days yet",
   "Verschmutzt je Monat: Anteil der Tage, in Klammern der Ertrag in der Zeit. Nächste Tage: erwarteter Anteil des sauberen Ertrags.": "Soiled per month: share of the days, in brackets the yield meanwhile. Next days: expected share of the clean yield.",
+  "Plan von vor {hours} h: ±{mae} je Viertelstunde, im Mittel {bias}": "Plan from {hours} h before: ±{mae} per quarter hour, {bias} on average",
 };
