@@ -510,6 +510,19 @@ class ShadowRunner:
         if self._recorder is None or not self._recorder.samples:
             return
         await asyncio.to_thread(self.shadow.store_actual, self._recorder.start, self._recorder.summary())
+        if (vehicles := self.plugged_vehicles()):
+            await asyncio.to_thread(self.shadow.store_vehicles, self._recorder.start, vehicles)
+
+    def plugged_vehicles(self) -> dict[str, dict[str, Any]]:
+        """Per wallbox with a car plugged in: the vehicle recognized (None if unknown) and the scanned card."""
+        result: dict[str, dict[str, Any]] = {}
+        for info in getattr(self.latest, "flex", None) or []:
+            # "expected": not plugged in, only planned for its return
+            if info.vehicle_id and info.vehicle_method != "expected":
+                result[info.device_id] = {"vehicle": info.vehicle_id, "card": info.vehicle_card}
+            elif info.unknown_vehicle:
+                result[info.device_id] = {"vehicle": None, "card": None}
+        return result
 
     def own_hours(self) -> tuple[list[tuple[datetime, float]], dict[str, list[tuple[datetime, float]]]]:
         """From the own samples of the history window: hourly power of all controllable consumers, hourly SoC per car."""

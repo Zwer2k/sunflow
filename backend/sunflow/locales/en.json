@@ -210,5 +210,7 @@
   "Speicher nicht im Plan – {fallback}": "Battery not in the plan – {fallback}",
   "Sunflow steuert dieses Gerät gerade – für den Test erst die Steuerung des Geräts ausschalten": "Sunflow is controlling this device – switch its control off before testing",
   "Karte {number}": "Card {number}",
-  "Eine Kartennummer ist an einer Wallbox mehrfach vergeben": "A card number is used more than once at one wallbox"
+  "Eine Kartennummer ist an einer Wallbox mehrfach vergeben": "A card number is used more than once at one wallbox",
+  "Keine Ladevorgänge von evcc gelesen: {error}": "No charging sessions read from evcc: {error}",
+  "Adresse von evcc oder eine Datei angeben": "Enter evcc's address or choose a file"
 }

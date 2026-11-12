@@ -2,6 +2,7 @@
 
 from . import (
     analysis,
+    consumer_stats,
     control,
     device_test,
     devices,
@@ -18,7 +19,10 @@ from . import (
 from .app import create_app
 from .common import router
 
-for _area in (system, integration, direct, devices, device_test, setup, sources, plan, vehicles, control, analysis, live, optimizers):
+for _area in (
+    system, integration, direct, devices, device_test, setup, sources, plan, vehicles, control, analysis, consumer_stats, live,
+    optimizers,
+):
     router.include_router(_area.router)
 
 __all__ = ["create_app", "router"]

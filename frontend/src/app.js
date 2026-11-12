@@ -9,6 +9,7 @@ import "./views/live-view.js";
 import "./views/plan-view.js";
 import "./views/control-view.js";
 import "./views/analysis-view.js";
+import "./views/stats-view.js";
 import "./settings/standards-view.js";
 import "./settings/vehicles-view.js";
 import "./settings/charging-view.js";
@@ -52,6 +53,7 @@ const VIEWS = [
   ["control", t("Steuerung"), "M8 6h8a6 6 0 0 1 0 12H8A6 6 0 0 1 8 6zM16 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
   ["plan", t("Planung"), "M3 3v18h18M7 15l4-4 3 3 5-6"],
   ["analysis", t("Analyse"), "M5 20V11M11 20V5M17 20v-7M3 20h18"],
+  ["stats", t("Statistik"), "M12 3a9 9 0 1 0 9 9h-9zM15 2.5A9 9 0 0 1 21.5 9H15z"],
   ["setup", t("Einstellungen"), "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M16 4v4M10 10v4M18 16v4"],
 ];
 
@@ -1079,7 +1081,7 @@ class SunflowApp extends LitElement {
           </svg>
           <div>
             <div class="title">Sunflow</div>
-            <div class="subtitle">${{ live: t("Live"), control: t("Steuerung"), plan: t("Planung"), analysis: t("Analyse") }[this._view] ?? t("Einstellungen")}${this._haConnected === false ? ` · ${t("keine Verbindung zu Home Assistant")}` : ""}</div>
+            <div class="subtitle">${{ live: t("Live"), control: t("Steuerung"), plan: t("Planung"), analysis: t("Analyse"), stats: t("Statistik") }[this._view] ?? t("Einstellungen")}${this._haConnected === false ? ` · ${t("keine Verbindung zu Home Assistant")}` : ""}</div>
           </div>
         </div>`}
         <nav class="tabs" aria-label=${t("Hauptmenü")}>
@@ -1105,6 +1107,7 @@ class SunflowApp extends LitElement {
         control: html`<div class="layout"><main><sunflow-control></sunflow-control></main></div>`,
         plan: html`<div class="layout"><main><sunflow-plan></sunflow-plan></main></div>`,
         analysis: html`<div class="layout"><main><sunflow-analysis></sunflow-analysis></main></div>`,
+        stats: html`<div class="layout"><main><sunflow-stats></sunflow-stats></main></div>`,
       }[this._view] ?? this._renderWizard()}
     `;
   }

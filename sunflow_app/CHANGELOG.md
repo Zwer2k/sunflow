@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.74
+
+- New view **Statistics**: charging sessions and runs of the loads, modelled on evcc's statistics – charged energy, solar share (PV and home battery), Ø price and cost (grid at the price of its quarter hour, own energy at the feed-in not earned), paid and saved, Ø power while charging; per month (bars by origin), per load, per vehicle, and the list of sessions with vehicle, card and SoC. Built from the recording back to its start; from now on the plugged-in vehicle and card are recorded per quarter hour (shadow database schema 8).
+- One-time import of evcc's charging sessions from its address (/api/sessions) or a file (that JSON or the CSV export of evcc's sessions page, German or English), with loadpoints and vehicles matched by name and adjustable; counted only before Sunflow's own recording of the load, never twice. Also in the MCP tool `get_consumer_stats`.
+
 ## 0.78.73
 
 - Settings → Charging on a PC: one line per card (number, name, target, ready by, strategy, home battery, remove) with narrower columns; the vehicle's settings without a card sit in the same columns above. Phones keep the stacked layout.

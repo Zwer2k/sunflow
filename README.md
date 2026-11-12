@@ -31,7 +31,10 @@ den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
   charges.
 - **EV charging**: vehicle detection by RFID card or selection, targets and deadlines,
   PV surplus charging with 1 ↔ 3 phase switching (go-e), learned arrival and
-  consumption, 12 V battery protection, "worth plugging in" hint.
+  consumption, 12 V battery protection, "worth plugging in" hint, several RFID cards per
+  vehicle with their own targets.
+- **Statistics of the loads** like evcc's (charged energy, solar share, price, cost per month,
+  load and vehicle), with a one-time import of evcc's sessions.
 - **Hot water and own loads**: heating rods, switches, power levels and target
   currents; learned hot water demand; one-off loads such as a washing machine at the
   cheapest time.
