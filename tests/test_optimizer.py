@@ -135,6 +135,23 @@ def test_build_inputs_stops_with_prices() -> None:
     assert [i.pv_w for i in inputs[:5]] == [1200, 1200, 1200, 1200, 0]
 
 
+def test_build_inputs_bridges_a_hole_in_the_prices() -> None:
+    """One hour without a price is carried over as an estimate; the prices after it still count."""
+    hour = timedelta(hours=1)
+    prices = [
+        PricePoint(start=START, end=START + hour, price=0.3),
+        PricePoint(start=START + 2 * hour, end=START + 3 * hour, price=0.2),
+    ]
+    load = build_load_forecast([], START, 48, BERLIN)
+
+    inputs = build_inputs(START, prices, [], load, 0.08)
+
+    assert [(i.price, i.price_estimated) for i in inputs[3:9]] == [
+        (0.3, False), (0.3, True), (0.3, True), (0.3, True), (0.3, True), (0.2, False),
+    ]
+    assert len(inputs) == 12
+
+
 def _slot(action: str) -> PlanSlot:
     return PlanSlot(
         start=START, end=START + SLOT, pv_w=0, load_w=300, price=0.2, feed_in=0.08, charge_w=0, discharge_w=0,
@@ -1134,3 +1151,11 @@ def test_condition_on_an_unknown_vehicle_keeps_the_gate_closed() -> None:
     plan = optimize(slots, battery, Settings(), [result["ww"]])
     # Whatever it gets comes from the grid at the same time, none of the PV surplus
     assert all(slot.flex_w["Warmwasser"] <= slot.import_w + 1e-6 for slot in plan.slots)
+
+
+@pytest.mark.parametrize("share", [1.0, 2 / 15])
+def test_nothing_to_optimise_saves_nothing_whatever_is_left_of_the_running_slot(share: float) -> None:
+    """Empty battery, flat price, no PV: plan and baseline cost the same, also late in the quarter hour."""
+    plan = optimize(_slots(4, lambda t: 0.30, load=4000), BATTERY, Settings(first_slot_share=share))
+
+    assert plan.baseline_cost == pytest.approx(plan.cost, abs=0.005)

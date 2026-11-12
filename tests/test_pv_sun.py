@@ -135,6 +135,9 @@ def test_soiling_recommendation() -> None:
         pytest.param([1.0, 1.0, 0.4, 0.35, 0.3], 0.33, id="leaves-since-three-days"),
         # The wind blew the leaves away yesterday: the latest days count most
         pytest.param([0.3, 0.3, 0.3, 1.0, 1.0], 1.0, id="blown-away"),
+        # A single dull day is weather, not soiling
+        pytest.param([1.0, 1.0, 1.0, 1.0, 0.3], 1.0, id="one-foggy-day"),
+        pytest.param([1.0, 1.0, 1.0, 0.65, 1.0], 1.0, id="one-day-under-forecast"),
     ],
 )
 def test_current_level_follows_the_last_days(ratios: list[float], expected: float) -> None:

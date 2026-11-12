@@ -68,6 +68,8 @@ LEVEL_DAYS = 3
 LEVEL_HALF_LIFE_DAYS = 1.0
 # Above this the plane counts as clean; below it planning uses the lower level
 LEVEL_APPLY = 0.9
+# Days of the last ones that must be below it before a lower level applies
+LEVEL_CONFIRM_DAYS = 2
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -398,7 +400,9 @@ def soiled_run(ratios: list[tuple[date, float]], threshold: float) -> dict[str, 
 def current_level(ratios: list[tuple[date, float]], today: date) -> float:
     """Share of the learned yield the plane delivers now; 1 when it is clean."""
     recent = [(day, ratio) for day, ratio in ratios if (today - day).days < LEVEL_DAYS]
-    if not recent:
+    # One dull day (a foggy morning) is forecast error, which the day's own nowcast follows; scaling the
+    # whole horizon down for it, and never up, would plan a clean plane too low on average
+    if sum(1 for _, ratio in recent if ratio < LEVEL_APPLY) < LEVEL_CONFIRM_DAYS:
         return 1.0
     weights = [0.5 ** ((today - day).days / LEVEL_HALF_LIFE_DAYS) for day, _ in recent]
     level = sum(w * r for w, (_, r) in zip(weights, recent, strict=True)) / sum(weights)

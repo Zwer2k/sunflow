@@ -127,3 +127,26 @@ def _hour(hour: int, temperature: float, precipitation: float, condition: str = 
 def test_snow_ahead(forecast: list[dict[str, object]], expected: dict[str, object] | None) -> None:
     """Snow the weather forecast expects, from 1 mm on."""
     assert snow_ahead(forecast) == expected
+
+
+def test_a_day_in_two_episodes_counts_once() -> None:
+    """A plane already soiled when snow falls on all planes: the month has no more soiled days than days."""
+    from sunflow.planning.pv_episodes import Episode, SoilingHistory
+
+    january = [date(2026, 1, d) for d in range(1, 32)]
+    history = SoilingHistory(
+        episodes=[
+            Episode(plane="roof", kind="drop", start=date(2025, 12, 28), end=None, days=40, depth=0.6),
+            Episode(plane=None, kind="all_planes", start=date(2026, 1, 1), end=date(2026, 2, 1), days=31, depth=0.1),
+        ],
+        cleanings={"roof": []},
+        covered={"roof": january},
+    )
+    month = season_profile(history, date(2026, 2, 5))["roof"].months[1]
+    assert (month.days, month.soiled_days, month.depth) == (31, 31, pytest.approx(0.1))
+
+
+def test_a_cleaning_long_ago_does_not_decide() -> None:
+    """Regrowth after last year's cleaning says nothing now: the month's average applies."""
+    season = PlaneSeason(months={11: Month(days=20, soiled_days=10, depth=0.6)}, regrowth_days=9, last_cleaning=date(2025, 11, 6))
+    assert season.expected(date(2026, 11, 20), 1.0) == pytest.approx(0.8)

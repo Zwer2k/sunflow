@@ -219,7 +219,8 @@ def consumer_usage(config: SunflowConfig, latest: PlanResult | None) -> list[Rec
         if device is None:
             continue
         daily = device.parameters.get("daily_energy_wh")
-        if daily is None or abs(usage.daily_wh / daily - 1) > USAGE_DEVIATION:
+        # 0 counts as not set, as in the plan
+        if not daily or abs(usage.daily_wh / daily - 1) > USAGE_DEVIATION:
             result.append(
                 Recommendation(
                     id=f"consumer_daily:{device_id}",
@@ -230,7 +231,7 @@ def consumer_usage(config: SunflowConfig, latest: PlanResult | None) -> list[Rec
                         + " "
                         + (
                             t("Eingestellt sind {energy} kWh.", energy=number(daily / 1000, 2))
-                            if daily is not None
+                            if daily
                             else t("Eingestellt ist nichts – die Planung nutzt bereits den gemessenen Wert.")
                         )
                     ),

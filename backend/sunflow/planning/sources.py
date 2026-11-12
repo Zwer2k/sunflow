@@ -235,6 +235,9 @@ async def _cached_prices(key: tuple[str, str], fetch: Any) -> list[PricePoint]:
     if (hit := _cache.get(key)) is not None and now - hit[0] < PRICE_CACHE:
         return hit[1]
     points = await fetch()
+    # The key holds the slot's start: without this every quarter hour would leave a price list behind
+    for old in [k for k, (fetched, _) in _cache.items() if now - fetched >= PRICE_CACHE]:
+        del _cache[old]
     _cache[key] = (now, points)
     return points
 
