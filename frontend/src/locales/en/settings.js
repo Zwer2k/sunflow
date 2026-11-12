@@ -377,4 +377,5 @@ export default {
   "Karte": "Card",
   "Name (statt der Nummer angezeigt)": "Name (shown instead of the number)",
   "Karte entfernen": "Remove card",
+  "darf entladen": "may discharge",
 };

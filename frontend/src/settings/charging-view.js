@@ -126,8 +126,12 @@ class SunflowCharging extends LitElement {
         </label>
         ${profile
           ? html`
-              ${wallbox.cards ? html`<div class="small muted part">${t("Erkannt ohne Karte (Sensor, Auswahl, einziges Fahrzeug)")}</div>` : nothing}
-              ${this._renderFlex(profile.flex, (flex) => replace({ ...profile, flex: { ...profile.flex, ...flex } }))}
+              ${wallbox.cards
+                ? html`<div class="card own">
+                    <div class="small muted part own-label">${t("Erkannt ohne Karte (Sensor, Auswahl, einziges Fahrzeug)")}</div>
+                    ${this._renderFlex(profile.flex, (flex) => replace({ ...profile, flex: { ...profile.flex, ...flex } }), true)}
+                  </div>`
+                : this._renderFlex(profile.flex, (flex) => replace({ ...profile, flex: { ...profile.flex, ...flex } }))}
               ${wallbox.cards
                 ? html`
                     ${profile.cards.map((card, index) => this._renderCard(wallbox, profile, card, index, setCard))}
@@ -165,12 +169,12 @@ class SunflowCharging extends LitElement {
         <button class="secondary remove" title=${t("Karte entfernen")} aria-label=${t("Karte entfernen")} @click=${remove}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"></path></svg></button>
       </div>
-      ${this._renderFlex(card.flex, (flex) => setCard(index, { flex }))}
+      ${this._renderFlex(card.flex, (flex) => setCard(index, { flex }), true)}
     </div>`;
   }
 
   /** Target, ready-by time, strategy and battery use: of a vehicle at a wallbox, or of one of its cards. */
-  _renderFlex(flex, update) {
+  _renderFlex(flex, update, compact = false) {
     return html`<div class="fields">
       <label class="field">
         <span class="field-label">${t("Ziel-Ladestand")}</span>
@@ -193,7 +197,7 @@ class SunflowCharging extends LitElement {
       <label class="field">
         <span class="field-label">${t("Hausspeicher")}</span>
         <span class="inline"><input type="checkbox" .checked=${flex.uses_battery !== false}
-          @change=${(e) => update({ uses_battery: e.target.checked })}>${t("darf ins Auto entladen")}</span>
+          @change=${(e) => update({ uses_battery: e.target.checked })}>${compact ? t("darf entladen") : t("darf ins Auto entladen")}</span>
       </label>
     </div>`;
   }
@@ -303,6 +307,20 @@ class SunflowCharging extends LitElement {
     .card-head { display: flex; align-items: flex-end; gap: 10px; }
     .card-head .number { flex: 0 0 76px; }
     .card-head .name { flex: 1 1 auto; min-width: 0; }
+    /* Wide enough (a PC): one line per card, its columns only as wide as their values need */
+    .sub { container-type: inline-size; }
+    @container (min-width: 760px) {
+      .card {
+        display: grid; grid-template-columns: 76px minmax(120px, 1fr) 96px 132px 180px max-content 44px;
+        align-items: end; gap: 10px;
+      }
+      .card .card-head, .card .fields { display: contents; }
+      .card .remove { order: 1; }
+      .card .inline { min-height: 44px; white-space: nowrap; }
+      /* The vehicle's own settings in the same columns, its label where number and name are */
+      .card.own .own-label { grid-column: span 2; align-self: center; }
+    }
+    .card.own { border-top: 0; padding-top: 0; }
     .secondary.remove { flex: none; width: 44px; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--sf-muted); }
     .remove svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .small-button { min-height: 40px; padding: 0 14px; font-size: 14px; }
