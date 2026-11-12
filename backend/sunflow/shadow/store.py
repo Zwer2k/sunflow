@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
@@ -68,6 +68,8 @@ SCHEMA_STEPS: dict[int, list[str]] = {
         " co2_g_per_kwh REAL,"
         " PRIMARY KEY (source, id))",
     ],
+    # evcc's CSV export also has the vehicle's state of charge before and after
+    8: ["ALTER TABLE imported_sessions ADD COLUMN soc_start REAL", "ALTER TABLE imported_sessions ADD COLUMN soc_end REAL"],
 }
 # Stored as JSON objects (key -> W)
 JSON_COLUMNS = (
@@ -297,7 +299,7 @@ class ShadowStore:
         """Keep sessions imported from another system; one already there (same source and id) stays as it is."""
         columns = (
             "source", "id", "start", "end", "device_id", "loadpoint", "vehicle_id", "vehicle", "card", "energy_wh",
-            "charging_s", "solar_share", "cost_eur", "co2_g_per_kwh",
+            "charging_s", "solar_share", "cost_eur", "co2_g_per_kwh", "soc_start", "soc_end",
         )  # fmt: skip
         with self._lock:
             before = self._db.total_changes

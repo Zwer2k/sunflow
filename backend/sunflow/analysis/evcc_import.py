@@ -19,8 +19,10 @@ NANOSECONDS_FROM = 1e9
 
 # CSV headers of evcc's export in English and German (lower case, without units in brackets)
 COLUMNS = {
-    "start": ("created", "erstellt", "start", "beginn"),
-    "end": ("finished", "beendet", "ende", "end"),
+    "start": ("created", "erstellt", "start", "beginn", "startzeit", "start time", "starttime"),
+    "end": ("finished", "beendet", "ende", "end", "endzeit", "end time", "endtime"),
+    "soc_start": ("ladestand start", "soc start", "start soc", "state of charge start"),
+    "soc_end": ("ladestand ende", "soc end", "end soc", "state of charge end"),
     "loadpoint": ("loadpoint", "ladepunkt"),
     "identifier": ("identifier", "kennung", "id"),
     "vehicle": ("vehicle", "fahrzeug"),
@@ -97,6 +99,7 @@ def _from_json(items: list[dict[str, Any]], tz: tzinfo) -> list[dict[str, Any]]:
                 "identifier": item.get("identifier") or None,
                 "energy_wh": energy * 1000, "solar_share": solar / 100 if solar is not None else None,
                 "cost_eur": _number(item.get("price")), "co2_g_per_kwh": _number(item.get("co2PerKWh")),
+                "soc_start": _number(item.get("socStart")), "soc_end": _number(item.get("socEnd")),
             }
         )
     return result
@@ -134,6 +137,7 @@ def _from_csv(text: str, tz: tzinfo) -> list[dict[str, Any]]:
                 "identifier": values.get("identifier") or None,
                 "energy_wh": energy * 1000, "solar_share": solar / 100 if solar is not None else None,
                 "cost_eur": _number(values.get("price")), "co2_g_per_kwh": _number(values.get("co2")),
+                "soc_start": _number(values.get("soc_start")), "soc_end": _number(values.get("soc_end")),
             }
         )
     return result
@@ -229,6 +233,7 @@ def to_store(
                 "card": s["identifier"],
                 "energy_wh": s["energy_wh"], "charging_s": s["duration_s"], "solar_share": s["solar_share"],
                 "cost_eur": s["cost_eur"], "co2_g_per_kwh": s["co2_g_per_kwh"],
+                "soc_start": s.get("soc_start"), "soc_end": s.get("soc_end"),
             }
         )
     return rows

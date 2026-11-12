@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.75
+
+- evcc import: reads the CSV export of newer evcc versions (columns "Startzeit"/"Endzeit", "Ladestand Start/Ende", byte order mark); the state of charge before and after is taken over and shown in the session list (shadow database schema 9). Before, such a file gave "no sessions".
+- Statistics: the evcc import is folded into a quiet line at the bottom and only opens on demand.
+
 ## 0.78.74
 
 - New view **Statistics**: charging sessions and runs of the loads, modelled on evcc's statistics – charged energy, solar share (PV and home battery), Ø price and cost (grid at the price of its quarter hour, own energy at the feed-in not earned), paid and saved, Ø power while charging; per month (bars by origin), per load, per vehicle, and the list of sessions with vehicle, card and SoC. Built from the recording back to its start; from now on the plugged-in vehicle and card are recorded per quarter hour (shadow database schema 8).

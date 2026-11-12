@@ -119,11 +119,18 @@ EVCC_CSV_DE = """Erstellt;Beendet;Ladepunkt;Kennung;Fahrzeug;Kilometerstand (km)
 """
 
 
+# The export of a newer evcc: start and end time, the vehicle's SoC, a byte order mark
+EVCC_CSV_NEW = """\ufeffStartzeit;Endzeit;Ladepunkt;Kennung;Fahrzeug;Kilometerstand (km);Anfangszählerstand (kWh);Endzählerstand (kWh);Energie (kWh);Ladedauer;Ladestand Start (%);Ladestand Ende (%);Sonne (%);Kosten;Preis/kWh;CO₂/kWh (gCO₂eq);Reference Price/kWh;Reference CO2/kWh (gCO2eq)
+2025-06-01 10:00:00;2025-06-01 13:30:00;Carport;Natascha;Fiat 500e;;100,0;112,5;12,5;3h0m0s;35;80;80,5;0,98;0,078;;0,3056;
+"""
+
+
 @pytest.mark.parametrize(
     ("content", "duration"),
     [
         pytest.param(EVCC_JSON, 10800.0, id="api json, duration in nanoseconds"),
         pytest.param(EVCC_CSV_DE, 10800.0, id="german csv export"),
+        pytest.param(EVCC_CSV_NEW, 10800.0, id="newer german csv export"),
     ],
 )
 def test_parse_evcc(content: str, duration: float) -> None:
@@ -133,6 +140,12 @@ def test_parse_evcc(content: str, duration: float) -> None:
     assert session["start"] == datetime(2025, 6, 1, 8, 0, tzinfo=UTC)
     assert (session["loadpoint"], session["vehicle"], session["energy_wh"]) == ("Carport", "Fiat 500e", 12500.0)
     assert (session["solar_share"], session["cost_eur"], session["duration_s"]) == (pytest.approx(0.805), 0.98, duration)
+
+
+def test_newer_export_brings_the_state_of_charge() -> None:
+    """The newer export has the vehicle's SoC before and after; it is kept with the session."""
+    (session,) = evcc_import.parse(EVCC_CSV_NEW, BERLIN)
+    assert (session["soc_start"], session["soc_end"], session["identifier"]) == (35.0, 80.0, "Natascha")
 
 
 def test_parse_evcc_refuses_other_data() -> None:

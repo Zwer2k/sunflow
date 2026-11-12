@@ -205,6 +205,7 @@ def imported(rows: list[dict[str, Any]], names: dict[str, str]) -> list[Session]
                 energy_wh=energy, pv_wh=own, grid_wh=energy - own, cost_eur=row["cost_eur"] or 0.0,
                 vehicle_id=row["vehicle_id"], vehicle=row["vehicle"], card=row["card"], solar_share=share,
                 charging_h=(row.get("charging_s") or 0.0) / 3600, paid_known=False,
+                soc_start=row.get("soc_start"), soc_end=row.get("soc_end"),
             )
         )
     return result

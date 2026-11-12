@@ -258,8 +258,9 @@ plugging in to unplugging, pauses included; the recognized vehicle and card are 
   flowed, not waiting while plugged in.
 - **Per month** as bars by origin (sun, home battery, grid), tables per load and per vehicle, and
   the list of sessions with vehicle, card and state of charge before/after.
-- **Take over data from evcc**: once, from evcc's address (Sunflow reads `/api/sessions`) or a
-  file (that answer as JSON, or the CSV export of evcc's sessions page, German or English). The
+- **Take over data from evcc …** (folded at the very bottom): once, from evcc's address (Sunflow reads `/api/sessions`) or a
+  file (that answer as JSON, or the CSV export of evcc's sessions page, German or English, also
+  with the state of charge before/after). The
   preview shows count and period and matches loadpoints and vehicles by name; this can be
   changed. Taken over sessions only count before Sunflow's own recording of the load, and
   sessions taken over twice are recognized. From evcc Sunflow only knows the total cost, not the

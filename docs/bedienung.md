@@ -271,9 +271,9 @@ nach einer Stunde ohne Leistung.
   **Ø Leistung** zählt nur die Zeit, in der Leistung floss, nicht das Angesteckt-Warten.
 - **Je Monat** als Balken nach Herkunft (Sonne, Hausspeicher, Netz), dazu Tabellen je Verbraucher
   und je Fahrzeug und die Liste der Ladevorgänge mit Fahrzeug, Karte und Ladestand vorher/nachher.
-- **Daten aus evcc übernehmen**: einmalig, über die Adresse von evcc (Sunflow liest
+- **Daten aus evcc übernehmen …** (zugeklappt ganz unten): einmalig, über die Adresse von evcc (Sunflow liest
   `/api/sessions`) oder eine Datei (diese Antwort als JSON oder der CSV-Export der
-  Ladevorgänge-Seite von evcc, deutsch oder englisch). Die Vorschau zeigt Zahl und Zeitraum und
+  Ladevorgänge-Seite von evcc, deutsch oder englisch, auch mit Ladestand vorher/nachher). Die Vorschau zeigt Zahl und Zeitraum und
   ordnet Ladepunkte und Fahrzeuge nach dem Namen zu; das lässt sich ändern. Gezählt werden die
   übernommenen Vorgänge nur vor Sunflows eigener Aufzeichnung des Verbrauchers, doppelt
   übernommene erkennt Sunflow. Von evcc kennt Sunflow nur die Gesamtkosten, nicht den bezahlten
