@@ -264,13 +264,15 @@ nach einer Stunde ohne Leistung.
 
 - **Zeitraum** (30 Tage, 12 Monate, dieses Jahr, letztes Jahr, gesamt) und Filter nach
   Verbraucher und Fahrzeug.
-- **Geladen**, Zahl der Vorgänge, **Sonnenanteil** (PV und Hausspeicher, wie bei evcc),
-  **Ø Preis** und **Kosten**: Netzbezug zum Preis seiner Viertelstunde, PV und Hausspeicher mit der
-  entgangenen Einspeisevergütung (wie evcc rechnet). **Bezahlt** ist nur der Netzbezug,
-  **Gespart** der Unterschied zu allem aus dem Netz; beides nur aus Sunflows eigener Aufzeichnung.
+- **Geladen**, Zahl der Vorgänge, **Sonnenanteil**, **Ø Preis** und **Kosten**: Netzbezug zum
+  Preis seiner Viertelstunde, PV mit der entgangenen Einspeisevergütung (wie evcc rechnet). Strom
+  aus dem Hausspeicher zählt nach dem, womit er geladen wurde: sein PV-Anteil als Sonne, sein
+  Netzanteil als bezahlt zum Preis beim Laden des Speichers. Ein nachts aus dem Netz gefüllter
+  Speicher bringt also keine Sonne ins Auto. **Bezahlt** ist der Netzbezug samt Netzanteil des
+  Speichers, **Gespart** der Unterschied zu allem aus dem Netz; beides nur aus Sunflows eigener Aufzeichnung.
   **Ø Leistung** zählt nur die Zeit, in der Leistung floss, nicht das Angesteckt-Warten.
 - **Diagramm wie bei evcc**: Energie, Sonnenanteil oder Preis je Monat oder Jahr; die Energie
-  gestapelt nach Herkunft (Sonne, Hausspeicher, Netz), nach Verbraucher oder nach Fahrzeug (die
+  gestapelt nach Herkunft (Sonne, Hausspeicher aus Sonne, Hausspeicher aus Netz, Netz), nach Verbraucher oder nach Fahrzeug (die
   fünf größten, der Rest als „Andere“).
 - **Aufteilung der Energie** als Ringe je Verbraucher und je Fahrzeug, dazu Tabellen je
   Verbraucher und je Fahrzeug und die Liste der Ladevorgänge mit Fahrzeug, Karte und Ladestand

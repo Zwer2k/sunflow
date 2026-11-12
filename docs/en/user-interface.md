@@ -251,13 +251,15 @@ plugging in to unplugging, pauses included; the recognized vehicle and card are 
 0.78.74 on. Before that, and for the other loads, a run ends after an hour without power.
 
 - **Period** (30 days, 12 months, this year, last year, total) and filters by load and vehicle.
-- **Charged**, number of sessions, **solar share** (PV and home battery, as in evcc), **Ø price**
-  and **cost**: grid import at the price of its quarter hour, PV and home battery at the feed-in
-  not earned (as evcc counts). **Paid** is the grid import only, **saved** the difference to all
+- **Charged**, number of sessions, **solar share**, **Ø price** and **cost**: grid import at the
+  price of its quarter hour, PV at the feed-in not earned (as evcc counts). Energy from the home
+  battery counts by what filled it: its PV part as sun, its grid part as paid at the price when the
+  battery was charged. A battery filled from the grid at night brings no sun into the car. **Paid**
+  is the grid import plus the battery's grid part, **saved** the difference to all
   from the grid; both only from Sunflow's own recording. **Ø power** counts only the time power
   flowed, not waiting while plugged in.
 - **Chart as in evcc**: energy, solar share or price per month or year; the energy stacked by
-  origin (sun, home battery, grid), by load or by vehicle (the five largest, the rest as "Other").
+  origin (sun, home battery from sun, home battery from grid, grid), by load or by vehicle (the five largest, the rest as "Other").
 - **Share of the energy** as rings per load and per vehicle, tables per load and per vehicle, and
   the list of sessions with vehicle, card and state of charge before/after.
 - **Take over data from evcc …** (folded at the very bottom): once, from evcc's address (Sunflow reads `/api/sessions`) or a

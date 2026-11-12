@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.77
+
+- Consumer statistics: energy from the home battery counts by what filled it. Its PV part is sun, its grid part is paid at the price when the battery was charged. A battery filled from the grid at night no longer shows as 100 % sun in the car.
+- Statistics chart: the home battery is split into "from sun" and "from grid".
+
 ## 0.78.76
 
 - Statistics, with evcc's views: the chart shows energy, solar share or price per month or year; energy stacked by origin, by load or by vehicle (the five largest, the rest as "Other"). New rings show how the energy is shared among the loads and the vehicles.

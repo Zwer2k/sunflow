@@ -13,11 +13,12 @@ const PERIODS = [
   ["last_year", t("Letztes Jahr")],
   ["all", t("Gesamt")],
 ];
-// Origin of the energy in the bars: PV, home battery, grid
+// Origin of the energy in the bars; the home battery split by what filled it (PV surplus or grid)
 const ORIGINS = [
-  ["pv_wh", t("Sonne"), "var(--sf-series-4)"],
-  ["battery_wh", t("Hausspeicher"), "var(--sf-series-3)"],
-  ["grid_wh", t("Netz"), "var(--sf-series-1)"],
+  [(s) => s.pv_wh, t("Sonne"), "var(--sf-series-4)"],
+  [(s) => s.battery_solar_wh ?? 0, t("Hausspeicher (Sonne)"), "var(--sf-series-3)"],
+  [(s) => s.battery_wh - (s.battery_solar_wh ?? 0), t("Hausspeicher (Netz)"), "var(--sf-series-2)"],
+  [(s) => s.grid_wh, t("Netz"), "var(--sf-series-1)"],
 ];
 const SESSIONS_SHOWN = 30;
 const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -141,7 +142,7 @@ class SunflowStats extends LitElement {
     return html`
       <div class="tiles">
         ${tile(t("Geladen"), kwh(s.energy_wh), t("{count} Ladevorgänge", { count: s.sessions }), true)}
-        ${tile(t("Sonnenanteil"), pct(s.solar_share), s.battery_wh ? t("davon Hausspeicher {energy}", { energy: kwh(s.battery_wh) }) : null, true)}
+        ${tile(t("Sonnenanteil"), pct(s.solar_share), s.battery_solar_wh ? t("davon Hausspeicher {energy}", { energy: kwh(s.battery_solar_wh) }) : null, true)}
         ${tile(t("Ø Preis"), ct(s.price_per_kwh), t("mit entgangener Einspeisung"))}
         ${tile(t("Kosten"), euro(s.cost_eur), t("Netz und entgangene Einspeisung"))}
         ${s.paid_eur !== null
@@ -515,9 +516,9 @@ function periodLabel(key, step, all) {
 function energyStacks(sessions, periods, step, group) {
   const index = new Map(periods.map((p, i) => [p, i]));
   if (group === "origin") {
-    return ORIGINS.map(([key, name, color]) => {
+    return ORIGINS.map(([part, name, color]) => {
       const values = periods.map(() => 0);
-      for (const s of sessions) values[index.get(periodOf(s, step))] += s[key];
+      for (const s of sessions) values[index.get(periodOf(s, step))] += part(s);
       return { name, color, values };
     });
   }

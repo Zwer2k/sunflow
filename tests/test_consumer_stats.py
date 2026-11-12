@@ -178,3 +178,29 @@ def test_imported_sessions_are_stored_once(tmp_path: Path) -> None:
     assert (stored.consumer, stored.vehicle, stored.charging_h, stored.paid_known) == ("Wallbox", "Fiat", 3.0, False)
     assert store.remove_imported_sessions("evcc") == 1
     store.close()
+
+
+def test_battery_charged_from_the_grid_is_no_sun() -> None:
+    """A battery filled from the grid at night gives grid energy to the car later, at the price it was charged at."""
+    night = [{**_row(i), "actual_battery_w": 4000.0, "actual_load_w": 400.0, "planned_price": 0.20} for i in range(4)]
+    # Evening: the battery covers the house and the car, nothing from the grid
+    evening = [{**_row(4 + i, 2000, battery=-2400), "planned_price": 0.35} for i in range(2)]
+
+    (session,) = sessions_from_rows([*night, *evening], NAMES, {}, {}, feed_in=0.08)
+
+    assert (session.battery_wh, session.grid_wh) == pytest.approx((1000.0, 0.0))
+    # Before the night it held nothing known: almost all of it is grid energy now
+    assert session.share() == pytest.approx(0.0, abs=0.01)
+    # Paid when it was charged, at 20 ct, not at the evening's 35 ct
+    assert session.paid_eur == pytest.approx(0.20, abs=0.005)
+
+
+def test_battery_charged_from_pv_counts_as_sun() -> None:
+    """PV surplus stored at noon is sun when it reaches the car in the evening."""
+    noon = [{**_row(i, pv=4400), "actual_battery_w": 4000.0, "actual_load_w": 400.0} for i in range(4)]
+    evening = [_row(4 + i, 2000, battery=-2400) for i in range(2)]
+
+    (session,) = sessions_from_rows([*noon, *evening], NAMES, {}, {}, feed_in=0.08)
+
+    assert session.share() == pytest.approx(1.0, abs=0.01)
+    assert session.paid_eur == pytest.approx(0.0, abs=0.001)

@@ -375,6 +375,8 @@ export default {
   "{count} Ladevorgänge": "{count} sessions",
   "Sonnenanteil": "Solar share",
   "davon Hausspeicher {energy}": "of which home battery {energy}",
+  "Hausspeicher (Sonne)": "Home battery (sun)",
+  "Hausspeicher (Netz)": "Home battery (grid)",
   "Ø Preis": "Ø price",
   "mit entgangener Einspeisung": "incl. feed-in not earned",
   "Bezahlt": "Paid",
