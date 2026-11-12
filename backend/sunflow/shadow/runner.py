@@ -502,6 +502,13 @@ class ShadowRunner:
             return
         self._replan_task = asyncio.create_task(self._replan_now())
 
+    async def replan_and_wait(self) -> PlanResult | None:
+        """Compute a new plan now, the same way as every quarter hour, and return it."""
+        self.request_replan()
+        if self._replan_task is not None:
+            await asyncio.shield(self._replan_task)
+        return self.latest
+
     async def ensure_plan(self) -> PlanResult | None:
         """Return the latest plan, computing one (shared with other callers) if there is none.
 

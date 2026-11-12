@@ -200,12 +200,21 @@ class HAClient:
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._pending[msg_id] = future
         self._subscriptions[msg_id] = callback
-        await self._ws.send_json({"id": msg_id, "type": msg_type, **data})
         try:
-            await future
+            await self._ws.send_json({"id": msg_id, "type": msg_type, **data})
+            # Callers hold the snapshot lock: a Core that never answers must not block them for good
+            await asyncio.wait_for(future, COMMAND_TIMEOUT)
+        except TimeoutError as err:
+            self._subscriptions.pop(msg_id, None)
+            raise HATimeout(f"No answer to {msg_type} within {COMMAND_TIMEOUT} s") from err
+        except (aiohttp.ClientError, ConnectionError, RuntimeError) as err:
+            self._subscriptions.pop(msg_id, None)
+            raise HAError(f"Sending {msg_type} failed: {err}") from err
         except HAError:
             self._subscriptions.pop(msg_id, None)
             raise
+        finally:
+            self._pending.pop(msg_id, None)
 
         async def unsubscribe() -> None:
             self._subscriptions.pop(msg_id, None)

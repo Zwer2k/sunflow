@@ -1,6 +1,7 @@
 """Client for the HTTP API of the Sunflow App."""
 
 from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 
@@ -97,9 +98,9 @@ class SunflowClient:
     ) -> None:
         """Change a consumer's planning for a while (None: back to its settings)."""
         if override is None:
-            await self.request("DELETE", f"/control/devices/{device_id}")
+            await self.request("DELETE", f"/control/devices/{quote(device_id, safe='')}")
         else:
-            await self.request("PUT", f"/control/devices/{device_id}", override)
+            await self.request("PUT", f"/control/devices/{quote(device_id, safe='')}", override)
 
     async def add_load(self, load: dict[str, Any]) -> dict[str, Any]:
         """Place a one-time run; returns it with its start."""
@@ -107,4 +108,4 @@ class SunflowClient:
 
     async def remove_load(self, load_id: str) -> None:
         """Forget a one-time run."""
-        await self.request("DELETE", f"/integration/loads/{load_id}")
+        await self.request("DELETE", f"/integration/loads/{quote(load_id, safe='')}")
