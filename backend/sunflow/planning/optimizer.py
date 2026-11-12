@@ -321,31 +321,38 @@ def smooth_actions(slots: list[PlanSlot] | list[BatterySlot], min_slots: int = 3
 
 
 def simulate_self_consumption(
-    inputs: list[SlotInput], battery: BatterySpec | list[BatterySpec], per_slot: list[float] | None = None
+    inputs: list[SlotInput],
+    battery: BatterySpec | list[BatterySpec],
+    per_slot: list[float] | None = None,
+    dts: list[float] | None = None,
 ) -> tuple[float, list[float]]:
     """Cost in € and final SoC per battery in Wh without Sunflow: batteries only follow surplus or deficit.
 
     Several batteries take the surplus and cover the deficit one after the other.
-    per_slot, if given, receives the cost of every slot.
+    per_slot, if given, receives the cost of every slot. dts: hours per slot (the running slot counts
+    for what is left of it, as in the plan it is compared with).
     """
     batteries = [battery] if isinstance(battery, BatterySpec) else battery
     socs = [b.soc_wh for b in batteries]
     cost = 0.0
-    for slot in inputs:
+    for t, slot in enumerate(inputs):
+        dt = dts[t] if dts is not None else DT_H
         rest = slot.pv_w - slot.load_w
         for k, b in enumerate(batteries):
+            if dt <= 0:
+                break
             if rest >= 0:
-                room = (b.capacity_wh - socs[k]) / (b.efficiency_charge * DT_H)
+                room = (b.capacity_wh - socs[k]) / (b.efficiency_charge * dt)
                 charge = min(rest, b.max_charge_w, max(room, 0))
-                socs[k] += charge * b.efficiency_charge * DT_H
+                socs[k] += charge * b.efficiency_charge * dt
                 rest -= charge
             else:
-                available = (socs[k] - b.min_soc_wh) * b.efficiency_discharge / DT_H
+                available = (socs[k] - b.min_soc_wh) * b.efficiency_discharge / dt
                 discharge = min(-rest, b.max_discharge_w, max(available, 0))
-                socs[k] -= discharge / b.efficiency_discharge * DT_H
+                socs[k] -= discharge / b.efficiency_discharge * dt
                 rest += discharge
         export, imported = max(rest, 0.0), max(-rest, 0.0)
-        slot_cost = (slot.price * imported - slot.feed_in * export) * DT_H / 1000
+        slot_cost = (slot.price * imported - slot.feed_in * export) * dt / 1000
         cost += slot_cost
         if per_slot is not None:
             per_slot.append(slot_cost)
@@ -357,7 +364,9 @@ def has_alternative(load: FlexLoad) -> bool:
     return load.unmet_cost < 1.0 and not load.expected
 
 
-def immediate_flex(inputs: list[SlotInput], flex: list[FlexLoad]) -> tuple[list[SlotInput], float]:
+def immediate_flex(
+    inputs: list[SlotInput], flex: list[FlexLoad], dts: list[float] | None = None
+) -> tuple[list[SlotInput], float]:
     """Flexible loads without Sunflow, and the € the alternative covers.
 
     Must-have loads start right away at full power. Optional ones (PV only, or with an
@@ -378,9 +387,12 @@ def immediate_flex(inputs: list[SlotInput], flex: list[FlexLoad]) -> tuple[list[
                 limit = load.max_power_w
                 if optional:
                     limit = min(limit, max(inputs[t].pv_w - inputs[t].load_w - extra[t], 0.0))
-                power = min(limit, remaining / DT_H)
+                dt = dts[t] if dts is not None else DT_H
+                if dt <= 0:
+                    continue
+                power = min(limit, remaining / dt)
                 extra[t] += power
-                remaining -= power * DT_H
+                remaining -= power * dt
             if has_alternative(load):
                 alternative += max(remaining, 0.0) / 1000 * load.unmet_cost
     return [replace(slot, load_w=slot.load_w + extra[t]) for t, slot in enumerate(inputs)], alternative
@@ -649,7 +661,7 @@ def optimize(
                 if t == 0:
                     upper[b] = 0.0
                     continue
-                gate_rows.append(({b: required, **{f[k][tau]: -DT_H for tau in range(t)}}, 0.0))
+                gate_rows.append(({b: required, **{f[k][tau]: -dts[tau] for tau in range(t)}}, 0.0))
             if soc_wh is None and previous is not None:
                 # Received energy never decreases: once released, the gate stays open,
                 # which also prunes the binary search a lot
@@ -924,7 +936,7 @@ def optimize(
         FlexResult(
             name=load.name,
             energy_wh=sum(energy for _, _, energy in needs[k]),
-            planned_wh=float(sum(x[f[k]]) * DT_H),
+            planned_wh=float(sum(x[f[k][t]] * dts[t] for t in range(n))),
             unmet_wh=float(sum(x[index] for index in u[k])),
         )
         for k, load in enumerate(flex)
@@ -941,8 +953,9 @@ def optimize(
     plan.cost = plan.alternative_cost + sum(
         (p.price * p.import_w - p.feed_in * p.export_w) * dt / 1000 for p, dt in zip(plan.slots, dts, strict=False)
     )
-    baseline_inputs, plan.baseline_alternative_cost = immediate_flex(inputs, flex)
-    plan.baseline_cost, baseline_socs = simulate_self_consumption(baseline_inputs, batteries, plan.baseline_slot_costs)
+    # The running slot for what is left of it, as in the plan: else the savings swing within every quarter hour
+    baseline_inputs, plan.baseline_alternative_cost = immediate_flex(inputs, flex, dts)
+    plan.baseline_cost, baseline_socs = simulate_self_consumption(baseline_inputs, batteries, plan.baseline_slot_costs, dts)
     plan.baseline_cost += plan.baseline_alternative_cost
     plan.baseline_terminal_value = sum(terminal[k] * baseline_socs[k] for k in range(m)) / 1000
     return plan

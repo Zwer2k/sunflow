@@ -24,6 +24,8 @@ from sunflow.planning.pv_steps import (
 MONTH_MIN_DAYS = 10
 # A gradual soiling this long after a cleaning counts as leaves coming back
 REGROWTH_MAX_DAYS = 30
+# How long after a cleaning the regrowth is expected instead of the month's average
+REGROWTH_APPLIES_DAYS = 60
 # Days a comparison needs before it is shown
 CHECK_MIN_DAYS = 7
 
@@ -65,8 +67,10 @@ class PlaneSeason:
         if month is None or (by_month := month.expected()) is None:
             return 1.0
         cleaned = cleaned or self.last_cleaning
-        if self.regrowth_days is not None and cleaned is not None and month.depth is not None:
-            return month.depth if (day - cleaned).days >= self.regrowth_days else 1.0
+        since = (day - cleaned).days if cleaned is not None else None
+        # Only in the weeks after a cleaning: one from last year says nothing about this season's leaves
+        if self.regrowth_days is not None and since is not None and 0 <= since <= REGROWTH_APPLIES_DAYS and month.depth is not None:
+            return month.depth if since >= self.regrowth_days else 1.0
         return by_month
 
     def as_dict(self) -> dict[str, Any]:
@@ -89,7 +93,8 @@ def season_profile(history: SoilingHistory, today: date) -> dict[str, PlaneSeaso
         months: dict[int, Month] = defaultdict(Month)
         for day in judged:
             months[day.month].days += 1
-        weights: dict[int, list[float]] = defaultdict(lambda: [0.0, 0.0])
+        # Per soiled day its depth; a day in two episodes (its own and snow on all planes) counts once, at the lower
+        soiled: dict[date, float | None] = {}
         for e in history.episodes:
             if e.plane not in (key, None):
                 continue
@@ -98,14 +103,15 @@ def season_profile(history: SoilingHistory, today: date) -> dict[str, PlaneSeaso
                 day = e.start + timedelta(days=offset)
                 if day not in judged and e.plane is not None:
                     continue
-                months[day.month].soiled_days += 1
-                if e.plane is None:
-                    months[day.month].days += day not in judged
-                if e.depth is not None:
-                    weights[day.month][0] += e.depth
-                    weights[day.month][1] += 1
-        for month, (total, count) in weights.items():
-            months[month].depth = total / count if count else None
+                known = [d for d in (soiled.get(day), e.depth) if d is not None]
+                if day not in soiled and day not in judged:
+                    months[day.month].days += 1
+                soiled[day] = min(known) if known else None
+        for day in soiled:
+            months[day.month].soiled_days += 1
+        for month in {day.month for day in soiled}:
+            depths = [depth for day, depth in soiled.items() if day.month == month and depth is not None]
+            months[month].depth = sum(depths) / len(depths) if depths else None
         cleanings = history.cleanings.get(key, [])
         gaps = [
             (e.start - max(c for c in cleanings if c <= e.start)).days

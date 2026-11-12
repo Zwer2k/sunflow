@@ -167,7 +167,8 @@ action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
     week after it over three days (leaves gathering bit by bit).
 
   These days are not learned, and Sunflow plans it with the lower share until it delivers as much
-  again. If it rises suddenly (leaves cleared, snow melted), the days before drop out of learning.
+  again: a drop also ends without a jump once the plane brings at least 80 % of the clean share
+  for three days (snow melting, rain washing it off). If it rises suddenly (leaves cleared, snow melted), the days before drop out of learning.
   So what was learned for the clean plane stays, even with leaves falling again and again in
   autumn. A slow decline without a cleaning found before it is only noticed by the model by sun
   position. With only one other plane to compare with (always, or in that period, e.g. before a
@@ -178,9 +179,10 @@ action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
   of the raw forecast: otherwise a clear week in autumn lifts a south roof but not a north roof,
   and the north roof would look soiled. A plane is only compared with the planes measured on all
   the days looked at: a plane that joins later is no step of the others.
-- **The day so far**: the PV measured in the last minutes carries on into the next hour. How much
-  of the raw forecast came in the last three hours carries the rest of the day, half of it after
-  three hours: a clear day above what was learned lifts the afternoon too, a dull one lowers it.
+- **The day so far**: the PV measured in the last minutes carries on into the next hour. How the
+  last three hours went against what Sunflow expected for exactly those hours carries the rest of
+  the day, half of it after three hours: a clear day above what was learned lifts the afternoon
+  too, a dull one lowers it. A roof shaded in the morning as learned does not lower the afternoon.
   Sunflow then also plans these hours less cautiously. From tomorrow on what was learned applies
   again.
 - **Uncertain forecast**: with "Cautious" Sunflow plans more with the bad case

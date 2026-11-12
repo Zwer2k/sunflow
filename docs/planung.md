@@ -170,7 +170,8 @@ zum günstigsten Zeitpunkt ein (siehe [Sunflow-Integration](integration.md)).
     ersten Woche danach lieferte (Laub, das sich nach und nach sammelt).
 
   Diese Tage lernt sie nicht mit, und Sunflow plant sie mit dem geringeren Anteil, bis sie wieder
-  so viel liefert. Steigt sie sprunghaft (Laub geräumt, Schnee getaut), fallen die Tage davor aus
+  so viel liefert: Ein Einbruch endet auch ohne Sprung, sobald die Fläche drei Tage lang wieder
+  mindestens 80 % des sauberen Anteils bringt (Schnee taut, Regen wäscht ab). Steigt sie sprunghaft (Laub geräumt, Schnee getaut), fallen die Tage davor aus
   dem Lernen. So bleibt das Gelernte für die saubere Fläche erhalten, auch wenn im Herbst immer
   wieder Laub fällt. Ein langsames Nachlassen ohne erkanntes Säubern davor erkennt nur das Modell
   nach Sonnenstand. Gibt es nur eine andere Fläche zum Vergleich (immer oder in diesem Zeitraum,
@@ -182,10 +183,11 @@ zum günstigsten Zeitpunkt ein (siehe [Sunflow-Integration](integration.md)).
   der Rohprognose: Sonst hebt eine klare Woche im Herbst ein Süddach, aber kein Norddach, und das
   Norddach sähe verschmutzt aus. Verglichen wird immer nur mit den Flächen, die an allen
   betrachteten Tagen gemessen wurden: Eine Fläche, die später dazukommt, ist kein Sprung der anderen.
-- **Der Tag bisher**: Die gemessene PV der letzten Minuten setzt die nächste Stunde fort. Wie viel
-  der Rohprognose in den letzten drei Stunden ankam, trägt den Rest des Tages, nach drei Stunden
-  noch halb: Ein klarer Tag, der über dem Gelernten liegt, hebt auch den Nachmittag, ein trüber
-  senkt ihn. Diese Stunden plant Sunflow dann auch weniger vorsichtig. Ab morgen gilt wieder
+- **Der Tag bisher**: Die gemessene PV der letzten Minuten setzt die nächste Stunde fort. Wie die
+  letzten drei Stunden gegenüber dem ausfielen, was Sunflow für genau diese Stunden erwartet hat,
+  trägt den Rest des Tages, nach drei Stunden noch halb: Ein klarer Tag, der über dem Gelernten
+  liegt, hebt auch den Nachmittag, ein trüber senkt ihn. Ein Dach, das morgens wie gelernt im
+  Schatten lag, senkt den Nachmittag nicht. Diese Stunden plant Sunflow dann auch weniger vorsichtig. Ab morgen gilt wieder
   das Gelernte.
 - **Unsichere Prognose**: Mit „Vorsichtig“ plant Sunflow mehr mit dem schlechten Fall (Solcast
   p10), sodass es eher nachts günstig nachlädt, als bei wenig Sonne teuer nachzukaufen.

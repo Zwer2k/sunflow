@@ -143,13 +143,13 @@ def _against_each(before: list[Day], confirm: list[Day]) -> list[tuple[list[Day]
     return [(alone(before, key), alone(confirm, key)) for key in sorted(keys)]
 
 
-def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None:
+def _change(days: list[Day], start: int, split: int) -> float | None:
     """The change at split against the regime since start, when the confirming days all agree.
 
-    pair: only one other plane (always, or on all these days), which then shows the same change the other
-    way round; the plane whose own share of its forecast moved more is the one that changed.
-    With more planes the change must also show against each of them alone, on every confirming day: a
-    cleaned carport lifts the sum of the others and must not make a roof look soiled.
+    Against one other plane the same change shows the other way round, and against several a change of
+    the others looks like one of this plane: the plane whose own share of its forecast moved more is the
+    one that changed. With more planes the change must also show against each of them alone, on every
+    confirming day: a cleaned carport lifts the sum of the others and must not make a roof look soiled.
     """
     confirm = days[split : split + STEP_CONFIRM_DAYS]
     if len(confirm) < STEP_MIN_AFTER:
@@ -165,9 +165,10 @@ def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None
     # One bright day is no change
     if any(sign * math.log(_pooled([d]) / reference) < math.log(STEP_DAY_RATIO) for d in confirm):
         return None
-    pair = pair or all(len(d[4]) == 1 for d in before + confirm)
+    # The plane whose own share moved more is the one that changed: snow on the others must not
+    # make the clear plane look cleaned (and soiled ever after once they thaw)
     own = math.log(_own(confirm, 0) / _own(before, 0))
-    if pair and abs(own) < abs(math.log(_own(confirm, 2) / _own(before, 2))):
+    if abs(own) < abs(math.log(_own(confirm, 2) / _own(before, 2))):
         return None
     singles = _against_each(before, confirm)
     for one_before, one_confirm in singles if len(singles) > 1 else []:
@@ -179,7 +180,7 @@ def _change(days: list[Day], start: int, split: int, pair: bool) -> float | None
     return change
 
 
-def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str, pair: bool = False) -> PlaneState:
+def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str) -> PlaneState:
     """The plane's changes from the oldest day on, which periods were soiled and its share now."""
     days = [(day, values) for day in sorted(energy) if (values := _relative(energy[day], key)) is not None]
     values = [v for _, v in days]
@@ -187,13 +188,13 @@ def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str, pa
     split = STEP_MIN_BEFORE
     while split <= len(days) - STEP_MIN_AFTER:
         start = starts[-1][0]
-        if (change := _change(values, start, split, pair)) is None:
+        if (change := _change(values, start, split)) is None:
             split += 1
             continue
         # The strongest day of the change among the confirming ones (the day itself is often in between)
         best = split
         for later in range(split + 1, min(split + STEP_CONFIRM_DAYS, len(days) - STEP_MIN_AFTER + 1)):
-            other = _change(values, start, later, pair)
+            other = _change(values, start, later)
             if other is not None and (other > 1) == (change > 1) and abs(math.log(other)) > abs(math.log(change)):
                 best, change = later, other
         starts.append((best, change))
@@ -210,8 +211,19 @@ def plane_state(energy: dict[date, dict[str, tuple[float, float]]], key: str, pa
         end = bounds[index + 1]
         if change is not None and change < 1:
             # A drop: soiled until the next rise, at its share of the clean days before
-            soiled[begin:end] = ["drop"] * (end - begin)
-            level = relative_share(values[begin:end], reference) or 1.0
+            # ...or until its last days are back near the clean share (melting snow, rain washing it off)
+            recovered = next(
+                (
+                    day - GRADUAL_DAYS
+                    for day in range(begin + GRADUAL_DAYS, end + 1)
+                    if (relative_share(values[day - GRADUAL_DAYS : day], reference) or 0.0) >= GRADUAL_LEVEL
+                ),
+                None,
+            )
+            stop = end if recovered is None else recovered
+            soiled[begin:stop] = ["drop"] * (stop - begin)
+            # The share of the last days, not of the whole period: it may have recovered part of the way
+            level = 1.0 if recovered is not None else relative_share(values[max(begin, end - GRADUAL_DAYS) : end], reference) or 1.0
             continue
         if change is None and starts[1][1] > 1:
             # Before the first cleaning: soiled since the data began
@@ -250,4 +262,4 @@ def plane_states(
     if len(measured) < 2:
         return {}
     energy = daily_energy(rows, measured, tz, expected)
-    return {key: state for key in measured if (state := plane_state(energy, key, len(measured) == 2)).changes}
+    return {key: state for key in measured if (state := plane_state(energy, key)).changes}

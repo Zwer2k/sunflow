@@ -130,7 +130,13 @@ def usage_from(means: list[tuple[datetime, float]]) -> ConsumerUsage | None:
     running = sorted(power for _, power in means if power > RUNNING_ABOVE_W)
     # A high quantile: the power when it runs, not the average with switching on and off
     running_w = running[int(0.9 * (len(running) - 1))] if running else None
-    return ConsumerUsage(daily_wh=energy_wh / days, running_w=running_w, days=days)
+    return ConsumerUsage(daily_wh=energy_wh / _covered_days(means, timedelta(minutes=5)), running_w=running_w, days=days)
+
+
+def _covered_days(values: list[tuple[datetime, float]], step: timedelta) -> float:
+    """The time the values span in days: a window ending in the afternoon touches one calendar date more than it covers."""
+    moments = [moment for moment, _ in values]
+    return max((max(moments) - min(moments) + step) / timedelta(days=1), 1.0)
 
 
 def usage_from_energy(changes: list[tuple[datetime, float]]) -> ConsumerUsage | None:
@@ -138,7 +144,8 @@ def usage_from_energy(changes: list[tuple[datetime, float]]) -> ConsumerUsage | 
     days = len({moment.date() for moment, _ in changes})
     if days < MIN_CONSUMER_DAYS:
         return None
-    return ConsumerUsage(daily_wh=sum(max(c, 0.0) for _, c in changes) / days, running_w=None, days=days)
+    daily_wh = sum(max(c, 0.0) for _, c in changes) / _covered_days(changes, timedelta(hours=1))
+    return ConsumerUsage(daily_wh=daily_wh, running_w=None, days=days)
 
 
 async def learn_usage_from_energy(client: HAClient, entity_id: str) -> ConsumerUsage | None:

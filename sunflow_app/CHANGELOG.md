@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.78.68
+
+Review of the whole app, part 3 (planning and learning):
+
+- The day so far: the last hours are compared with what was expected for those hours, not with the raw forecast. A roof shaded all morning exactly as learned lowered the afternoon by up to 30 %.
+- Savings no longer swing within every quarter hour: the running slot counts for what is left of it in the comparison without Sunflow too, as it already did in the plan.
+- Level by sun position: a lower level applies only when at least two of the last days were below 90 % of the learned yield. One foggy morning scaled a clean plane down for the whole horizon, and never up.
+- Soiling: snow on the other planes no longer makes the clear plane look cleaned and then soiled; a drop ends when the plane is back near its clean share for three days, also without a sudden rise.
+- A hole in the published prices (one hour without a value) is bridged as an estimate instead of ending the plan there.
+- Learned daily need of a consumer: divided by the time covered, not by the calendar dates touched (up to 9 % too low).
+- Recommendations no longer fail when a consumer's daily energy is set to 0.
+- The price cache of Tibber and Nord Pool no longer grows by one price list every quarter hour.
+- Expectation by season: a day in two soiled periods counts once; regrowth after a cleaning only applies in the weeks after it.
+
 ## 0.78.67
 
 Review of the whole app, part 2 (API, recording, integration):

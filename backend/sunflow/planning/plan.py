@@ -1380,9 +1380,15 @@ def build_inputs(
     moment = start
     for _ in range(HORIZON_HOURS * 4):
         point = next((p for p in prices if p.start <= moment < p.end), None)
+        gap = None
         if prices and point is None:
-            break
-        price = point.price if point is not None else NOMINAL_PRICE
+            later = [p for p in prices if p.start > moment]
+            if not later:
+                break
+            # A hole in the published prices (one hour without a value, a failed request for today):
+            # carried over from its neighbour, not the end of the plan with all prices after it lost
+            gap = inputs[-1].price if inputs else min(later, key=lambda p: p.start).price
+        price = gap if gap is not None else point.price if point is not None else NOMINAL_PRICE
         inputs.append(
             SlotInput(
                 start=moment,
@@ -1391,7 +1397,7 @@ def build_inputs(
                 load_w=value_at(load.points, moment, "power") or 0.0,
                 price=price,
                 feed_in=feed_in,
-                price_estimated=point.estimated if point is not None else False,
+                price_estimated=gap is not None or (point.estimated if point is not None else False),
             )
         )
         moment += SLOT
@@ -1426,18 +1432,20 @@ def nowcast_weights(count: int) -> list[float]:
 
 
 def day_nowcast(
-    inputs: list[SlotInput], raw_pv: list[float], recent: tuple[float, float], tz: tzinfo
+    inputs: list[SlotInput], raw_pv: list[float], recent: tuple[float, float, float], tz: tzinfo
 ) -> tuple[list[SlotInput], list[float]]:
-    """Move the rest of today's expectation towards the share of the raw forecast measured lately.
+    """Move the rest of today's expectation by how the last hours went against what was expected for them.
 
-    recent: measured and raw forecast energy (Wh) of the last hours. Returns the slots and
-    per slot how much the measurement counts (0 from tomorrow on).
+    recent: measured, raw forecast and expected (learned) energy (Wh) of the last hours. Measured against
+    the expectation of the same hours, not against the raw forecast: a roof shaded all morning as learned
+    says nothing about the afternoon. Returns the slots and per slot how much the measurement counts
+    (0 from tomorrow on).
     """
-    measured_wh, raw_wh = recent
+    measured_wh, raw_wh, expected_wh = recent
     weights = [0.0] * len(inputs)
-    if raw_wh < DAY_NOWCAST_MIN_WH or not inputs:
+    if raw_wh < DAY_NOWCAST_MIN_WH or expected_wh <= 0 or not inputs:
         return inputs, weights
-    share = min(max(measured_wh / raw_wh, DAY_NOWCAST_RANGE[0]), DAY_NOWCAST_RANGE[1])
+    ratio = measured_wh / expected_wh
     today = inputs[0].start.astimezone(tz).date()
     result = []
     for index, (slot, raw) in enumerate(zip(inputs, raw_pv, strict=True)):
@@ -1445,8 +1453,9 @@ def day_nowcast(
             result.append(slot)
             continue
         weights[index] = 0.5 ** ((index * SLOT) / DAY_NOWCAST_HALF_LIFE)
-        learned = slot.pv_w / raw
-        pv = raw * (learned + (share - learned) * weights[index])
+        # No further than a plausible share of the raw forecast
+        target = min(max(slot.pv_w * ratio, raw * DAY_NOWCAST_RANGE[0]), raw * DAY_NOWCAST_RANGE[1])
+        pv = slot.pv_w + (target - slot.pv_w) * weights[index]
         factor = pv / slot.pv_w if slot.pv_w > 0 else 1.0
         low = min(slot.pv_low_w * factor, pv) if slot.pv_low_w is not None else None
         result.append(replace(slot, pv_w=pv, pv_low_w=low))
@@ -1515,13 +1524,13 @@ async def compute_plan(
     vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
-    pv_recent: tuple[float, float] | None = None,
+    pv_recent: tuple[float, float, float] | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule.
 
     consumer_hours: hourly power of all controllable consumers from Sunflow's own samples;
     vehicle_hours: hourly SoC per car from them; sun_corrections: correction by sun position;
-    pv_recent: measured and raw forecast PV energy (Wh) of the last hours
+    pv_recent: measured, raw forecast and expected PV energy (Wh) of the last hours
     per plane, used instead of the hourly one when switched on.
     """
     warnings: list[str] = []

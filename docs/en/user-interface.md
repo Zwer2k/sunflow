@@ -200,7 +200,7 @@ How well do forecasts and decisions match reality?
   If a plane delivers far less than usual at this sun position for several days in a row (without
   a history of its own: less than half of the forecast), a hint points to leaves, snow or dirt;
   Sunflow does not learn from these days. If a plane with a model delivered less than 90 % of the
-  learned yield in the last days (e.g. autumn leaves), Sunflow plans with this lower yield and goes
+  learned yield on at least two of the last days (e.g. autumn leaves), Sunflow plans with this lower yield and goes
   back by itself as soon as it delivers more (checked every 3 hours). "Relearn from today" also
   drops the history by sun position, so use it after trimming a tree or replacing modules, not
   after cleaning.

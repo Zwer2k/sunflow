@@ -165,3 +165,30 @@ def test_a_plane_that_joins_later_is_no_step_for_the_others() -> None:
     for i in range(30, 40):
         history[FIRST + timedelta(days=i)]["carport"] = (1500.0, 6000.0)
     assert [plane_state(history, key).changes for key in ("south_east", "north_west", "carport")] == [[], [], []]
+
+
+def test_snow_on_the_other_planes_is_no_cleaning_of_the_clear_one() -> None:
+    """Two roofs under snow for four days, the third clear: it did not change, and nothing stays soiled after."""
+    def day(i: int) -> dict[str, tuple[float, float]]:
+        snow = 0.05 if 20 <= i < 24 else 1.0
+        return {"a": (5000.0 * snow, 5000.0), "b": (4000.0 * snow, 4000.0), "c": (3000.0, 3000.0)}
+
+    history = {FIRST + timedelta(days=i): day(i) for i in range(40)}
+    assert plane_state(history, "c").as_dict() == {"changes": [], "soiled": [], "level": 1.0}
+
+
+@pytest.mark.parametrize(
+    ("shares", "soiled", "level"),
+    [
+        pytest.param([0.6] * 10 + [0.8] * 20 + [1.0] * 30, [{"from": "2026-11-16", "to": "2026-11-26"}], 1.0, id="back in steps"),
+        pytest.param([0.5] * 12, [{"from": "2026-11-16", "to": None}], 0.5, id="still down"),
+    ],
+)
+def test_a_drop_ends_when_the_plane_is_back(shares: list[float], soiled: list[dict[str, str | None]], level: float) -> None:
+    """A drop that recovers without a sudden rise (melting, rain) must not stay soiled for months."""
+    values = [1.0] * 20 + shares
+    history = {
+        FIRST + timedelta(days=i): {"roof": (5000.0 * share, 5000.0), "other": (4000.0, 4000.0)} for i, share in enumerate(values)
+    }
+    state = plane_state(history, "roof").as_dict()
+    assert (state["soiled"], state["level"]) == (soiled, level)

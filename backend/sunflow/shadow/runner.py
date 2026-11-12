@@ -28,9 +28,15 @@ from sunflow.devices.site import (
 from sunflow.ha import HAClient, HAError
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
-from sunflow.planning.plan import SLOT_HOURS, PlanResult, compute_plan, weather_entity
+from sunflow.planning.plan import (
+    SLOT,
+    SLOT_HOURS,
+    PlanResult,
+    compute_plan,
+    weather_entity,
+)
 from sunflow.planning.pv_episodes import SoilingHistory
-from sunflow.planning.pv_learning import PvCorrection, learn, learn_planes
+from sunflow.planning.pv_learning import PvCorrection, cloud_class, learn, learn_planes
 from sunflow.planning.pv_season import (
     PlaneSeason,
     compare,
@@ -118,7 +124,7 @@ async def current_plan(
     vehicle_hours: dict[str, list[tuple[datetime, float]]] | None = None,
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
-    pv_recent: tuple[float, float] | None = None,
+    pv_recent: tuple[float, float, float] | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -141,6 +147,33 @@ async def current_plan(
         sun_corrections,
         pv_recent,
     )
+
+
+def expected_pv_w(
+    row: dict[str, Any],
+    tz: tzinfo,
+    site: PvCorrection | None,
+    own: dict[str, PvCorrection],
+    sun: dict[str, SunCorrection],
+    location: tuple[float, float] | None,
+) -> float:
+    """What the plan expects for a recorded slot's raw forecast: each plane with the correction the plan uses."""
+    start = datetime.fromisoformat(row["start"])
+    hour, kind = start.astimezone(tz).hour, cloud_class(row.get("weather_cloud"))
+    site_factor = site.factor(hour, kind) if site is not None and site.slots else 1.0
+    planes = row.get("plane_forecasts") or {}
+    if not planes:
+        return row["forecast_pv_w"] * site_factor
+    total = 0.0
+    for key, power in planes.items():
+        if key in sun and location is not None:
+            factor = sun[key].factor_at(start + SLOT / 2, power, *location)
+        elif key in own and own[key].slots:
+            factor = own[key].factor(hour, kind)
+        else:
+            factor = site_factor
+        total += power * factor
+    return total
 
 
 async def take_sample(
@@ -639,13 +672,29 @@ class ShadowRunner:
         except (HAError, KeyError, TypeError):
             return None
 
-    def pv_recent(self) -> tuple[float, float] | None:
-        """Measured and raw forecast PV energy (Wh) of the last hours, for how the day goes."""
+    def pv_recent(self, tz: tzinfo) -> tuple[float, float, float] | None:
+        """Measured, raw forecast and expected PV energy (Wh) of the last hours, for how the day goes."""
         rows = self.shadow.rows(datetime.now(UTC) - PV_RECENT)
-        pairs = [(r["actual_pv_w"], r["forecast_pv_w"]) for r in rows if r["actual_pv_w"] is not None and r["forecast_pv_w"] is not None]
-        if not pairs:
+        rows = [r for r in rows if r["actual_pv_w"] is not None and r["forecast_pv_w"] is not None]
+        if not rows:
             return None
-        return sum(max(a, 0.0) for a, _ in pairs) * SLOT_HOURS, sum(f for _, f in pairs) * SLOT_HOURS
+        optimizer = self._store.load().optimizer
+        learning = optimizer.pv_learning
+        expected = [
+            expected_pv_w(
+                row, tz,
+                self._correction if learning else None,
+                self.plane_corrections if learning else {},
+                self.sun_corrections() if optimizer.pv_sun else {},
+                self._location,
+            )
+            for row in rows
+        ]
+        return (
+            sum(max(r["actual_pv_w"], 0.0) for r in rows) * SLOT_HOURS,
+            sum(r["forecast_pv_w"] for r in rows) * SLOT_HOURS,
+            sum(expected) * SLOT_HOURS,
+        )
 
     def sun_corrections(self) -> dict[str, SunCorrection]:
         """The learned corrections good enough to plan with, by plane key."""
@@ -728,7 +777,7 @@ class ShadowRunner:
             *await asyncio.to_thread(self.own_hours),
             chargers=self.controller.chargers if self.controller is not None else None,
             sun_corrections=self.sun_corrections(),
-            pv_recent=await asyncio.to_thread(self.pv_recent),
+            pv_recent=await asyncio.to_thread(self.pv_recent, await local_timezone(self._client)),
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
