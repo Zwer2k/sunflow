@@ -34,7 +34,8 @@ Hausspeicher, Haus und die steuerbaren Verbraucher wie Wallbox und Warmwasser. B
 zeigen, wohin die Energie gerade fließt.
 
 Rechts unter dem Energiefluss wählst du die Ansicht, jeder Browser merkt sich seine. Auf dem Handy
-ist das ein Knopf mit dem Symbol der aktuellen Ansicht, der die Auswahl öffnet. Diese Zeile, die
+ist das ein Knopf mit dem Symbol der aktuellen Ansicht ganz rechts in der Titelzeile „Live“, der die
+Auswahl öffnet. Die Zeile unter dem Energiefluss (Verluste), die
 Schnellsteuerung und die Tageswerte bleiben auf dem Handy beim Scrollen unten über der Menüleiste
 stehen, solange sie höchstens 60 % des Bildschirms brauchen:
 

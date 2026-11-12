@@ -33,7 +33,8 @@ home battery, house and the controllable loads such as wallbox and hot water. An
 where energy is going.
 
 Below the energy flow on the right you choose the view; each browser remembers its own. On a phone
-this is one button with the current view's symbol that opens the choice. On a phone this line, the
+this is one button with the current view's symbol at the far right of the "Live" title line, which
+opens the choice. On a phone the line below the energy flow (losses), the
 quick controls and today's figures stay at the bottom above the menu bar while scrolling, as long
 as they take at most 60 % of the screen:
 
