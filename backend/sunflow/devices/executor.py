@@ -292,11 +292,13 @@ class EepromGuard:
         self._max = max_writes_per_day
 
     def _load(self) -> dict[str, int]:
-        if not self._path.exists():
+        try:
+            data = json.loads(self._path.read_text())
+        except FileNotFoundError, ValueError:
+            # A file cut off by a crash must not block every write from then on
             return {}
-        data = json.loads(self._path.read_text())
         today = date.today().isoformat()
-        return data.get(today, {})
+        return data.get(today, {}) if isinstance(data, dict) else {}
 
     def allowed(self, entity_id: str) -> bool:
         """Return True if another write is allowed today."""
@@ -307,7 +309,9 @@ class EepromGuard:
         counts = self._load()
         counts[entity_id] = counts.get(entity_id, 0) + 1
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps({date.today().isoformat(): counts}))
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({date.today().isoformat(): counts}))
+        tmp.replace(self._path)
 
 
 def current_matches(

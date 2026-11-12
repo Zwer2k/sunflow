@@ -150,6 +150,12 @@ async def start_device_test(
         raise HTTPException(status_code=422, detail="Device has no battery control")
     if (running := _tests(request).get(device_id)) and running[0].running:
         raise HTTPException(status_code=409, detail="Test already running")
+    controller = getattr(request.app.state, "controller", None)
+    if controller is not None and controller.wanted(request.app.state.store.load(), device):
+        # Both would write to the battery within the same minute, and the verdict would be the plan's
+        raise HTTPException(
+            status_code=409, detail=t("Sunflow steuert dieses Gerät gerade – für den Test erst die Steuerung des Geräts ausschalten")
+        )
 
     state = DeviceTestState(device_id=device_id)
     read, apply_action, mode = _device_control(request, device, profile, state.calls)

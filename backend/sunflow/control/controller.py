@@ -15,6 +15,7 @@ the operating mode the device had before Sunflow took over. That previous mode i
 kept in a file, so it survives a restart of the app.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -151,8 +152,11 @@ class DeviceControl:
     # Chargers switching phases: the phases Sunflow charges with
     phases: int | None = None
     last_current_write: datetime | None = None
-    # Action last written to the device
+    # Action last written to the device, with the values it was written with
     last_action: str | None = None
+    last_runtime: dict[str, float] | None = None
+    # The last write failed part way (e.g. the committing press): written again whatever the entities show
+    incomplete: bool = False
     # Something the device does not do as told (e.g. the current set does not arrive)
     warning: str | None = None
     calls: list[dict[str, Any]] = field(default_factory=list)
@@ -588,16 +592,20 @@ async def apply(
         # Action calls (e.g. a temporary current over MQTT) cannot be read back: sent when they change
         calls = [c for c in calls if c.entity_id is not None]
     status.last_check = now
-    due = refresh is not None and status.last_write is not None and now - status.last_write >= refresh
-    if services_on_change and not due and status.last_action == action:
+    # Never written since the start: the entities may show what a device has already dropped on its own
+    due = refresh is not None and (status.last_write is None or now - status.last_write >= refresh)
+    force = due or status.incomplete
+    if services_on_change and not force and status.last_action == action and status.last_runtime == runtime:
         calls = [c for c in calls if c.entity_id is not None]
     # Numbers and selects that already hold the value need no write; a press commits them
-    if not due and all(access.matches(c, states) for c in calls if c.service != "press"):
+    if not force and all(access.matches(c, states) for c in calls if c.service != "press"):
         if access.journal is not None:
             access.journal.settled(status.device_id)
         return
+    # Until it went through: numbers written before a failed press would look settled next minute
+    status.incomplete = True
     try:
-        await access.run(calls, states, due)
+        await access.run(calls, states, force)
     except Exception as err:
         # Raised by Home Assistant (e.g. a Modbus exception of the inverter)
         if access.journal is not None:
@@ -618,6 +626,8 @@ async def apply(
     )
     status.last_write = now
     status.last_action = action
+    status.last_runtime = dict(runtime)
+    status.incomplete = False
     _LOGGER.info("%s: %s %s", status.name, action, f"{power:.0f} W" if power is not None else "")
 
 
@@ -844,6 +854,7 @@ class PlanController:
         self._surplus_short: dict[str, datetime] = {}
         # Surplus handed out in this tick (the live values do not show it yet)
         self._surplus_used = 0.0
+        self._lock = asyncio.Lock()
 
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive, a loadpoint with charge control or a PV limit."""
@@ -863,7 +874,8 @@ class PlanController:
 
     def wanted(self, config: SunflowConfig, device: DeviceConfig) -> bool:
         """Control is on for this device and it passed the checks."""
-        if device not in config.devices or self.blocked:
+        # A profile no longer loaded: one device must not stop the control step of the others
+        if device not in config.devices or self.blocked or device.profile not in self._profiles():
             return False
         return config.control.enabled and config.control.devices.get(device.id, False) and self.eligible(config, device) is None
 
@@ -871,6 +883,13 @@ class PlanController:
         self, config: SunflowConfig, plan: Any, plan_at: datetime | None, snapshot: Snapshot, now: datetime, live: Any = None
     ) -> None:
         """One control step; a failure on one device does not stop the others."""
+        # Not while a device is handed back from the settings: its release must not be overwritten
+        async with self._lock:
+            await self._tick(config, plan, plan_at, snapshot, now, live)
+
+    async def _tick(
+        self, config: SunflowConfig, plan: Any, plan_at: datetime | None, snapshot: Snapshot, now: datetime, live: Any
+    ) -> None:
         # Disabled devices are not controlled, but one taken over earlier is handed back properly
         devices = {d.id: d for d in [*config.disabled_devices, *config.devices]}
         self._config = config
@@ -959,6 +978,8 @@ class PlanController:
         limit = pv_limit_w(output, slot, live)
         refresh = profile["pv_limit"].get("refresh")
         status.reason = t("PV auf {limit} kW begrenzt ({reason})", limit=number(limit / 1000), reason=reason)
+        # Before the write: one that fails half way may have reached the device and is lifted later all the same
+        status.limit_w = limit
         await apply(
             access, bookkeeping, PV_SET, None, now, {"limit_w": limit},
             refresh=parse_duration(refresh, timedelta()) if refresh else None, services_on_change=True, reason=status.reason,
@@ -1027,10 +1048,15 @@ class PlanController:
         if budget is None or budget.slot != start or budget.power_w != power:
             budget = DischargeBudget(slot=start, power_w=power, energy_wh=power * (end - now).total_seconds() / 3600, last=now)
             self._budgets[device_id] = budget
-        # This battery's own power; the site value is the sum of all batteries
-        battery_w = (getattr(live, "battery_powers", None) or {}).get(device_id, getattr(live, "battery_w", None))
-        if battery_w is not None and battery_w < 0 and timedelta(0) < now - budget.last <= BUDGET_MAX_STEP:
-            budget.used_wh += -battery_w * (now - budget.last).total_seconds() / 3600
+        # This battery's own power; the site value is the sum of all batteries and only counts for a single one
+        powers = getattr(live, "battery_powers", None) or {}
+        battery_w = powers.get(device_id) if powers else getattr(live, "battery_w", None)
+        step = now - budget.last
+        if battery_w is not None and timedelta(0) < step <= BUDGET_MAX_STEP:
+            budget.used_wh += max(-battery_w, 0.0) * step.total_seconds() / 3600
+        elif step > timedelta(0):
+            # Not measured (sensor away, a gap): counts as used as planned, else the limit would climb
+            budget.used_wh += budget.power_w * step.total_seconds() / 3600
         budget.last = now
         remaining_wh = budget.energy_wh - budget.used_wh
         if remaining_wh < BUDGET_MIN_WH:
@@ -1376,9 +1402,10 @@ class PlanController:
         await hand_back(self._access_for(device), self._marker, device.id, status)
 
     async def hand_back_device(self, device: DeviceConfig) -> None:
-        """Hand one device back now (it is switched off in the setup)."""
-        if device.id in self._marker.get():
-            await self._safely(device.id, device, self._hand_back)
+        """Hand one device back now (it is switched off or removed in the setup)."""
+        async with self._lock:
+            if device.id in self._marker.get():
+                await self._safely(device.id, device, self._hand_back)
 
     async def release_all(self, config: SunflowConfig) -> None:
         """App shutdown: batteries to self-consumption (mode kept), loadpoints back to their own logic."""

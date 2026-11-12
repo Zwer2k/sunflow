@@ -259,3 +259,15 @@ def test_plugged_battery_drawing_only_a_top_up_is_full(tmp_path: Path, power: fl
     results = _minutes(watch, bike, plugged, 0, 8, True, power)
 
     assert (("stop", "Voll oder abgesteckt") in results) is full
+
+
+def test_full_stays_full_while_the_plug_sensor_is_away(tmp_path: Path) -> None:
+    """A reload makes the plug sensor unavailable for a moment; that is not unplugging."""
+    watch, bike = ChargerWatch(tmp_path), _bike(connected_entity="binary_sensor.bike_plugged", trigger_entity=None)
+    plugged, away = {"binary_sensor.bike_plugged": {"state": "on"}}, {"binary_sensor.bike_plugged": {"state": "unavailable"}}
+    _minutes(watch, bike, plugged, 1, 10, True, 0.0)
+    assert not watch.ready(bike, plugged)
+
+    watch.step(bike, False, 0.0, away, NOW + timedelta(minutes=20))
+
+    assert not watch.ready(bike, plugged)

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.78.66
+
+Robustness of the control, found in a review of the whole app:
+
+- A write that failed part way (e.g. the committing button press after the numbers were set, as with a Modbus timeout on the Sofar) is sent again the next minute. Before, the matching numbers looked settled and the inverter kept its old window until the plan changed.
+- The control step runs even when planning, sampling or storing a slot fails with an unexpected error; a device whose profile is missing no longer stops the others.
+- Partial discharge: while the battery's power is not measured the limit stays at the planned power instead of climbing through the quarter hour; live values older than 3 minutes are not used for control.
+- Devices that need a regular refresh (e.g. SolaX remote control) get it once after a restart, even if the entities still show the wanted values.
+- A changed power of an action that cannot be read back (Huawei forcible charge) is sent right away, not only at the next refresh.
+- A PV limit whose write failed is lifted again when curtailment ends.
+- Removing a device hands it back first; a device test is refused while Sunflow controls the device; handing back from the settings can no longer interleave with the control step.
+- A damaged write counter file (crash, full disk) no longer blocks every flash write; it is written atomically.
+- An own battery that is full stays full while its plug sensor is unavailable for a moment.
+- Learning by sun position is tried again 15 minutes after a failure (e.g. Home Assistant not reachable at the start) instead of the next day.
+
 ## 0.78.65
 
 - Soiling detection: a plane is only compared with the planes measured on all the days looked at. In the archive the day a new plane's data began (a carport far below its forecast) looked like a step of a roof, which was then listed as soiled for the whole time before.
