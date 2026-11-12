@@ -269,8 +269,12 @@ nach einer Stunde ohne Leistung.
   entgangenen Einspeisevergütung (wie evcc rechnet). **Bezahlt** ist nur der Netzbezug,
   **Gespart** der Unterschied zu allem aus dem Netz; beides nur aus Sunflows eigener Aufzeichnung.
   **Ø Leistung** zählt nur die Zeit, in der Leistung floss, nicht das Angesteckt-Warten.
-- **Je Monat** als Balken nach Herkunft (Sonne, Hausspeicher, Netz), dazu Tabellen je Verbraucher
-  und je Fahrzeug und die Liste der Ladevorgänge mit Fahrzeug, Karte und Ladestand vorher/nachher.
+- **Diagramm wie bei evcc**: Energie, Sonnenanteil oder Preis je Monat oder Jahr; die Energie
+  gestapelt nach Herkunft (Sonne, Hausspeicher, Netz), nach Verbraucher oder nach Fahrzeug (die
+  fünf größten, der Rest als „Andere“).
+- **Aufteilung der Energie** als Ringe je Verbraucher und je Fahrzeug, dazu Tabellen je
+  Verbraucher und je Fahrzeug und die Liste der Ladevorgänge mit Fahrzeug, Karte und Ladestand
+  vorher/nachher.
 - **Daten aus evcc übernehmen …** (zugeklappt ganz unten): einmalig, über die Adresse von evcc (Sunflow liest
   `/api/sessions`) oder eine Datei (diese Antwort als JSON oder der CSV-Export der
   Ladevorgänge-Seite von evcc, deutsch oder englisch, auch mit Ladestand vorher/nachher). Die Vorschau zeigt Zahl und Zeitraum und

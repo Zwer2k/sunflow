@@ -28,7 +28,7 @@ const monthYear = new Intl.DateTimeFormat(locale(), { month: "short", year: "2-d
 const whole = new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 });
 const kwh = (wh) => (Math.abs(wh) >= 100_000 ? `${whole.format(wh / 1000)} kWh` : formatValue(wh, "Wh"));
 // Axis steps are round: no decimals needed
-const axisKwh = (wh) => `${decimal(wh >= 1000 ? Math.round(wh / 1000) : wh / 1000)} kWh`;
+const axisKwh = (wh) => (wh >= 1000 ? `${new Intl.NumberFormat(locale()).format(Math.round(wh / 1000))} kWh` : `${decimal(wh / 1000)} kWh`);
 const pct = (share) => (share === null || share === undefined ? "–" : `${decimal(Math.round(share * 100))} %`);
 const euro = (value) => (value === null || value === undefined ? "–" : new Intl.NumberFormat(locale(), { style: "currency", currency: "EUR" }).format(value));
 const ct = (perKwh) => (perKwh === null || perKwh === undefined ? "–" : `${decimal((perKwh * 100).toFixed(1))} ct/kWh`);
@@ -43,6 +43,7 @@ class SunflowStats extends LitElement {
     _vehicle: { state: true },
     _shown: { state: true },
     _import: { state: true },
+    _chart: { state: true },
   };
 
   constructor() {
@@ -53,6 +54,8 @@ class SunflowStats extends LitElement {
     this._device = "";
     this._vehicle = "";
     this._shown = SESSIONS_SHOWN;
+    // The chart as evcc's: what, grouped by what, per month or year
+    this._chart = { metric: "energy", group: "origin", step: "month" };
     // The import's steps: source given, preview with matching, busy, result
     this._import = { url: "", content: null, file: null, preview: null, loadpoints: {}, vehicles: {}, busy: false, error: null, result: null };
   }
@@ -150,58 +153,109 @@ class SunflowStats extends LitElement {
         ${tile(t("Ø Leistung"), s.mean_power_w ? formatValue(s.mean_power_w, "W") : "–", t("{hours} h", { hours: decimal(s.hours) }))}
       </div>
       ${data.imported ? html`<p class="small muted">${t("Enthält {count} aus evcc übernommene Ladevorgänge (vor der eigenen Aufzeichnung).", { count: data.imported })}</p>` : nothing}
-      <section>
-        <h2>${t("Je Monat")}</h2>
-        ${this._monthChart(data.months)}
-      </section>
+      ${this._renderChart(data.sessions)}
+      ${this._renderShares(data.sessions)}
       ${data.consumers.length > 1 ? this._renderGroup(t("Je Verbraucher"), data.consumers) : nothing}
       ${data.vehicles.length ? this._renderGroup(t("Je Fahrzeug"), data.vehicles) : nothing}
       ${this._renderSessions(data.sessions)}
     `;
   }
 
-  /** Stacked bars per month: energy from PV, home battery and grid. */
-  _monthChart(months) {
-    if (!months.length) return nothing;
+  /** evcc's chart of the sessions page: energy, solar share or price per month or year, energy grouped as chosen. */
+  _renderChart(sessions) {
+    const { metric, group, step } = this._chart;
+    const periods = periodKeys(sessions, step);
+    if (!periods.length) return nothing;
+    const set = (changes) => (this._chart = { ...this._chart, ...changes });
+    const seg = (key, options, value) => html`<div class="range" role="group">
+      ${options.map(([v, label]) => html`<button class=${value === v ? "active" : ""} aria-pressed=${value === v} @click=${() => set({ [key]: v })}>${label}</button>`)}
+    </div>`;
+    let stacks;
+    let format;
+    if (metric === "energy") {
+      stacks = energyStacks(sessions, periods, step, group);
+      format = { axis: axisKwh, value: kwh };
+    } else {
+      const totals = periods.map((p) => summarize(sessions.filter((s) => periodOf(s, step) === p)));
+      const values = totals.map((s) => (metric === "solar" ? s.solar_share : s.price_per_kwh));
+      stacks = [{ name: metric === "solar" ? t("Sonnenanteil") : t("Ø Preis"), color: metric === "solar" ? "var(--sf-series-4)" : "var(--sf-series-6)", values }];
+      format = metric === "solar"
+        ? { axis: (v) => `${Math.round(v * 100)} %`, value: pct, max: 1 }
+        : { axis: (v) => `${decimal(Math.round(v * 100))} ct`, value: ct };
+    }
+    return html`<section>
+      <div class="section-head">
+        <h2>${step === "year" ? t("Je Jahr") : t("Je Monat")}</h2>
+        <div class="chart-controls">
+          ${seg("metric", [["energy", t("Energie")], ["solar", t("Sonnenanteil")], ["price", t("Preis")]], metric)}
+          ${metric === "energy" ? seg("group", [["origin", t("Herkunft")], ["consumer", t("Verbraucher")], ["vehicle", t("Fahrzeug")]], group) : nothing}
+          ${seg("step", [["month", t("Monat")], ["year", t("Jahr")]], step)}
+        </div>
+      </div>
+      ${this._barChart(periods.map((p) => periodLabel(p, step, periods)), stacks, format)}
+      ${stacks.length > 1 || metric === "energy"
+        ? html`<div class="legend small">${stacks.map((s) => html`<span class="legend-item"><span class="swatch" style="background:${s.color}"></span>${s.name}</span>`)}</div>`
+        : nothing}
+    </section>`;
+  }
+
+  /** Bars per period; several stacks are drawn on top of each other. labels: [{text, show, title}]. */
+  _barChart(labels, stacks, { axis, value, max = null }) {
     // In screen pixels, so the 11 px text stays 11 px on a PC and a phone
     const W = Math.min(Math.max((this.getBoundingClientRect().width || 720) - 2, 300), 1200);
     const H = 220;
     const pad = { left: 62, right: 8, top: 12, bottom: 26 };
-    const max = Math.max(...months.map((m) => m.energy_wh), 1);
-    const step = niceStep(max / 4);
-    const top = Math.ceil(max / step) * step;
-    const width = (W - pad.left - pad.right) / months.length;
-    const y = (wh) => H - pad.bottom - (wh / top) * (H - pad.top - pad.bottom);
-    const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
-    const many = months.length > 14;
-    return html`
-      <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${t("Energie je Monat nach Herkunft")}>
-        ${ticks.map((v) => svg`<line x1=${pad.left} x2=${W - pad.right} y1=${y(v)} y2=${y(v)} class="grid"></line>
-          <text x=${pad.left - 6} y=${y(v) + 4} class="axis" text-anchor="end">${axisKwh(v)}</text>`)}
-        ${months.map((m, i) => {
-          const x = pad.left + i * width + width * 0.15;
-          const date = new Date(`${m.month}-01T12:00:00`);
-          let base = 0;
-          // Imported sessions only know a solar share: their own part counts as PV
-          const parts = m.pv_wh + m.battery_wh + m.grid_wh > 0 ? ORIGINS.map(([key, , color]) => [m[key], color]) : [[m.energy_wh, ORIGINS[2][2]]];
-          return svg`<g>
-            ${parts.map(([value, color]) => {
-              const y0 = y(base);
-              base += value;
-              const h = y0 - y(base);
-              return h > 0.5 ? svg`<rect x=${x} y=${y(base)} width=${width * 0.7} height=${h} rx="2" style="fill: ${color}"></rect>` : nothing;
-            })}
-            <rect x=${pad.left + i * width} y=${pad.top} width=${width} height=${H - pad.top - pad.bottom} class="hit">
-              <title>${monthYear.format(date)}: ${kwh(m.energy_wh)} · ${t("Sonnenanteil")} ${pct(m.solar_share)} · ${ct(m.price_per_kwh)} · ${t("{count} Ladevorgänge", { count: m.sessions })}</title>
-            </rect>
-            ${!many || date.getMonth() % 3 === 0
-              ? svg`<text x=${pad.left + (i + 0.5) * width} y=${H - 8} class="axis" text-anchor="middle">${date.getMonth() === 0 || i === 0 ? monthYear.format(date) : monthName.format(date)}</text>`
-              : nothing}
-          </g>`;
-        })}
-      </svg>
-      <div class="legend small">${ORIGINS.map(([, label, color]) => html`<span class="legend-item"><span class="swatch" style="background:${color}"></span>${label}</span>`)}</div>
-    `;
+    const sums = labels.map((_, i) => stacks.reduce((sum, s) => sum + (s.values[i] ?? 0), 0));
+    const top = max ?? (() => {
+      const highest = Math.max(...sums, 1e-9);
+      const step = niceStep(highest / 4);
+      return Math.ceil(highest / step) * step;
+    })();
+    const tickStep = max ?? niceStep(top / 4);
+    const ticks = max ? [0, 0.25, 0.5, 0.75, 1] : Array.from({ length: Math.round(top / tickStep) + 1 }, (_, i) => i * tickStep);
+    const width = (W - pad.left - pad.right) / labels.length;
+    const y = (v) => H - pad.bottom - (v / top) * (H - pad.top - pad.bottom);
+    return html`<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label=${stacks.map((s) => s.name).join(", ")}>
+      ${ticks.map((v) => svg`<line x1=${pad.left} x2=${W - pad.right} y1=${y(v)} y2=${y(v)} class="grid"></line>
+        <text x=${pad.left - 6} y=${y(v) + 4} class="axis" text-anchor="end">${axis(v)}</text>`)}
+      ${labels.map((label, i) => {
+        const x = pad.left + i * width + width * 0.15;
+        let base = 0;
+        return svg`<g>
+          ${stacks.map((s) => {
+            const v = s.values[i];
+            if (v === null || v === undefined || v <= 0) return nothing;
+            const y0 = y(base);
+            base += v;
+            return svg`<rect x=${x} y=${y(base)} width=${width * 0.7} height=${Math.max(y0 - y(base), 0.5)} rx="2" style="fill: ${s.color}"></rect>`;
+          })}
+          <rect x=${pad.left + i * width} y=${pad.top} width=${width} height=${H - pad.top - pad.bottom} class="hit">
+            <title>${label.title}: ${stacks.filter((s) => s.values[i]).map((s) => `${stacks.length > 1 ? `${s.name} ` : ""}${value(s.values[i])}`).join(" · ") || "–"}</title>
+          </rect>
+          ${label.show ? svg`<text x=${pad.left + (i + 0.5) * width} y=${H - 8} class="axis" text-anchor="middle">${label.text}</text>` : nothing}
+        </g>`;
+      })}
+    </svg>`;
+  }
+
+  /** How the energy is shared among the consumers and the vehicles, as evcc's rings. */
+  _renderShares(sessions) {
+    const rings = [
+      [t("Je Verbraucher"), shares(sessions, (s) => s.consumer)],
+      [t("Je Fahrzeug"), shares(sessions.filter((s) => s.vehicle), (s) => s.vehicle)],
+    ].filter(([, parts]) => parts.length > 1);
+    if (!rings.length) return nothing;
+    return html`<section>
+      <h2>${t("Aufteilung der Energie")}</h2>
+      <div class="rings">${rings.map(([title, parts]) => html`<figure class="ring">
+        ${donut(parts, title)}
+        <figcaption>
+          <strong class="small">${title}</strong>
+          ${parts.map((p) => html`<span class="legend-item small"><span class="swatch" style="background:${p.color}"></span>${p.name}
+            <span class="muted">${pct(p.share)} · ${kwh(p.energy_wh)}</span></span>`)}
+        </figcaption>
+      </figure>`)}</div>
+    </section>`;
   }
 
   _renderGroup(title, rows) {
@@ -372,6 +426,14 @@ class SunflowStats extends LitElement {
     .chart .axis { fill: var(--sf-muted); font-size: 11px; }
     .chart .hit { fill: transparent; }
     .chart .hit:hover { fill: var(--sf-subtle); fill-opacity: 0.4; }
+    .section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+    .section-head h2 { margin: 0; }
+    .chart-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chart-controls .range button { min-height: 30px; padding: 0 10px; font-size: 12px; }
+    .rings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+    .ring { margin: 0; display: flex; align-items: center; gap: 16px; }
+    .donut { width: 120px; height: 120px; flex: none; }
+    .ring figcaption { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
     .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--sf-muted); }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
@@ -406,8 +468,112 @@ class SunflowStats extends LitElement {
 
 /** A round step for the axis (1, 2 or 5 times a power of ten) of at least the given size. */
 function niceStep(raw) {
-  const power = 10 ** Math.floor(Math.log10(Math.max(raw, 1)));
+  // Also below 1 (prices in €/kWh)
+  const power = 10 ** Math.floor(Math.log10(raw > 0 ? raw : 1));
   return [1, 2, 5, 10].map((f) => f * power).find((s) => s >= raw) ?? 10 * power;
+}
+
+// Series beyond these become "other"
+const MAX_SERIES = 5;
+const OTHER_COLOR = "var(--sf-series-neutral)";
+
+function periodOf(session, step) {
+  const start = new Date(session.start);
+  return step === "year" ? `${start.getFullYear()}` : `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Every month (or year) from the first to the last session, empty ones too. */
+function periodKeys(sessions, step) {
+  if (!sessions.length) return [];
+  const keys = sessions.map((s) => periodOf(s, step)).sort();
+  const [first, last] = [keys[0], keys.at(-1)];
+  const result = [];
+  if (step === "year") {
+    for (let y = Number(first); y <= Number(last); y += 1) result.push(`${y}`);
+    return result;
+  }
+  let [y, m] = first.split("-").map(Number);
+  for (;;) {
+    const key = `${y}-${String(m).padStart(2, "0")}`;
+    if (key > last) break;
+    result.push(key);
+    [y, m] = m === 12 ? [y + 1, 1] : [y, m + 1];
+  }
+  return result;
+}
+
+function periodLabel(key, step, all) {
+  if (step === "year") return { text: key, show: true, title: key };
+  const date = new Date(`${key}-01T12:00:00`);
+  const many = all.length > 14;
+  const show = !many || date.getMonth() % 3 === 0;
+  const text = date.getMonth() === 0 || key === all[0] ? monthYear.format(date) : monthName.format(date);
+  return { text, show, title: monthYear.format(date) };
+}
+
+/** Energy per period: by origin, or by the largest consumers or vehicles (the rest as "other"). */
+function energyStacks(sessions, periods, step, group) {
+  const index = new Map(periods.map((p, i) => [p, i]));
+  if (group === "origin") {
+    return ORIGINS.map(([key, name, color]) => {
+      const values = periods.map(() => 0);
+      for (const s of sessions) values[index.get(periodOf(s, step))] += s[key];
+      return { name, color, values };
+    });
+  }
+  const nameOf = group === "consumer" ? (s) => s.consumer : (s) => s.vehicle || t("ohne Fahrzeug");
+  const ranked = shares(sessions, nameOf);
+  return ranked.map((part) => {
+    const values = periods.map(() => 0);
+    for (const s of sessions) if (part.members.has(nameOf(s))) values[index.get(periodOf(s, step))] += s.energy_wh;
+    return { name: part.name, color: part.color, values };
+  });
+}
+
+/** Energy per name, the largest first with their colours; the smallest together as "other". */
+function shares(sessions, nameOf) {
+  const sums = new Map();
+  for (const s of sessions) sums.set(nameOf(s), (sums.get(nameOf(s)) ?? 0) + s.energy_wh);
+  const total = [...sums.values()].reduce((a, b) => a + b, 0) || 1;
+  const sorted = [...sums.entries()].sort((a, b) => b[1] - a[1]);
+  const kept = sorted.length > MAX_SERIES + 1 ? sorted.slice(0, MAX_SERIES) : sorted;
+  const parts = kept.map(([name, wh], i) => ({ name, energy_wh: wh, share: wh / total, color: `var(--sf-series-${i + 1})`, members: new Set([name]) }));
+  if (kept.length < sorted.length) {
+    const rest = sorted.slice(kept.length);
+    const wh = rest.reduce((sum, [, v]) => sum + v, 0);
+    parts.push({ name: t("Andere"), energy_wh: wh, share: wh / total, color: OTHER_COLOR, members: new Set(rest.map(([n]) => n)) });
+  }
+  return parts;
+}
+
+/** Solar share and price of some sessions, counted as the backend does. */
+function summarize(sessions) {
+  const energy = sessions.reduce((sum, s) => sum + s.energy_wh, 0);
+  const own = sessions.reduce((sum, s) => sum + (s.solar_share ?? 0) * s.energy_wh, 0);
+  const priced = sessions.filter((s) => s.cost_eur || s.grid_only_eur);
+  const pricedWh = priced.reduce((sum, s) => sum + s.energy_wh, 0);
+  return {
+    solar_share: energy ? own / energy : null,
+    price_per_kwh: pricedWh ? priced.reduce((sum, s) => sum + s.cost_eur, 0) / (pricedWh / 1000) : null,
+  };
+}
+
+/** A ring of the parts' shares. */
+function donut(parts, label) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  return html`<svg viewBox="0 0 140 140" class="donut" role="img" aria-label=${label}>
+    <g transform="rotate(-90 70 70)">
+      ${parts.map((p) => {
+        const length = p.share * c;
+        const segment = svg`<circle cx="70" cy="70" r=${r} fill="none" stroke-width="22" style="stroke: ${p.color}"
+          stroke-dasharray="${Math.max(length - 1.5, 0)} ${c}" stroke-dashoffset=${-offset}><title>${p.name}: ${pct(p.share)}</title></circle>`;
+        offset += length;
+        return segment;
+      })}
+    </g>
+  </svg>`;
 }
 
 customElements.define("sunflow-stats", SunflowStats);
