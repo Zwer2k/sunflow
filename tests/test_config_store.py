@@ -256,4 +256,6 @@ def test_relations_move_out_of_devices_and_vehicles(tmp_path: Path) -> None:
     assert config.battery_modules == {"inv": ["m1"]}
     assert config.vehicles[0].model_dump().keys() == {"id", "name", "capacity_wh", "charge_efficiency_pct", "soc_entity", "plugged_entity", "estimate_soc", "max_power_1p_w", "max_power_3p_w", "aux_battery"}
     (profile,) = config.charging
-    assert (profile.vehicle_id, profile.wallbox_id, profile.card, profile.flex.target) == ("fiat", "wb", 1, 80)
+    # Version 4: the card became one of a list, with the settings it charged with until then
+    ((card,),) = [profile.cards]
+    assert (profile.vehicle_id, profile.wallbox_id, card.number, card.flex.target, profile.flex.target) == ("fiat", "wb", 1, 80, 80)

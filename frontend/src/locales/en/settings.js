@@ -372,4 +372,9 @@ export default {
   "Kurzbezeichnung": "Short name",
   "Bis 8 Zeichen, für die Live-Ansicht mit mehreren Speichern.": "Up to 8 characters, for the live view with several batteries.",
   "Kurzbezeichnung nicht gespeichert: {error}": "Short name not saved: {error}",
+  "Erkannt ohne Karte (Sensor, Auswahl, einziges Fahrzeug)": "Recognized without a card (sensor, choice, only vehicle)",
+  "+ Karte hinzufügen": "+ Add card",
+  "Karte": "Card",
+  "Name (statt der Nummer angezeigt)": "Name (shown instead of the number)",
+  "Karte entfernen": "Remove card",
 };

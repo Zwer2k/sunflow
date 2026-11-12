@@ -106,9 +106,9 @@ async def set_charging(request: Request, profiles: list[ChargingProfile]) -> dic
     if any(p.wallbox_id not in wallboxes or p.vehicle_id not in vehicles for p in profiles):
         raise HTTPException(status_code=422, detail="Unknown wallbox or vehicle")
     pairs = [(p.wallbox_id, p.vehicle_id) for p in profiles]
-    cards = [(p.wallbox_id, p.card) for p in profiles if p.card]
+    cards = [(p.wallbox_id, c.number) for p in profiles for c in p.cards]
     if len(pairs) != len(set(pairs)) or len(cards) != len(set(cards)):
-        raise HTTPException(status_code=422, detail=t("Eine Karte ist an einer Wallbox mehreren Fahrzeugen zugeordnet"))
+        raise HTTPException(status_code=422, detail=t("Eine Kartennummer ist an einer Wallbox mehrfach vergeben"))
     config.charging = profiles
     store.save(config)
     _replan(request)

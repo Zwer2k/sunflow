@@ -12,6 +12,12 @@ const DETECTION = [
   ["single", t("Einziges zugeordnetes Fahrzeug"), t("Ist nur eines zugeordnet, gilt immer dieses.")],
 ];
 const STRATEGIES = { cost: t("Kostenoptimal"), pv_only: t("Nur PV-Überschuss"), fast: t("Schnellstmöglich") };
+// Cards a go-e knows
+const CARD_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const DEFAULT_FLEX = { strategy: "cost", target: null, ready_by: null, uses_battery: true };
+
+/** A profile to edit: its settings and cards copied, so an edit does not change what was loaded. */
+const copyProfile = (c) => ({ ...c, flex: { ...c.flex }, cards: (c.cards ?? []).map((card) => ({ ...card, flex: { ...card.flex } })) });
 
 /**
  * Which vehicle charges at which wallbox and how (settings area "Laden"): a charging
@@ -47,7 +53,7 @@ class SunflowCharging extends LitElement {
   async _load() {
     try {
       this._data = await api.vehicles();
-      this._profiles = this._data.charging.map((c) => ({ ...c, flex: { ...c.flex } }));
+      this._profiles = this._data.charging.map(copyProfile);
       this._dirty = new Set();
       this._detections = {};
     } catch (err) {
@@ -97,16 +103,21 @@ class SunflowCharging extends LitElement {
 
   _renderProfile(wallbox, vehicle) {
     const profile = this._profiles.find((p) => p.wallbox_id === wallbox.id && p.vehicle_id === vehicle.id);
-    const update = (changes) => {
-      this._profiles = this._profiles.map((p) => (p === profile ? { ...p, ...changes, flex: { ...p.flex, ...(changes.flex ?? {}) } } : p));
+    const replace = (next) => {
+      this._profiles = this._profiles.map((p) => (p === profile ? next : p));
       this._markDirty(wallbox.id);
     };
     const toggle = (on) => {
       this._profiles = on
-        ? [...this._profiles, { vehicle_id: vehicle.id, wallbox_id: wallbox.id, card: null, flex: { strategy: "cost", target: null, ready_by: null, uses_battery: true } }]
+        ? [...this._profiles, { vehicle_id: vehicle.id, wallbox_id: wallbox.id, cards: [], flex: { ...DEFAULT_FLEX } }]
         : this._profiles.filter((p) => p !== profile);
       this._markDirty(wallbox.id);
     };
+    const setCard = (index, changes) =>
+      replace({
+        ...profile,
+        cards: profile.cards.map((c, i) => (i === index ? { ...c, ...changes, flex: { ...c.flex, ...(changes.flex ?? {}) } } : c)),
+      });
     return html`
       <div class="sub ${profile ? "" : "off"}">
         <label class="inline">
@@ -114,43 +125,83 @@ class SunflowCharging extends LitElement {
           <strong>${vehicle.name}</strong>
         </label>
         ${profile
-          ? html`<div class="fields">
+          ? html`
+              ${wallbox.cards ? html`<div class="small muted part">${t("Erkannt ohne Karte (Sensor, Auswahl, einziges Fahrzeug)")}</div>` : nothing}
+              ${this._renderFlex(profile.flex, (flex) => replace({ ...profile, flex: { ...profile.flex, ...flex } }))}
               ${wallbox.cards
-                ? html`<label class="field">
-                    <span class="field-label">${t("Karte an dieser Wallbox")}</span>
-                    <select @change=${(e) => update({ card: e.target.value ? Number(e.target.value) : null })}>
-                      <option value="" ?selected=${!profile.card}>${t("keine")}</option>
-                      ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => html`<option value=${n} ?selected=${profile.card === n}>${t("Karte {number}", { number: n })}</option>`)}
-                    </select>
-                  </label>`
-                : nothing}
-              <label class="field">
-                <span class="field-label">${t("Ziel-Ladestand")}</span>
-                <span class="input-unit"><input inputmode="decimal" placeholder="100"
-                  .value=${profile.flex.target === null || profile.flex.target === undefined ? "" : toDisplay(profile.flex.target, "%")}
-                  @input=${(e) => update({ flex: { target: e.target.value === "" ? null : fromDisplay(e.target.value, "%") } })}>
-                  <span class="muted">%</span></span>
-              </label>
-              <label class="field">
-                <span class="field-label">${t("Fertig bis (täglich)")}</span>
-                <span class="input-unit"><input type="time" .value=${profile.flex.ready_by ?? ""}
-                  @change=${(e) => update({ flex: { ready_by: e.target.value || null } })}></span>
-              </label>
-              <label class="field">
-                <span class="field-label">${t("Laden")}</span>
-                <select @change=${(e) => update({ flex: { strategy: e.target.value } })}>
-                  ${Object.entries(STRATEGIES).map(([value, label]) => html`<option value=${value} ?selected=${profile.flex.strategy === value}>${label}</option>`)}
-                </select>
-              </label>
-              <label class="field">
-                <span class="field-label">${t("Hausspeicher")}</span>
-                <span class="inline"><input type="checkbox" .checked=${profile.flex.uses_battery !== false}
-                  @change=${(e) => update({ flex: { uses_battery: e.target.checked } })}>${t("darf ins Auto entladen")}</span>
-              </label>
-            </div>`
+                ? html`
+                    ${profile.cards.map((card, index) => this._renderCard(wallbox, profile, card, index, setCard))}
+                    <div><button class="secondary small-button" ?disabled=${!this._freeNumber(wallbox)}
+                      @click=${() => replace({ ...profile, cards: [...profile.cards, { number: this._freeNumber(wallbox), name: null, flex: { ...profile.flex } }] })}>
+                      ${t("+ Karte hinzufügen")}</button></div>`
+                : nothing}`
           : nothing}
       </div>
     `;
+  }
+
+  /** One card of the vehicle: number, name and how the car charges when it is scanned. */
+  _renderCard(wallbox, profile, card, index, setCard) {
+    const taken = new Set(
+      this._profiles.filter((p) => p.wallbox_id === wallbox.id).flatMap((p) => p.cards.filter((c) => c !== card).map((c) => c.number)),
+    );
+    const remove = () => {
+      this._profiles = this._profiles.map((p) => (p === profile ? { ...p, cards: p.cards.filter((c) => c !== card) } : p));
+      this._markDirty(wallbox.id);
+    };
+    return html`<div class="card">
+      <div class="card-head">
+        <label class="field number">
+          <span class="field-label">${t("Karte")}</span>
+          <select @change=${(e) => setCard(index, { number: Number(e.target.value) })}>
+            ${CARD_NUMBERS.map((n) => html`<option value=${n} ?selected=${card.number === n} ?disabled=${taken.has(n)}>${n}</option>`)}
+          </select>
+        </label>
+        <label class="field name">
+          <span class="field-label">${t("Name")}</span>
+          <span class="input-unit"><input maxlength="40" placeholder=${t("Karte {number}", { number: card.number })} .value=${card.name ?? ""}
+            @input=${(e) => setCard(index, { name: e.target.value || null })}></span>
+        </label>
+        <button class="secondary remove" title=${t("Karte entfernen")} aria-label=${t("Karte entfernen")} @click=${remove}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"></path></svg></button>
+      </div>
+      ${this._renderFlex(card.flex, (flex) => setCard(index, { flex }))}
+    </div>`;
+  }
+
+  /** Target, ready-by time, strategy and battery use: of a vehicle at a wallbox, or of one of its cards. */
+  _renderFlex(flex, update) {
+    return html`<div class="fields">
+      <label class="field">
+        <span class="field-label">${t("Ziel-Ladestand")}</span>
+        <span class="input-unit"><input inputmode="decimal" placeholder="100"
+          .value=${flex.target === null || flex.target === undefined ? "" : toDisplay(flex.target, "%")}
+          @input=${(e) => update({ target: e.target.value === "" ? null : fromDisplay(e.target.value, "%") })}>
+          <span class="muted">%</span></span>
+      </label>
+      <label class="field">
+        <span class="field-label">${t("Fertig bis (täglich)")}</span>
+        <span class="input-unit"><input type="time" .value=${flex.ready_by ?? ""}
+          @change=${(e) => update({ ready_by: e.target.value || null })}></span>
+      </label>
+      <label class="field">
+        <span class="field-label">${t("Laden")}</span>
+        <select @change=${(e) => update({ strategy: e.target.value })}>
+          ${Object.entries(STRATEGIES).map(([value, label]) => html`<option value=${value} ?selected=${flex.strategy === value}>${label}</option>`)}
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">${t("Hausspeicher")}</span>
+        <span class="inline"><input type="checkbox" .checked=${flex.uses_battery !== false}
+          @change=${(e) => update({ uses_battery: e.target.checked })}>${t("darf ins Auto entladen")}</span>
+      </label>
+    </div>`;
+  }
+
+  /** The lowest card number nobody uses at this wallbox yet; null when all are taken. */
+  _freeNumber(wallbox) {
+    const taken = new Set(this._profiles.filter((p) => p.wallbox_id === wallbox.id).flatMap((p) => p.cards.map((c) => c.number)));
+    return CARD_NUMBERS.find((n) => !taken.has(n)) ?? null;
   }
 
   _renderDetection(wallbox) {
@@ -196,7 +247,7 @@ class SunflowCharging extends LitElement {
 
   /** Charging profiles and recognition together, so one button saves what was changed. */
   async _save() {
-    if (this._profiles.some((p) => p.flex.target === undefined)) {
+    if (this._profiles.some((p) => p.flex.target === undefined || p.cards.some((c) => c.flex.target === undefined))) {
       this._error = t("Bitte einen gültigen Ziel-Ladestand eingeben.");
       return;
     }
@@ -206,7 +257,7 @@ class SunflowCharging extends LitElement {
         await api.setVehicleDetection(wallboxId, detection);
       }
       this._data = await api.setCharging(this._profiles);
-      this._profiles = this._data.charging.map((c) => ({ ...c, flex: { ...c.flex } }));
+      this._profiles = this._data.charging.map(copyProfile);
       this._dirty = new Set();
       this._detections = {};
       this._error = null;
@@ -245,6 +296,16 @@ class SunflowCharging extends LitElement {
       flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; font-size: 15px;
       border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
     }
+    .part { font-weight: 500; }
+    /* A card of the vehicle: its own box inside the vehicle's */
+    .card { display: flex; flex-direction: column; gap: 10px; border-top: 1px dashed var(--sf-border); padding-top: 12px; }
+    /* Number, name and remove in one line, also on a phone */
+    .card-head { display: flex; align-items: flex-end; gap: 10px; }
+    .card-head .number { flex: 0 0 76px; }
+    .card-head .name { flex: 1 1 auto; min-width: 0; }
+    .secondary.remove { flex: none; width: 44px; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--sf-muted); }
+    .remove svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .small-button { min-height: 40px; padding: 0 14px; font-size: 14px; }
     .checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
     .inline { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; }
     .inline input { width: 18px; height: 18px; margin: 0; }

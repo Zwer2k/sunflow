@@ -587,11 +587,14 @@ def test_vehicles_cards_and_manual_choice(tmp_path: Path) -> None:
 
     def charging(card_fiat: int, card_tesla: int, wallbox: str = "wb") -> list[dict]:
         return [
-            {"vehicle_id": "fiat", "wallbox_id": wallbox, "card": card_fiat},
-            {"vehicle_id": "tesla", "wallbox_id": "wb", "card": card_tesla, "flex": {"target": 80}},
+            {"vehicle_id": "fiat", "wallbox_id": wallbox, "cards": [{"number": card_fiat}]},
+            {"vehicle_id": "tesla", "wallbox_id": "wb", "cards": [{"number": card_tesla}], "flex": {"target": 80}},
         ]
 
     assert client.put("/api/v1/config/charging", json=charging(1, 1)).status_code == 422
+    # Two cards of one vehicle with the same number
+    twice = [{"vehicle_id": "fiat", "wallbox_id": "wb", "cards": [{"number": 3}, {"number": 3, "name": "Arbeit"}]}]
+    assert client.put("/api/v1/config/charging", json=twice).status_code == 422
     assert client.put("/api/v1/config/charging", json=charging(1, 2, wallbox="nope")).status_code == 422
     stored = client.put("/api/v1/config/charging", json=charging(1, 2))
     assert stored.status_code == 200

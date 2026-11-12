@@ -60,11 +60,15 @@ hour (weekdays and weekends separately, from 14 days of data).
 Per wallbox:
 
 - **Which vehicles** may charge here.
-- **Card at this wallbox**: the RFID card that identifies the vehicle.
-- **Target SoC** and **Ready by (daily)**.
-- **Charging**: Cost-optimal, PV surplus only or As fast as possible.
-- **Home battery** "may discharge into the car": when off,
-  the car charges from PV surplus or the grid only.
+- Per vehicle **Target SoC**, **Ready by (daily)**, **Charging** (Cost-optimal, PV surplus only or
+  As fast as possible) and whether the **home battery may discharge into the car** (when off, the
+  car charges from PV surplus or the grid only). These apply when the car is recognized without a
+  card (sensor, selection under Control, the only vehicle).
+- **Cards** (wallboxes with RFID): a vehicle can have several cards, each with its own number,
+  name and values as above. When a card is scanned its values apply, e.g. a card "Holiday" with
+  100 % by 7:00 and a card "Everyday" with 80 %. Its name is shown wherever "Card 3" would be. A
+  number belongs to at most one card at a wallbox. When Sunflow recognizes the car without a card
+  and releases the wallbox, it uses the vehicle's first card for that.
 - **Vehicle detection**: in which order Sunflow detects the plugged-in
   car (card at the wallbox, selection under Control, the vehicle's sensor) and whether the wallbox
   releases charging without a card.

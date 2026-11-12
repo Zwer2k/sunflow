@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from sunflow.config.models import (
+    ChargingCard,
     ChargingProfile,
     DeviceConfig,
     SunflowConfig,
@@ -23,7 +24,7 @@ def _config(vehicles: list[Vehicle], detection: VehicleDetection | None = None, 
     return SunflowConfig(
         devices=[wallbox],
         vehicles=vehicles,
-        charging=[ChargingProfile(vehicle_id=v.id, wallbox_id="wb", card=CARDS[v.id]) for v in vehicles],
+        charging=[ChargingProfile(vehicle_id=v.id, wallbox_id="wb", cards=[ChargingCard(number=CARDS[v.id])]) for v in vehicles],
         vehicle_detection={"wb": detection} if detection else {},
         selected_vehicles={"wb": chosen} if chosen else {},
     )
@@ -123,6 +124,60 @@ def test_flex_loads_plan_the_recognized_vehicle(
     assert info.max_power_w == 11000
     derived = {p["name"]: p["effective"] for p in device_parameters(library.profiles[wallbox.profile], wallbox, snapshot)}
     assert (derived["max_current_a"], derived["max_power"]) == (32, 22080)
+
+
+@pytest.mark.parametrize(
+    ("transaction", "target", "deadline_hour", "label"),
+    [
+        # Without a ready-by time a day after now (12:00 UTC); with 07:00 Berlin it is 06:00 UTC
+        pytest.param("card_1", 60.0, 12, "Karte 2", id="card without a name, own target"),
+        pytest.param("card_2", 100.0, 6, "Urlaub", id="named card, own target and ready-by"),
+        # Recognized otherwise (the only vehicle): the vehicle's own settings
+        pytest.param("without_card", 80.0, 12, None, id="no card"),
+    ],
+)
+def test_each_card_charges_with_its_own_settings(
+    library, transaction: str, target: float, deadline_hour: int, label: str | None
+) -> None:
+    """One car with two cards at the wallbox: the scanned card decides target and ready-by; its name is shown."""
+    from datetime import UTC, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from sunflow.config.models import FlexSettings
+    from sunflow.devices.discovery import Snapshot
+    from sunflow.planning.plan import flex_loads
+
+    entities = [
+        {"entity_id": "binary_sensor.goe_car", "unique_id": "123456-binary_sensor-car-1", "device_id": "goe"},
+        {"entity_id": "sensor.goe_power", "unique_id": "123456-sensor-nrg-11", "device_id": "goe"},
+        {"entity_id": "select.goe_frc", "unique_id": "123456-select-frc-frc", "device_id": "goe"},
+        {"entity_id": "select.goe_trx", "unique_id": "123456-select-trx-trx", "device_id": "goe"},
+    ]
+    states = {
+        "binary_sensor.goe_car": {"state": "on", "attributes": {}},
+        "sensor.goe_power": {"state": "0", "attributes": {"unit_of_measurement": "W"}},
+        "select.goe_trx": {"state": transaction, "attributes": {}},
+        "sensor.fiat_soc": {"state": "40", "attributes": {"unit_of_measurement": "%"}},
+    }
+    snapshot = Snapshot(entries=[], devices=[{"id": "goe"}], entities=entities, states=states, energy_prefs=None)
+    wallbox = DeviceConfig(id="wb", ha_device_id="goe", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
+    fiat = Vehicle(id="fiat", name="Fiat", capacity_wh=37500, soc_entity="sensor.fiat_soc")
+    cards = [
+        ChargingCard(number=2, flex=FlexSettings(target=60)),
+        ChargingCard(number=3, name="Urlaub", flex=FlexSettings(target=100, ready_by="07:00")),
+    ]
+    config = SunflowConfig(
+        devices=[wallbox], vehicles=[fiat],
+        charging=[ChargingProfile(vehicle_id="fiat", wallbox_id="wb", cards=cards, flex=FlexSettings(target=80))],
+    )
+    start = datetime(2026, 10, 30, 12, tzinfo=UTC)
+
+    _, infos, _, _ = flex_loads(config, library.profiles, snapshot, [start + timedelta(minutes=15 * i) for i in range(96)], ZoneInfo("Europe/Berlin"))
+
+    (info,) = infos
+    assert (info.target, info.vehicle_card_label) == (target, label)
+    assert info.deadline is not None and info.deadline.astimezone(UTC).hour == deadline_hour
+    assert config.card_label("wb", 3) == "Urlaub" and config.card_label("wb", 2) == "Karte 2"
 
 
 def test_flex_loads_plan_an_own_heating_rod(library) -> None:

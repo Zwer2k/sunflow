@@ -1097,8 +1097,8 @@ class PlanController:
             and "authorize" in self._profiles()[device.profile]["charge_control"]
             and (profile := self._config.charging_profile(info.vehicle_id or "", device.id)) is not None
         ):
-            # Recognized without its card: start the transaction as if the card had been scanned
-            transaction = f"card_{profile.card - 1}" if profile.card else "without_card"
+            # Recognized without its card: start the transaction as if its (first) card had been scanned
+            transaction = f"card_{profile.cards[0].number - 1}" if profile.cards else "without_card"
             await apply(access, status, "authorize", None, now, {"transaction": transaction}, reason=t("Fahrzeug erkannt: Laden freigeben"))
         if aux is not None and action != "charge":
             await self._aux_top_up(device, status, access, aux, now, snapshot)

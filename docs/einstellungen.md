@@ -59,10 +59,16 @@ verbraucht (Werktag und Wochenende getrennt, ab 14 Tagen mit Daten).
 Je Wallbox:
 
 - **Welche Fahrzeuge** hier laden dürfen.
-- **Karte an dieser Wallbox**: Die RFID-Karte, mit der das Fahrzeug erkannt wird.
-- **Ziel-Ladestand** und **Fertig bis (täglich)**.
-- **Laden**: Kostenoptimal, Nur PV-Überschuss oder Schnellstmöglich.
-- **Hausspeicher darf ins Auto entladen**: Aus heißt, das Auto lädt nur aus PV-Überschuss oder dem Netz.
+- Je Fahrzeug **Ziel-Ladestand**, **Fertig bis (täglich)**, **Laden** (Kostenoptimal, Nur
+  PV-Überschuss oder Schnellstmöglich) und ob der **Hausspeicher ins Auto entladen** darf (aus:
+  das Auto lädt nur aus PV-Überschuss oder dem Netz). Diese Werte gelten, wenn das Auto ohne
+  Karte erkannt wird (Sensor, Auswahl in der Steuerung, einziges Fahrzeug).
+- **Karten** (bei Wallboxen mit RFID): Einem Fahrzeug lassen sich mehrere Karten zuordnen, jede
+  mit eigener Nummer, eigenem Namen und eigenen Werten wie oben. Wird eine Karte gescannt, gelten
+  ihre Werte, z. B. eine Karte „Urlaub“ mit 100 % bis 7:00 und eine Karte „Alltag“ mit 80 %. Ihr
+  Name steht überall dort, wo sonst „Karte 3“ stünde. Eine Nummer gehört an einer Wallbox zu
+  höchstens einer Karte. Erkennt Sunflow das Auto ohne Karte und gibt die Wallbox frei, nimmt es
+  dafür die erste Karte des Fahrzeugs.
 - **Erkennung des Fahrzeugs**: in welcher Reihenfolge Sunflow das angesteckte Auto erkennt
   (Karte an der Wallbox, Auswahl in der Steuerung, Sensor des Fahrzeugs) und ob die Wallbox
   ohne Karte freigibt.

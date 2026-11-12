@@ -430,7 +430,8 @@ class SunflowControl extends LitElement {
   _renderVehicle(device) {
     const v = device.vehicle;
     // The scanned card in the brackets, also when it belongs to no vehicle
-    const card = device.card !== null && device.card !== undefined ? t("Karte {card}", { card: device.card }) : null;
+    // A card with a name shows its name instead of the number
+    const card = device.card_label ?? (device.card !== null && device.card !== undefined ? t("Karte {card}", { card: device.card }) : null);
     const how = v?.method_key === "card" && card ? card : [v?.method, card].filter(Boolean).join(", ");
     return html`
       <div class="row">
