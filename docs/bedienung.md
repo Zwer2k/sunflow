@@ -2,8 +2,8 @@
 
 **Deutsch** · [English](en/user-interface.md)
 
-Oben wählst du eine der fünf Ansichten: **Live**, **Steuerung**, **Planung**, **Analyse** und
-**Einstellungen**. Auf dem Handy liegen sie als Symbole am unteren Rand. Eine Zahl an „Analyse“
+Oben wählst du eine der sechs Ansichten: **Live**, **Steuerung**, **Planung**, **Analyse**,
+**Statistik** und **Einstellungen**. Auf dem Handy liegen sie als Symbole am unteren Rand. Eine Zahl an „Analyse“
 zeigt offene Empfehlungen.
 
 Zwei Schalter blenden in allen Ansichten aus, was du nicht mehr brauchst; jeder Browser merkt sich
@@ -253,3 +253,30 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   ob er im Mittel zu hoch oder zu niedrig war; ab 0.78.62): Der Plan der Viertelstunde selbst folgt
   schon dem bisherigen Tag und liegt deshalb fast immer richtig. Die Tabelle zeigt die Abschnitte, in
   denen die Entscheidung abwich. Hier liegen auch **Daten exportieren** und **Export importieren**.
+
+## Statistik
+
+Ladevorgänge und Läufe der Verbraucher, angelehnt an die Statistik von evcc. Sunflow bildet sie
+aus seiner Aufzeichnung (je Viertelstunde), rückwirkend ab deren Beginn. Ein Ladevorgang an einer
+Wallbox dauert vom Anstecken bis zum Abstecken, auch mit Pausen; das erkannte Fahrzeug und die
+Karte zeichnet Sunflow seit 0.78.74 auf. Davor, und bei den übrigen Verbrauchern, endet ein Lauf
+nach einer Stunde ohne Leistung.
+
+- **Zeitraum** (30 Tage, 12 Monate, dieses Jahr, letztes Jahr, gesamt) und Filter nach
+  Verbraucher und Fahrzeug.
+- **Geladen**, Zahl der Vorgänge, **Sonnenanteil** (PV und Hausspeicher, wie bei evcc),
+  **Ø Preis** und **Kosten**: Netzbezug zum Preis seiner Viertelstunde, PV und Hausspeicher mit der
+  entgangenen Einspeisevergütung (wie evcc rechnet). **Bezahlt** ist nur der Netzbezug,
+  **Gespart** der Unterschied zu allem aus dem Netz; beides nur aus Sunflows eigener Aufzeichnung.
+  **Ø Leistung** zählt nur die Zeit, in der Leistung floss, nicht das Angesteckt-Warten.
+- **Je Monat** als Balken nach Herkunft (Sonne, Hausspeicher, Netz), dazu Tabellen je Verbraucher
+  und je Fahrzeug und die Liste der Ladevorgänge mit Fahrzeug, Karte und Ladestand vorher/nachher.
+- **Daten aus evcc übernehmen**: einmalig, über die Adresse von evcc (Sunflow liest
+  `/api/sessions`) oder eine Datei (diese Antwort als JSON oder der CSV-Export der
+  Ladevorgänge-Seite von evcc, deutsch oder englisch). Die Vorschau zeigt Zahl und Zeitraum und
+  ordnet Ladepunkte und Fahrzeuge nach dem Namen zu; das lässt sich ändern. Gezählt werden die
+  übernommenen Vorgänge nur vor Sunflows eigener Aufzeichnung des Verbrauchers, doppelt
+  übernommene erkennt Sunflow. Von evcc kennt Sunflow nur die Gesamtkosten, nicht den bezahlten
+  Netzanteil. **Übernommene entfernen** löscht sie wieder (z. B. um mit anderer Zuordnung neu zu
+  übernehmen).
+

@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
@@ -60,11 +60,19 @@ SCHEMA_STEPS: dict[int, list[str]] = {
     5: ["CREATE TABLE soiling_ahead (day TEXT, plane TEXT, expected REAL, current REAL, PRIMARY KEY (day, plane))"],
     # PV and house load that plan expected for the slot: the plan of the slot itself is corrected by the day so far
     6: ["ALTER TABLE plan_ahead ADD COLUMN pv_w REAL", "ALTER TABLE plan_ahead ADD COLUMN load_w REAL"],
+    # Per wallbox the vehicle plugged in during the slot (and the scanned card); sessions imported from evcc
+    7: [
+        "ALTER TABLE slots ADD COLUMN actual_vehicles TEXT",
+        "CREATE TABLE imported_sessions (source TEXT, id TEXT, start TEXT, end TEXT, device_id TEXT, loadpoint TEXT,"
+        " vehicle_id TEXT, vehicle TEXT, card TEXT, energy_wh REAL, charging_s REAL, solar_share REAL, cost_eur REAL,"
+        " co2_g_per_kwh REAL,"
+        " PRIMARY KEY (source, id))",
+    ],
 }
 # Stored as JSON objects (key -> W)
 JSON_COLUMNS = (
     "plane_forecasts", "actual_strings", "actual_consumers", "actual_levels", "planned_batteries", "actual_batteries",
-    "ahead_batteries",
+    "ahead_batteries", "actual_vehicles",
 )  # fmt: skip
 # The plan a slot is compared with: every replan starts from the measured SoC, so the latest one
 # matches the measurement by construction
@@ -274,6 +282,45 @@ class ShadowStore:
         for day, plane, expected, current in rows:
             result.setdefault(plane, {})[date.fromisoformat(day)] = (expected, current)
         return result
+
+    def store_vehicles(self, start: datetime, vehicles: dict[str, dict[str, Any]]) -> None:
+        """Per wallbox the vehicle plugged in during the slot (and its card), for the charging statistics."""
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO slots (start, actual_vehicles) VALUES (?, ?)"
+                " ON CONFLICT(start) DO UPDATE SET actual_vehicles = excluded.actual_vehicles",
+                (start.astimezone(UTC).isoformat(), json.dumps(vehicles)),
+            )
+            self._db.commit()
+
+    def store_imported_sessions(self, sessions: list[dict[str, Any]]) -> int:
+        """Keep sessions imported from another system; one already there (same source and id) stays as it is."""
+        columns = (
+            "source", "id", "start", "end", "device_id", "loadpoint", "vehicle_id", "vehicle", "card", "energy_wh",
+            "charging_s", "solar_share", "cost_eur", "co2_g_per_kwh",
+        )  # fmt: skip
+        with self._lock:
+            before = self._db.total_changes
+            self._db.executemany(
+                f"INSERT OR IGNORE INTO imported_sessions ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",  # noqa: S608
+                [tuple(s.get(c) for c in columns) for s in sessions],
+            )
+            self._db.commit()
+            return self._db.total_changes - before
+
+    def imported_sessions(self) -> list[dict[str, Any]]:
+        """All imported sessions, oldest first."""
+        with self._lock:
+            cursor = self._db.execute("SELECT * FROM imported_sessions ORDER BY start")
+            names = [c[0] for c in cursor.description]
+            return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+
+    def remove_imported_sessions(self, source: str) -> int:
+        """Forget the sessions of one import source (to import again)."""
+        with self._lock:
+            removed = self._db.execute("DELETE FROM imported_sessions WHERE source = ?", (source,)).rowcount
+            self._db.commit()
+            return removed
 
     def store_actual(self, start: datetime, actual: dict[str, Any]) -> None:
         """Store the measured averages of a finished slot."""

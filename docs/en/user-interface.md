@@ -2,8 +2,8 @@
 
 [Deutsch](../bedienung.md) · **English**
 
-The top bar switches between the five views: **Live**, **Control**, **Planning**, **Analysis**
-and **Settings**. On phones they are icons at the bottom. A number on "Analysis" shows open
+The top bar switches between the six views: **Live**, **Control**, **Planning**, **Analysis**,
+**Statistics** and **Settings**. On phones they are icons at the bottom. A number on "Analysis" shows open
 recommendations.
 
 Two switches hide in every view what you no longer need; each browser remembers its choice, both
@@ -242,3 +242,27 @@ How well do forecasts and decisions match reality?
   whether it was too high or too low on average; from 0.78.62 on): the plan of the quarter hour
   itself already follows the day so far and is therefore almost always right. The table lists the sections where the decision
   differed. **Export data** and **Import export** are here.
+
+## Statistics
+
+Charging sessions and runs of the loads, modelled on evcc's statistics. Sunflow builds them from
+its recording (per quarter hour), back to its beginning. A charging session at a wallbox lasts from
+plugging in to unplugging, pauses included; the recognized vehicle and card are recorded from
+0.78.74 on. Before that, and for the other loads, a run ends after an hour without power.
+
+- **Period** (30 days, 12 months, this year, last year, total) and filters by load and vehicle.
+- **Charged**, number of sessions, **solar share** (PV and home battery, as in evcc), **Ø price**
+  and **cost**: grid import at the price of its quarter hour, PV and home battery at the feed-in
+  not earned (as evcc counts). **Paid** is the grid import only, **saved** the difference to all
+  from the grid; both only from Sunflow's own recording. **Ø power** counts only the time power
+  flowed, not waiting while plugged in.
+- **Per month** as bars by origin (sun, home battery, grid), tables per load and per vehicle, and
+  the list of sessions with vehicle, card and state of charge before/after.
+- **Take over data from evcc**: once, from evcc's address (Sunflow reads `/api/sessions`) or a
+  file (that answer as JSON, or the CSV export of evcc's sessions page, German or English). The
+  preview shows count and period and matches loadpoints and vehicles by name; this can be
+  changed. Taken over sessions only count before Sunflow's own recording of the load, and
+  sessions taken over twice are recognized. From evcc Sunflow only knows the total cost, not the
+  grid part paid. **Remove taken over** deletes them again (e.g. to take them over with another
+  matching).
+

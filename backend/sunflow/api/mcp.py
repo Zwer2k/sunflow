@@ -131,6 +131,16 @@ TOOLS = [
         path="/forecast/series",
         params={"hours": HOURS | {"description": "Stunden voraus"}},
     ),
+    Tool(
+        name="get_consumer_stats", area="history",
+        description="Statistik der Verbraucher wie bei evcc: Ladevorgänge mit Energie, Herkunft (Sonne, Hausspeicher, Netz), Sonnenanteil, Ø Preis (mit entgangener Einspeisung), bezahlt, gespart; je Monat, Verbraucher und Fahrzeug. Enthält aus evcc übernommene Vorgänge (source=evcc).",
+        path="/consumer-stats",
+        params={
+            "period": {"type": "string", "enum": ["30d", "365d", "this_year", "last_year", "all"], "description": "Zeitraum"},
+            "device_id": {"type": "string", "description": "Nur dieser Verbraucher"},
+            "vehicle_id": {"type": "string", "description": "Nur dieses Fahrzeug"},
+        },
+    ),
     Tool(name="get_pv_learning", area="live", description="Stand des PV-Lernens je Fläche, mit Verschmutzung (state: Sprünge, verschmutzte Tage, Niveau).", path="/pv-learning"),
     Tool(
         name="get_pv_sun", area="history",

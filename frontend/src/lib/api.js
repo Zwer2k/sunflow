@@ -184,6 +184,15 @@ export const api = {
   batterySimulation: (days, strategies) =>
     request("GET", `/analysis/battery-scenarios?days=${days}${strategies.map((s) => `&strategy=${s}`).join("")}`),
   recommendations: () => request("GET", "/recommendations"),
+  consumerStats: (period, deviceId = null, vehicleId = null) => {
+    const query = new URLSearchParams({ period });
+    if (deviceId) query.set("device_id", deviceId);
+    if (vehicleId) query.set("vehicle_id", vehicleId);
+    return request("GET", `/consumer-stats?${query}`);
+  },
+  evccPreview: (source) => request("POST", "/consumer-stats/import/evcc/preview", source),
+  evccImport: (body) => request("POST", "/consumer-stats/import/evcc", body),
+  evccRemove: () => request("DELETE", "/consumer-stats/import/evcc"),
   dismissRecommendation: (id, fingerprint) => request("POST", "/recommendations/dismiss", { id, fingerprint }),
   setOverrides: (configDeviceId, overrides) =>
     request("PUT", `/config/devices/${encodeURIComponent(configDeviceId)}/role_overrides`, overrides),

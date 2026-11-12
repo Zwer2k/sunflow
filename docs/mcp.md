@@ -45,6 +45,7 @@ Der Port ist im Heimnetz ohne Verschlüsselung (HTTP) erreichbar. Gib ihn nicht 
 | `get_energy`, `get_costs`, `get_efficiency` | Bilanzen, Kosten, Wirkungsgrad |
 | `get_data_inventory` | wie weit die HA-Historie und vergangene Solcast-Prognosen zurückreichen |
 | `get_learning_sources`, `get_learning_source_quality` | gewählte Lernquellen und wie plausibel ihre Werte sind |
+| `get_consumer_stats` | Statistik der Verbraucher wie bei evcc: Ladevorgänge, Sonnenanteil, Preis, Kosten je Monat, Verbraucher und Fahrzeug |
 | `get_pv_sun` | PV-Korrektur nach Sonnenstand je Fläche mit Backtest, Verschmutzung in der Historie, Erwartung nach Jahreszeit mit Vergleich, Schnee auf allen Flächen und laut Wetterprognose, Ausrichtung aus Solcast |
 | `get_appliances` | nur gemessene Verbraucher: Verbrauch je Tag, aktive Tage, übliche Stunden |
 | `get_config`, `get_vehicles`, `get_batteries`, `get_site` | Konfiguration |
