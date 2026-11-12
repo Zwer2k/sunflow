@@ -35,6 +35,8 @@ class Session:
     energy_wh: float = 0.0
     pv_wh: float = 0.0
     battery_wh: float = 0.0
+    # Of the battery's part what it had stored from PV (the rest it had charged from the grid)
+    battery_solar_wh: float = 0.0
     grid_wh: float = 0.0
     # Grid energy at its price (what was paid) and PV/battery at the feed-in not earned
     paid_eur: float = 0.0
@@ -64,7 +66,7 @@ class Session:
         result = asdict(self) | {"duration_h": round(self.duration_h, 2)}
         result["start"], result["end"] = self.start.isoformat(), self.end.isoformat()
         result["solar_share"] = round(self.share(), 4) if self.energy_wh else None
-        for key in ("energy_wh", "pv_wh", "battery_wh", "grid_wh", "max_power_w"):
+        for key in ("energy_wh", "pv_wh", "battery_wh", "battery_solar_wh", "grid_wh", "max_power_w"):
             result[key] = round(result[key], 1)
         for key in ("paid_eur", "cost_eur", "grid_only_eur"):
             result[key] = round(result[key], 4)
@@ -74,7 +76,7 @@ class Session:
         """Part of the energy from own production (PV and home battery), as evcc's solar share."""
         if self.solar_share is not None:
             return self.solar_share
-        return (self.pv_wh + self.battery_wh) / self.energy_wh if self.energy_wh else 0.0
+        return (self.pv_wh + self.battery_solar_wh) / self.energy_wh if self.energy_wh else 0.0
 
 
 def split_slot(row: dict[str, Any]) -> dict[str, tuple[float, float, float]]:
@@ -101,6 +103,40 @@ def split_slot(row: dict[str, Any]) -> dict[str, tuple[float, float, float]]:
         from_pv, from_battery = pv_used * part, battery_used * part
         result[key] = (from_pv * SLOT_HOURS, from_battery * SLOT_HOURS, (power - from_pv - from_battery) * SLOT_HOURS)
     return result
+
+
+@dataclass(kw_only=True)
+class BatteryContent:
+    """What the home battery holds: how much of it came from PV, and what its grid part cost per kWh.
+
+    Charging adds PV surplus and grid energy at their shares; discharging takes from the mix. Before
+    the first charge it is unknown and counts half and half.
+    """
+
+    stored_wh: float = 0.0
+    solar: float = 0.5
+    grid_price: float | None = None
+
+    def step(self, row: dict[str, Any]) -> None:
+        """Account for one slot's charging or discharging."""
+        battery = row.get("actual_battery_w") or 0.0
+        if battery > 0:
+            charged = battery * SLOT_HOURS
+            surplus = max((row.get("actual_pv_w") or 0.0) - (row.get("actual_load_w") or 0.0), 0.0) * SLOT_HOURS
+            from_pv = min(charged, surplus)
+            from_grid = charged - from_pv
+            total = self.stored_wh + charged
+            grid_before = self.stored_wh * (1 - self.solar)
+            if from_grid > 0 and (price := row.get("planned_price")) is not None:
+                known = self.grid_price if self.grid_price is not None else price
+                self.grid_price = (known * grid_before + price * from_grid) / (grid_before + from_grid)
+            self.solar = (self.stored_wh * self.solar + from_pv) / total if total > 0 else self.solar
+            self.stored_wh = total
+        elif battery < 0:
+            self.stored_wh = max(self.stored_wh + battery * SLOT_HOURS, 0.0)
+        # The measured content keeps the sum from drifting (losses, standby)
+        if (soc := row.get("actual_soc_wh")) is not None:
+            self.stored_wh = soc
 
 
 @dataclass(kw_only=True)
@@ -131,6 +167,7 @@ def sessions_from_rows(
         if (current := open_.pop(key, None)) is not None and current.session.energy_wh >= MIN_SESSION_WH:
             done.append(current.session)
 
+    content = BatteryContent()
     for row in rows:
         start = datetime.fromisoformat(row["start"])
         end = start + timedelta(hours=SLOT_HOURS)
@@ -138,6 +175,9 @@ def sessions_from_rows(
         plugged = row.get("actual_vehicles") or {}
         levels = row.get("actual_levels") or {}
         parts = split_slot(row)
+        # What the battery gives in this slot is what it held before it
+        battery_solar, battery_price = content.solar, content.grid_price if content.grid_price is not None else price
+        content.step(row)
         for key in set(parts) | set(plugged):
             if key not in names:
                 continue
@@ -177,12 +217,16 @@ def sessions_from_rows(
             s.energy_wh += energy
             s.pv_wh += pv_wh
             s.battery_wh += battery_wh
+            s.battery_solar_wh += battery_wh * battery_solar
             s.grid_wh += grid_wh
             s.max_power_w = max(s.max_power_w, energy / SLOT_HOURS)
+            # The battery's grid part was paid when it was charged, at that price
+            if battery_price is not None:
+                s.paid_eur += battery_wh * (1 - battery_solar) / 1000 * battery_price
             if price is not None:
                 s.paid_eur += grid_wh / 1000 * price
                 s.grid_only_eur += energy / 1000 * price
-            s.cost_eur = s.paid_eur + (s.pv_wh + s.battery_wh) / 1000 * feed_in
+            s.cost_eur = s.paid_eur + (s.pv_wh + s.battery_solar_wh) / 1000 * feed_in
             if s.vehicle_id and (soc := levels.get(f"vehicle:{s.vehicle_id}")) is not None:
                 s.soc_end = soc
     for key in list(open_):
@@ -234,6 +278,7 @@ class Totals:
     energy_wh: float = 0.0
     pv_wh: float = 0.0
     battery_wh: float = 0.0
+    battery_solar_wh: float = 0.0
     grid_wh: float = 0.0
     paid_eur: float = 0.0
     cost_eur: float = 0.0
@@ -254,6 +299,7 @@ class Totals:
         self.energy_wh += s.energy_wh
         self.pv_wh += s.pv_wh
         self.battery_wh += s.battery_wh
+        self.battery_solar_wh += s.battery_solar_wh
         self.grid_wh += s.grid_wh
         if s.paid_known:
             self.paid_sessions += 1
@@ -275,6 +321,7 @@ class Totals:
             "energy_wh": round(self.energy_wh, 1),
             "pv_wh": round(self.pv_wh, 1),
             "battery_wh": round(self.battery_wh, 1),
+            "battery_solar_wh": round(self.battery_solar_wh, 1),
             "grid_wh": round(self.grid_wh, 1),
             "solar_share": round(self.own_wh / self.energy_wh, 4) if self.energy_wh else None,
             # Only of the own recording; imported sessions know only their total cost
