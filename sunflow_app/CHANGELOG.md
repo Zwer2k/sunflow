@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.73
+
+- Settings → Charging on a PC: one line per card (number, name, target, ready by, strategy, home battery, remove) with narrower columns; the vehicle's settings without a card sit in the same columns above. Phones keep the stacked layout.
+
 ## 0.78.72
 
 - A vehicle can have several RFID cards at a wallbox, each with its own number, name, target SoC, ready-by time, charging strategy and home battery use. The scanned card's settings apply; the vehicle's own ones apply when it is recognized without a card. A card with a name shows its name wherever "Card 3" was shown (Control, recognition). The single card of earlier versions becomes the first card with the settings it charged with (configuration version 4).
