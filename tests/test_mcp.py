@@ -195,3 +195,20 @@ def test_log_tool(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(error) == 1
     assert "ValueError: boom" in error[0]["traceback"]
     assert _rpc(client, "tools/call", {"name": "get_log", "arguments": {"level": "debug"}})["result"]["isError"]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        pytest.param("WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c", id="endless recursion"),
+        pytest.param("SELECT zeroblob(50000000)", id="huge value"),
+    ],
+)
+def test_query_is_stopped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sql: str) -> None:
+    """A query must not keep a thread for good or build a value that fills the memory."""
+    monkeypatch.setattr(mcp, "SQL_TIMEOUT_S", 0.2)
+    path = tmp_path / "shadow.db"
+    sqlite3.connect(path).close()
+
+    with pytest.raises(mcp.ToolError):
+        mcp.query_shadow(path, sql)

@@ -191,7 +191,13 @@ def migrate(db: sqlite3.Connection) -> None:
             version = 1
         for step in range(version, SCHEMA_VERSION):
             for statement in SCHEMA_STEPS[step]:
-                db.execute(statement)
+                try:
+                    db.execute(statement)
+                except sqlite3.OperationalError as err:
+                    # Each statement commits on its own: one interrupted between them left its part behind
+                    if "duplicate column name" not in str(err) and "already exists" not in str(err):
+                        raise
+            db.execute(f"PRAGMA user_version = {step + 1}")
         db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 

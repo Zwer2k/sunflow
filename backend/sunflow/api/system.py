@@ -30,6 +30,9 @@ from sunflow.shadow.store import evaluate as evaluate_shadow
 
 from .common import _library, _snapshot
 
+# Unpacked size an import may have (years of slots stay far below)
+IMPORT_MAX_BYTES = 2_000_000_000
+
 router = APIRouter()
 
 
@@ -138,32 +141,39 @@ async def export_data(request: Request) -> Response:
     """Download shadow mode data and configuration as a zip file."""
     runner: ShadowRunner = request.app.state.runner
     data_dir: Path = request.app.state.settings.data_dir
-    buffer = io.BytesIO()
-    with tempfile.TemporaryDirectory() as tmp:
-        copy = Path(tmp) / "shadow.db"
-        await asyncio.to_thread(runner.shadow.backup_to, copy)
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.write(copy, "shadow.db")
-            for name in ("config.json", "eeprom_writes.json", JOURNAL_FILE):
-                if (data_dir / name).exists():
-                    archive.write(data_dir / name, name)
-            if (latest := runner.latest) is not None:
-                archive.writestr(
-                    "plan.json",
-                    json.dumps(
-                        {
-                            "computed": runner.status.last_plan,
-                            "warnings": latest.warnings,
-                            "flex": [asdict(f) for f in latest.flex],
-                            "plan": asdict(latest.plan),
-                        },
-                        default=str,
-                        indent=1,
-                    ),
-                )
+    latest, computed = runner.latest, runner.status.last_plan
+
+    def build() -> bytes:
+        # Compressing months of data takes seconds: not on the event loop, where control and all requests wait
+        buffer = io.BytesIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "shadow.db"
+            runner.shadow.backup_to(copy)
+            with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.write(copy, "shadow.db")
+                for name in ("config.json", "eeprom_writes.json", JOURNAL_FILE):
+                    if (data_dir / name).exists():
+                        archive.write(data_dir / name, name)
+                if latest is not None:
+                    archive.writestr(
+                        "plan.json",
+                        json.dumps(
+                            {
+                                "computed": computed,
+                                "warnings": latest.warnings,
+                                "flex": [asdict(f) for f in latest.flex],
+                                "plan": asdict(latest.plan),
+                            },
+                            default=str,
+                            indent=1,
+                        ),
+                    )
+        return buffer.getvalue()
+
+    content = await asyncio.to_thread(build)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
     return Response(
-        buffer.getvalue(),
+        content,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="sunflow-export-{stamp}.zip"'},
     )
@@ -182,7 +192,11 @@ async def import_data(request: Request, file: UploadFile, config: bool = False) 
                     raise HTTPException(status_code=422, detail=t("Export enthält keine shadow.db"))
                 if config and "config.json" not in names:
                     raise HTTPException(status_code=422, detail=t("Export enthält keine Konfiguration"))
-                archive.extractall(tmp, [n for n in ("shadow.db", "config.json", "eeprom_writes.json") if n in names])
+                wanted = [n for n in ("shadow.db", "config.json", "eeprom_writes.json") if n in names]
+                # A small zip can unpack to fill the disk
+                if sum(archive.getinfo(n).file_size for n in wanted) > IMPORT_MAX_BYTES:
+                    raise HTTPException(status_code=422, detail=t("Keine gültige Export-Datei"))
+                await asyncio.to_thread(archive.extractall, tmp, wanted)
         except zipfile.BadZipFile as err:
             raise HTTPException(status_code=422, detail=t("Keine gültige Export-Datei")) from err
         if config:

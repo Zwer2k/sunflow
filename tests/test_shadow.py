@@ -249,3 +249,22 @@ def test_batteries_one_by_one(tmp_path: Path) -> None:
         "house": {"soc_wh": 10000, "battery_w": -100},
         "plug": {"soc_wh": 900, "battery_w": -300},
     }
+
+
+def test_interrupted_migration_is_finished(tmp_path: Path) -> None:
+    """Killed between two steps: the columns are there, the version is old; the next start goes on."""
+    import sqlite3
+
+    from sunflow.shadow import store as shadow
+
+    shadow.ShadowStore(tmp_path).close()
+    db = sqlite3.connect(tmp_path / "shadow.db")
+    db.execute("PRAGMA user_version = 1")
+    db.commit()
+    db.close()
+
+    shadow.ShadowStore(tmp_path).close()
+
+    db = sqlite3.connect(tmp_path / "shadow.db")
+    assert db.execute("PRAGMA user_version").fetchone()[0] == shadow.SCHEMA_VERSION
+    db.close()

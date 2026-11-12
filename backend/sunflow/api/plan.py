@@ -116,9 +116,13 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
 
 @router.get("/plan")
 async def get_plan(request: Request) -> dict[str, Any]:
-    """Optimize the battery schedule for the next hours (read only, nothing is controlled)."""
+    """Compute the plan anew ("Neu berechnen"): the runner's own plan, with live values and everything learned."""
+    if (runner := getattr(request.app.state, "runner", None)) is not None and request.app.state.ha.connected:
+        # The plan the control follows: computed like every quarter hour, not a poorer one in its place
+        if (latest := await runner.replan_and_wait()) is None or runner.status.last_error:
+            raise HTTPException(status_code=502, detail=runner.status.last_error or t("Plan wird noch berechnet"))
+        return plan_response(latest, request.app.state.store.load())
     try:
-        runner = getattr(request.app.state, "runner", None)
         controller = getattr(request.app.state, "controller", None)
         result = await current_plan(
             request.app.state.ha,
@@ -132,9 +136,6 @@ async def get_plan(request: Request) -> dict[str, Any]:
         )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
-    # "Neu berechnen" must not be replaced by an older background plan on the next poll
-    if (runner := getattr(request.app.state, "runner", None)) is not None:
-        runner.latest = result
     return plan_response(result, request.app.state.store.load())
 
 

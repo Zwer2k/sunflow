@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.78.67
+
+Review of the whole app, part 2 (API, recording, integration):
+
+- "Recalculate" in Planning computes the plan the same way as every quarter hour. Before, it put a poorer plan (without live values, sun-position correction and the day so far) in place of the one the control follows, for up to 15 minutes.
+- Integration: a one-time load that cannot be placed (time without an offset, a power of a few watts) is refused. Before, it stayed in the list, every later state request failed, the entities went unavailable and the watchdog handed the devices back.
+- Integration: the actions `cancel_load` and `set_consumer` escape the id in the address; a crafted id could reach other endpoints of the app.
+- Integration: forecast entries are reloaded when the app entry reloads (reauthentication, new address); before, their sensors froze until Home Assistant restarted.
+- MCP `query_shadow_db`: a query is stopped after 10 seconds and a single value is limited to 1 MB.
+- Recording: a database upgrade interrupted between two steps is finished at the next start instead of failing with "duplicate column".
+- Home Assistant connection: subscribing has the same timeout and error handling as every other command.
+- Export compresses in a thread instead of blocking control and all requests; import checks the unpacked size.
+- Optimizer entries: no lost update when another setting is saved at the same moment.
+
 ## 0.78.66
 
 Robustness of the control, found in a review of the whole app:

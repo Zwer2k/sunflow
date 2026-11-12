@@ -68,8 +68,10 @@ class OptimizerEntry(BaseModel):
 async def use_optimizer_entry(request: Request, entry_id: str, body: OptimizerEntry) -> dict[str, Any]:
     """Take over the optimizers of an integration, or drop them (their placements stay)."""
     store = request.app.state.store
+    # The snapshot first: a configuration loaded before waiting for it would overwrite what was saved meanwhile
+    found = discover(await _snapshot(request))
     config = store.load()
-    entries = used_entries(config, discover(await _snapshot(request)))
+    entries = used_entries(config, found)
     entries = entries | {entry_id} if body.used else entries - {entry_id}
     config.optimizer_settings.entries = sorted(entries)
     store.save(config)

@@ -13,6 +13,7 @@ import json
 import logging
 from pathlib import Path
 import sqlite3
+import time
 from typing import Any
 from urllib.parse import quote, urlencode
 
@@ -26,6 +27,8 @@ router = APIRouter()
 
 PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 SQL_MAX_ROWS = 2000
+# Longest text or blob a query may produce
+SQL_MAX_VALUE_BYTES = 1_000_000
 SQL_TIMEOUT_S = 10
 LOG_MAX_ENTRIES = 500
 LOG_LEVELS = {"error": logging.ERROR, "warning": logging.WARNING, "info": logging.INFO}
@@ -245,6 +248,10 @@ def query_shadow(path: Path, sql: str) -> dict[str, Any]:
         db.execute("PRAGMA query_only = ON")
         # query_only still allows ATTACH (which creates files) and setting pragmas
         db.set_authorizer(_read_only)
+        # An endless recursive query would keep a thread and a core for good; a huge value would fill the memory
+        deadline = time.monotonic() + SQL_TIMEOUT_S
+        db.set_progress_handler(lambda: time.monotonic() > deadline, 10_000)
+        db.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, SQL_MAX_VALUE_BYTES)
         cursor = db.execute(sql)
         columns = [c[0] for c in cursor.description or ()]
         rows = cursor.fetchmany(SQL_MAX_ROWS + 1)

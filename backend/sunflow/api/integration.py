@@ -2,10 +2,11 @@
 
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from sunflow.config.models import IntegrationSettings, SunflowConfig
 from sunflow.control.controller import PlanController
@@ -15,6 +16,7 @@ from sunflow.planning.one_time import OneTimeLoad, OneTimeLoads
 from .common import _replan
 
 router = APIRouter()
+_LOGGER = logging.getLogger(__name__)
 
 # Consumer power from which a slot counts as "runs"
 RUNS_FROM_W = 100.0
@@ -127,7 +129,11 @@ def integration_state(
             }
         )
     if loads is not None:
-        loads.update(slots, now)
+        try:
+            loads.update(slots, now)
+        except (ArithmeticError, TypeError, ValueError) as err:
+            # One load that cannot be placed must not take the integration's state (and its watchdog) down
+            _LOGGER.warning("Placing the one-time loads failed: %s", err)
     load_list = loads.as_list() if loads is not None else []
     return {
         "calendar": calendar(ahead, consumers_of(result), load_list),
@@ -174,9 +180,11 @@ class NewLoad(BaseModel):
 
     name: str = Field(min_length=1)
     energy_wh: float = Field(gt=0, le=100_000)
-    power_w: float = Field(gt=0, le=50_000)
-    earliest: datetime | None = None
-    finish_by: datetime | None = None
+    # A run of a few watts would last for weeks
+    power_w: float = Field(ge=10, le=50_000)
+    # With an offset: compared with the plan's slots
+    earliest: AwareDatetime | None = None
+    finish_by: AwareDatetime | None = None
 
 
 @router.post("/integration/loads")
@@ -186,7 +194,12 @@ async def add_load(request: Request, body: NewLoad) -> dict[str, Any]:
     load = OneTimeLoad(**body.model_dump())
     loads.loads.append(load)
     runner = request.app.state.runner
-    loads.update(list(runner.latest.plan.slots) if runner.latest is not None else [], datetime.now(UTC))
+    try:
+        loads.update(list(runner.latest.plan.slots) if runner.latest is not None else [], datetime.now(UTC))
+    except (ArithmeticError, TypeError, ValueError) as err:
+        # A load that cannot be placed must not stay: every later state request would fail on it
+        loads.loads.remove(load)
+        raise HTTPException(status_code=422, detail=str(err)) from err
     loads.save()
     return next(item for item in loads.as_list() if item["id"] == load.id)
 

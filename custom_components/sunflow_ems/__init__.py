@@ -76,6 +76,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: SunflowConfigEntry) -> b
         await data.strings.async_config_entry_first_refresh()
         await data.state.async_config_entry_first_refresh()
         entry.runtime_data = data
+        # Forecast entries loaded before a reload of this entry still hold its old, stopped coordinators
+        for other in hass.config_entries.async_entries(DOMAIN):
+            if (
+                other.data.get(CONF_APP_ENTRY) == entry.entry_id
+                and other.state is ConfigEntryState.LOADED
+            ):
+                hass.config_entries.async_schedule_reload(other.entry_id)
         _sync_forecasts(hass, entry)
         entry.async_on_unload(
             data.forecasts.async_add_listener(lambda: _sync_forecasts(hass, entry))
