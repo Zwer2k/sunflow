@@ -22,8 +22,8 @@ const state = { help: stored("help"), suggestions: stored("suggestions") };
 
 // What counts as a heading: real headings, a settings card's title and a fieldset's legend
 const HEADING = "h1, h2, h3, h4, .device-title, legend";
-// A row holding a heading next to buttons
-const HEAD_ROW = ".section-head, .card-head";
+// A row holding a heading next to buttons (a page's title next to its switches)
+const HEAD_ROW = ".section-head, .card-head, .title-row";
 // Explanations of a card that belong to no input field
 const CARD_HELP = ".help:not(.field .help)";
 

@@ -1,4 +1,5 @@
 import { LitElement, html, svg, css, nothing } from "../../vendor/lit-all.min.js";
+import "../components/display-toggles.js";
 import { api, renewIngressSession } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
 import { poll } from "../lib/poll.js";
@@ -272,7 +273,10 @@ class SunflowAnalysis extends LitElement {
     return html`
       <div class="heading">
         <div>
-          <h1>${t("Analyse")}</h1>
+          <div class="title-row">
+            <h1>${t("Analyse")}</h1>
+            <sf-display-toggles placement="title" help suggestions></sf-display-toggles>
+          </div>
           <p class="muted help">${t("Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?")}</p>
         </div>
       </div>
@@ -1089,6 +1093,9 @@ class SunflowAnalysis extends LitElement {
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
+    /* The title with the page's switches at its right (phones; on a PC they sit in the menu bar) */
+    .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .heading > div:first-child { flex: 1 1 260px; min-width: 0; }
     .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
     .alert { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
     .alert.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }

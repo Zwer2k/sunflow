@@ -34,7 +34,8 @@ import {
 } from "./lib/format.js";
 import { decimal, locale, t, tn } from "./lib/i18n.js";
 import { isOpen, setOpen } from "./lib/collapse.js";
-import { setShown, shown, toggleSheet } from "./lib/display-toggles.js";
+import { shown, toggleSheet } from "./lib/display-toggles.js";
+import "./components/display-toggles.js";
 
 /** What the MCP server may read; matches the areas in the backend. */
 const MCP_AREAS = [
@@ -227,7 +228,6 @@ class SunflowApp extends LitElement {
     _discoveryError: { state: true },
     _pendingRestore: { state: true },
     _recommendationCount: { state: true },
-    _help: { state: true },
     _suggestions: { state: true },
     _usages: { state: true },
     _restoring: { state: true },
@@ -331,8 +331,10 @@ class SunflowApp extends LitElement {
     this._stopRecommendations = poll(() => this._loadRecommendationCount(), 15 * 60 * 1000);
     // Views report changes of the count and ask to open another view
     this.addEventListener("sf-recommendations", (e) => (this._recommendationCount = e.detail.count));
-    this._help = shown("help");
+    // The badge at "Analyse" follows the recommendations switch
     this._suggestions = shown("suggestions");
+    this._onDisplayToggles = (e) => (this._suggestions = e.detail.suggestions);
+    window.addEventListener("sf-display-toggles", this._onDisplayToggles);
     this.addEventListener("sf-navigate", (e) => {
       this._setView(e.detail.view);
       if (e.detail.step !== undefined) this._goTo(e.detail.step);
@@ -350,6 +352,7 @@ class SunflowApp extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("resize", this._onResize);
+    window.removeEventListener("sf-display-toggles", this._onDisplayToggles);
     clearTimeout(this._loadRetry);
     this._stopPreview();
     this._stopRecommendations?.();
@@ -1047,19 +1050,10 @@ class SunflowApp extends LitElement {
     this._refreshPreviews();
   }
 
-  /** Explanations and recommendations shown or hidden in every view (each browser remembers its own). */
-  _renderDisplayToggles() {
-    const toggle = (key, value, label, icon) => html`<button class="display-toggle ${value ? "on" : ""}" aria-pressed=${value}
-      title=${label} aria-label=${label} @click=${() => {
-        setShown(key, !value);
-        this[key === "help" ? "_help" : "_suggestions"] = !value;
-      }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d=${icon}></path></svg></button>`;
-    return html`<div class="display-toggles">
-      ${toggle("help", this._help, this._help ? t("Erklärtexte ausblenden") : t("Erklärtexte einblenden"),
-        "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5h0")}
-      ${toggle("suggestions", this._suggestions, this._suggestions ? t("Empfehlungen ausblenden") : t("Empfehlungen einblenden"),
-        "M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z")}
-    </div>`;
+  /** The switches a page has: explanations wherever there are some (not Live), recommendations only in Analysis. */
+  _displayToggles(placement) {
+    const view = this._view;
+    return html`<sf-display-toggles placement=${placement} ?help=${view !== "live"} ?suggestions=${view === "analysis"}></sf-display-toggles>`;
   }
 
   render() {
@@ -1100,7 +1094,7 @@ class SunflowApp extends LitElement {
             </button>`,
           )}
         </nav>
-        ${this._renderDisplayToggles()}
+        ${this._displayToggles("header")}
       </header>
       ${EMBEDDED && this._haConnected === false
         ? html`<div class="restore-banner" role="alert">${t("Keine Verbindung zu Home Assistant – Werte sind evtl. veraltet.")}</div>`
@@ -1174,6 +1168,7 @@ class SunflowApp extends LitElement {
         </aside>
         <main>
           ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
+          ${this._displayToggles("title")}
           ${this._renderStep()}
           ${this._setupCompleted
             ? nothing
@@ -3131,13 +3126,7 @@ class SunflowApp extends LitElement {
     }
     .brand { grid-column: 1; }
     .tabs { grid-column: 2; }
-    .display-toggles { grid-column: 3; justify-self: end; display: flex; gap: 4px; }
-    .display-toggle {
-      display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0;
-      border: 1px solid var(--sf-border); border-radius: 8px; background: transparent; color: var(--sf-muted); cursor: pointer;
-    }
-    .display-toggle.on { color: var(--sf-primary-text); background: var(--sf-primary-bg); border-color: var(--sf-primary); }
-    .display-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    sf-display-toggles[placement="header"] { grid-column: 3; justify-self: end; }
     .brand { display: flex; align-items: center; gap: 12px; color: var(--sf-primary); }
     .brand .title { font-weight: 700; font-size: 17px; color: var(--sf-text); }
     .brand .subtitle { font-size: 13px; color: var(--sf-muted); }
@@ -3209,10 +3198,12 @@ class SunflowApp extends LitElement {
 
     /* No frame around the content: on small screens every pixel of width counts */
     main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+    /* Phones: the switches at the right of the area's title, which follows them (it is the first line of every area) */
+    main > sf-display-toggles[placement="title"] { align-self: flex-end; height: 40px; margin: -8px 0 -48px; position: relative; z-index: 1; }
+    @media (max-width: 700px) { main > h1, main > .heading-row h1 { padding-right: 96px; } }
     @media (max-width: 700px) {
       /* Without the own brand (inside Home Assistant) the header is only the bottom bar */
       header { position: static; display: flex; padding: 4px 8px; border-bottom: 0; }
-      .display-toggles { margin-left: auto; }
       header.bare { padding: 0; }
       .brand .subtitle { display: none; }
       /* Phones: icon bar fixed at the bottom, within thumb reach */
@@ -3412,7 +3403,6 @@ class SunflowApp extends LitElement {
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
     /* Fingers need about 40 px; with a mouse the compact size stays */
-    @media (pointer: coarse) { .display-toggle { min-width: 40px; min-height: 40px; } }
   `];
 }
 

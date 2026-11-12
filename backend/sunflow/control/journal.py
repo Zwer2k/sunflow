@@ -111,7 +111,9 @@ class ControlJournal:
 
     def _trim(self, now: datetime) -> None:
         self._trimmed_at = now
-        since = now - KEEP
+        # Counted back from the newest entry (just recorded, so "now" in operation): a log replayed with
+        # older times, as in the tests, keeps what belongs together
+        since = datetime.fromisoformat(self._entries[-1]["time"]) - KEEP
         while self._entries and datetime.fromisoformat(self._entries[0]["time"]) < since:
             self._entries.popleft()
         tmp = self._path.with_suffix(".tmp")

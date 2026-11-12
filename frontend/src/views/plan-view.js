@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import "../components/display-toggles.js";
 import { api } from "../lib/api.js";
 import { poll } from "../lib/poll.js";
 import { lineChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "../components/charts.js";
@@ -277,7 +278,10 @@ class SunflowPlan extends LitElement {
     return html`
       <div class="heading">
         <div>
-          <h1>${t("Planung")}</h1>
+          <div class="title-row">
+            <h1>${t("Planung")}</h1>
+            <sf-display-toggles placement="title" help></sf-display-toggles>
+          </div>
           <p class="muted help">${t("Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.")}
             ${plan ? this._controlNote(plan) : nothing}</p>
         </div>
@@ -1107,6 +1111,9 @@ class SunflowPlan extends LitElement {
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
+    /* The title with the page's switches at its right (phones; on a PC they sit in the menu bar) */
+    .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .heading > div:first-child { flex: 1 1 260px; min-width: 0; }
     .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
     .alert { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
     .alert.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }

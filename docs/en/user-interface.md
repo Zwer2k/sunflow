@@ -6,8 +6,10 @@ The top bar switches between the five views: **Live**, **Control**, **Planning**
 and **Settings**. On phones they are icons at the bottom. A number on "Analysis" shows open
 recommendations.
 
-At the far right of the menu bar two switches hide in every view what you no longer need; each
-browser remembers its choice, both start switched on:
+Two switches hide in every view what you no longer need; each browser remembers its choice, both
+start switched on. They only appear where there is something to hide (explanations everywhere
+except Live, recommendations only in Analysis): on a PC at the far right of the menu bar, on a
+phone at the far right of the line with the view's title (e.g. "Control"):
 
 - **?** – explanations (descriptions below headings and fields, "What does … do?"). A small ? stays
   in their place and shows or hides just that text on a click; for a paragraph under a heading the

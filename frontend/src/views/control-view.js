@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
+import "../components/display-toggles.js";
 import "../components/picker.js";
 import { api } from "../lib/api.js";
 import { confirmDialog } from "../components/dialog.js";
@@ -167,7 +168,10 @@ class SunflowControl extends LitElement {
     return html`
       <div class="heading">
         <div>
-          <h1>${t("Steuerung")}</h1>
+          <div class="title-row">
+            <h1>${t("Steuerung")}</h1>
+            <sf-display-toggles placement="title" help></sf-display-toggles>
+          </div>
           <p class="muted help">${t("Vorübergehende Eingriffe – danach gilt wieder der Standard aus den Einstellungen.")}
             ${t("Sunflow plant nach jeder Änderung sofort neu.")}</p>
         </div>
@@ -642,6 +646,9 @@ class SunflowControl extends LitElement {
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
+    /* The title with the page's switches at its right (phones; on a PC they sit in the menu bar) */
+    .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .heading > div:first-child { flex: 1 1 260px; min-width: 0; }
     .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end; }
     .duration { display: flex; flex-direction: column; gap: 4px; }
     select {
