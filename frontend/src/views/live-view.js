@@ -257,6 +257,7 @@ class SunflowLive extends LitElement {
         <span class="small muted subtitle"><span>${t("Aktuelle Energieflüsse")}</span>${live
           ? html`<span class="stand">${t("Stand {time}", { time: dayFormat.format(new Date(live.time)) })}</span>`
           : nothing}</span>
+        ${live ? this._renderViewMenu(this._flowView) : nothing}
         ${live?.weather && (live.display?.weather_mobile || live.display?.weather_desktop)
           ? this._renderWeather(live.weather, live.display)
           : nothing}
@@ -467,7 +468,6 @@ class SunflowLive extends LitElement {
         ${live.losses_w !== null && live.losses_w !== undefined
           ? html`<p class="small muted" title=${t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")}>${t("Verluste Wechselrichter/Speicher: {power} (Ø letzte Minuten)", { power: formatValue(live.losses_w, "W") })}</p>`
           : nothing}
-        ${this._renderViewMenu(view)}
         <div class="flow-switch range" role="group" aria-label=${t("Ansicht Energiefluss")}>
           ${Object.entries(FLOW_VIEWS).map(
             ([key, [label, icon]]) => html`<button class=${key === view ? "active" : ""} aria-pressed=${key === view}
@@ -479,7 +479,7 @@ class SunflowLive extends LitElement {
     `;
   }
 
-  /** On a phone the views as one button with a dropdown, so the losses keep their line. */
+  /** On a phone the views as one button with a dropdown, at the right of the title line. */
   _renderViewMenu(view) {
     const [current, currentIcon] = FLOW_VIEWS[view];
     const label = t("Ansicht Energiefluss");
@@ -976,7 +976,7 @@ class SunflowLive extends LitElement {
       border-radius: 8px; background: transparent; color: var(--sf-text); cursor: pointer; font: inherit; font-size: 12px;
     }
     .view-menu .menu {
-      position: absolute; bottom: calc(100% + 4px); right: 0; z-index: 20; min-width: 150px; margin: 0; padding: 4px;
+      position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 150px; margin: 0; padding: 4px;
       list-style: none; border: 1px solid var(--sf-border); border-radius: 10px; background: var(--sf-surface);
       box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
     }
@@ -989,6 +989,9 @@ class SunflowLive extends LitElement {
     @media (max-width: 600px) {
       .flow-switch { display: none; }
       .view-menu { display: block; }
+      /* The weather goes to its own line below the title; the subtitle gives way to the view button */
+      .heading .weather { flex-basis: 100%; margin-left: 0; }
+      .heading .subtitle { flex: 1 1 0; min-width: 0; }
     }
     .flow-switch button { display: flex; align-items: center; min-width: 32px; justify-content: center; }
     .bars { display: flex; flex-direction: column; gap: 12px; }

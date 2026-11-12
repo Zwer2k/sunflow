@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.71
+
+- Live on a phone: the choice of the energy flow view (diagram, bars, tiles, house, 3D) sits at the far right of the title line "Live" and opens downwards; the weather moves to its own line below.
+
 ## 0.78.70
 
 - The switches for explanations and recommendations only appear where there is something to hide: explanations everywhere except Live, recommendations only in Analysis. On a phone they sit at the far right of the line with the view's title (e.g. "Control") instead of in the top bar.
