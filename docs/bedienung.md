@@ -6,8 +6,10 @@ Oben wählst du eine der fünf Ansichten: **Live**, **Steuerung**, **Planung**, 
 **Einstellungen**. Auf dem Handy liegen sie als Symbole am unteren Rand. Eine Zahl an „Analyse“
 zeigt offene Empfehlungen.
 
-Ganz rechts in der Menüleiste blenden zwei Schalter in allen Ansichten aus, was du nicht mehr
-brauchst; jeder Browser merkt sich seine Wahl, beide sind anfangs an:
+Zwei Schalter blenden in allen Ansichten aus, was du nicht mehr brauchst; jeder Browser merkt sich
+seine Wahl, beide sind anfangs an. Sie erscheinen nur, wo es etwas auszublenden gibt (Erklärtexte
+überall außer Live, Empfehlungen nur unter Analyse), am PC ganz rechts in der Menüleiste, auf dem
+Handy ganz rechts in der Zeile mit dem Titel der Ansicht (z. B. „Steuerung“):
 
 - **?** – Erklärtexte (Beschreibungen unter Überschriften und Feldern, „Was macht …?“). An ihrer
   Stelle bleibt ein kleines ?, das genau diesen Text per Klick ein- und wieder ausblendet; gehört der

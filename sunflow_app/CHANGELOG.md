@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.78.70
+
+- The switches for explanations and recommendations only appear where there is something to hide: explanations everywhere except Live, recommendations only in Analysis. On a phone they sit at the far right of the line with the view's title (e.g. "Control") instead of in the top bar.
+- Control log: old entries are dropped counted back from the newest entry instead of the clock; nothing changes in operation, but the tests no longer fail once their fixed date is more than 14 days past.
+
 ## 0.78.69
 
 Review of the whole app, part 4 (interface):
