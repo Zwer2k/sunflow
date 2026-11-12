@@ -65,7 +65,8 @@ export function formatPower(watts, display) {
     ? POWER_FACTORS[display.unit] / 10 ** display.precision
     : 1;
   const rounded = Math.round(watts / step) * step;
-  if (Math.abs(watts) < 1000) return `${number0.format(rounded === 0 ? 0 : rounded)} W`;
+  // By the rounded value: 999.6 W is "1,0 kW", not "1.000 W"
+  if (Math.abs(rounded) < 1000) return `${number0.format(rounded === 0 ? 0 : rounded)} W`;
   const digits = Math.min(2, Math.max(0, Math.round(3 - Math.log10(Math.max(step, 1)))));
   const number = new Intl.NumberFormat(locale(), { minimumFractionDigits: digits, maximumFractionDigits: digits });
   return `${number.format(watts / 1000)} kW`;
@@ -75,12 +76,10 @@ export function formatValue(value, unit) {
   if (value === null || value === undefined) return "–";
   // Values that round to zero are shown without sign ("0 W", not "−0 W")
   if (Math.abs(value) < 0.5 && (unit === "W" || unit === "Wh")) value = 0;
-  if (unit === "W") {
-    return Math.abs(value) >= 1000 ? `${number1.format(value / 1000)} kW` : `${number0.format(value)} W`;
-  }
-  if (unit === "Wh") {
-    return Math.abs(value) >= 1000 ? `${number1.format(value / 1000)} kWh` : `${number0.format(value)} Wh`;
-  }
+  // By the rounded value: 999.6 is "1,0 k…", not "1.000 …"
+  const kilo = Math.round(Math.abs(value)) >= 1000;
+  if (unit === "W") return kilo ? `${number1.format(value / 1000)} kW` : `${number0.format(value)} W`;
+  if (unit === "Wh") return kilo ? `${number1.format(value / 1000)} kWh` : `${number0.format(value)} Wh`;
   if (unit === "%") return `${number0.format(value)} %`;
   return unit ? `${number1.format(value)} ${unit}` : number1.format(value);
 }

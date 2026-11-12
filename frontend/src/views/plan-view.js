@@ -139,6 +139,7 @@ class SunflowPlan extends LitElement {
   static properties = {
     _plan: { state: true },
     _loading: { state: true },
+    _pending: { state: true },
     _error: { state: true },
     _history: { state: true },
     _historyHours: { state: true },
@@ -224,6 +225,8 @@ class SunflowPlan extends LitElement {
       window.removeEventListener("pointercancel", end);
       if (!dragging) return;
       this._dragged = true;
+      // No click follows a drag on touch or when released outside: the next tap must not be swallowed
+      setTimeout(() => (this._dragged = false), 300);
       this.toggleAttribute("dragging", false);
       // Whole quarter hours: the slots and the history's buckets
       this._shift = this._clampShift(Math.round(this._shift * 4) / 4);
@@ -249,7 +252,8 @@ class SunflowPlan extends LitElement {
   }
 
   async _load(fresh = false) {
-    this._loading = true;
+    // Only "recalculate" shows as busy, not every background poll
+    this._loading = fresh;
     // The measured history comes from Home Assistant's database; without it the plan still shows
     const history = this._loadHistory();
     this._loadPvAhead();
@@ -257,8 +261,11 @@ class SunflowPlan extends LitElement {
     try {
       this._plan = await (fresh ? api.plan() : api.latestPlan());
       this._error = null;
+      this._pending = null;
     } catch (err) {
-      this._error = t("Plan konnte nicht berechnet werden: {error}", { error: err.message });
+      // Not ready yet (just started, Home Assistant away) is no failure: the next poll brings the plan
+      this._pending = err.status === 503 ? err.message : null;
+      this._error = err.status === 503 ? null : t("Plan konnte nicht berechnet werden: {error}", { error: err.message });
     } finally {
       await history;
       this._loading = false;
@@ -279,15 +286,23 @@ class SunflowPlan extends LitElement {
         </button>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
-      ${plan === null && !this._error ? html`<p class="muted">${t("Berechne Plan …")}</p>` : nothing}
+      ${this._pending && !plan ? html`<div class="alert info" role="status">${this._pending} …</div>` : nothing}
+      ${plan === null && !this._error && !this._pending ? html`<p class="muted" role="status">${t("Berechne Plan …")}</p>` : nothing}
       ${plan ? this._renderPlan(plan) : nothing}
     `;
+  }
+
+  /** One box for all warnings: three alike below each other pushed the plan off the screen. */
+  _renderWarnings(warnings) {
+    if (!warnings.length) return nothing;
+    if (warnings.length === 1) return html`<div class="alert warn">⚠ ${warnings[0]}</div>`;
+    return html`<div class="alert warn"><ul class="warnings">${warnings.map((w) => html`<li>${w}</li>`)}</ul></div>`;
   }
 
   _renderPlan(plan) {
     const slots = plan.slots;
     if (!slots.length) {
-      return html`${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
+      return html`${this._renderWarnings(plan.warnings)}
         <p class="muted">${t("Kein Plan möglich ({status}).", { status: plan.status })}</p>`;
     }
     const segs = segments(slots, plan.batteries ?? []);
@@ -330,7 +345,7 @@ class SunflowPlan extends LitElement {
     const colors = consumerColors(plan.flex);
     const consumers = (plan.flex ?? []).map((f) => ({ key: f.device_id, name: f.name, color: colors.get(f.device_id) }));
     return html`
-      ${plan.warnings.map((w) => html`<div class="alert warn">⚠ ${w}</div>`)}
+      ${this._renderWarnings(plan.warnings)}
       ${plugInHints(plan.plug_in_hints)}
       <div class="tiles">
         <div class="tile now">
@@ -1088,13 +1103,16 @@ class SunflowPlan extends LitElement {
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
     h1 { margin: 0; font-size: 20px; }
-    h2 { margin: 0 0 8px; font-size: 16px; }
+    h2 { margin: 0 0 8px; font-size: 17px; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
     .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
     .alert { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
     .alert.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }
+    .warnings { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .warnings li { padding-left: 22px; position: relative; }
+    .warnings li::before { content: "⚠"; position: absolute; left: 0; }
     .alert.info { background: var(--sf-primary-bg); color: var(--sf-primary-text); }
     .alert.error { background: var(--sf-error-bg); color: var(--sf-error-text); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
@@ -1139,10 +1157,11 @@ class SunflowPlan extends LitElement {
     .legend-button.active { border-color: var(--sf-border, var(--sf-muted)); background: var(--sf-subtle); font-weight: 600; }
     .warn-text { color: var(--sf-warn-text); }
     .flex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
-    .flex-card { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+    /* The same card as in Control */
+    .flex-card { border: 1px solid var(--sf-border); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
     .flex-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
     .windows { margin: 4px 0 0; padding-left: 18px; }
-    h3 { margin: 0 0 8px; font-size: 15px; }
+    h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
     h2 .toggle {
       display: inline-flex; align-items: center; gap: 6px; padding: 0; border: none; background: none;
       font: inherit; color: inherit; cursor: pointer;
@@ -1198,6 +1217,8 @@ class SunflowPlan extends LitElement {
     .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
+    /* Fingers need about 40 px; with a mouse the compact size stays */
+    @media (pointer: coarse) { .legend-button { min-height: 36px; padding: 0 10px; } }
   `];
 }
 

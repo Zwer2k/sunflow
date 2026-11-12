@@ -25,7 +25,7 @@ const DETAIL_DY = 22;
 
 /** Largest font size (SVG units) at which text fits the circle's width at the detail line. */
 function fitFont(text, r) {
-  const chord = 2 * Math.sqrt(r * r - DETAIL_DY * DETAIL_DY) - 8;
+  const chord = 2 * Math.sqrt(r * r - DETAIL_DY * DETAIL_DY) - 12;
   // Average glyph width is about 0.56 of the font size
   return Math.max(chord / (String(text).length * 0.56), 6).toFixed(1);
 }
@@ -280,7 +280,7 @@ class SunflowLive extends LitElement {
 
   _renderWeather(weather, display) {
     const [symbol, name] = WEATHER[weather.condition] ?? ["", weather.condition ?? ""];
-    const temp = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)}${weather.temperature_unit ?? "°C"}`);
+    const temp = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)}\u202f${weather.temperature_unit ?? "°C"}`);
     const showDays = this._weatherDays && Boolean(weather.days?.length);
     return html`
       <div class="weather ${display?.weather_mobile === false ? "hide-mobile" : ""} ${display?.weather_desktop === false
@@ -723,13 +723,16 @@ class SunflowLive extends LitElement {
   }
 
   _node(icon, [x, y], color, label, value, detail, r = R) {
+    // A small disc has no room for a full icon above the value: smaller, and the value a little lower
+    const small = r < R;
+    const iconScale = small ? 0.7 : 0.92;
     return svg`
       <g class="node">
         <circle cx=${x} cy=${y} r=${r} class="disc" style="stroke: ${color}"></circle>
-        <g transform="translate(${x - 11}, ${y - r + 10}) scale(0.92)" class="icon" style="stroke: ${color}">
+        <g transform="translate(${x - 12 * iconScale}, ${y - r + (small ? 6 : 9)}) scale(${iconScale})" class="icon" style="stroke: ${color}">
           <path d=${ICONS[icon]}></path>
         </g>
-        <text x=${x} y=${y + 6} class="value" text-anchor="middle">${value}</text>
+        <text x=${x} y=${y + (small && !detail ? 11 : small ? 8 : 6)} class="value" text-anchor="middle">${value}</text>
         ${detail
           ? svg`<text x=${x} y=${y + DETAIL_DY} class="detail" text-anchor="middle"
               style="font-size: min(var(--detail-size), ${fitFont(detail, r)}px)">${detail}</text>`
@@ -878,7 +881,7 @@ class SunflowLive extends LitElement {
       }
     }
     h1 { margin: 0; font-size: 20px; }
-    h2 { margin: 0 0 8px; font-size: 16px; }
+    h2 { margin: 0 0 8px; font-size: 17px; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .warn-text { color: var(--sf-warn-text); }
@@ -922,7 +925,8 @@ class SunflowLive extends LitElement {
     /* The diagram scales down to about half on phones; larger text keeps it readable */
     @media (max-width: 600px) {
       .string-value { font-size: 18px; }
-      .value { font-size: 26px; }
+      /* "2,69 kW" must stay inside its disc */
+      .value { font-size: 21px; }
       :host { --detail-size: 17px; }
       .label { font-size: 20px; }
       .flow { max-height: none; }
@@ -1039,6 +1043,12 @@ class SunflowLive extends LitElement {
     .tile.highlight { background: var(--sf-primary-bg); }
     h2 .source { font-weight: 400; }
     .tile .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    /* Fingers need about 40 px; with a mouse the compact size stays */
+    @media (pointer: coarse) {
+      .range button { min-height: 40px; padding: 0 12px; }
+      .arrow { min-width: 40px; min-height: 40px; }
+      .view-button { min-height: 40px; min-width: 40px; }
+    }
   `];
 }
 

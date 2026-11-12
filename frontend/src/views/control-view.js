@@ -427,7 +427,7 @@ class SunflowControl extends LitElement {
     const v = device.vehicle;
     // The scanned card in the brackets, also when it belongs to no vehicle
     const card = device.card !== null && device.card !== undefined ? t("Karte {card}", { card: device.card }) : null;
-    const how = v?.method === "Karte" && card ? card : [v?.method, card].filter(Boolean).join(", ");
+    const how = v?.method_key === "card" && card ? card : [v?.method, card].filter(Boolean).join(", ");
     return html`
       <div class="row">
         <svg class="car" viewBox="0 0 24 24" role="img" aria-label=${t("Fahrzeug")}><path d="M3 16v-4l2-5h14l2 5v4zM3 16v3h3v-3M18 16v3h3v-3M7 12h0M17 12h0"></path></svg>
@@ -637,8 +637,8 @@ class SunflowControl extends LitElement {
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
     h1 { margin: 0; font-size: 20px; }
-    h2 { margin: 0; font-size: 16px; }
-    h3 { margin: 0; font-size: 15px; }
+    h2 { margin: 0; font-size: 17px; }
+    h3 { margin: 0; font-size: 14px; font-weight: 600; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
@@ -749,6 +749,11 @@ class SunflowControl extends LitElement {
     }
     button:disabled { cursor: not-allowed; opacity: 0.5; }
     button:focus-visible, select:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
+    /* Fingers need about 40 px; with a mouse the compact size stays */
+    @media (pointer: coarse) {
+      .pin { min-width: 40px; min-height: 40px; }
+      .link { padding: 10px 0; }
+    }
   `];
 }
 

@@ -294,7 +294,9 @@ class SunflowAnalysis extends LitElement {
   _renderEnergy() {
     const e = this._energy;
     const totals = e?.totals;
-    if (!this._energyError && (!totals || Object.values(totals).every((v) => v === null))) return nothing;
+    if (!this._energyError && !e) return nothing;
+    // No statistics yet for the period (just after midnight): the period switch must stay
+    const empty = !totals || Object.values(totals).every((v) => v === null);
     const wh = (v) => formatValue(v, "Wh");
     const pct = (v) => (v === null || v === undefined ? "–" : `${decimal((v * 100).toFixed(1))} %`);
     const tile = (label, value, hint = null, highlight = false) =>
@@ -317,7 +319,8 @@ class SunflowAnalysis extends LitElement {
           </div>
         </div>
         ${this._energyError ? html`<div class="alert error" role="alert">${this._energyError}</div>` : nothing}
-        ${totals ? html`<p class="small muted">${fromDashboard.length
+        ${empty && !this._energyError ? html`<p class="small muted">${t("Noch keine Zählerdaten für diesen Zeitraum.")}</p>` : nothing}
+        ${!empty ? html`<p class="small muted">${fromDashboard.length
           ? t("Aus den Energiezählern (Netz aus dem Energie-Dashboard) seit {time}", { time: dayTime.format(new Date(e.start)) })
           : t("Aus den Energiezählern der Wechselrichter seit {time}", { time: dayTime.format(new Date(e.start)) })}${e.consumption_origin === "balance"
           ? `; ${t("Verbrauch aus der Bilanz berechnet")}`
@@ -421,8 +424,8 @@ class SunflowAnalysis extends LitElement {
       this._pvSun = null;
       return;
     }
-    // Learned in the background: ask again until it is done
-    if (this._pvSun.computing) this._pvSunTimer = setTimeout(() => this._loadPvSun(), PV_SUN_POLL_MS);
+    // Learned in the background: ask again until it is done (not after the view was left meanwhile)
+    if (this._pvSun.computing && this.isConnected) this._pvSunTimer = setTimeout(() => this._loadPvSun(), PV_SUN_POLL_MS);
   }
 
   /** Each plane's measured strings against Solcast's raw forecast, the past days and the plan ahead. */
@@ -912,7 +915,7 @@ class SunflowAnalysis extends LitElement {
         <h2>${t("Schattenbetrieb")}</h2>
         <p class="small muted">
           ${t("Seit {since} protokolliert Sunflow alle 15 Minuten, was es tun würde und was tatsächlich passiert ist – {compared} vollständige Zeitabschnitte (letzte 48 h).", { since, compared: e.compared })}
-          ${shadow.status.last_error ? html`<br><span class="warn-text">${t("Letzter Fehler: {error}", { error: shadow.status.last_error })}</span>` : nothing}
+          ${shadow.status.last_error ? html`<br><span class="error-text">${t("Letzter Fehler: {error}", { error: shadow.status.last_error })}</span>` : nothing}
         </p>
         <div class="actions">
           <a class="secondary button-link" href="api/v1/export" download>${t("Daten exportieren")}</a>
@@ -1038,7 +1041,7 @@ class SunflowAnalysis extends LitElement {
 
   _point(row, key) {
     const start = new Date(row.start);
-    return { start: start.toISOString(), end: new Date(start.getTime() + 15 * 60_000).toISOString(), value: row[key] ?? 0 };
+    return { start: start.toISOString(), end: new Date(start.getTime() + 15 * 60_000).toISOString(), value: row[key] ?? null };
   }
 
 
@@ -1077,9 +1080,12 @@ class SunflowAnalysis extends LitElement {
   static styles = [toggleSheet, css`
     :host { display: flex; flex-direction: column; gap: 16px; }
     * { box-sizing: border-box; }
+    /* A long page: a fine line tells where one topic ends */
+    section { border-top: 1px solid var(--sf-border); padding-top: 16px; }
+    section:first-of-type { border-top: 0; padding-top: 0; }
     button { font: inherit; color: inherit; }
     h1 { margin: 0; font-size: 20px; }
-    h2 { margin: 0 0 8px; font-size: 16px; }
+    h2 { margin: 0 0 8px; font-size: 17px; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
@@ -1120,12 +1126,16 @@ class SunflowAnalysis extends LitElement {
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }
-    .warn-text { color: var(--sf-error-text); }
+    /* Amber for hints, red only for failures */
+    .warn-text { color: var(--sf-warn-text); }
+    .error-text { color: var(--sf-error-text); }
     .flex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
     .flex-card { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
     .flex-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
     .windows { margin: 4px 0 0; padding-left: 18px; }
-    h3 { margin: 0 0 8px; font-size: 15px; }
+    h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+    /* A sub-heading below other content of its section needs air above */
+    section > * + h3 { margin-top: 14px; }
     .tag {
       font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-left: 6px;
       background: var(--sf-neutral-bg); color: var(--sf-neutral-text); vertical-align: middle;
@@ -1140,7 +1150,6 @@ class SunflowAnalysis extends LitElement {
     .line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--sf-text); }
     .line.dashed { border-top-style: dashed; }
     .chart .now { stroke: var(--sf-text); stroke-width: 1; stroke-dasharray: 2 3; }
-    :host { --sf-shade-low: #c2410c; --sf-shade-high: #0b5cad; }
     .shade-map { overflow-x: auto; margin-top: 10px; }
     .shade-map .swatch { border: 1px solid var(--sf-border-strong); }
     .shade-map svg { display: block; max-width: none; }

@@ -60,8 +60,11 @@ async function request(method, path, body) {
     if (response.status >= 500 && !data?.detail) {
       throw new Error(t("Serverfehler ({status}) – Details im Log der App", { status: response.status }));
     }
-    const detail = Array.isArray(data?.detail) ? data.detail.map((e) => e.msg).join("; ") : data?.detail;
-    throw new Error(detail ?? `${response.status} ${response.statusText}`);
+    let detail = Array.isArray(data?.detail) ? data.detail.map((e) => e.msg).join("; ") : data?.detail;
+    // The one message of the backend every view meets while Home Assistant restarts
+    if (detail === "Not connected to Home Assistant") detail = t("keine Verbindung zu Home Assistant");
+    // The status tells "not ready yet" (503) from a failure
+    throw Object.assign(new Error(detail ?? `${response.status} ${response.statusText}`), { status: response.status });
   }
   return data;
 }

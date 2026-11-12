@@ -131,6 +131,7 @@ const STEPS = [
 ];
 const stepIndex = (step) => (typeof step === "number" ? step : Math.max(STEPS.findIndex(([key]) => key === step), 0));
 const PREVIEW_INTERVAL_MS = 5000;
+const LOAD_RETRY_MS = 5000;
 // Sensors are polled at different times, so single readings can disagree.
 const BALANCE_SAMPLES = 6;
 const BALANCE_MIN_SAMPLES = 3;
@@ -349,6 +350,7 @@ class SunflowApp extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("resize", this._onResize);
+    clearTimeout(this._loadRetry);
     this._stopPreview();
     this._stopRecommendations?.();
   }
@@ -368,6 +370,9 @@ class SunflowApp extends LitElement {
     } catch (err) {
       this._view ??= "live";
       this._error = t("Daten konnten nicht geladen werden: {error}", { error: err.message });
+      // The App or Home Assistant restarting: without this the settings stay an empty first-run wizard
+      clearTimeout(this._loadRetry);
+      this._loadRetry = setTimeout(() => this._load(), LOAD_RETRY_MS);
       return;
     }
     this._loadPendingRestore();
@@ -494,6 +499,8 @@ class SunflowApp extends LitElement {
     step = stepIndex(step);
     // Moving on keeps the edits of this area instead of dropping them silently
     if (step !== this._step && !(await this._savePending())) return;
+    // An error of the area left (e.g. a price history that did not load) does not follow to the next
+    if (step !== this._step) this._error = null;
     this._step = step;
     this._stopPreview();
     // On phones the areas scroll sideways: keep the chosen one in sight
@@ -830,8 +837,6 @@ class SunflowApp extends LitElement {
           .map(async (d) => [d.id, await api.efficiency(d.id).catch(() => null)]),
       );
       this._efficiency = Object.fromEntries(estimates);
-      this._paramEdits = {};
-      this._feedEdits = {};
     } catch (err) {
       this._error = t("Kenndaten konnten nicht geladen werden: {error}", { error: err.message });
     }
@@ -1293,7 +1298,7 @@ class SunflowApp extends LitElement {
       return html`<h1>${t("Gefundene Integrationen")}</h1>
         ${this._discoveryError
           ? html`<div class="alert error" role="alert">${this._discoveryError}</div>
-              <button class="secondary" @click=${() => this._loadDiscovery()}>${t("Erneut versuchen")}</button>`
+              <div><button class="secondary" @click=${() => this._loadDiscovery()}>${t("Erneut versuchen")}</button></div>`
           : html`<p class="muted">${t("Suche in Home Assistant …")}</p>`}`;
     }
     return html`
@@ -1446,7 +1451,7 @@ class SunflowApp extends LitElement {
         ? html`<div class="fields">
               <label class="field"><span class="field-label">${t("Adresse")}</span>
                 <span class="input-unit"><input readonly .value=${url ?? t("kein Port freigegeben")}></span></label>
-              <div class="field"><span class="field-label">${t("Schlüssel")}</span>
+              <div class="field span2"><span class="field-label">${t("Schlüssel")}</span>
                 <span class="input-unit">
                   <input readonly aria-label=${t("Schlüssel")}
                     .value=${mcp.key ?? (created ? t("erzeugt am {time}", { time: created }) : t("keiner – Server geschlossen"))}>
@@ -2963,7 +2968,7 @@ class SunflowApp extends LitElement {
     const finished = !test.running;
     const lastSamples = test.samples.slice(-6);
     const result = (ok, good, bad) =>
-      ok === null ? nothing : html`<li class=${ok ? "ok-text" : "warn-text"}>${ok ? "✓" : "✕"} ${ok ? good : bad}</li>`;
+      ok === null ? nothing : html`<li class=${ok ? "ok-text" : "error-text"}>${ok ? "✓" : "✕"} ${ok ? good : bad}</li>`;
     return html`
       <div class="alert ${test.phase === "done" ? "ok" : test.running ? "neutral" : "warn"}" role="status">
         <div><strong>${test.message}</strong></div>
@@ -3171,7 +3176,11 @@ class SunflowApp extends LitElement {
     .sidebar { flex: 0 0 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .nav-more { display: none; }
     .settings-search { position: relative; margin-bottom: 4px; }
-    .settings-search input { width: 100%; box-sizing: border-box; min-height: 40px; }
+    .settings-search input {
+      width: 100%; box-sizing: border-box; min-height: 40px; padding: 0 12px; font: inherit; font-size: 14px;
+      border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
+    }
+    .settings-search input:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 1px; }
     .search-results {
       position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;
       background: var(--sf-surface); border: 1px solid var(--sf-border); border-radius: 10px;
@@ -3314,6 +3323,12 @@ class SunflowApp extends LitElement {
 
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+    /* A field with buttons next to its input needs the room of two */
+    .field.span2 { grid-column: span 2; }
+    @media (max-width: 600px) {
+      .field.span2 { grid-column: auto; }
+      .field.span2 .input-unit { flex-wrap: wrap; }
+    }
     .vehicle-soc { margin: 10px 0; max-width: 520px; }
     .field.wide { max-width: 520px; }
     .field-label { font-weight: 500; }
@@ -3361,7 +3376,9 @@ class SunflowApp extends LitElement {
     .phases li.active { background: var(--sf-primary); color: var(--sf-on-primary); }
     .phases li.done { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
     .results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
-    .warn-text { color: var(--sf-error-text); }
+    /* Amber for hints, red only for failures */
+    .warn-text { color: var(--sf-warn-text); }
+    .error-text { color: var(--sf-error-text); }
 
     .table-wrap { overflow-x: auto; border: 1px solid var(--sf-border); border-radius: 8px; }
     table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }
@@ -3371,11 +3388,12 @@ class SunflowApp extends LitElement {
     .actions, .footer { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     .footer { border-top: 1px solid var(--sf-border); padding-top: 18px; }
     .spacer { flex: 1; }
-    .primary, .secondary, .ok {
+    /* button.ok: chips and alerts have an "ok" state too and must not get the button's size */
+    .primary, .secondary, button.ok {
       min-height: 44px; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: 600;
     }
     .primary { border: 0; background: var(--sf-primary); color: var(--sf-on-primary); }
-    .ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
+    button.ok { border: 0; background: var(--sf-ok); color: var(--sf-on-ok); }
     .danger { color: var(--sf-error-text); }
     .steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
     .step-power { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
@@ -3393,6 +3411,8 @@ class SunflowApp extends LitElement {
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     button:disabled { cursor: not-allowed; opacity: .6; }
     button:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
+    /* Fingers need about 40 px; with a mouse the compact size stays */
+    @media (pointer: coarse) { .display-toggle { min-width: 40px; min-height: 40px; } }
   `];
 }
 

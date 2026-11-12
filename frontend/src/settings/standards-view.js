@@ -418,7 +418,7 @@ class SunflowStandards extends LitElement {
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
     h1 { margin: 0; font-size: 20px; }
-    h2 { margin: 0 0 8px; font-size: 16px; }
+    h2 { margin: 0 0 8px; font-size: 17px; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
@@ -450,12 +450,14 @@ class SunflowStandards extends LitElement {
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }
-    .warn-text { color: var(--sf-error-text); }
+    /* Amber for hints, red only for failures */
+    .warn-text { color: var(--sf-warn-text); }
+    .error-text { color: var(--sf-error-text); }
     .flex-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
     .flex-card { background: var(--sf-subtle); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
     .flex-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
     .windows { margin: 4px 0 0; padding-left: 18px; }
-    h3 { margin: 0 0 8px; font-size: 15px; }
+    h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
     .tag {
       font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-left: 6px;
       background: var(--sf-neutral-bg); color: var(--sf-neutral-text); vertical-align: middle;

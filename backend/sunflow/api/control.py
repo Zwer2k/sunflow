@@ -107,9 +107,9 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "target": info.target if info else None,
                 "default_target": _default_target(config, device.id, kind, info, vehicle, roles),
                 "vehicles": [{"id": v.id, "name": v.name} for v in config.vehicles_at(device.id)],
-                "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": _method(info.vehicle_method)}
+                "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": _method(info.vehicle_method), "method_key": info.vehicle_method}
                 if info and info.vehicle_id
-                else {"id": vehicle.id, "name": vehicle.name, "method": _method(recognized.method)}
+                else {"id": vehicle.id, "name": vehicle.name, "method": _method(recognized.method), "method_key": recognized.method}
                 if vehicle
                 else None,
                 "selected_vehicle": config.selected_vehicles.get(device.id),

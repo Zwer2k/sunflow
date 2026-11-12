@@ -189,7 +189,7 @@ class SunflowOptimizers extends LitElement {
     * { box-sizing: border-box; }
     button, select, input { font: inherit; color: inherit; }
     h1 { margin: 0; font-size: 20px; }
-    h2 { margin: 0; font-size: 16px; }
+    h2 { margin: 0; font-size: 17px; }
     p { margin: 0; }
     a { color: var(--sf-primary); }
     .muted { color: var(--sf-muted); }

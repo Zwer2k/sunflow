@@ -359,4 +359,5 @@ export default {
   "Schneefall erwartet ab {time}: etwa {mm} Niederschlag bei Frost. Die Planung rechnet das noch nicht ein.": "Snowfall expected from {time}: about {mm} of precipitation in frost. Planning does not account for it yet.",
   "Die Fläche liefert bei klarem Himmel deutlich später am Tag als prognostiziert ({degrees}° im Sonnenlauf) – zeigt sie weiter nach Westen als eingetragen?": "With a clear sky the plane delivers clearly later in the day than forecast ({degrees}° of the sun's course) – does it face further west than entered?",
   "Die Fläche liefert bei klarem Himmel deutlich früher am Tag als prognostiziert ({degrees}° im Sonnenlauf) – zeigt sie weiter nach Osten als eingetragen?": "With a clear sky the plane delivers clearly earlier in the day than forecast ({degrees}° of the sun's course) – does it face further east than entered?",
+  "Noch keine Zählerdaten für diesen Zeitraum.": "No meter data for this period yet.",
 };

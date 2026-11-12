@@ -326,7 +326,7 @@ export function forecastChart(series, label) {
                 : nothing;
             })}
             <rect x=${x0} y=${PAD.top} width=${width} height=${H - PAD.top - PAD.bottom} class="hit">
-              <title>${timeFormat.format(b.start)}: ${b.parts.map((p) => `${p.name} ${kw(p.power)}`).join(", ")} – gesamt ${kw(total)}</title>
+              <title>${timeFormat.format(b.start)}: ${b.parts.map((p) => `${p.name} ${kw(p.power)}`).join(", ")} – ${t("gesamt {power}", { power: kw(total) })}</title>
             </rect>
           </g>
         `;

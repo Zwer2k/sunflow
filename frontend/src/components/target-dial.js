@@ -35,6 +35,8 @@ class SunflowTargetDial extends LitElement {
     label: {},
     // Text on the closed button; empty: the value
     text: {},
+    // Draw a target mark before the text (the live view's compact button)
+    marked: { type: Boolean },
     active: { type: Boolean },
     disabled: { type: Boolean },
     _open: { state: true },
@@ -135,7 +137,9 @@ class SunflowTargetDial extends LitElement {
   render() {
     const shown = this.text || (this.value !== null && this.value !== undefined ? `${this.value} ${this.unit}` : "…");
     return html`<button part="button" class="open ${this.active ? "on" : ""}" aria-pressed=${this.active} aria-expanded=${this._open}
-        ?disabled=${this.disabled} title=${this.label} aria-label=${this.label} @click=${this._toggle}>${shown}</button>
+        ?disabled=${this.disabled} title=${this.label} aria-label=${this.label} @click=${this._toggle}>${this.marked
+          ? html`<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1"></circle></svg>`
+          : nothing}${shown}</button>
       ${this._open ? this._renderPanel() : nothing}`;
   }
 
@@ -180,6 +184,8 @@ class SunflowTargetDial extends LitElement {
       min-width: 38px; min-height: 32px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent;
       font-size: 13px; color: var(--sf-muted); white-space: nowrap;
     }
+    .open { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+    .mark { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
     .open.on { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
     .panel {
       position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: 200px; padding: 12px;
@@ -205,6 +211,11 @@ class SunflowTargetDial extends LitElement {
     .actions button { flex: 1; min-height: 34px; font-size: 13px; }
     .std { display: block; font-size: 11px; color: var(--sf-muted); }
     .actions .primary { background: var(--sf-primary); border-color: var(--sf-primary); color: var(--sf-on-primary, #fff); }
+    /* Fingers need about 40 px; with a mouse the compact size stays */
+    @media (pointer: coarse) {
+      .steps button { min-height: 44px; }
+      .actions button { min-height: 40px; }
+    }
   `];
 }
 
