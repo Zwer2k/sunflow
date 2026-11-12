@@ -412,4 +412,13 @@ export default {
   "Netz und entgangene Einspeisung": "grid and feed-in not earned",
   "Netzbezug, nur Sunflows eigene Aufzeichnung": "grid import, only Sunflow's own recording",
   "Daten aus evcc übernehmen …": "Take over data from evcc …",
+  "Je Jahr": "Per year",
+  "Energie": "Energy",
+  "Preis": "Price",
+  "Herkunft": "Origin",
+  "Monat": "Month",
+  "Jahr": "Year",
+  "Aufteilung der Energie": "Share of the energy",
+  "ohne Fahrzeug": "no vehicle",
+  "Andere": "Other",
 };

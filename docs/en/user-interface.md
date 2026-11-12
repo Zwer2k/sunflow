@@ -256,7 +256,9 @@ plugging in to unplugging, pauses included; the recognized vehicle and card are 
   not earned (as evcc counts). **Paid** is the grid import only, **saved** the difference to all
   from the grid; both only from Sunflow's own recording. **Ø power** counts only the time power
   flowed, not waiting while plugged in.
-- **Per month** as bars by origin (sun, home battery, grid), tables per load and per vehicle, and
+- **Chart as in evcc**: energy, solar share or price per month or year; the energy stacked by
+  origin (sun, home battery, grid), by load or by vehicle (the five largest, the rest as "Other").
+- **Share of the energy** as rings per load and per vehicle, tables per load and per vehicle, and
   the list of sessions with vehicle, card and state of charge before/after.
 - **Take over data from evcc …** (folded at the very bottom): once, from evcc's address (Sunflow reads `/api/sessions`) or a
   file (that answer as JSON, or the CSV export of evcc's sessions page, German or English, also

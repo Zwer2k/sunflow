@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.76
+
+- Statistics, with evcc's views: the chart shows energy, solar share or price per month or year; energy stacked by origin, by load or by vehicle (the five largest, the rest as "Other"). New rings show how the energy is shared among the loads and the vehicles.
+
 ## 0.78.75
 
 - evcc import: reads the CSV export of newer evcc versions (columns "Startzeit"/"Endzeit", "Ladestand Start/Ende", byte order mark); the state of charge before and after is taken over and shown in the session list (shadow database schema 9). Before, such a file gave "no sessions".
