@@ -245,8 +245,9 @@ class SunflowStats extends LitElement {
     const p = im.preview;
     const imported = this._data?.imported ?? 0;
     const consumers = this._data?.filters?.all_consumers ?? [];
-    return html`<section class="import">
-      <h2>${t("Daten aus evcc übernehmen")}</h2>
+    // Needed once: folded away at the bottom, open while something is going on
+    return html`<details class="import" ?open=${Boolean(p || im.busy || im.error || im.result)}>
+      <summary class="small muted">${t("Daten aus evcc übernehmen …")}</summary>
       <p class="small muted help">${t("Einmalig: Sunflow liest die Ladevorgänge von evcc (Adresse wie http://evcc.local:7070) oder aus einer Datei – der Antwort von /api/sessions oder dem CSV-Export der Ladevorgänge-Seite. Übernommen wird, was vor Sunflows eigener Aufzeichnung lag; doppelt Übernommenes wird erkannt.")}</p>
       ${imported ? html`<p class="small">${t("Bisher übernommen: {count} Ladevorgänge.", { count: imported })}
           <button class="link" @click=${() => this._removeImport()}>${t("Übernommene entfernen …")}</button></p>` : nothing}
@@ -282,7 +283,7 @@ class SunflowStats extends LitElement {
             <div><button class="primary" ?disabled=${im.busy} @click=${() => this._runImport()}>${t("Übernehmen")}</button></div>
           </div>`
         : nothing}
-    </section>`;
+    </details>`;
   }
 
   async _readFile(e) {
@@ -380,6 +381,10 @@ class SunflowStats extends LitElement {
     /* Rows stay one line; a narrow screen scrolls the table sideways */
     td { padding: 6px 10px; border-top: 1px solid var(--sf-border); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .chip { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 8px; background: var(--sf-neutral-bg); color: var(--sf-neutral-text); }
+    .import { display: flex; flex-direction: column; gap: 8px; }
+    .import summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+    .import[open] { border-top: 1px solid var(--sf-border); padding-top: 12px; }
+    .import[open] > * + * { margin-top: 8px; }
     .import-source { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
     .import-source .field { flex: 1 1 220px; }
     .or { padding-bottom: 12px; }

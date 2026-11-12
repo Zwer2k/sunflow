@@ -411,4 +411,5 @@ export default {
   "Die aus evcc übernommenen Ladevorgänge werden gelöscht; Sunflows eigene Aufzeichnung bleibt. Danach lässt sich erneut übernehmen.": "The sessions taken over from evcc are deleted; Sunflow's own recording stays. Afterwards they can be taken over again.",
   "Netz und entgangene Einspeisung": "grid and feed-in not earned",
   "Netzbezug, nur Sunflows eigene Aufzeichnung": "grid import, only Sunflow's own recording",
+  "Daten aus evcc übernehmen …": "Take over data from evcc …",
 };
