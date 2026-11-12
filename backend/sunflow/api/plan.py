@@ -145,7 +145,10 @@ async def get_latest_plan(request: Request) -> dict[str, Any]:
     runner: ShadowRunner = request.app.state.runner
     # Without a plan yet, all open tabs wait for one shared computation
     if (latest := await runner.ensure_plan()) is None:
-        raise HTTPException(status_code=503, detail=runner.status.last_error or t("Plan wird noch berechnet"))
+        # 503: not ready yet; with an error of the last attempt it is a failure
+        if runner.status.last_error:
+            raise HTTPException(status_code=502, detail=runner.status.last_error)
+        raise HTTPException(status_code=503, detail=t("Plan wird noch berechnet"))
     sample = runner.last_sample
     response = plan_response(latest, request.app.state.store.load())
     if runner.status.last_error and runner.status.last_plan:

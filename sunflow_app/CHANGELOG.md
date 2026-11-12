@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.78.69
+
+Review of the whole app, part 4 (interface):
+
+Fixes
+- Settings no longer stay an empty first-run wizard when the app or Home Assistant was restarting while the page opened; it tries again by itself.
+- Unsaved device parameters are no longer discarded when another setting of the page reloads them.
+- Planning: after dragging a chart the next tap is no longer swallowed; "Recalculate" no longer flickers to "Calculating …" on every background refresh; a plan that is not ready yet shows as a note, not as "could not be calculated: still being calculated".
+- Analysis: without planned values the state-of-charge chart leaves a gap instead of a line at 0; the energy balance keeps its period switch when a period has no data yet.
+- Values just under 1 kW no longer show as "1.000 W".
+- An error of one settings area no longer follows to the next; the vehicles page clears its error when loading works again.
+- English: the wallbox's recognized card and the chart tooltip are translated; "Not connected to Home Assistant" is shown in the chosen language.
+- A dangerous confirmation (delete) starts on "Cancel", so Enter does not delete.
+
+Look
+- Light or dark follows Home Assistant's theme, not only the system setting.
+- Live: icons no longer overlap the values in the small discs; values fit their discs on a phone; target, plug and clock are drawn icons instead of emoji.
+- Settings: the search field is styled like the other inputs; the "supported" chips have their proper size; the MCP key field has room for its buttons.
+- Planning: several warnings share one box; consumer cards look like those in Control.
+- Clearer heading levels; fine lines between the sections of Analysis; hints are amber, only failures red.
+- Larger touch targets on touch screens.
+
 ## 0.78.68
 
 Review of the whole app, part 3 (planning and learning):

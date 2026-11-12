@@ -183,8 +183,8 @@ class SunflowLearningSources extends LitElement {
     :host { display: block; }
     * { box-sizing: border-box; }
     section { border-top: 1px solid var(--sf-border); padding-top: 16px; display: flex; flex-direction: column; gap: 12px; }
-    h2 { margin: 0; font-size: 16px; }
-    h3 { margin: 8px 0 0; font-size: 15px; }
+    h2 { margin: 0; font-size: 17px; }
+    h3 { margin: 8px 0 0; font-size: 14px; font-weight: 600; }
     p { margin: 0; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }

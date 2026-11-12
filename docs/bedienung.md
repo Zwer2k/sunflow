@@ -20,6 +20,9 @@ brauchst; jeder Browser merkt sich seine Wahl, beide sind anfangs an:
   bleibt immer sichtbar.
 - **Glühbirne** – Empfehlungen unter „Analyse“ und ihre Zahl an „Analyse“.
 
+Hell oder dunkel richtet sich nach dem Design von Home Assistant (im Profil gewählt oder mit der
+Sonne wechselnd); allein im Browser geöffnet nach der Einstellung des Geräts.
+
 ## Live
 
 ![Live](images/live.png)

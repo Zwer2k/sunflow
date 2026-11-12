@@ -32,7 +32,8 @@ class SunflowDialog extends LitElement {
       this._resolve = resolve;
       this.updateComplete.then(() => {
         this.renderRoot.querySelector("dialog").showModal();
-        this.renderRoot.querySelector(".confirm").focus();
+        // Enter must not delete: a dangerous confirmation starts on "cancel"
+        this.renderRoot.querySelector(this.danger ? ".secondary" : ".confirm")?.focus();
       });
     });
   }

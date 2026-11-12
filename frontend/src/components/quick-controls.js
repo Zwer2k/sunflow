@@ -167,7 +167,7 @@ class SunflowQuickControls extends LitElement {
         <strong>${device.name}</strong>
         <span class="small muted status">${device.override
           ? html`<span class="changed" role="img" title=${`${t("angepasst")} ${untilText(device.override.until)}`}
-              aria-label=${`${t("angepasst")} ${untilText(device.override.until)}`}>🕐</span> `
+              aria-label=${`${t("angepasst")} ${untilText(device.override.until)}`}><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></span> `
           : nothing}${status.join(" · ")}</span>
       </div>
       <div class="controls">
@@ -177,7 +177,7 @@ class SunflowQuickControls extends LitElement {
           ? html`<button class="plug ${charger.ready ? "on" : ""}" aria-pressed=${charger.ready} ?disabled=${this._busy}
               title=${charger.ready ? t("Nicht mehr eingesteckt") : t("Jetzt eingesteckt")}
               aria-label=${t("{name} eingesteckt", { name: device.name })}
-              @click=${() => this._apply(() => api.setPlugged(device.id, !charger.ready))}>🔌</button>`
+              @click=${() => this._apply(() => api.setPlugged(device.id, !charger.ready))}><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"></path></svg></button>`
           : nothing}
         ${this._renderModeMenu(device, mode)}
         <div class="segmented" role="group" aria-label=${t("Modus {name}", { name: device.name })}>
@@ -248,14 +248,14 @@ class SunflowQuickControls extends LitElement {
     const target = own ?? defaultTarget(device);
     return html`<sf-target-dial .value=${own} .defaultValue=${defaultTarget(device)} .min=${targets.min} .max=${targets.max}
       unit=${targets.unit} ?active=${own !== null} ?disabled=${this._busy}
-      text=${target !== null && target !== undefined ? `🎯 ${Math.round(target)} ${targets.unit}` : "🎯"}
+      marked text=${target !== null && target !== undefined ? `${Math.round(target)} ${targets.unit}` : " "}
       label=${t("Ziel {name}", { name: device.name })} @change=${(e) => this._setTarget(device, e.detail.value)}></sf-target-dial>`;
   }
 
   static styles = [toggleSheet, css`
     :host { display: block; }
     section {
-      display: flex; flex-direction: column; border: 1px solid var(--sf-border); border-radius: 12px;
+      display: flex; flex-direction: column; border: 1px solid var(--sf-border); border-radius: 10px;
       background: var(--sf-surface); padding: 2px 12px;
     }
     /* One line per load: the name gives way (ellipsis), the controls keep their width */
@@ -266,7 +266,9 @@ class SunflowQuickControls extends LitElement {
     .small { font-size: 12px; }
     .muted { color: var(--sf-muted); }
     .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .changed { font-size: 12px; cursor: help; }
+    .changed { cursor: help; }
+    .glyph { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .changed .glyph { width: 12px; height: 12px; vertical-align: -2px; }
     .error { color: var(--sf-error-text); margin: 6px 0 0; }
     .controls { display: flex; flex-wrap: nowrap; flex: none; justify-content: flex-end; align-items: center; gap: 6px; margin-left: auto; }
     .segmented { display: flex; gap: 2px; background: var(--sf-subtle); padding: 3px; border-radius: 9px; }
@@ -278,7 +280,7 @@ class SunflowQuickControls extends LitElement {
     .segmented button.on { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
     .plug {
       min-width: 38px; min-height: 38px; border: 1px solid var(--sf-border); border-radius: 9px; background: transparent;
-      cursor: pointer; font-size: 16px; filter: grayscale(1); opacity: 0.6;
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--sf-muted);
     }
     .dropdown { position: relative; }
     .mode-menu { display: none; }
@@ -304,7 +306,7 @@ class SunflowQuickControls extends LitElement {
     }
     .menu button:hover { background: var(--sf-subtle); }
     .menu button.on { font-weight: 600; background: var(--sf-primary-bg); }
-    .plug.on { filter: none; opacity: 1; border-color: var(--sf-ok); background: var(--sf-ok-bg); }
+    .plug.on { color: var(--sf-ok-text); border-color: var(--sf-ok); background: var(--sf-ok-bg); }
     /* Not all in one line somewhere: every load gets the mode as one button with a dropdown */
     .compact .controls { gap: 4px; }
     .compact .menu-button, .compact sf-target-dial::part(button) { padding: 0 7px; }
@@ -314,6 +316,12 @@ class SunflowQuickControls extends LitElement {
     /* The same width in every row, so the buttons line up */
     .compact .mode-menu .menu-button { width: 58px; justify-content: center; padding: 0 4px; }
     .compact sf-target-dial::part(button) { min-width: 80px; }
+    /* Fingers need about 40 px; with a mouse the compact size stays */
+    @media (pointer: coarse) {
+      .segmented button, .plug, .menu-button { min-height: 40px; }
+      sf-target-dial::part(button) { min-height: 40px; }
+      .menu button { min-height: 44px; }
+    }
   `];
 }
 

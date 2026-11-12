@@ -65,7 +65,10 @@ class SunflowVehicles extends LitElement {
     try {
       const data = await api.vehicles();
       // A poll must not overwrite what is being saved
-      if (!this._busy) this._data = data;
+      if (!this._busy) {
+        this._data = data;
+        this._error = null;
+      }
     } catch (err) {
       this._error = t("Fahrzeuge nicht verfügbar: {error}", { error: err.message });
     }
@@ -406,7 +409,9 @@ class SunflowVehicles extends LitElement {
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     .link { border: 0; background: none; padding: 0; color: var(--sf-primary-text); text-decoration: underline; cursor: pointer; font-size: 13px; }
     .danger { color: var(--sf-error-text); }
-    .warn-text { color: var(--sf-error-text); }
+    /* Amber for hints, red only for failures */
+    .warn-text { color: var(--sf-warn-text); }
+    .error-text { color: var(--sf-error-text); }
     .summary { padding-left: 22px; color: var(--sf-text); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }

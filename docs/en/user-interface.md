@@ -19,6 +19,9 @@ browser remembers its choice, both start switched on:
   strategy under "Control → Home battery" always stays visible.
 - **Light bulb** – recommendations under "Analysis" and their number on "Analysis".
 
+Light or dark follows Home Assistant's theme (chosen in the profile, or switching with the sun);
+opened on its own in a browser it follows the device's setting.
+
 ## Live
 
 ![Live](../images/en/live.png)
