@@ -796,6 +796,11 @@ async def remove_device(request: Request, device_id: str) -> None:
     config = store.load()
     if config.device(device_id) is None and all(d.id != device_id for d in config.disabled_devices):
         raise HTTPException(status_code=404, detail="Device not configured")
+    controller: PlanController | None = getattr(request.app.state, "controller", None)
+    if controller is not None and (active := config.device(device_id)) is not None:
+        # A device under control is handed back first; afterwards nobody could
+        await controller.hand_back_device(active)
+        config = store.load()
     config.devices = [d for d in config.devices if d.id != device_id]
     config.disabled_devices = [d for d in config.disabled_devices if d.id != device_id]
     # Nothing may keep referring to the removed device

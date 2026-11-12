@@ -202,7 +202,10 @@ class ChargerWatch:
                 return "charge", t("Prüft, ob {name} ladebereit ist", name=device.name)
 
         if settings.connected_entity:
-            if not _on(states, settings.connected_entity):
+            if (plugged := _on(states, settings.connected_entity)) is None:
+                # Sensor away for a moment (reload): a full one stays full
+                return "stop", t("Nicht angesteckt")
+            if not plugged:
                 state.full = False
                 return "stop", t("Nicht angesteckt")
             if state.full:

@@ -73,9 +73,13 @@ async def local_timezone(client: HAClient) -> ZoneInfo:
 
 # PV correction: learned from this many days of shadow data, refreshed this often
 LEARNING_WINDOW = timedelta(days=120)
+# Live values older than this are not used for control
+SAMPLE_MAX_AGE = timedelta(minutes=3)
 CORRECTION_REFRESH = timedelta(hours=1)
 # The correction by sun position learns from up to two years of history: once a day
 SUN_REFRESH = timedelta(hours=24)
+# After a failed run (e.g. Home Assistant away at the start)
+SUN_RETRY = timedelta(minutes=15)
 # The state of the modules (leaves blown away by the wind) from the last days: more often
 SUN_LEVEL_REFRESH = timedelta(hours=3)
 # A failed replan runs every query again; not every minute while Home Assistant has a
@@ -349,7 +353,11 @@ class ShadowRunner:
         now = datetime.now(UTC)
         start = slot_start(now)
         if self._recorder is None or self._recorder.start != start:
-            await self._finish_slot()
+            try:
+                await self._finish_slot()
+            except Exception:
+                # E.g. the database full or locked: this slot is lost, measuring and control go on
+                _LOGGER.exception("Storing the finished slot failed")
             self._recorder = SlotRecorder(start=start)
         # Measuring goes on while planning fails, so the shadow data has no holes
         if self._planned_slot != start and now >= self._replan_retry_at:
@@ -357,10 +365,13 @@ class ShadowRunner:
                 await self._replan(start)
                 self.status.last_error = None
                 self._replan_failures = 0
-            except (HAError, KeyError, ValueError) as err:
+            except Exception as err:
+                # Whatever fails in planning: the control step below still runs and falls back on a stale plan
                 pause = min(REPLAN_RETRY * 2**self._replan_failures, REPLAN_RETRY_MAX)
                 self._replan_failures += 1
-                _LOGGER.warning("Replan failed, retrying in %s: %s", pause, err)
+                _LOGGER.warning(
+                    "Replan failed, retrying in %s: %s", pause, err, exc_info=not isinstance(err, (HAError, KeyError, ValueError))
+                )
                 self.status.last_error = f"Plan: {err}"
                 self._replan_retry_at = now + pause
         try:
@@ -371,28 +382,30 @@ class ShadowRunner:
                 self.last_sample_at = datetime.now(UTC)
                 if self.counters is not None and sample.strings:
                     self.counters.add(sample.strings, self.last_sample_at)
-        except (HAError, KeyError, ValueError) as err:
-            _LOGGER.warning("Sample failed: %s", err)
+        except Exception as err:
+            _LOGGER.warning("Sample failed: %s", err, exc_info=not isinstance(err, (HAError, KeyError, ValueError)))
         if (why := self._deviation()) is not None and now >= self._replan_retry_at:
             _LOGGER.info("Replanning early: %s", why)
             try:
                 await self._replan(start)
-            except (HAError, KeyError, ValueError) as err:
-                _LOGGER.warning("Early replan failed: %s", err)
+            except Exception as err:
+                _LOGGER.warning("Early replan failed: %s", err, exc_info=not isinstance(err, (HAError, KeyError, ValueError)))
         if self.snapshots is not None:
             try:
                 snapshot = await self.snapshots.get()
                 self._end_vehicle_choices(snapshot)
                 if self.controller is not None:
+                    # Old live values (samples failing) would steer by what was, not what is
+                    fresh = self.last_sample_at is not None and now - self.last_sample_at <= SAMPLE_MAX_AGE
                     await self.controller.tick(
-                        self._store.load(), self.latest, self.status.last_plan, snapshot, now, self.last_sample
+                        self._store.load(), self.latest, self.status.last_plan, snapshot, now, self.last_sample if fresh else None
                     )
                     # A charger became ready (test) or full: the plan follows right away
                     if self.controller.chargers.changed:
                         self.controller.chargers.changed = False
                         self.request_replan()
-            except HAError as err:
-                _LOGGER.warning("Control step failed: %s", err)
+            except Exception as err:
+                _LOGGER.warning("Control step failed: %s", err, exc_info=not isinstance(err, HAError))
 
     def _end_vehicle_choices(self, snapshot: Snapshot) -> None:
         """A vehicle chosen in the control tab counts until it is unplugged."""
@@ -598,10 +611,12 @@ class ShadowRunner:
             self.snow_ahead = await self._snow_ahead(config, snapshot)
             self.sun_error = None
             self._sun_level_at = datetime.now(UTC)
-        except (HAError, KeyError, TypeError, ValueError) as err:
-            _LOGGER.warning("Learning PV by sun position failed: %s", err)
+            self.sun_learned_at = datetime.now(UTC)
+        except Exception as err:
+            _LOGGER.warning("Learning PV by sun position failed: %s", err, exc_info=not isinstance(err, HAError))
             self.sun_error = str(err)
-        self.sun_learned_at = datetime.now(UTC)
+            # Tried again in a while, not with every plan and not only tomorrow
+            self.sun_learned_at = datetime.now(UTC) - SUN_REFRESH + SUN_RETRY
         if self._store.load().optimizer.pv_sun:
             self.request_replan()
 

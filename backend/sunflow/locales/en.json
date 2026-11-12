@@ -208,5 +208,6 @@
   "{name} kann nicht zum Laden gezwungen werden – kein Laden aus dem Netz eingeplant.": "{name} cannot be forced to charge – no grid charging planned.",
   "{name}: Lade- oder Entladeleistung ist 0 – der Speicher kann so nicht genutzt werden.": "{name}: charge or discharge power is 0 – the battery cannot be used like this.",
   "{problem} {name} wird nicht eingeplant.": "{problem} {name} is left out of the plan.",
-  "Speicher nicht im Plan – {fallback}": "Battery not in the plan – {fallback}"
+  "Speicher nicht im Plan – {fallback}": "Battery not in the plan – {fallback}",
+  "Sunflow steuert dieses Gerät gerade – für den Test erst die Steuerung des Geräts ausschalten": "Sunflow is controlling this device – switch its control off before testing"
 }

@@ -849,6 +849,26 @@ async def test_partial_discharge_is_energy_for_the_slot(tmp_path: Path, storage:
     assert written == [("limit_discharge", p) for p in expected]
 
 
+async def test_partial_discharge_keeps_the_planned_limit_while_the_battery_power_is_unknown(tmp_path: Path) -> None:
+    """Without the battery's power nothing can be booked as used; the limit must not climb through the slot."""
+    written: list[tuple[str, float | None]] = []
+
+    async def plan(action: str, runtime: dict) -> tuple:
+        written.append((action, runtime.get("P")))
+        return [], {}
+
+    async def run(calls: list, states: dict, force: bool = False) -> None:
+        return None
+
+    access = DeviceAccess(plan=plan, run=run, release=None)
+    controller = PlanController(TakeoverMarker(tmp_path), lambda d: access, lambda: {"sofar": _window("volatile")})
+
+    for minute in range(9):
+        await controller.tick(_config(), _plan("limit_discharge", 1000), NOW, SNAPSHOT, NOW + timedelta(minutes=minute), None)
+
+    assert written == [("limit_discharge", 1000)] * 9
+
+
 async def test_replan_within_the_slot_starts_a_new_budget(tmp_path: Path) -> None:
     """A replan gives the power for the rest of the slot; what was used before does not count against it."""
     written: list[tuple[str, float | None]] = []
