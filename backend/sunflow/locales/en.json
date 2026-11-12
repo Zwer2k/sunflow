@@ -61,7 +61,6 @@
   "Keine gültige Export-Datei": "Not a valid export file",
   "Export-Datei nicht lesbar: {error}": "Export file not readable: {error}",
   "Export enthält keine shadow.db": "Export contains no shadow.db",
-  "Eine Karte ist an einer Wallbox mehreren Fahrzeugen zugeordnet": "A card is assigned to several vehicles at one wallbox",
   "Konfiguration {path} ist ungültig ({error}); die vorige Fassung liegt in {backup}": "Configuration {path} is invalid ({error}); the previous version is in {backup}",
   "an das Gerät zurückgegeben": "handed back to the device",
   "Sunflow beendet": "Sunflow stopped",
@@ -209,5 +208,7 @@
   "{name}: Lade- oder Entladeleistung ist 0 – der Speicher kann so nicht genutzt werden.": "{name}: charge or discharge power is 0 – the battery cannot be used like this.",
   "{problem} {name} wird nicht eingeplant.": "{problem} {name} is left out of the plan.",
   "Speicher nicht im Plan – {fallback}": "Battery not in the plan – {fallback}",
-  "Sunflow steuert dieses Gerät gerade – für den Test erst die Steuerung des Geräts ausschalten": "Sunflow is controlling this device – switch its control off before testing"
+  "Sunflow steuert dieses Gerät gerade – für den Test erst die Steuerung des Geräts ausschalten": "Sunflow is controlling this device – switch its control off before testing",
+  "Karte {number}": "Card {number}",
+  "Eine Kartennummer ist an einer Wallbox mehrfach vergeben": "A card number is used more than once at one wallbox"
 }

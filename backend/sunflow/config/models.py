@@ -4,10 +4,12 @@ from datetime import datetime
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from sunflow.i18n import t
 
 # Raised with every change that needs a migration step (see store.MIGRATIONS)
-CONFIG_VERSION = 3
+CONFIG_VERSION = 4
 
 
 class RoleOverride(BaseModel):
@@ -95,17 +97,39 @@ class Vehicle(BaseModel):
     aux_battery: AuxBatteryGuard = Field(default_factory=AuxBatteryGuard)
 
 
+class ChargingCard(BaseModel):
+    """An RFID card of a vehicle at a wallbox, with how the car is charged when it is scanned."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    # Number at this charger (1..10 at the go-e)
+    number: int = Field(ge=1, le=10)
+    # Shown instead of "Karte 3" (e.g. "Arbeit", "Urlaub")
+    name: str | None = Field(default=None, max_length=40)
+    # Target (%), ready by, strategy, battery use when this card is scanned
+    flex: FlexSettings = Field(default_factory=FlexSettings)
+
+    @field_validator("name")
+    @classmethod
+    def _blank_is_none(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
 class ChargingProfile(BaseModel):
-    """A vehicle allowed at a wallbox: its card there and how it is charged there."""
+    """A vehicle allowed at a wallbox: its cards there and how it is charged there."""
 
     model_config = ConfigDict(allow_inf_nan=False)
 
     vehicle_id: str
     wallbox_id: str
-    # RFID card number at this charger (1..10 at the go-e)
-    card: int | None = Field(default=None, ge=1, le=10)
-    # Target (%), ready by, strategy, battery use
+    # Its cards at this charger, each with its own settings
+    cards: list[ChargingCard] = Field(default_factory=list)
+    # Target (%), ready by, strategy, battery use when recognized without a card (sensor, choice, the only one)
     flex: FlexSettings = Field(default_factory=FlexSettings)
+
+    def card(self, number: int | None) -> ChargingCard | None:
+        """One of its cards by number."""
+        return next((c for c in self.cards if c.number == number), None) if number is not None else None
 
 
 class VehicleDetection(BaseModel):
@@ -568,8 +592,22 @@ class SunflowConfig(BaseModel):
         return self.vehicle_detection.get(wallbox_id) or VehicleDetection()
 
     def charging_profile(self, vehicle_id: str, wallbox_id: str) -> ChargingProfile | None:
-        """Card and charging settings of a vehicle at a wallbox, None if it may not charge there."""
+        """Cards and charging settings of a vehicle at a wallbox, None if it may not charge there."""
         return next((c for c in self.charging if c.vehicle_id == vehicle_id and c.wallbox_id == wallbox_id), None)
+
+    def charging_card(self, wallbox_id: str, number: int | None) -> tuple[ChargingProfile, ChargingCard] | None:
+        """The vehicle's profile a card number belongs to at a wallbox, with the card."""
+        for profile in self.charging:
+            if profile.wallbox_id == wallbox_id and (card := profile.card(number)) is not None:
+                return profile, card
+        return None
+
+    def card_label(self, wallbox_id: str, number: int | None) -> str | None:
+        """How a card is shown: its name, else "Karte 3"."""
+        if number is None:
+            return None
+        found = self.charging_card(wallbox_id, number)
+        return found[1].name if found and found[1].name else t("Karte {number}", number=number)
 
     def forget_device(self, device_id: str) -> None:
         """Drop everything that refers to a removed device."""

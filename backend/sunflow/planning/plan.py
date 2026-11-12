@@ -150,6 +150,9 @@ class FlexInfo:
     vehicle_id: str | None = None
     vehicle: str | None = None
     vehicle_method: str | None = None
+    # Recognized by this card: its number and how it is shown (its name, else "Karte 3")
+    vehicle_card: int | None = None
+    vehicle_card_label: str | None = None
     # A car is connected but not one of the assigned: the wallbox regulates itself
     unknown_vehicle: bool = False
     # Level over time (vehicle %, tank °C): its sensor, energy per unit (from the grid),
@@ -416,6 +419,9 @@ def flex_loads(
                         info.reason = t("Fahrzeug nicht angesteckt")
                     continue
                 info.vehicle_id, info.vehicle, info.vehicle_method = vehicle.id, vehicle.name, method
+                card = recognized.card if method == "card" else None
+                if card is not None:
+                    info.vehicle_card, info.vehicle_card_label = card.number, card.name or t("Karte {number}", number=card.number)
                 if (limit := vehicle_max_power(vehicle)) is not None and max_power:
                     # The car's own charger may take less than the wallbox gives
                     max_power = info.max_power_w = min(max_power, limit)
@@ -423,9 +429,11 @@ def flex_loads(
                 current = info.current = soc_of(vehicle, snapshot.states)
                 info.level_entity = vehicle.soc_entity or info.level_entity
                 info.capacity_wh, info.level_range = vehicle.capacity_wh, (0.0, 100.0)
-                # How this vehicle charges at this wallbox; a change in the control tab still applies on top
+                # How this vehicle charges at this wallbox, with the scanned card its own settings; a change in
+                # the control tab still applies on top
                 profile_at = config.charging_profile(vehicle.id, device.id)
-                settings, paused = config.effective_flex(device, slot_starts[0], profile_at.flex if profile_at else None)
+                base = card.flex if card is not None else profile_at.flex if profile_at else None
+                settings, paused = config.effective_flex(device, slot_starts[0], base)
                 ready_by = next_time(settings.ready_by, slot_starts[0], tz) if settings.ready_by else None
                 target = info.target = settings.target if settings.target is not None else target
             # On the way: planned from its usual arrival with the SoC it usually comes back with

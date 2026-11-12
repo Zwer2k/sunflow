@@ -57,11 +57,22 @@ def _relations_out_of_devices(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+def _cards_with_settings(raw: dict[str, Any]) -> dict[str, Any]:
+    """One card per vehicle and wallbox became a list of cards, each with its own settings."""
+    for profile in raw.get("charging") or []:
+        card = profile.pop("card", None)
+        if card and not profile.get("cards"):
+            # Until now the card charged with the vehicle's settings at this wallbox
+            profile["cards"] = [{"number": card, "flex": dict(profile.get("flex") or {})}]
+    return raw
+
+
 # Version n -> n + 1 on the raw JSON, before validation. Steps only ever get added:
 # a step that renames or restructures a field goes here instead of a silent default
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _backup_reserve_for_all_strategies,
     2: _relations_out_of_devices,
+    3: _cards_with_settings,
 }
 # A configuration of a newer Sunflow can hold values this one does not know
 MAX_REPAIRS = 20

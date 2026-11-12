@@ -107,14 +107,20 @@ async def get_control(request: Request) -> dict[str, Any]:
                 "target": info.target if info else None,
                 "default_target": _default_target(config, device.id, kind, info, vehicle, roles),
                 "vehicles": [{"id": v.id, "name": v.name} for v in config.vehicles_at(device.id)],
-                "vehicle": {"id": info.vehicle_id, "name": info.vehicle, "method": _method(info.vehicle_method), "method_key": info.vehicle_method}
+                "vehicle": {
+                    "id": info.vehicle_id, "name": info.vehicle, "method": _method(info.vehicle_method), "method_key": info.vehicle_method,
+                    "card": info.vehicle_card_label,
+                }
                 if info and info.vehicle_id
                 else {"id": vehicle.id, "name": vehicle.name, "method": _method(recognized.method), "method_key": recognized.method}
                 if vehicle
                 else None,
                 "selected_vehicle": config.selected_vehicles.get(device.id),
-                # The RFID card scanned at the wallbox, also when it belongs to no vehicle
+                # The RFID card scanned at the wallbox, also when it belongs to no vehicle; shown by its name if it has one
                 "card": scanned_card(roles["transaction"].raw_state) if "transaction" in roles else None,
+                "card_label": config.card_label(device.id, scanned_card(roles["transaction"].raw_state))
+                if "transaction" in roles
+                else None,
                 "aux_battery": _aux_battery(vehicle, snapshot.states, controller, device.id, now),
                 "manual_choice": config.detection_of(device.id).manual,
                 "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
@@ -202,7 +208,9 @@ def _default_target(
         or (assigned[0].id if len(assigned) == 1 else None)
     )
     profile = config.charging_profile(vehicle_id, device_id) if vehicle_id else None
-    configured = (profile.flex if profile else config.flex_of(device_id)).target
+    # Recognized by a card: the card's own target
+    card = profile.card(info.vehicle_card) if profile and info and info.vehicle_card else None
+    configured = (card.flex if card else profile.flex if profile else config.flex_of(device_id)).target
     if configured is not None:
         return configured
     if "limit_soc" in roles and roles["limit_soc"].value is not None:

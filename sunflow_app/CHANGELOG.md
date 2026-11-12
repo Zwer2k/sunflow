@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.72
+
+- A vehicle can have several RFID cards at a wallbox, each with its own number, name, target SoC, ready-by time, charging strategy and home battery use. The scanned card's settings apply; the vehicle's own ones apply when it is recognized without a card. A card with a name shows its name wherever "Card 3" was shown (Control, recognition). The single card of earlier versions becomes the first card with the settings it charged with (configuration version 4).
+
 ## 0.78.71
 
 - Live on a phone: the choice of the energy flow view (diagram, bars, tiles, house, 3D) sits at the far right of the title line "Live" and opens downwards; the weather moves to its own line below.

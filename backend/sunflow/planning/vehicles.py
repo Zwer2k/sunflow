@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
-from sunflow.config.models import DeviceConfig, SunflowConfig, Vehicle
+from sunflow.config.models import ChargingCard, DeviceConfig, SunflowConfig, Vehicle
 from sunflow.i18n import N_, t
 from sunflow.planning.vehicle_soc import estimator
 
@@ -36,6 +36,8 @@ class Recognized:
     vehicle: Vehicle | None
     method: str | None
     reason: str | None = None
+    # The scanned card (method "card"): its settings apply instead of the vehicle's
+    card: ChargingCard | None = None
 
 
 def scanned_card(transaction: str | None) -> int | None:
@@ -52,12 +54,12 @@ def recognize(
     assigned = config.vehicles_at(wallbox.id)
     detection = config.detection_of(wallbox.id)
     transaction = roles["transaction"].raw_state if "transaction" in roles else None
-    if detection.card and (card := scanned_card(transaction)) is not None:
-        cards = {c.vehicle_id: c.card for c in config.charging if c.wallbox_id == wallbox.id}
-        vehicle = next((v for v in assigned if cards.get(v.id) == card), None)
-        if vehicle is None:
-            return Recognized(vehicle=None, method=None, reason=t("Karte {card} gehört zu keinem Fahrzeug dieser Wallbox", card=card))
-        return Recognized(vehicle=vehicle, method="card")
+    if detection.card and (number := scanned_card(transaction)) is not None:
+        found = config.charging_card(wallbox.id, number)
+        vehicle = next((v for v in assigned if found and v.id == found[0].vehicle_id), None)
+        if vehicle is None or found is None:
+            return Recognized(vehicle=None, method=None, reason=t("Karte {card} gehört zu keinem Fahrzeug dieser Wallbox", card=number))
+        return Recognized(vehicle=vehicle, method="card", card=found[1])
     if detection.manual and (chosen := config.selected_vehicles.get(wallbox.id)):
         if (vehicle := next((v for v in assigned if v.id == chosen), None)) is not None:
             return Recognized(vehicle=vehicle, method="manual")
