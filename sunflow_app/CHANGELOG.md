@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.78
+
+- Statistics: the help text no longer mentions evcc and describes how the home battery is counted.
+
 ## 0.78.77
 
 - Consumer statistics: energy from the home battery counts by what filled it. Its PV part is sun, its grid part is paid at the price when the battery was charged. A battery filled from the grid at night no longer shows as 100 % sun in the car.
