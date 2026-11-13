@@ -366,7 +366,7 @@ export default {
   "Letztes Jahr": "Last year",
   "Sonne": "Sun",
   "Statistik nicht verfügbar: {error}": "Statistics not available: {error}",
-  "Ladevorgänge und Läufe der Verbraucher: wie viel Energie, woher sie kam und was sie gekostet hat. Sonnenanteil und Preis wie bei evcc: PV und Hausspeicher zählen als eigene Energie, sie kosten die entgangene Einspeisevergütung.": "Charging sessions and runs of the loads: how much energy, where it came from and what it cost. Solar share and price as in evcc: PV and home battery count as own energy and cost the feed-in not earned.",
+  "Ladevorgänge und Läufe der Verbraucher: wie viel Energie, woher sie kam und was sie gekostet hat. PV zählt als eigene Energie und kostet die entgangene Einspeisevergütung; Strom aus dem Hausspeicher zählt nach dem, womit er geladen wurde.": "Sessions and runs of the loads: how much energy, where it came from and what it cost. PV counts as own energy and costs the feed-in not earned; energy from the home battery counts by what filled it.",
   "Alle Verbraucher": "All loads",
   "Alle Fahrzeuge": "All vehicles",
   "Keine Ladevorgänge in diesem Zeitraum.": "No charging sessions in this period.",

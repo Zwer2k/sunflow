@@ -97,7 +97,7 @@ class SunflowStats extends LitElement {
           <h1>${t("Statistik")}</h1>
           <sf-display-toggles placement="title" help></sf-display-toggles>
         </div>
-        <p class="muted help">${t("Ladevorgänge und Läufe der Verbraucher: wie viel Energie, woher sie kam und was sie gekostet hat. Sonnenanteil und Preis wie bei evcc: PV und Hausspeicher zählen als eigene Energie, sie kosten die entgangene Einspeisevergütung.")}</p>
+        <p class="muted help">${t("Ladevorgänge und Läufe der Verbraucher: wie viel Energie, woher sie kam und was sie gekostet hat. PV zählt als eigene Energie und kostet die entgangene Einspeisevergütung; Strom aus dem Hausspeicher zählt nach dem, womit er geladen wurde.")}</p>
       </div>
       ${this._renderFilters()}
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
