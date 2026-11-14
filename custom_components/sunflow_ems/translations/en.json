@@ -10,6 +10,7 @@
     },
     "step": {
       "user": {
+        "description": "The integration needs the Sunflow App; without it, it does nothing. Enter the address and token of the App: in Sunflow under \"Integrations → Sunflow integration in Home Assistant → Show credentials\". No App yet? Install it first, see [installation]({docs_url}).",
         "data": {
           "url": "URL",
           "token": "Token"

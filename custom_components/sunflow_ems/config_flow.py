@@ -18,6 +18,7 @@ from .const import (
     CONF_TARGET,
     CONF_TOKEN,
     DEFAULT_URL,
+    DOCS_INSTALL_URL,
     DOMAIN,
     KIND_APP,
     KIND_FORECAST,
@@ -111,6 +112,7 @@ class SunflowConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+            description_placeholders={"docs_url": DOCS_INSTALL_URL},
         )
 
     async def async_step_reauth(
