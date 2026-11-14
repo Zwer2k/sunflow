@@ -73,7 +73,6 @@ class SunflowStandards extends LitElement {
       // Only the saved fields drop their edit; numbers typed elsewhere stay
       if ("backup_reserve_pct" in changes) this._reserve = undefined;
       if ("backup_reserve_min_pct" in changes) this._reserveMin = undefined;
-      if ("backup_reserve_back_hours" in changes) this._reserveHours = undefined;
       if ("max_soc_pct" in changes) this._maxSoc = undefined;
       if ("full_charge_every_days" in changes) this._fullEvery = undefined;
       if ("full_charge_grid_after_days" in changes) this._gridAfter = undefined;
@@ -190,14 +189,6 @@ class SunflowStandards extends LitElement {
         return false;
       }
       changes.backup_reserve_min_pct = lowest;
-    }
-    if (this._reserveHours !== undefined) {
-      const hours = fromDisplay(this._reserveHours, "h");
-      if (hours === undefined || hours === null || hours < 1 || hours > 24) {
-        this._error = t("Bitte zwischen 1 und 24 Stunden eingeben.");
-        return false;
-      }
-      changes.backup_reserve_back_hours = hours;
     }
     return this._saveSettings({ ...settings, ...changes });
   }
@@ -333,17 +324,9 @@ class SunflowStandards extends LitElement {
                           @change=${() => this._saveNumbers(this._settings)}>
                         <span class="muted">%</span>
                       </span>
-                      <span class="muted">${t("wieder erreicht in höchstens")}</span>
-                      <span class="input-unit">
-                        <input inputmode="decimal" aria-label=${t("Stunden bis die Reserve wieder erreicht ist")}
-                          .value=${this._reserveHours ?? toDisplay(settings.backup_reserve_back_hours, "h")}
-                          @input=${(e) => (this._reserveHours = e.target.value)}
-                          @change=${() => this._saveNumbers(this._settings)}>
-                        <span class="muted">h</span>
-                      </span>
                     </span>`
                   : nothing}
-                <span class="small muted help">${t("Sunflow darf die Reserve nur so weit unterschreiten, wie die pessimistische PV-Prognose (P10) sie bei 25 % mehr Verbrauch als erwartet sicher wieder auffüllt – innerhalb der angegebenen Stunden und nie unter den tiefsten Stand. Typisch: abends etwas mehr aus dem Speicher nutzen, wenn am nächsten Morgen sicher genug Sonne kommt. Ohne P10-Prognose (z. B. ohne Solcast) bleibt die Reserve fest. Bei einem Stromausfall in dieser Zeit steht entsprechend weniger Notstrom bereit.")}</span>`
+                <span class="small muted help">${t("Für Tage, an denen der Speicher morgens an der Reserve steht und große Verbraucher laufen: Statt sofort Netzstrom zu beziehen, darf Sunflow tagsüber in der PV-Phase unter die Reserve gehen – nie unter den tiefsten Stand und nur so weit, wie die pessimistische PV-Prognose (P10) bei 25 % mehr Verbrauch als erwartet den Speicher am selben Tag sicher wieder auf die Reserve bringt. Abends und nachts bleibt die Reserve fest, ebenso ohne P10-Prognose (z. B. ohne Solcast). Bei einem Stromausfall in dieser Zeit steht entsprechend weniger Notstrom bereit.")}</span>`
               : nothing}
           </div>
           <label class="field">
