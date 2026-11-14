@@ -1335,7 +1335,7 @@ class SunflowApp extends LitElement {
     const link = this._link;
     return html`<section class="device compact">
       <div class="device-title">${t("Sunflow-Integration in Home Assistant")}</div>
-      <p class="small muted help">${t("Sie bringt die gelernte PV-Prognose ins Energie-Dashboard (je Fläche, Anlage und gesamt), Zähler je PV-String und Sensoren für eigene Automationen. Home Assistant bietet sie unter „Einstellungen → Geräte & Dienste“ als gefunden an; sonst von Hand mit Adresse und Schlüssel einrichten.")}</p>
+      <p class="small muted help">${t("Sie bringt die gelernte PV-Prognose ins Energie-Dashboard (je Fläche, Anlage und gesamt), Zähler je PV-String und Sensoren für eigene Automationen. Home Assistant bietet sie unter „Einstellungen → Geräte & Dienste“ als gefunden an, und auch über „Integration hinzufügen“ verbindet sie sich ohne Eingabe. Adresse und Schlüssel braucht es nur ohne Supervisor (z. B. Home Assistant Container).")}</p>
       ${this._renderForecastKinds()}
       ${link
         ? html`<div class="fields">

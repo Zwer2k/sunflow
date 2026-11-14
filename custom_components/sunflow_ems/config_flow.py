@@ -8,6 +8,7 @@ import voluptuous as vol  # noqa: TID251 - custom integration, also for older Ho
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_URL
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.hassio import is_hassio
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
 from .api import SunflowAuthError, SunflowClient, SunflowError
@@ -47,11 +48,43 @@ class SunflowConfigFlow(ConfigFlow, domain=DOMAIN):
             return "cannot_connect"
         return None
 
+    async def _announced(self) -> dict[str, Any] | None:
+        """Address and token of an App that announced itself to the Supervisor and answers."""
+        if not is_hassio(self.hass):
+            return None
+        # Only with the Supervisor; imported here so other installations never load it
+        from aiohasupervisor import SupervisorError  # noqa: PLC0415
+
+        from homeassistant.components.hassio import get_supervisor_client  # noqa: PLC0415
+
+        try:
+            messages = await get_supervisor_client(self.hass).discovery.list()
+        except SupervisorError:
+            return None
+        for message in messages:
+            if message.service != DOMAIN:
+                continue
+            config = message.config
+            found = {
+                CONF_URL: f"http://{config['host']}:{config['port']}",
+                CONF_TOKEN: config["token"],
+            }
+            # Sunflow and Sunflow Edge may both be installed; only one of them runs
+            if await self._check(found[CONF_URL], found[CONF_TOKEN]) is None:
+                return found
+        return None
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for address and token of the App (shown in Sunflow under Integrationen)."""
+        """The App found through the Supervisor; otherwise ask for its address and token."""
         errors: dict[str, str] = {}
+        if user_input is None:
+            await self.async_set_unique_id(APP_UNIQUE_ID)
+            self._abort_if_unique_id_configured()
+            if (found := await self._announced()) is not None:
+                self._discovered = found
+                return await self.async_step_hassio_confirm()
         if user_input is not None:
             url = user_input[CONF_URL].rstrip("/")
             await self.async_set_unique_id(APP_UNIQUE_ID)
