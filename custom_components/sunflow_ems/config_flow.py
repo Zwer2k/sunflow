@@ -85,6 +85,9 @@ class SunflowConfigFlow(ConfigFlow, domain=DOMAIN):
             if (found := await self._announced()) is not None:
                 self._discovered = found
                 return await self.async_step_hassio_confirm()
+            if is_hassio(self.hass):
+                # The integration needs the App: say so before asking for an App elsewhere
+                errors["base"] = "app_not_found"
         if user_input is not None:
             url = user_input[CONF_URL].rstrip("/")
             await self.async_set_unique_id(APP_UNIQUE_ID)

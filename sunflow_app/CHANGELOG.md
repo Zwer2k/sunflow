@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.83
+
+- Integration setup: with the Supervisor but no running Sunflow App, the form now says so and asks to install and start the App first; address and token stay possible for an App on another machine.
+
 ## 0.78.82
 
 - Integration setup: adding the Sunflow integration via "Add integration" no longer asks for address and key when Home Assistant runs with the Supervisor. It takes them from the running App's announcement. The form is only shown without the Supervisor (e.g. Home Assistant Container) or when no App answers.

@@ -5,7 +5,8 @@
     },
     "error": {
       "cannot_connect": "Failed to connect",
-      "invalid_auth": "Invalid authentication"
+      "invalid_auth": "Invalid authentication",
+      "app_not_found": "No running Sunflow App found. Install and start the Sunflow App under Settings → Apps, then add this integration again; it connects without input. For a Sunflow App on another machine enter its address and token."
     },
     "step": {
       "user": {
