@@ -14,6 +14,9 @@ const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-d
 const REFRESH_MS = 5 * 60 * 1000;
 const PV_SUN_POLL_MS = 10_000;
 // Degrees the measured day curve may lie off the forecast before the entered direction is questioned
+// Shade map: full colour at this relative difference from the usual share; the legend's steps
+const SHADE_FULL = 0.5;
+const SHADE_STEPS = [0.5, 0.625, 0.75, 0.875, 1, 1.125, 1.25, 1.375, 1.5];
 const ORIENTATION_WARN_DEG = 15;
 
 /** Shadow mode evaluation: forecasts and decisions against reality, export/import. */
@@ -679,7 +682,10 @@ class SunflowAnalysis extends LitElement {
     `;
   }
 
-  /** Factor per sun cell (clear hours): orange where less arrives than forecast, blue where more. */
+  /**
+   * Factor per sun cell (clear hours), coloured against the plane's usual clear-sky share: a plane
+   * that gets 87 % of the forecast everywhere is neutral, only shade and extra light stand out.
+   */
   _shadeMap(c) {
     if (!c.cells.length) return nothing;
     const cellW = 14;
@@ -693,10 +699,13 @@ class SunflowAnalysis extends LitElement {
     const height = (maxE / c.elevation_step) * cellH + 18;
     const x = (a) => left + ((a - minA) / c.azimuth_step) * cellW;
     const y = (e) => (maxE - e - c.elevation_step) / c.elevation_step * cellH;
-    const color = (f) => {
-      const share = Math.round(Math.min(Math.abs(1 - f) / 0.6, 1) * 100);
-      return `color-mix(in oklab, ${f < 1 ? "var(--sf-shade-low)" : "var(--sf-shade-high)"} ${share}%, var(--sf-subtle))`;
+    const usual = c.clear > 0 ? c.clear : 1;
+    // Relative to the usual share; full colour at half or one and a half of it
+    const tint = (r) => {
+      const share = Math.round(Math.min(Math.abs(1 - r) / SHADE_FULL, 1) * 100);
+      return `color-mix(in oklab, ${r < 1 ? "var(--sf-shade-low)" : "var(--sf-shade-high)"} ${share}%, var(--sf-subtle))`;
     };
+    const color = (f) => tint(f / usual);
     const directions = [[90, t("O")], [135, t("SO")], [180, t("S")], [225, t("SW")], [270, t("W")]].filter(([a]) => a >= minA && a <= maxA);
     return html`
       <div class="shade-map">
@@ -710,11 +719,11 @@ class SunflowAnalysis extends LitElement {
           ${directions.map(([a, label]) => svg`<text class="axis" x=${x(a)} y=${height - 4} text-anchor="middle">${label}</text>`)}
         </svg>
         <div class="legend small">
-          <span class="legend-item"><span class="swatch" style="background:${color(0.4)}"></span>${t("weniger als prognostiziert (Schatten)")}</span>
-          <span class="legend-item"><span class="swatch" style="background:${color(1)}"></span>${t("wie prognostiziert")}</span>
-          <span class="legend-item"><span class="swatch" style="background:${color(1.4)}"></span>${t("mehr")}</span>
+          <span class="legend-item">${t("weniger (Schatten)")}
+            ${SHADE_STEPS.map((r) => html`<span class="swatch" title=${`${Math.round(r * usual * 100)} %`} style="background:${tint(r)}"></span>`)}
+            ${t("mehr")}</span>
         </div>
-        <p class="small muted help">${t("Nach rechts die Sonnenrichtung, nach oben die Sonnenhöhe; nur klare Stunden.")}</p>
+        <p class="small muted help">${t("Nach rechts die Sonnenrichtung, nach oben die Sonnenhöhe; nur klare Stunden. Die Farbe zeigt den Vergleich mit dem, was die Fläche bei klarem Himmel üblicherweise liefert ({pct} der Prognose): weiß wie üblich, kräftig ab der Hälfte weniger oder mehr.", { pct: `${Math.round(usual * 100)} %` })}</p>
       </div>
     `;
   }
@@ -1132,6 +1141,9 @@ class SunflowAnalysis extends LitElement {
     .recommendation .actions { display: flex; gap: 8px; margin-top: 4px; }
     .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; margin-bottom: 6px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .shade-map .legend-item { gap: 2px; }
+    .shade-map .legend-item .swatch:first-of-type { margin-left: 4px; }
+    .shade-map .legend-item .swatch:last-of-type { margin-right: 4px; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; }
     /* Amber for hints, red only for failures */
     .warn-text { color: var(--sf-warn-text); }
