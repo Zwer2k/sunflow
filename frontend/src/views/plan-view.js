@@ -84,7 +84,23 @@ function percentAxis(highest) {
   };
 }
 
-/** Group consecutive slots with the same action. */
+/** The plan uses part of the backup reserve because the safe forecast fills it back in time. */
+function reserveDipNote(plan, slots) {
+  const reserve = plan.battery?.reserve_wh ?? 0;
+  if (!plan.settings?.backup_reserve_flexible || !reserve) return nothing;
+  const first = plan.batteries?.length > 1 ? plan.batteries[0].id : null;
+  const soc = (slot) => (first ? slot.batteries?.[first]?.soc_wh : slot.soc_wh) ?? reserve;
+  const dips = plan.battery.reserve_dip_wh ?? [];
+  // Only where a dip was allowed: a battery below the reserve after an outage is refilled instead
+  const below = slots.filter((slot, i) => dips[i] > 0 && soc(slot) < reserve - 50);
+  if (!below.length) return nothing;
+  const deepest = Math.max(...below.map((slot) => reserve - soc(slot)));
+  return html`<div class="alert info" role="status">🛡 ${t("Der Plan nutzt bis zu {energy} der Notstrom-Reserve; laut sicherer PV-Prognose ist sie um {time} wieder erreicht.", {
+    time: dayTime.format(new Date(below.at(-1).end)),
+    energy: formatValue(deepest, "Wh"),
+  })}</div>`;
+}
+
 /** Reference lines for the SoC chart: full, backup reserve (if active) and discharge limit. */
 function socLimits(battery) {
   if (!battery) return [];
@@ -351,6 +367,7 @@ class SunflowPlan extends LitElement {
     return html`
       ${this._renderWarnings(plan.warnings)}
       ${plugInHints(plan.plug_in_hints)}
+      ${reserveDipNote(plan, slots)}
       <div class="tiles">
         <div class="tile now">
           <div class="small muted">${t("Geplante Steuerung jetzt (bis {time})", { time: time.format(new Date(now.end)) })}</div>

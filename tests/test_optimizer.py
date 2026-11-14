@@ -494,6 +494,7 @@ def test_plan_response_battery_limits(reserve_wh: float, expected: float) -> Non
         "capacity_wh": 20000,
         "min_soc_wh": 2000,
         "reserve_wh": expected,
+        "reserve_dip_wh": [],
         "limit_wh": None,
         "full_charge_at": None,
         "last_full": None,
@@ -1159,3 +1160,63 @@ def test_nothing_to_optimise_saves_nothing_whatever_is_left_of_the_running_slot(
     plan = optimize(_slots(4, lambda t: 0.30, load=4000), BATTERY, Settings(first_slot_share=share))
 
     assert plan.baseline_cost == pytest.approx(plan.cost, abs=0.005)
+
+
+
+def _night_then_sun(pv_low: float | None, sun_slots: int = 24) -> list[SlotInput]:
+    """22:00 to 22:00: expensive evening, cheap night, from 07:00 to 13:00 PV; p10 as given for sun_slots."""
+    def price(i: int) -> float:
+        return 0.40 if i < 8 else 0.20 if i < 36 else 0.30
+
+    return [
+        SlotInput(
+            start=START + i * SLOT, pv_w=5000.0 if 36 <= i < 60 else 0.0, load_w=500, price=price(i), feed_in=0.08,
+            pv_low_w=None if pv_low is None else pv_low if 36 <= i < 36 + sun_slots else 0.0,
+        )
+        for i in range(96)
+    ]
+
+
+RESERVE_BATTERY = BatterySpec(capacity_wh=20000, soc_wh=8000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+
+
+@pytest.mark.parametrize(
+    ("pv_low", "sun_slots", "hours", "at", "expected"),
+    [
+        pytest.param(4000.0, 24, 12.0, 0, 4000.0, id="safe sun within the hours: down to the lowest level"),
+        pytest.param(4000.0, 24, 6.0, 0, 0.0, id="sun more than the hours ahead: reserve kept"),
+        pytest.param(4000.0, 24, 6.0, 16, 4000.0, id="later the sun is within the hours"),
+        pytest.param(None, 24, 12.0, 0, 0.0, id="no pessimistic forecast: reserve kept"),
+        # p10 surplus of 300 W for 1 h after the factor for the load: 285 Wh into the battery
+        pytest.param(925.0, 4, 12.0, 0, 4 * 300 * 0.95 * 0.25, id="little safe sun: only that much"),
+    ],
+)
+def test_reserve_dips(pv_low: float | None, sun_slots: int, hours: float, at: int, expected: float) -> None:
+    """The reserve may be undercut as far as the pessimistic PV surely fills it back within the hours."""
+    from sunflow.planning.plan import reserve_dips
+
+    dips = reserve_dips(_night_then_sun(pv_low, sun_slots), RESERVE_BATTERY, 6000.0, 2000.0, hours)
+
+    assert dips[at] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("flexible", "lowest"),
+    [
+        pytest.param(True, 2000.0, id="flexible: below the reserve, not below the lowest level"),
+        pytest.param(False, 6000.0, id="fixed reserve"),
+    ],
+)
+def test_reserve_used_and_refilled(flexible: bool, lowest: float) -> None:
+    """The plan uses the reserve in the evening and is back at it once the safe sun has come."""
+    from sunflow.planning.plan import reserve_dips
+
+    inputs = _night_then_sun(4000.0)
+    dips = tuple(reserve_dips(inputs, RESERVE_BATTERY, 6000.0, 2000.0, 12.0)) if flexible else ()
+
+    plan = optimize(inputs, RESERVE_BATTERY, Settings(reserve_wh=6000, reserve_dip_wh=dips, allow_grid_charge=False))
+
+    soc = [s.soc_wh for s in plan.slots]
+    assert min(soc) >= lowest - 1
+    assert (min(soc) < 6000 - 100) == flexible
+    assert soc[59] >= 6000 - 1

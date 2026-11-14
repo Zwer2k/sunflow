@@ -117,7 +117,7 @@ Wie Sunflow den Hausspeicher plant. Hintergründe stehen unter [So plant Sunflow
 | Voll laden alle … Tage | Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt. |
 | Spätestens nach … aus dem Netz | War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll. |
 | Alterung bei hohem Ladestand | Jede kWh über der Schwelle (Vorgabe 80 %) kostet je Stunde einen kleinen Betrag (Vorgabe 0,1 ct). Sunflow lädt dann möglichst kurz vor dem Bedarf. Abschaltbar. |
-| Notstrom-Reserve | Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand. Liegt er darunter, lädt Sunflow ihn vorrangig wieder auf, aus dem Netz, wenn das erlaubt ist, unabhängig vom Preis. |
+| Notstrom-Reserve | Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand. Liegt er darunter, lädt Sunflow ihn vorrangig wieder auf, aus dem Netz, wenn das erlaubt ist, unabhängig vom Preis. **Bei sicherer Prognose unterschreiten**: bis zum tiefsten Stand, soweit die pessimistische PV-Prognose (P10) den Speicher in den angegebenen Stunden sicher wieder auf die Reserve bringt. |
 | Hausverbrauch pro Tag | Startwert, solange weniger als 7 Tage Verlauf vorliegen. |
 | Großverbraucher ausklammern ab | Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose. Steuerbare Verbraucher rechnet Sunflow ohnehin heraus. |
 | Verschleißkosten Speicher | Je Speicher unter Geräte → Speicher: direkt in ct/kWh oder aus Anschaffungspreis, Zyklen, Entladetiefe und Restkapazität berechnet; dazu der Schalter „In der Planung berücksichtigen“. Verhindert Zyklen für Kleinstbeträge. |

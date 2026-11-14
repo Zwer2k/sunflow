@@ -112,6 +112,12 @@ differences. This is intended, not a bug.
   midnight. Example: 4 kWh above 80 % for 10 hours cost about 4 ct at 0.1 ct.
 - **Backup reserve**: in every strategy this state of charge stays free for power outages. If the
   battery is below it, Sunflow refills it first, from the grid if allowed.
+  With **"Go below it on a safe forecast"** the plan may go below the reserve, down to a lowest
+  level (default 10 %), but only as far as the pessimistic PV forecast (p10) surely brings the
+  battery back to the reserve within the set hours (default 12). Consumption counts 25 % above the
+  forecast. Until then the plan holds the battery where PV does not cover the house, so the surplus
+  is enough. Without a p10 forecast the reserve stays fixed. The plan shows a note while it uses
+  part of the reserve.
 
 ## Several batteries
 

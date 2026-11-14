@@ -72,6 +72,8 @@ class SunflowStandards extends LitElement {
       await api.setOptimizer({ ...this._settings, ...changes });
       // Only the saved fields drop their edit; numbers typed elsewhere stay
       if ("backup_reserve_pct" in changes) this._reserve = undefined;
+      if ("backup_reserve_min_pct" in changes) this._reserveMin = undefined;
+      if ("backup_reserve_back_hours" in changes) this._reserveHours = undefined;
       if ("max_soc_pct" in changes) this._maxSoc = undefined;
       if ("full_charge_every_days" in changes) this._fullEvery = undefined;
       if ("full_charge_grid_after_days" in changes) this._gridAfter = undefined;
@@ -180,6 +182,22 @@ class SunflowStandards extends LitElement {
         return false;
       }
       changes.backup_reserve_pct = reserve;
+    }
+    if (this._reserveMin !== undefined) {
+      const lowest = fromDisplay(this._reserveMin, "%");
+      if (lowest === undefined || lowest === null || lowest < 0 || lowest > 100) {
+        this._error = t("Bitte einen Mindeststand zwischen 0 und 100 % eingeben.");
+        return false;
+      }
+      changes.backup_reserve_min_pct = lowest;
+    }
+    if (this._reserveHours !== undefined) {
+      const hours = fromDisplay(this._reserveHours, "h");
+      if (hours === undefined || hours === null || hours < 1 || hours > 24) {
+        this._error = t("Bitte zwischen 1 und 24 Stunden eingeben.");
+        return false;
+      }
+      changes.backup_reserve_back_hours = hours;
     }
     return this._saveSettings({ ...settings, ...changes });
   }
@@ -299,6 +317,34 @@ class SunflowStandards extends LitElement {
                 : html`${t("freihalten")}`}
             </span>
             <span class="small muted help">${t("Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand, die Reserve bleibt dem Notstrom (EPS) bei Stromausfall vorbehalten. Liegt der Speicher darunter, lädt Sunflow ihn vorrangig wieder auf – aus dem Netz, wenn Laden aus dem Netz erlaubt ist, unabhängig vom Preis.")}</span>
+            ${settings.backup_reserve
+              ? html`<label class="inline">
+                  <input type="checkbox" .checked=${settings.backup_reserve_flexible} ?disabled=${this._saving}
+                    @change=${(e) => this._saveSettings({ backup_reserve_flexible: e.target.checked })}>
+                  ${t("Bei sicherer Prognose unterschreiten")}
+                </label>
+                ${settings.backup_reserve_flexible
+                  ? html`<span class="inline">
+                      <span class="muted">${t("tiefstens")}</span>
+                      <span class="input-unit">
+                        <input inputmode="decimal" aria-label=${t("Tiefster Stand in Prozent")}
+                          .value=${this._reserveMin ?? toDisplay(settings.backup_reserve_min_pct, "%")}
+                          @input=${(e) => (this._reserveMin = e.target.value)}
+                          @change=${() => this._saveNumbers(this._settings)}>
+                        <span class="muted">%</span>
+                      </span>
+                      <span class="muted">${t("wieder erreicht in höchstens")}</span>
+                      <span class="input-unit">
+                        <input inputmode="decimal" aria-label=${t("Stunden bis die Reserve wieder erreicht ist")}
+                          .value=${this._reserveHours ?? toDisplay(settings.backup_reserve_back_hours, "h")}
+                          @input=${(e) => (this._reserveHours = e.target.value)}
+                          @change=${() => this._saveNumbers(this._settings)}>
+                        <span class="muted">h</span>
+                      </span>
+                    </span>`
+                  : nothing}
+                <span class="small muted help">${t("Sunflow darf die Reserve nur so weit unterschreiten, wie die pessimistische PV-Prognose (P10) sie bei 25 % mehr Verbrauch als erwartet sicher wieder auffüllt – innerhalb der angegebenen Stunden und nie unter den tiefsten Stand. Typisch: abends etwas mehr aus dem Speicher nutzen, wenn am nächsten Morgen sicher genug Sonne kommt. Ohne P10-Prognose (z. B. ohne Solcast) bleibt die Reserve fest. Bei einem Stromausfall in dieser Zeit steht entsprechend weniger Notstrom bereit.")}</span>`
+              : nothing}
           </div>
           <label class="field">
             <span class="field-label">${t("Hausverbrauch pro Tag (Startwert)")}</span>
