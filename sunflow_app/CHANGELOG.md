@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.81
+
+- Analysis, PV by sun position: the shading map colours each cell against what the plane usually gets under a clear sky instead of against 100 % of the forecast, so shade edges show in graded colours instead of only red and white; the legend shows the steps.
+
 ## 0.78.80
 
 - Backup reserve, "Go below it on a safe forecast": only during the day's PV phase and only as far as the same day's pessimistic PV forecast surely fills it back (e.g. large loads in the morning with the battery at the reserve take the battery instead of the grid). Evenings and nights keep the reserve; the hours setting is gone.

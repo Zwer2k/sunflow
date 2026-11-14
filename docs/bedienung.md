@@ -208,7 +208,7 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   gemessenen Strings, wie viel der Prognose je Sonnenhöhe und -richtung ankommt, getrennt nach klar
   und bewölkt. Dazu lernt es, wie weit die Messung bei unsicherer Prognose (p10 weit unter dem
   Mittelwert, etwa bei Hochnebel) Richtung p10 liegt; das nutzt die Planung nur, wo es im Backtest
-  besser ist. Die Verschattungskarte zeigt orange, wo weniger ankommt (Schatten), blau, wo mehr.
+  besser ist. Die Verschattungskarte zeigt orange, wo weniger ankommt als bei klarem Himmel auf dieser Fläche üblich (Schatten), blau, wo mehr.
   Der Backtest lernt ohne die letzten 3 Wochen und vergleicht auf diesen die Abweichung je Stunde
   mit der Rohprognose und mit der Korrektur nach Uhrzeit. Die Planung nutzt es erst, wenn es unter Einstellungen →
   Planung eingeschaltet ist, und nur für Flächen mit mindestens 60 Tagen und besserem Backtest.

@@ -199,7 +199,7 @@ How well do forecasts and decisions match reality?
   strings how much of the forecast arrives per sun elevation and direction, separately for clear
   and cloudy hours. It also learns how far towards p10 the measurement lies when the forecast is
   uncertain (p10 far below the mean, e.g. with low stratus); planning uses this only where it is
-  better in the backtest. The shading map shows orange where less arrives (shade), blue where more. The
+  better in the backtest. The shading map shows orange where less arrives than usual for this plane under a clear sky (shade), blue where more. The
   backtest learns without the last 3 weeks and compares the deviation per hour on them with the raw
   forecast and the correction by time of day. Planning uses it only once switched on under
   Settings → Planning, and only for planes with at least 60 days and a better backtest.
