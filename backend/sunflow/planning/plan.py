@@ -959,14 +959,14 @@ def storage_buffers(
 SAFE_LOAD_FACTOR = 1.25
 
 
-def reserve_dips(inputs: list[SlotInput], battery: BatterySpec, reserve_wh: float, floor_wh: float, hours: float) -> list[float]:
+def reserve_dips(inputs: list[SlotInput], battery: BatterySpec, reserve_wh: float, floor_wh: float, tz: tzinfo) -> list[float]:
     """Per slot how far the battery may be below the reserve at the slot's end (never below floor_wh).
 
-    As far as the safe forecast's surplus fills it back to the reserve within the given hours. In
-    between the battery is held where the PV does not cover the house; the plan's floor in those
-    slots keeps it there, so that surplus stays enough.
+    Only in a day's PV phase (e.g. large loads in the morning) and only as far as that day's safe
+    surplus still fills it back to the reserve. Where the PV does not cover the house in between,
+    the plan's floor holds the battery, so that surplus stays enough. Evenings and nights keep the
+    reserve.
     """
-    window = max(round(hours / DT_H), 1)
     room = max(reserve_wh - floor_wh, 0.0)
     gain = [
         min(max((slot.pv_low_w or 0.0) - slot.load_w * SAFE_LOAD_FACTOR, 0.0), battery.max_charge_w)
@@ -974,7 +974,22 @@ def reserve_dips(inputs: list[SlotInput], battery: BatterySpec, reserve_wh: floa
         * DT_H
         for slot in inputs
     ]
-    return [min(sum(gain[t + 1 : t + 1 + window]), room) for t in range(len(inputs))]
+    days = [slot.start.astimezone(tz).date() for slot in inputs]
+    dips = [0.0] * len(inputs)
+    ahead = 0.0
+    sun_seen: dict[date, bool] = {}
+    # From the end: the safe surplus still to come on the same day
+    for t in range(len(inputs) - 1, -1, -1):
+        if t + 1 < len(inputs) and days[t + 1] == days[t]:
+            ahead += gain[t + 1]
+        else:
+            ahead = 0.0
+        dips[t] = ahead
+    for t, slot in enumerate(inputs):
+        sun_seen[days[t]] = sun_seen.get(days[t], False) or slot.pv_w > 0
+        # Before sunrise the battery keeps the reserve
+        dips[t] = min(dips[t], room) if sun_seen[days[t]] else 0.0
+    return dips
 
 
 # Room for a sunnier day: the same share of the way towards the optimistic forecast as the
@@ -1908,7 +1923,7 @@ async def compute_plan(
         floor = max(batteries[0].min_soc_wh, batteries[0].capacity_wh * options.backup_reserve_min_pct / 100)
         settings = replace(
             settings,
-            reserve_dip_wh=tuple(reserve_dips(inputs, batteries[0], settings.reserve_wh, floor, options.backup_reserve_back_hours)),
+            reserve_dip_wh=tuple(reserve_dips(inputs, batteries[0], settings.reserve_wh, floor, tz)),
         )
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads)

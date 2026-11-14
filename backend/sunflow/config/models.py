@@ -349,11 +349,10 @@ class OptimizerConfig(BaseModel):
     # Kept in the battery in every strategy; only an outage (EPS) may use it
     backup_reserve: bool = False
     backup_reserve_pct: float = Field(default=30.0, ge=0, le=100)
-    # Below the reserve (down to backup_reserve_min_pct) only as far as the pessimistic PV
-    # forecast surely fills it back within backup_reserve_back_hours
+    # In a day's PV phase below the reserve (down to backup_reserve_min_pct) as far as that
+    # day's pessimistic PV forecast surely fills it back
     backup_reserve_flexible: bool = False
     backup_reserve_min_pct: float = Field(default=10.0, ge=0, le=100)
-    backup_reserve_back_hours: float = Field(default=12.0, ge=1, le=24)
     # Load forecast: average daily household consumption and the threshold above
     # which hours count as large sporadic loads (e.g. EV charging) and are left out
     daily_consumption_kwh: float | None = None
