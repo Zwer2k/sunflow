@@ -979,16 +979,16 @@ def reserve_dips(inputs: list[SlotInput], battery: BatterySpec, reserve_wh: floa
     ahead = 0.0
     sun_seen: dict[date, bool] = {}
     # From the end: the safe surplus still to come on the same day
-    for t in range(len(inputs) - 1, -1, -1):
-        if t + 1 < len(inputs) and days[t + 1] == days[t]:
-            ahead += gain[t + 1]
+    for i in range(len(inputs) - 1, -1, -1):
+        if i + 1 < len(inputs) and days[i + 1] == days[i]:
+            ahead += gain[i + 1]
         else:
             ahead = 0.0
-        dips[t] = ahead
-    for t, slot in enumerate(inputs):
-        sun_seen[days[t]] = sun_seen.get(days[t], False) or slot.pv_w > 0
+        dips[i] = ahead
+    for i, slot in enumerate(inputs):
+        sun_seen[days[i]] = sun_seen.get(days[i], False) or slot.pv_w > 0
         # Before sunrise the battery keeps the reserve
-        dips[t] = min(dips[t], room) if sun_seen[days[t]] else 0.0
+        dips[i] = min(dips[i], room) if sun_seen[days[i]] else 0.0
     return dips
 
 
