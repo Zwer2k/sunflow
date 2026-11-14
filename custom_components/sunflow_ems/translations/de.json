@@ -5,7 +5,8 @@
     },
     "error": {
       "cannot_connect": "Verbindung fehlgeschlagen",
-      "invalid_auth": "Ungültige Authentifizierung"
+      "invalid_auth": "Ungültige Authentifizierung",
+      "app_not_found": "Keine laufende Sunflow App gefunden. Installiere und starte die Sunflow App unter Einstellungen → Apps und füge diese Integration danach erneut hinzu; sie verbindet sich dann ohne Eingabe. Für eine Sunflow App auf einem anderen Rechner Adresse und Token eintragen."
     },
     "step": {
       "user": {

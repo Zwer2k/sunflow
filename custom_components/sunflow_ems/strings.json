@@ -5,7 +5,8 @@
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
-      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]"
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "app_not_found": "No running Sunflow App found. Install and start the Sunflow App under Settings → Apps, then add this integration again; it connects without input. For a Sunflow App on another machine enter its address and token."
     },
     "step": {
       "user": {

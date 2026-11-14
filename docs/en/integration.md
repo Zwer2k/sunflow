@@ -22,7 +22,8 @@ Without HACS: copy the folder `custom_components/sunflow_ems` from the repositor
 - **Automatic:** the App announces itself to the Supervisor. Home Assistant shows the
   integration as discovered under "Settings → Devices & services"; one click connects it.
   Adding the integration yourself via "Add integration" needs no input either: it takes
-  address and key of the running App from the Supervisor.
+  address and key of the running App from the Supervisor. Without a running App it says so
+  and asks to install and start the App.
 - **Manual** (only without the Supervisor, e.g. Home Assistant Container): in Sunflow under "Integrations → Sunflow integration in Home Assistant →
   Show credentials …" you find address and key. Enter both when adding the
   integration.
