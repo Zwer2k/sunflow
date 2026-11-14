@@ -13,8 +13,7 @@ Assistant. The SQL query opens the recording read-only and only allows reading s
 ## Setup
 
 1. In Home Assistant under **Settings → Apps → Sunflow → Configuration → Network** enter a port
-   (e.g. `8099`) for "MCP-Server für KI-Assistenten (nur lesend)" (MCP server for AI assistants,
-   read only) and restart the App. Without a port the server cannot be reached from outside.
+   (e.g. `8099`) for "MCP server for AI assistants (read only)" and restart the App. Without a port the server cannot be reached from outside.
 2. In Sunflow under **Settings → Integrations**, section "MCP server for AI assistants",
    click **Generate** next to the key. Key and ready-made command are shown **only this
    once**; Sunflow only stores a checksum.

@@ -26,9 +26,10 @@ den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
 
 - **Plans 96 hours ahead** in quarter hours with a mixed-integer optimizer: prices,
   feed-in tariff, PV and load forecast, battery losses, wear and calendar ageing.
-- **Three battery strategies**: balanced (lowest cost), absorb as much PV as possible,
-  or as self-sufficient as possible; backup reserve, charge limit and periodic full
-  charges.
+- **Four battery strategies**: balanced (lowest cost), absorb as much PV as possible,
+  as self-sufficient as possible, or battery use (a buffer for a day above the forecast);
+  backup reserve, charge limit and periodic full charges.
+- **Several batteries** planned together, e.g. a hybrid inverter and a plug-in storage.
 - **EV charging**: vehicle detection by RFID card or selection, targets and deadlines,
   PV surplus charging with 1 ↔ 3 phase switching (go-e), learned arrival and
   consumption, 12 V battery protection, "worth plugging in" hint, several RFID cards per
@@ -78,7 +79,8 @@ The user interface is available in German and English and follows the language o
 
 Inverters and batteries: Sofar HYD-KTL, SolaX Gen4/5, Huawei SUN2000 (with and
 without LUNA2000), SolarEdge StorEdge, Fronius GEN24 Plus, GoodWe ET/EH/BT, Kostal
-Plenticore, Victron ESS (Modbus TCP). Meters: Tibber Pulse. Wallboxes: evcc
+Plenticore, Victron ESS (Modbus TCP). Plug-in and home storage: Indevolt, Homevolt,
+Marstek Venus, Zendure. Meters: Tibber Pulse. Wallboxes: evcc
 loadpoints, go-e Charger (API v1 and v2). Optimizers: Huawei, Tigo. Plus generic
 switches, power levels and target currents. Test status per device in
 [Supported devices](docs/en/devices.md).

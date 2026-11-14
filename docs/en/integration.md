@@ -24,7 +24,8 @@ Without HACS: copy the folder `custom_components/sunflow_ems` from the repositor
   Adding the integration yourself via "Add integration" needs no input either: it takes
   address and key of the running App from the Supervisor. Without a running App it says so
   and asks to install and start the App.
-- **Manual** (only without the Supervisor, e.g. Home Assistant Container): in Sunflow under "Integrations → Sunflow integration in Home Assistant →
+- **Manual** (without the Supervisor, e.g. Home Assistant Container, or for an App on another
+  machine): in Sunflow under "Integrations → Sunflow integration in Home Assistant →
   Show credentials …" you find address and key. Enter both when adding the
   integration.
 
@@ -73,7 +74,7 @@ sensors "Prognose heute" (today), "Prognose Rest heute" (rest of today), "Progno
 | *device* Aktion | what Sunflow does with a controllable device (reason, power, phases as attributes) |
 | *load* nächster Start, geplante Energie, jetzt eingeplant (next start, planned energy, planned now) | per wallbox, heating rod, own load |
 | Sunflow steuert, *device* steuern (Sunflow controls, control *device*) | main switch and one switch per device |
-| Strategie (strategy) | Balanced, Absorb PV, Self-sufficiency |
+| Strategie (strategy) | Balanced, Absorb PV, Self-sufficiency, Battery use |
 | Neu planen (replan) | button |
 | Plan (calendar) | charging, heating, grid charging and curtailment windows, one-off loads |
 

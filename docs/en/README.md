@@ -17,7 +17,7 @@ of its own.
 
 1. [Installation and setup](installation.md): install the App, choose integrations, take over
    devices, device test, balance check, tariff and forecast.
-2. [User interface](user-interface.md): the Live, Control, Planning and Analysis views.
+2. [User interface](user-interface.md): the Live, Control, Planning, Analysis and Statistics views.
 3. [Handing over control](control.md): when and how Sunflow switches devices itself, safeguards
    and the log.
 

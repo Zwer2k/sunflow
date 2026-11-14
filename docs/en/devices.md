@@ -42,6 +42,10 @@ If a device cannot perform an action, Sunflow does not plan it or uses the close
 | GoodWe ET/EH/BT | goodwe (Core) | `goodwe/hybrid` | PV, battery, grid, consumption, meters | Auto, Charge, Discharge (full power only) | – | – | 🧪 | 🧪 |
 | Kostal Plenticore plus / G3 | kostal_plenticore (Core) | `kostal_plenticore/plenticore` | PV per string, battery, grid, consumption | Auto, Hold | yes | – | 🧪 | 🧪 |
 | Victron ESS (GX with Multi/Quattro) | direct, Modbus TCP | `modbus/victron_gx` | PV (MPPT and AC-coupled), battery, grid | Auto, Hold, Charge (full power only) | – | Enable Modbus TCP in the GX | 🧪 | 🧪 |
+| Indevolt SolidFlex / PowerFlex (plug-in storage with PV inputs) | indevolt (Core) | `indevolt/indevolt` | PV, PV per input, battery, AC output, meters | Auto, Hold, Limit discharging, Charge, Discharge | – | – | 🧪 | 🧪 |
+| Homevolt | homevolt (Core) | `homevolt/homevolt` | Battery | Auto, Hold, Charge, Discharge | – | Local Mode (Sunflow sets it, not stored) | 🧪 | 🧪 |
+| Marstek Venus E / D / A (plug-in storage) | marstek_modbus (HACS, Modbus via RS485 gateway or Ethernet) | `marstek_modbus/venus` | Battery, AC power, meters | Auto, Hold, Charge, Discharge | – | RS485 control (Sunflow sets it) | 🧪 | 🧪 |
+| Zendure SolarFlow / Hyper / AIO | zendure_ha (HACS, official) via the "Zendure Manager" device | `zendure_ha/manager` | Battery (all Zendure devices together) | Auto, Hold, Charge, Discharge | – | Home meter in the Zendure Manager for "Auto" (smart) | 🧪 | 🧪 |
 
 Notes:
 

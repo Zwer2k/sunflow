@@ -4,7 +4,7 @@
 
 ## Voraussetzungen
 
-- Home Assistant OS oder Supervised (für Apps, früher „Add-ons“).
+- Home Assistant OS oder Supervised (für Apps, früher „Add-ons“), ab Version 2026.10.
 - Die Integrationen deiner Geräte sind in Home Assistant eingerichtet, z. B. `solax_modbus` für
   den Wechselrichter, `goecharger_mqtt` für die Wallbox, Solcast oder Forecast.Solar für die
   PV-Prognose und eine Integration für den Strompreis. Welche Sunflow kennt, steht unter
@@ -19,6 +19,14 @@
 3. Die App starten und „In Seitenleiste anzeigen“ einschalten. Sunflow öffnet sich im Panel.
 
 Updates erscheinen wie bei jeder App, sobald eine neue Version veröffentlicht ist.
+
+### Integration installieren (optional)
+
+Die Sunflow-Integration bringt die gelernte PV-Prognose ins Energie-Dashboard und Sensoren für
+eigene Automationen. In HACS nach **Sunflow** suchen, installieren und Home Assistant neu
+starten. Danach bietet Home Assistant sie unter **Einstellungen → Geräte & Dienste** als gefunden
+an, und auch über „Integration hinzufügen“ verbindet sie sich ohne Eingabe mit der laufenden App.
+Läuft keine App, weist sie darauf hin. Details: [Sunflow-Integration](integration.md).
 
 ### Sunflow oder Sunflow Edge
 
@@ -50,7 +58,8 @@ Eigenverbrauch).
 ![Integrationen](images/settings-integrations.png)
 
 Sunflow listet die Integrationen in deinem Home Assistant, die es kennt, mit den gefundenen
-Geräten. Hake an, was Sunflow nutzen soll. Das Etikett sagt, was möglich ist:
+Geräten; nicht verwendete blendet „Nicht verwendete anzeigen“ ein. Hake an, was Sunflow nutzen
+soll. Das Etikett sagt, was möglich ist:
 
 - **Unterstützt · steuerbar**: Sunflow kann messen und steuern.
 - **Unterstützt · nur lesen**: Sunflow misst und plant. Steuern ist für diese Geräte nicht
@@ -161,5 +170,6 @@ für dich stimmig aussieht.
 
 Unter **Analyse → Schattenbetrieb** lädt „Daten exportieren“ eine ZIP-Datei mit Aufzeichnung,
 Konfiguration, Steuerungsprotokoll und aktuellem Plan herunter. „Export importieren“ führt die
-Aufzeichnung in eine andere Installation zusammen; die Konfiguration wird dabei nicht übernommen.
+Aufzeichnung in eine andere Installation zusammen; **Mit Konfiguration** übernimmt auch die
+Einstellungen, **Nur Aufzeichnung** lässt sie, wie sie sind.
 Schlüssel (Integration, MCP) sind nicht im Export.

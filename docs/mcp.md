@@ -14,7 +14,7 @@ nur lesende Anweisungen zu.
 ## Einrichten
 
 1. In Home Assistant unter **Einstellungen → Apps → Sunflow → Konfiguration → Netzwerk** einen
-   Port für „MCP-Server für KI-Assistenten“ eintragen (z. B. `8099`) und die App neu starten.
+   Port für „MCP server for AI assistants (read only)“ eintragen (z. B. `8099`) und die App neu starten.
    Ohne Port ist der Server von außen nicht erreichbar.
 2. In Sunflow unter **Einstellungen → Integrationen**, Abschnitt „MCP-Server für KI-Assistenten“,
    beim Schlüssel auf **Erzeugen** klicken. Schlüssel und fertiger Befehl werden **nur dieses eine Mal**

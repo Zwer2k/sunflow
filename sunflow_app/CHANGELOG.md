@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.79.0
+
+### Highlights since 0.75.14
+
+- **Several batteries** are planned together (e.g. a hybrid inverter and a plug-in storage), each with its own wear cost, short name and own lines in the plan and live view. New device profiles: Indevolt, Homevolt, Marstek Venus.
+- **PV forecast by sun position (test):** learns per roof plane from Solcast's past forecasts how much arrives at each sun elevation and direction (shade map, backtest), follows how the day went so far, and recognises leaves, snow and dirt per plane, with a soiling history and an expectation by season.
+- **New view Statistics:** charging sessions and runs of the loads like evcc's statistics (energy, solar share, price per month or year, rings per load and vehicle, session list). Home battery energy counts by what filled it. One-time import of evcc's sessions (API or CSV export).
+- **Several RFID cards per vehicle**, each with its own name, target, ready-by time and strategy.
+- **Live view:** energy flow as diagram, bars, tiles, house or 3D scene; quick controls for loads right below it; losses shown.
+- **Home battery:** new strategy "Battery use" with a buffer for a day above the forecast; room kept for more sun than planned; partial discharge spread evenly over the quarter hour; backup reserve first, with the new option to go below it on a safe forecast during the day's PV phase.
+- **Analysis:** "Plan a battery" (payback of a battery one might buy), "Data for learning", plausibility of learning sources, PV per plane, plan from 6 hours before against the measurement.
+- **Operation:** explanations and recommendations can be hidden per browser, settings search, light/dark follows Home Assistant, larger touch targets, many fixes in control (failed writes, hand-back, Modbus) and planning.
+- **Integration:** "Add integration" connects to the running App without entering address and key.
+- **Documentation** reviewed for the release: integration install step and required Home Assistant version (2026.10) in the installation guide, moving data with or without configuration, the fourth strategy, the new batteries in the device tables, battery short name and "charge limit applies".
+
+### All changes
+
 ## 0.78.83
 
 - Integration setup: with the Supervisor but no running Sunflow App, the form now says so and asks to install and start the App first; address and token stay possible for an App on another machine.

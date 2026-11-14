@@ -6,13 +6,16 @@ Sunflow plant Hausspeicher, Wallbox, Warmwasser und andere Verbraucher voraussch
 PV-Prognose und Strompreis und setzt den Plan auf Wunsch selbst um. Es läuft als App in Home
 Assistant und nutzt die Integrationen, die du dort schon hast. Eigene Gerätetreiber braucht es nicht.
 
+> Die Oberfläche gibt es auf Deutsch und Englisch; sie folgt der Sprache von Home Assistant und
+> lässt sich unter Einstellungen → Anzeige → Sprache umstellen.
+
 ![Live-Ansicht](images/live.png)
 
 ## Erste Schritte
 
 1. [Installation und Einrichtung](installation.md): App installieren, Integrationen wählen,
    Geräte übernehmen, Gerätetest, Bilanzprüfung, Tarif und Prognose.
-2. [Bedienung](bedienung.md): die Ansichten Live, Steuerung, Planung und Analyse.
+2. [Bedienung](bedienung.md): die Ansichten Live, Steuerung, Planung, Analyse und Statistik.
 3. [Steuerung übernehmen](steuerung.md): wann und wie Sunflow selbst schaltet, Absicherung
    und Protokoll.
 
