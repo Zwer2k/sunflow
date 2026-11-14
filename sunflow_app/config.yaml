@@ -1,6 +1,6 @@
 name: Sunflow
 # Set by the release workflow once the images of a tag are built; do not change by hand
-version: "0.75.14"
+version: "0.79.0"
 slug: sunflow
 description: Predictive energy management with PV forecasts and dynamic prices
 url: https://github.com/Zwer2k/sunflow
