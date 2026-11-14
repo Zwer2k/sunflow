@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.82
+
+- Integration setup: adding the Sunflow integration via "Add integration" no longer asks for address and key when Home Assistant runs with the Supervisor. It takes them from the running App's announcement. The form is only shown without the Supervisor (e.g. Home Assistant Container) or when no App answers.
+
 ## 0.78.81
 
 - Analysis, PV by sun position: the shading map colours each cell against what the plane usually gets under a clear sky instead of against 100 % of the forecast, so shade edges show in graded colours instead of only red and white; the legend shows the steps.
