@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.78.79
+
+- Backup reserve: new option "Go below it on a safe forecast". The plan may use part of the reserve, down to a lowest level, as far as the pessimistic PV forecast (p10, with 25 % more consumption) surely fills it back within the set hours. Without a p10 forecast the reserve stays fixed. The plan shows a note while it uses the reserve.
+
 ## 0.78.78
 
 - Statistics: the help text no longer mentions evcc and describes how the home battery is counted.

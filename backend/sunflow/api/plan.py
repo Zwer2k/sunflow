@@ -62,6 +62,8 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
             "capacity_wh": result.battery.capacity_wh,
             "min_soc_wh": result.battery.min_soc_wh,
             "reserve_wh": result.reserve_wh,
+            # Per slot how far below the reserve the safe forecast allows (flexible reserve)
+            "reserve_dip_wh": [round(dip) for dip in result.reserve_dip_wh[: len(plan.slots)]],
             "limit_wh": result.care.limit_wh if result.care else None,
             "full_charge_at": result.care.full_charge_at.isoformat() if result.care and result.care.full_charge_at else None,
             "last_full": result.care.last_full.isoformat() if result.care and result.care.last_full else None,

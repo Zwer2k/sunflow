@@ -69,6 +69,9 @@ class Settings:
     peak_penalty_ct_per_kwh: float = 20.0
     # Energy that must stay in the battery for backup power
     reserve_wh: float = 0.0
+    # Per slot how far the battery may be below the reserve at the slot's end, because a safe
+    # forecast fills it back in time (empty: never below it)
+    reserve_dip_wh: tuple[float, ...] = ()
     # A fixed feed-in tariff only pays for PV; exporting stored grid energy is not
     # remunerated, so export is limited to the current PV unless allowed explicitly
     allow_battery_export: bool = False
@@ -461,10 +464,23 @@ def optimize(
     headrooms = [(t, wh, penalty) for t, wh, penalty in settings.headroom if 0 <= t < n]
     headroom_over = count + np.arange(len(headrooms))
     count += len(headrooms)
-    # Discharge limit or backup reserve, whichever is higher, also while a battery is below it
-    soc_floor = [max(b.min_soc_wh, b.reserve_wh if b.reserve_wh is not None else settings.reserve_wh) for b in batteries]
-    # Below it (at the start, after an outage) every slot short of it costs: refilled first
-    reserve_short = count + np.arange(n) if any(b.soc_wh < f - 1 for b, f in zip(batteries, soc_floor, strict=True)) else None
+    # Discharge limit or backup reserve, whichever is higher, per slot, also while a battery is below it
+    dips = [settings.reserve_dip_wh[t] if t < len(settings.reserve_dip_wh) else 0.0 for t in range(n)]
+    # A battery with its own reserve (or none) keeps it; the dip applies to the settings' reserve
+    floors = [
+        [max(b.min_soc_wh, b.reserve_wh if b.reserve_wh is not None else settings.reserve_wh - dips[t]) for t in range(n)]
+        for b in batteries
+    ]
+    floor_sum = [sum(f[t] for f in floors) for t in range(n)]
+    # Below it (at the start, after an outage) every slot short of it costs: refilled first. A floor
+    # that rises after a dip below the reserve is kept the same way, so a forecast missed never
+    # makes the plan infeasible
+    dipping = any(dip > 0 for dip in dips)
+    reserve_short = (
+        count + np.arange(n)
+        if dipping or any(b.soc_wh < max(f) - 1 for b, f in zip(batteries, floors, strict=True))
+        else None
+    )
     if reserve_short is not None:
         count += n
     # Energy above the high SoC threshold per battery and slot
@@ -578,7 +594,7 @@ def optimize(
     grid_charge = [settings.allow_grid_charge and b.force_charge for b in batteries]
     for k, b in enumerate(batteries):
         # A battery below its floor may stay there but must not be drained further
-        soc_min.append(min(soc_floor[k], b.soc_wh))
+        soc_min.append(min(*floors[k], b.soc_wh))
         # Charge limit for battery care; lifted while a full charge is due. Above it already,
         # the battery may stay there but not charge further
         limit = b.soc_limit_wh if b.soc_limit_wh is not None else settings.soc_limit_wh
@@ -732,12 +748,12 @@ def optimize(
     if reserve_short is not None:
         # soc of all batteries plus shortfall reaches their floors in every slot
         gate_rows.extend(
-            ({**{s[k][t]: -1 for k in range(m)}, reserve_short[t]: -1}, -sum(soc_floor)) for t in range(n)
+            ({**{s[k][t]: -1 for k in range(m)}, reserve_short[t]: -1}, -floor_sum[t]) for t in range(n)
         )
     # soc of all batteries plus shortfall reaches the floor plus the buffer; the buffer lies
     # above the backup reserve, also while the battery is below the reserve now
     gate_rows.extend(
-        ({**{s[k][t]: -1 for k in range(m)}, index: -1}, -(sum(soc_floor) + wh))
+        ({**{s[k][t]: -1 for k in range(m)}, index: -1}, -(floor_sum[t] + wh))
         for index, (t, wh, _) in zip(buffer_short, buffers, strict=True)
     )
     # soc of all batteries minus what lies above stays within the room left for more PV

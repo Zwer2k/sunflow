@@ -634,6 +634,7 @@ class PlanResult:
     # Every planned battery as (device id, name, spec), the first one is battery
     batteries: list[tuple[str, str, BatterySpec]] = field(default_factory=list)
     reserve_wh: float = 0.0
+    reserve_dip_wh: tuple[float, ...] = ()
     care: BatteryCare | None = None
     # Uncorrected PV forecast and forecast cloud coverage per slot (for learning)
     raw_pv: list[float] = field(default_factory=list)
@@ -951,6 +952,29 @@ def storage_buffers(
         if (wh := min(z * spread, max_wh)) > 0:
             buffers.append(Buffer(slot=end - 1, wh=wh, penalty=penalty_share * saving))
     return buffers
+
+
+# Below the backup reserve only on a safe forecast: pessimistic PV (p10) against this much
+# more consumption than forecast; without a p10 the PV counts as nothing
+SAFE_LOAD_FACTOR = 1.25
+
+
+def reserve_dips(inputs: list[SlotInput], battery: BatterySpec, reserve_wh: float, floor_wh: float, hours: float) -> list[float]:
+    """Per slot how far the battery may be below the reserve at the slot's end (never below floor_wh).
+
+    As far as the safe forecast's surplus fills it back to the reserve within the given hours. In
+    between the battery is held where the PV does not cover the house; the plan's floor in those
+    slots keeps it there, so that surplus stays enough.
+    """
+    window = max(round(hours / DT_H), 1)
+    room = max(reserve_wh - floor_wh, 0.0)
+    gain = [
+        min(max((slot.pv_low_w or 0.0) - slot.load_w * SAFE_LOAD_FACTOR, 0.0), battery.max_charge_w)
+        * battery.efficiency_charge
+        * DT_H
+        for slot in inputs
+    ]
+    return [min(sum(gain[t + 1 : t + 1 + window]), room) for t in range(len(inputs))]
 
 
 # Room for a sunnier day: the same share of the way towards the optimistic forecast as the
@@ -1879,6 +1903,13 @@ async def compute_plan(
     if inputs and inputs[0].start <= (moment := datetime.now(UTC)) < inputs[0].start + SLOT:
         # Of the running slot only the rest is ahead; at least a minute so it still steers
         settings = replace(settings, first_slot_share=max((inputs[0].start + SLOT - moment) / SLOT, 1 / 15))
+    options = config.optimizer
+    if options.backup_reserve and options.backup_reserve_flexible and settings.reserve_wh > 0:
+        floor = max(batteries[0].min_soc_wh, batteries[0].capacity_wh * options.backup_reserve_min_pct / 100)
+        settings = replace(
+            settings,
+            reserve_dip_wh=tuple(reserve_dips(inputs, batteries[0], settings.reserve_wh, floor, options.backup_reserve_back_hours)),
+        )
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
     plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads)
     device_actions(plan, profile, battery_device.id)
@@ -1929,4 +1960,5 @@ async def compute_plan(
         batteries=[(battery_device.id, battery_device.name, spec) for spec in batteries[:1]]
         + [(device.id, device.name, spec) for (device, _), spec in zip(others, batteries[1:], strict=True)],
         reserve_wh=settings.reserve_wh,
+        reserve_dip_wh=settings.reserve_dip_wh,
     )
