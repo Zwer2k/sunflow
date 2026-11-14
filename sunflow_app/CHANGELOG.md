@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.79.1
+
+- Integration: adding it by hand now explains that it needs the Sunflow App, where to find address and token, and links the installation guide.
+
 ## 0.79.0
 
 ### Highlights since 0.75.14

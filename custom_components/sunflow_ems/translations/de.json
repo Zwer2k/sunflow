@@ -6,10 +6,11 @@
     "error": {
       "cannot_connect": "Verbindung fehlgeschlagen",
       "invalid_auth": "Ungültige Authentifizierung",
-      "app_not_found": "Keine laufende Sunflow App gefunden. Installiere und starte die Sunflow App unter Einstellungen → Apps und füge diese Integration danach erneut hinzu; sie verbindet sich dann ohne Eingabe. Für eine Sunflow App auf einem anderen Rechner Adresse und Token eintragen."
+      "app_not_found": "Keine laufende Sunflow-App gefunden. Installiere und starte die Sunflow-App unter Einstellungen → Apps und füge diese Integration danach erneut hinzu; sie verbindet sich dann ohne Eingabe. Für eine Sunflow-App auf einem anderen Rechner Adresse und Schlüssel eintragen."
     },
     "step": {
       "user": {
+        "description": "Die Integration braucht die Sunflow-App; ohne sie tut sie nichts. Adresse und Schlüssel der App eintragen: in Sunflow unter „Integrationen → Sunflow-Integration in Home Assistant → Zugangsdaten anzeigen“. Noch keine App? Zuerst installieren, siehe [Installation]({docs_url}).",
         "data": {
           "url": "URL",
           "token": "Schlüssel"

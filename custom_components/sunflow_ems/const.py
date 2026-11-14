@@ -5,6 +5,7 @@ from datetime import timedelta
 DOMAIN = "sunflow_ems"
 API_VERSION = "v1"
 DEFAULT_URL = "http://localhost:8099"
+DOCS_INSTALL_URL = "https://github.com/Zwer2k/sunflow/blob/main/docs/en/installation.md"
 
 CONF_TOKEN = "token"
 # "app": the connection to the Sunflow App; "forecast": one PV forecast of it
