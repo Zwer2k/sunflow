@@ -24,7 +24,8 @@ Ohne HACS: den Ordner `custom_components/sunflow_ems` aus dem Repository nach
   verbindet sie. Auch wer die Integration selbst über „Integration hinzufügen“ sucht, muss
   nichts eintragen: Sie holt Adresse und Schlüssel der laufenden App vom Supervisor. Läuft
   keine App, sagt sie das und bittet, die App zu installieren und zu starten.
-- **Von Hand** (nur ohne Supervisor, z. B. Home Assistant Container): In Sunflow unter „Integrationen → Sunflow-Integration in Home Assistant →
+- **Von Hand** (ohne Supervisor, z. B. Home Assistant Container, oder für eine App auf einem
+  anderen Rechner): In Sunflow unter „Integrationen → Sunflow-Integration in Home Assistant →
   Zugangsdaten anzeigen“ stehen Adresse und Schlüssel. Beides beim Hinzufügen der
   Integration eintragen.
 
@@ -75,7 +76,7 @@ Je Prognose gibt es zusätzlich die Sensoren „Prognose heute“, „Prognose R
 | *Gerät* Aktion | was Sunflow mit einem steuerbaren Gerät tut (Grund, Leistung, Phasen als Attribute) |
 | *Verbraucher* nächster Start, geplante Energie, jetzt eingeplant | je Wallbox, Heizstab, eigener Verbraucher |
 | Sunflow steuert, *Gerät* steuern | Hauptschalter und Schalter je Gerät |
-| Strategie | Ausgewogen, PV aufnehmen, Autarkie |
+| Strategie | Ausgewogen, PV aufnehmen, Autarkie, Speichernutzung |
 | Neu planen | Taste |
 | Plan (Kalender) | Lade-, Heiz-, Netzlade- und Abregelfenster, einmalige Lasten |
 

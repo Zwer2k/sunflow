@@ -114,12 +114,14 @@ Wie Sunflow den Hausspeicher plant. Hintergründe stehen unter [So plant Sunflow
 |---|---|
 | Strategie | Ausgewogen, Möglichst viel PV aufnehmen, Möglichst autark oder Speichernutzung. „Was macht …?“ klappt die Erklärung auf. |
 | Ladegrenze im Alltag | Höher lädt Sunflow nur für eine fällige Vollladung. 100 % = keine Grenze. |
+| Ladegrenze gilt | „immer“ oder „außer vor Schlechtwetter-Tagen“: Ist in der Vorschau (morgen bis 5 Tage) ein Tag mit weniger PV als Verbrauch, darf der Speicher voll werden, um die PV davor aufzunehmen. |
 | Voll laden alle … Tage | Zum Ausgleichen und Kalibrieren der Zellen, bevorzugt mit PV. Leer = nie gezielt. |
 | Spätestens nach … aus dem Netz | War der Speicher so lange nicht voll (z. B. im Winter), lädt Sunflow ihn zur günstigsten Zeit aus dem Netz voll. |
 | Alterung bei hohem Ladestand | Jede kWh über der Schwelle (Vorgabe 80 %) kostet je Stunde einen kleinen Betrag (Vorgabe 0,1 ct). Sunflow lädt dann möglichst kurz vor dem Bedarf. Abschaltbar. |
-| Notstrom-Reserve | Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand. Liegt er darunter, lädt Sunflow ihn vorrangig wieder auf, aus dem Netz, wenn das erlaubt ist, unabhängig vom Preis. **Bei sicherer Prognose unterschreiten**: tagsüber in der PV-Phase bis zum tiefsten Stand, soweit die pessimistische PV-Prognose (P10) den Speicher am selben Tag sicher wieder auf die Reserve bringt (z. B. große Verbraucher am Morgen ohne sofortigen Netzbezug). |
+| Notstrom-Reserve | Gilt in jeder Strategie: Im Alltag plant Sunflow den Speicher nie unter diesen Stand. Liegt er darunter, lädt Sunflow ihn vorrangig wieder auf, aus dem Netz, wenn das erlaubt ist, unabhängig vom Preis. **Bei sicherer Prognose unterschreiten**: tagsüber in der PV-Phase bis zum tiefsten Stand, soweit die pessimistische PV-Prognose (P10) den Speicher am selben Tag sicher wieder auf die Reserve bringt (z. B. große Verbraucher am Morgen ohne sofortigen Netzbezug). Für den Verbrauch rechnet Sunflow dabei 25 % mehr als erwartet; der tiefste Stand ist anfangs 10 %. |
 | Hausverbrauch pro Tag | Startwert, solange weniger als 7 Tage Verlauf vorliegen. |
 | Großverbraucher ausklammern ab | Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose. Steuerbare Verbraucher rechnet Sunflow ohnehin heraus. |
+| Kurzbezeichnung Speicher | Je Speicher unter Geräte → Speicher, bis 8 Zeichen; erscheint bei mehreren Speichern in Live und Plan. Ohne: das erste Wort des Namens. |
 | Verschleißkosten Speicher | Je Speicher unter Geräte → Speicher: direkt in ct/kWh oder aus Anschaffungspreis, Zyklen, Entladetiefe und Restkapazität berechnet; dazu der Schalter „In der Planung berücksichtigen“. Verhindert Zyklen für Kleinstbeträge. |
 | Laden aus dem Netz | Erlaubt, wenn es sich rechnet. |
 | PV-Prognose anpassen | Lernt aus Messwerten je Stunde und Bewölkung, Details unter Analyse. |

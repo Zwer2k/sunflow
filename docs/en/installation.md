@@ -4,7 +4,7 @@
 
 ## Requirements
 
-- Home Assistant OS or Supervised (for Apps, formerly "add-ons").
+- Home Assistant OS or Supervised (for Apps, formerly "add-ons"), version 2026.10 or later.
 - The integrations of your devices are set up in Home Assistant, e.g. `solax_modbus` for the
   inverter, `goecharger_mqtt` for the wallbox, Solcast or Forecast.Solar for the PV forecast and
   an integration for the electricity price. See [Supported devices](devices.md) and
@@ -19,6 +19,14 @@
 3. Start the App and enable "Show in sidebar". Sunflow opens in its panel.
 
 Updates appear like for any other App once a new version is published.
+
+### Install the integration (optional)
+
+The Sunflow integration brings the learned PV forecast into the Energy dashboard and sensors for
+your own automations. Search for **Sunflow** in HACS, install it and restart Home Assistant.
+Home Assistant then offers it as discovered under **Settings → Devices & services**, and "Add
+integration" also connects it to the running App without any input. Without a running App it
+says so. Details: [Sunflow integration](integration.md).
 
 ### Sunflow or Sunflow Edge
 
@@ -47,8 +55,8 @@ produce warnings, and Sunflow falls back to substitutes (fixed price, self-consu
 
 ![Integrations](../images/en/settings-integrations.png)
 
-Sunflow lists the integrations in your Home Assistant that it knows, with the devices found. Tick
-what Sunflow should use. The label tells you what is possible:
+Sunflow lists the integrations in your Home Assistant that it knows, with the devices found;
+"Show unused" shows the ones not in use. Tick what Sunflow should use. The label tells you what is possible:
 
 - **Supported · controllable**: Sunflow can measure and control.
 - **Supported · read only**: Sunflow measures and plans. Control is
@@ -159,5 +167,6 @@ the plan looks right to you.
 ## Moving data
 
 Under **Analysis → Shadow mode**, "Export data" downloads a ZIP file with the recording,
-configuration, control log and current plan. "Import export" merges the recording into another installation; the configuration is not imported. Keys
+configuration, control log and current plan. "Import export" merges the recording into another installation; **With configuration** also takes
+over the settings, **Recording only** leaves them as they are. Keys
 (integration, MCP) are never part of the export.
