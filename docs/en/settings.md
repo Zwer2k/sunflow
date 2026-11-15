@@ -73,6 +73,14 @@ Per wallbox:
   car (card at the wallbox, selection under Control, the vehicle's sensor) and whether the wallbox
   releases charging without a card.
 
+## Heat pump
+
+Measuring and controlling the heat pump (SG-Ready with two relays, contact 2 only or a select,
+setpoint, reported PV surplus, boost switch) with the rules for when it is boosted or blocked; also
+the heating rods by season and how the heating season is detected. Live values show power, heat,
+COP and the state Sunflow sets or (in shadow mode) would set. Details under
+[Supported devices](devices.md#heat-pump).
+
 ## Loads
 
 ![Loads](../images/en/settings-consumers.png)

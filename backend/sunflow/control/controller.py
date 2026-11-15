@@ -18,7 +18,7 @@ kept in a file, so it survives a restart of the app.
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 import json
 import logging
 import math
@@ -30,11 +30,21 @@ from sunflow.config.models import (
     BATTERY_PRIORITY_ID,
     AuxBatteryGuard,
     DeviceConfig,
+    HeatPumpSettings,
     SunflowConfig,
     Vehicle,
 )
 from sunflow.control.aux_battery import AuxCharge, aux_charge_due, aux_voltage
 from sunflow.control.charger import ChargerWatch
+from sunflow.control.heat_pump import (
+    PREFIX as HEAT_PUMP_PREFIX,
+    RELEASE as HEAT_PUMP_RELEASE,
+    Choice as HeatPumpChoice,
+    HeatPumpTrack,
+    next_state as next_heat_pump_state,
+    runtime as heat_pump_runtime,
+    state_label as heat_pump_state_label,
+)
 from sunflow.control.journal import ControlJournal
 from sunflow.devices.discovery import Snapshot, fetch_snapshot
 from sunflow.devices.executor import (
@@ -502,6 +512,9 @@ def relay_states(count: int, bound: list[str], day: int) -> dict[str, str]:
     return {f"relay_{phase}": "on" if phase in on else "off" for phase in RELAY_PHASES}
 
 
+HEAT_PUMP_REFRESH = timedelta(minutes=10)
+
+
 def off_step(steps: dict[str, float]) -> str | None:
     """The option that switches a stepped consumer off."""
     return next((option for option, watts in steps.items() if watts <= 0), None)
@@ -725,10 +738,17 @@ def device_access(
     """
 
     charging = profile.get("charge_control")
+    steers_heat_pump = "heat_pump_control" in profile
 
     async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, dict[str, Any]]]:
         snapshot = await fetch_snapshot(client, hub)
         entities = device_entities(snapshot, device.ha_device_id)
+        if action.startswith(HEAT_PUMP_PREFIX):
+            # The state's values for the chosen method; only its roles are bound
+            settings = device.heat_pump or HeatPumpSettings()
+            variables = heat_pump_runtime(action.removeprefix(HEAT_PUMP_PREFIX), settings, runtime.get("surplus_w", 0.0))
+            bound = {k: o.entity_id for k, o in device.role_overrides.items() if o.entity_id}
+            return plan_steps(profile["heat_pump_control"], variables, entities, "ram", bound), snapshot.states
         if action.startswith(PHASES_PREFIX):
             return plan_steps(phase_steps(profile, action), runtime, entities, "eeprom"), snapshot.states
         if action.startswith(PV_LIMIT_PREFIX):
@@ -753,6 +773,9 @@ def device_access(
     def matches(call: PlannedCall, states: dict[str, dict[str, Any]]) -> bool:
         return current_matches(call, states, direct())
 
+    if steers_heat_pump:
+        # Handed back (also by the watchdog): normal operation, the heat pump decides alone
+        return DeviceAccess(plan=plan, run=run, release=HEAT_PUMP_RELEASE, matches=matches)
     if charging:
         release = "release" if "release" in charging else None
         if not (remember := charging.get("remember")):
@@ -868,15 +891,22 @@ class PlanController:
         # Surplus handed out in this tick (the live values do not show it yet)
         self._surplus_used = 0.0
         self._lock = asyncio.Lock()
+        # Chosen state per heat pump (minimum time, block limits); Home Assistant's time zone for "a day"
+        self._heat_pumps: dict[str, HeatPumpTrack] = {}
+        self.tz: tzinfo = UTC
+        # What it would recommend to heat pumps it does not steer yet (shadow mode)
+        self.heat_pump_shadow: dict[str, HeatPumpChoice] = {}
 
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive, a loadpoint with charge control or a PV limit."""
         profile = self._profiles()[device.profile]
-        return controls_battery(profile) or "charge_control" in profile or "pv_limit" in profile
+        return controls_battery(profile) or "charge_control" in profile or "pv_limit" in profile or "heat_pump_control" in profile
 
     def eligible(self, config: SunflowConfig, device: DeviceConfig) -> str | None:
         """Why a device cannot be controlled, None if it can."""
         profile = self._profiles()[device.profile]
+        if "heat_pump_control" in profile:
+            return None if device.heat_pump is not None and device.heat_pump.method else t("keine Ansteuerung gewählt")
         if "charge_control" in profile or ("pv_limit" in profile and not controls_battery(profile)):
             return None
         if not controls_battery(profile):
@@ -918,13 +948,16 @@ class PlanController:
         order = config.priority_order()
         for device in sorted(config.devices, key=lambda d: order.index(d.id)):
             if not self.wanted(config, device):
+                self._heat_pump_shadow(config, device, plan, plan_at, now, live)
                 continue
             profile = self._profiles()[device.profile]
             if self.journal is not None:
                 overrides = {k: o.model_dump() for k, o in device.role_overrides.items()}
                 roles = [r.entity_id for r in preview(profile, snapshot, device.ha_device_id, overrides) if r.entity_id]
                 await self.journal.observe(device.id, device.name, roles, snapshot.states, now)
-            if "charge_control" in profile:
+            if "heat_pump_control" in profile:
+                await self._safely(device.id, device, lambda d, s: self._heat_pump(d, s, plan, plan_at, now, live))
+            elif "charge_control" in profile:
                 await self._safely(device.id, device, lambda d, s: self._charge(d, s, plan, plan_at, now, live, snapshot))
             elif not controls_battery(profile):
                 pass
@@ -1407,6 +1440,47 @@ class PlanController:
         if not unchanged:
             status.current_a, status.last_current_write = current, now
         status.active, status.action, status.power_w, status.reason = True, "charge", power, reason
+
+    def _heat_pump_shadow(
+        self, config: SunflowConfig, device: DeviceConfig, plan: Any, plan_at: datetime | None, now: datetime, live: Any
+    ) -> None:
+        """What Sunflow would recommend to a heat pump it does not steer (yet): shown, not written."""
+        if device.profile not in self._profiles() or "heat_pump_control" not in self._profiles()[device.profile]:
+            return
+        if self.eligible(config, device) is not None:
+            self.heat_pump_shadow.pop(device.id, None)
+            return
+        _, _, reason = desired_action(plan, plan_at, now)
+        if reason != t(ON_PLAN):
+            self.heat_pump_shadow[device.id] = HeatPumpChoice(state="normal", reason=reason)
+            return
+        track = self._heat_pumps.setdefault(device.id, HeatPumpTrack())
+        settings = device.heat_pump or HeatPumpSettings()
+        self.heat_pump_shadow[device.id] = next_heat_pump_state(settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None))
+
+    async def _heat_pump(
+        self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime, live: Any
+    ) -> None:
+        """Recommend a state to the heat pump: boost on surplus or cheap hours, block in dear ones."""
+        access = self._access_for(device)
+        await take_over(access, self._marker, device)
+        settings = device.heat_pump or HeatPumpSettings()
+        track = self._heat_pumps.setdefault(device.id, HeatPumpTrack())
+        _, _, reason = desired_action(plan, plan_at, now)
+        if reason == t(ON_PLAN):
+            choice = next_heat_pump_state(settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None))
+        else:
+            # Without a current plan: normal operation
+            track.state, track.since = "normal", now
+            choice = HeatPumpChoice(state="normal", reason=reason)
+        text = t("{state}: {reason}", state=heat_pump_state_label(choice.state), reason=choice.reason)
+        # Relays and setpoints are read back; the surplus is a number the heat pump may forget: refreshed
+        await apply(
+            access, status, f"{HEAT_PUMP_PREFIX}{choice.state}", None, now, {"surplus_w": choice.surplus_w},
+            refresh=HEAT_PUMP_REFRESH, reason=text,
+        )
+        status.active, status.action, status.power_w, status.reason = True, choice.state, None, text
+        self.heat_pump_shadow.pop(device.id, None)
 
     async def _hand_back(self, device: DeviceConfig, status: DeviceControl) -> None:
         """The charger's phase mode as before Sunflow, then the device itself."""

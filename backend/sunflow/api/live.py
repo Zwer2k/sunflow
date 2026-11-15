@@ -125,7 +125,8 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "level_unit": "°C",
                     "charging": None,
                     "connected": None,
-                    "heat_pump": measured.as_dict() | {"outside_temperature": value("outside_temperature")},
+                    "heat_pump": measured.as_dict()
+                    | {"outside_temperature": value("outside_temperature"), "control": heat_pump_control(runner, device.id)},
                 }
             )
         elif "appliance" in capabilities:
@@ -193,6 +194,19 @@ def optimizer_counts(config: SunflowConfig, profiles: dict[str, Any], snapshot: 
         if optimizer.string:
             counts[optimizer.string] = counts.get(optimizer.string, 0) + 1
     return counts
+
+
+def heat_pump_control(runner: Any, device_id: str) -> dict[str, Any] | None:
+    """The state Sunflow sets (steering) or would set (shadow mode) for a heat pump."""
+    controller = getattr(runner, "controller", None)
+    if controller is None:
+        return None
+    status = controller.statuses.get(device_id)
+    if status is not None and status.active and status.action:
+        return {"state": status.action, "reason": status.reason, "steering": True}
+    if (shadow := controller.heat_pump_shadow.get(device_id)) is not None:
+        return {"state": shadow.state, "reason": shadow.reason, "steering": False}
+    return None
 
 
 @router.get("/config/display")

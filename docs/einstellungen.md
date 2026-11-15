@@ -73,6 +73,14 @@ Je Wallbox:
   (Karte an der Wallbox, Auswahl in der Steuerung, Sensor des Fahrzeugs) und ob die Wallbox
   ohne Karte freigibt.
 
+## Wärmepumpe
+
+Messung und Ansteuerung der Wärmepumpe (SG-Ready über zwei Relais, nur Kontakt 2 oder eine
+Auswahl, Sollwert, gemeldeter PV-Überschuss, Boost-Schalter) mit den Regeln, wann sie verstärkt
+oder gesperrt wird; dazu die Heizstäbe nach Jahreszeit und die Erkennung der Heizperiode.
+Live-Werte zeigen Strom, Wärme, COP und den Zustand, den Sunflow setzt oder (im Schattenmodus)
+setzen würde. Einzelheiten unter [Unterstützte Geräte](geraete.md#wärmepumpe).
+
 ## Verbraucher
 
 ![Verbraucher](images/settings-consumers.png)

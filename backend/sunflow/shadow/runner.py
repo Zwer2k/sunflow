@@ -795,6 +795,9 @@ class ShadowRunner:
     async def _replan(self, start: datetime) -> None:
         await i18n.update_language(self._client, self._store.load().display.language)
         await self._update_heating_season()
+        if self.controller is not None:
+            # "A day" of the heat pump's block limits and price ranks is Home Assistant's
+            self.controller.tz = await local_timezone(self._client)
         correction = await self.pv_correction()
         self.learn_sun()
         result = await current_plan(

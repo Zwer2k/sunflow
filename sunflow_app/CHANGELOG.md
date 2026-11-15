@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.79.4
+
+- Heat pump (stage 3): own settings area "Heat pump" (moved out of Custom loads) with measuring, control, the heating rods by season and the heating season.
+- Heat pump control, adjustable: SG-Ready with two relays (each optionally normally closed), contact 2 only (when contact 1 is the grid operator's lock), a select (options matched by name), raising a setpoint, reporting the PV surplus in W, or a boost switch. Sunflow recommends normal, boosted, blocked or forced on: boost from a planned surplus (default 1.5 kW) and optionally in the cheapest hours, block only when allowed in the most expensive hours (at most 2 h in one go, 4 h a day), forced on at negative prices if wanted; each state lasts at least 20 min, a boost on surplus ends when the house imports. Normal without a plan, on hand back and through the watchdog. Until it is switched on under Control, Sunflow only shows what it would set.
+
 ## 0.79.3
 
 - Heating rod (heat pump stage 2): new own load "Relay per phase (1–3)" – Sunflow switches as many relays as fit into the planned power and rotates daily which comes first.

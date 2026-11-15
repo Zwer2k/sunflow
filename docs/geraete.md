@@ -99,6 +99,41 @@ nach der Pause (Vorgabe 60 min) beginnt es erneut, damit ein selten aktualisiert
 ständig neu auslöst. Lädt die Wallbox nach Plan ohnehin, bleibt es dabei. Ein evcc-Ladepunkt
 lädt dafür im Modus „Min+PV“. Wirkt nur, solange Sunflow die Wallbox steuert.
 
+## Wärmepumpe
+
+Wärmepumpen haben unter Einstellungen einen eigenen Bereich **Wärmepumpe** (Profil
+`generic/heat_pump`). Dort stehen Messung, Ansteuerung, die Heizstäbe daneben und die Heizperiode.
+
+**Messung** (alles optional, gebraucht wird der Stromverbrauch oder Wärme und COP): Strom gesamt,
+je Phase (1–3 Leistungs- oder Stromsensoren, Strom × Spannung) oder über einen Zähler, dazu
+Wärmeleistung und COP. Aus zwei von Strom, Wärme und COP berechnet Sunflow den dritten Wert und
+zeigt, ob ein Wert gemessen oder berechnet ist; passt der COP nicht (unter 1 oder über 7, oder
+gemessener und berechneter COP weichen stark ab), weist es darauf hin. „Vorschläge aus Gerät“
+füllt die Felder aus den Entitäten der Wärmepumpe vor. Die Wärmepumpe bleibt Teil des
+Hausverbrauchs, dessen Prognose die Außentemperatur schon berücksichtigt.
+
+**Ansteuerung** – Sunflow empfiehlt einen Zustand (normal, verstärkt, gesperrt, Anlaufbefehl), die
+Regelung der Wärmepumpe entscheidet, was sie daraus macht:
+
+| Art | Entitäten | Zustände |
+|---|---|---|
+| SG-Ready über zwei Relais | Kontakt 1 (Sperre), Kontakt 2 (verstärkt), je wahlweise als Öffner | alle |
+| SG-Ready nur Kontakt 2 | Kontakt 2 – wenn Kontakt 1 die Sperre des Netzbetreibers ist (§14a EnWG) | normal, verstärkt |
+| SG-Ready über eine Auswahl | select oder input_select; die Optionen werden über ihre Namen zugeordnet | alle, die eine Option haben |
+| Sollwert anheben | Zahl (z. B. Warmwasser-Sollwert), normaler Wert, ± Kelvin | normal, verstärkt, gesperrt |
+| PV-Überschuss melden | Zahl in W, die die Wärmepumpe selbst auswertet | normal, verstärkt |
+| Boost-Schalter | Schalter der Integration (z. B. Warmwasser-Einmalladung) | normal, verstärkt |
+
+Wann: **verstärkt** ab einem geplanten Überschuss (Einspeisung oder abgeregelte PV, Standard
+1,5 kW) und wahlweise in den N günstigsten Stunden des Tages; **gesperrt** nur, wenn eingeschaltet,
+in den N teuersten Stunden, höchstens 2 h am Stück und 4 h am Tag; **Anlaufbefehl** wahlweise bei
+negativem Preis. Jeder Zustand bleibt mindestens 20 min (schont den Verdichter); bezieht das Haus
+beim Verstärken auf Überschuss doch Strom aus dem Netz, geht es zurück auf normal. Ohne aktuellen
+Plan, beim Abgeben der Steuerung und über den Watchdog der Integration gilt „normal“.
+
+Gesteuert wird erst, wenn die Wärmepumpe unter Steuerung eingeschaltet ist; bis dahin zeigt
+Sunflow im Bereich Wärmepumpe, was es setzen würde.
+
 ## Eigene Verbraucher
 
 Geräte, die Sunflow nicht von selbst erkennt, legst du in den Einstellungen unter
@@ -111,19 +146,10 @@ Geräte, die Sunflow nicht von selbst erkennt, legst du in den Einstellungen unt
 | Relais je Phase | `generic/relays` | 1–3 Schalter, je einer pro Phase, mit gleicher Leistung | Heizstab mit 1–3 Heizelementen | 🧪 |
 | Ziel-Stromstärke | `generic/current` | Zahl (number) in A, optional Schalter | Wallbox oder Heizstab mit einstellbarem Strom | 🧪 |
 | Nur messen | `generic/meter` | keine – Leistungsmessung (sensor), optional Zähler | Herd, Waschmaschine, Trockner, Spülmaschine | – |
-| Wärmepumpe | `generic/heat_pump` | keine – Strom (gesamt, je Phase in W oder A, Zähler), Wärmeleistung, COP, Temperaturen; alles optional | Wärmepumpe | – |
 
 „Nur messen“ schaltet Sunflow nie. Es lernt aus den Stundenwerten der letzten 8 Wochen, wie viel
 das Gerät am Tag braucht, an wie vielen Tagen es läuft und zu welcher Stunde meist (werktags und am
 Wochenende getrennt); zu sehen unter Analyse → Lernen. Auf die Planung wirkt es noch nicht.
-
-„Wärmepumpe“ schaltet Sunflow ebenfalls noch nicht. Gemessen werden kann der Strom gesamt, je Phase
-(1–3 Leistungs- oder Stromsensoren, Strom × Spannung) oder über einen Zähler, dazu Wärmeleistung
-und COP. Aus zwei von Strom, Wärme und COP berechnet Sunflow den dritten Wert und zeigt im
-Live-Bild, ob ein Wert gemessen oder berechnet ist; passt der COP nicht (unter 1 oder über 7,
-oder gemessener und berechneter COP weichen stark ab), weist es darauf hin. Die Wärmepumpe bleibt
-Teil des Hausverbrauchs, dessen Prognose die Außentemperatur schon berücksichtigt. Steuerung über
-SG-Ready und ein Heizstab folgen ([Entwurf](../design/waermepumpe.md)).
 
 ### Heizstab mit Relais je Phase
 
@@ -135,7 +161,7 @@ damit sie gleichmäßig verschleißen.
 
 ### Heizstab neben einer Wärmepumpe
 
-Unter Einstellungen → Verbraucher lässt sich bei jedem Heizstab **Nach Jahreszeit** einschalten:
+Unter Einstellungen → Wärmepumpe lässt sich bei jedem Heizstab **nach Jahreszeit** einschalten:
 
 | | Standard | Wahlweise |
 |---|---|---|

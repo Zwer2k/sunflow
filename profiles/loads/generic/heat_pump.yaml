@@ -1,5 +1,7 @@
-# A heat pump added by hand, only measured for now. Every measurement is optional; from
-# two of electrical power, heat output and COP Sunflow computes the third.
+# A heat pump added by hand. Every measurement is optional; from two of electrical power,
+# heat output and COP Sunflow computes the third. Optionally steered: SG-Ready (two relays,
+# contact 2 only or a select), a raised setpoint, the PV surplus as a number or a boost switch.
+# Only the roles of the chosen method are bound; the others are left out of the steps.
 profile: generic/heat_pump
 version: 1
 match:
@@ -21,6 +23,21 @@ roles:
   cop: {key: manual_cop, unit: "", optional: true}
   temperature: {key: manual_temperature, unit: "°C", optional: true}
   outside_temperature: {key: manual_outside_temperature, unit: "°C", optional: true}
+  sg_contact1: {key: manual_sg_contact1, optional: true}
+  sg_contact2: {key: manual_sg_contact2, optional: true}
+  sg_select: {key: manual_sg_select, optional: true}
+  setpoint: {key: manual_setpoint, unit: "°C", optional: true}
+  surplus_power: {key: manual_surplus_power, unit: W, optional: true}
+  boost_switch: {key: manual_boost_switch, optional: true}
 
 parameters:
   voltage: {unit: V, default: 230, min: 100, max: 260}
+
+# Sunflow sets the variables per state (normal, boost, block, forced) and method
+heat_pump_control:
+  - switch: {role: sg_contact1, state: "{{ sg_contact1 }}", optional: true, write: if_differs}
+  - switch: {role: sg_contact2, state: "{{ sg_contact2 }}", optional: true, write: if_differs}
+  - select: {role: sg_select, option: "{{ sg_option }}", optional: true, write: if_differs}
+  - number: {role: setpoint, value: "{{ setpoint }}", optional: true, write: if_differs}
+  - number: {role: surplus_power, value: "{{ surplus_w }}", optional: true, write: if_differs, tolerance: 100}
+  - switch: {role: boost_switch, state: "{{ boost_switch }}", optional: true, write: if_differs}

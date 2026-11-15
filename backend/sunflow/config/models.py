@@ -187,6 +187,49 @@ class Connection(BaseModel):
     unit_id: int | None = Field(default=None, ge=0, le=255)
 
 
+HeatPumpState = Literal["block", "normal", "boost", "forced"]
+
+
+class HeatPumpSettings(BaseModel):
+    """How Sunflow steers a heat pump and when.
+
+    It never switches the heat pump itself: it recommends a state, the heat pump's own control
+    decides what that means. Methods:
+    - sg_relays: SG-Ready with two relays (contact 1 usually blocks, contact 2 boosts)
+    - sg_relay: only contact 2 (normal or boost; contact 1 often is the grid operator's lock)
+    - sg_select: a select with the SG-Ready states (manufacturer integration, input_select)
+    - setpoint: raise a setpoint (number, e.g. hot water) by some kelvin
+    - surplus: tell the heat pump the PV surplus in W (number; some heat pumps use it themselves)
+    - boost_switch: a switch the integration offers (e.g. a one-time hot water charge)
+    """
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    method: Literal["sg_relays", "sg_relay", "sg_select", "setpoint", "surplus", "boost_switch"] | None = None
+    # A relay wired as normally closed: on means open
+    contact1_inverted: bool = False
+    contact2_inverted: bool = False
+    # Blocking in expensive hours (contact 1 must not be the grid operator's lock, §14a EnWG)
+    use_block: bool = False
+    # SG-Ready state 4 at negative prices
+    use_forced: bool = False
+    # sg_select: state -> option of the select
+    options: dict[HeatPumpState, str] = Field(default_factory=dict)
+    # setpoint: the normal value and how much higher (boost) or lower (block)
+    setpoint_normal: float | None = Field(default=None, ge=0, le=90)
+    boost_k: float = Field(default=5, ge=0, le=30)
+    block_k: float = Field(default=5, ge=0, le=30)
+    # Boost from this planned surplus (feed-in or curtailed PV) on
+    min_surplus_w: float = Field(default=1500, ge=0, le=50_000)
+    # Boost in the N cheapest and block in the N most expensive hours of a day; 0: never
+    cheap_hours: int = Field(default=0, ge=0, le=12)
+    expensive_hours: int = Field(default=0, ge=0, le=12)
+    # Protection: a state stays at least this long, a block at most this long and this much per day
+    min_state_min: int = Field(default=20, ge=5, le=120)
+    block_max_min: int = Field(default=120, ge=15, le=240)
+    block_day_max_min: int = Field(default=240, ge=15, le=720)
+
+
 class ChargerSettings(BaseModel):
     """A load that charges a battery of its own (e-bike, tool batteries) and is only sometimes plugged in.
 
@@ -240,6 +283,8 @@ class DeviceConfig(BaseModel):
     reload_after_min: int | None = Field(default=None, ge=10, le=240)
     # Own loads with a battery of their own; None: planned by their daily need
     charger: ChargerSettings | None = None
+    # Heat pumps: how Sunflow steers it; None: only measured
+    heat_pump: HeatPumpSettings | None = None
     # Batteries: short name for the live diagram (e.g. "Haus", "Balk."); None: the name's first word
     short_name: str | None = Field(default=None, max_length=8)
 

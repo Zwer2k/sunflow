@@ -97,6 +97,41 @@ Below the configured limit (default 12.2 V) the wallbox charges for the configur
 charging according to plan anyway, that continues. An evcc loadpoint charges in "Min+PV" mode for
 this. Only effective while Sunflow controls the wallbox.
 
+## Heat pump
+
+Heat pumps have their own area **Heat pump** in the settings (profile `generic/heat_pump`): measuring,
+control, the heating rods beside it and the heating season.
+
+**Measuring** (all optional; the electrical power, or heat and COP, is needed): electrical power in
+total, per phase (1–3 power or current sensors, current × voltage) or by a meter, plus heat output
+and COP. From two of power, heat and COP Sunflow computes the third and shows whether a value is
+measured or computed; if the COP does not fit (below 1 or above 7, or measured and computed COP
+differ a lot), it says so. "Suggestions from device" fills the fields from the heat pump's entities.
+The heat pump stays part of the household load, whose forecast already takes the outside
+temperature into account.
+
+**Control** – Sunflow recommends a state (normal, boosted, blocked, forced on); the heat pump's own
+control decides what to make of it:
+
+| Method | Entities | States |
+|---|---|---|
+| SG-Ready with two relays | contact 1 (block), contact 2 (boost), each optionally normally closed | all |
+| SG-Ready contact 2 only | contact 2 – when contact 1 is the grid operator's lock (§14a EnWG) | normal, boosted |
+| SG-Ready with a select | select or input_select; options are matched by their names | all that have an option |
+| Raise a setpoint | number (e.g. hot water setpoint), normal value, ± kelvin | normal, boosted, blocked |
+| Report the PV surplus | number in W the heat pump uses itself | normal, boosted |
+| Boost switch | switch of the integration (e.g. one-time hot water charge) | normal, boosted |
+
+When: **boosted** from a planned surplus (feed-in or curtailed PV, default 1.5 kW) and optionally in
+the N cheapest hours of the day; **blocked** only when switched on, in the N most expensive hours, at
+most 2 h in one go and 4 h a day; **forced on** optionally at negative prices. Each state lasts at
+least 20 min (protects the compressor); if the house imports while boosting on surplus, it returns
+to normal. Without a current plan, when control is handed back and through the integration's
+watchdog the state is "normal".
+
+Sunflow only steers once the heat pump is switched on under Control; until then the Heat pump area
+shows what it would set.
+
 ## Own loads
 
 Devices Sunflow does not detect by itself are added in the settings under "Devices → Custom
@@ -109,19 +144,10 @@ loads". Power, meter and temperature are optional.
 | Relay per phase | `generic/relays` | 1–3 switches, one per phase, with equal power | heating rod with 1–3 elements | 🧪 |
 | Target current | `generic/current` | number in A, optional switch | wallbox or heating rod with adjustable current | 🧪 |
 | Only measure | `generic/meter` | none – power measurement (sensor), optional meter | stove, washing machine, dryer, dishwasher | – |
-| Heat pump | `generic/heat_pump` | none – electrical power (total, per phase in W or A, meter), heat output, COP, temperatures; all optional | heat pump | – |
 
 Sunflow never switches "Only measure". From the hourly values of the last 8 weeks it learns how
 much the device uses per day, on how many days it runs and at which hour usually (workdays and
 weekends separately); shown under Analysis → Learning. It does not affect planning yet.
-
-Sunflow does not switch a "Heat pump" yet either. The electrical power can be measured in total, per
-phase (1–3 power or current sensors, current × voltage) or by a meter, plus heat output and COP.
-From two of power, heat and COP Sunflow computes the third and shows in the live view whether a
-value is measured or computed; if the COP does not fit (below 1 or above 7, or measured and computed
-COP differ a lot), it says so. The heat pump stays part of the household load, whose forecast
-already takes the outside temperature into account. Control by SG-Ready and a heating rod follow
-([draft, German](../../design/waermepumpe.md)).
 
 ### Heating rod with a relay per phase
 
@@ -132,7 +158,7 @@ changes every day which relay comes first, so they wear evenly.
 
 ### Heating rod next to a heat pump
 
-Under Settings → Loads each heating rod can be set **By season**:
+Under Settings → Heat pump each heating rod can be set **by season**:
 
 | | Default | Optional |
 |---|---|---|

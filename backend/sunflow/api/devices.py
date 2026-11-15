@@ -21,6 +21,7 @@ from sunflow.config.models import (
     DeviceConfig,
     FeedIn,
     FlexSettings,
+    HeatPumpSettings,
     MeasuredBy,
     RoleOverride,
     SunflowConfig,
@@ -241,6 +242,14 @@ class ManualDevice(BaseModel):
     heat_energy_entity: str | None = None
     cop_entity: str | None = None
     outside_temperature_entity: str | None = None
+    # Heat pump control: the entities of the chosen method and how Sunflow steers
+    sg_contact1_entity: str | None = None
+    sg_contact2_entity: str | None = None
+    sg_select_entity: str | None = None
+    setpoint_entity: str | None = None
+    surplus_entity: str | None = None
+    boost_switch_entity: str | None = None
+    heat_pump: HeatPumpSettings | None = None
     # Relays: one switch per phase (index 0 is L1; None for a phase without relay) and the power of one
     relay_entities: list[str | None] = Field(default_factory=list, max_length=3)
     relay_power_w: FiniteFloat | None = Field(default=None, gt=0, le=10_000)
@@ -300,8 +309,39 @@ def _heat_pump_setup(body: ManualDevice) -> tuple[dict[str, RoleOverride], dict[
         raise HTTPException(
             status_code=422, detail=t("Bitte den Stromverbrauch der Wärmepumpe angeben (oder Wärmeleistung und COP)")
         )
+    overrides |= _heat_pump_control(body)
     parameters = {"voltage": body.voltage} if body.voltage else {}
     return overrides, parameters, None
+
+
+def _heat_pump_control(body: ManualDevice) -> dict[str, RoleOverride]:
+    """The entities the chosen method writes; those of other methods are not bound (the steps skip them)."""
+    settings = body.heat_pump
+    if settings is None or settings.method is None:
+        return {}
+    contact1 = settings.use_block or settings.use_forced
+    needed: dict[str, list[tuple[str, str | None, tuple[str, ...]]]] = {
+        "sg_relays": [("sg_contact2", body.sg_contact2_entity, SWITCH_DOMAINS)]
+        + ([("sg_contact1", body.sg_contact1_entity, SWITCH_DOMAINS)] if contact1 else []),
+        "sg_relay": [("sg_contact2", body.sg_contact2_entity, SWITCH_DOMAINS)],
+        "sg_select": [("sg_select", body.sg_select_entity, SELECT_DOMAINS)],
+        "setpoint": [("setpoint", body.setpoint_entity, NUMBER_DOMAINS)],
+        "surplus": [("surplus_power", body.surplus_entity, NUMBER_DOMAINS)],
+        "boost_switch": [("boost_switch", body.boost_switch_entity, SWITCH_DOMAINS)],
+    }
+    overrides = {}
+    for role, entity, domains in needed[settings.method]:
+        if not entity or not entity.startswith(domains):
+            raise HTTPException(status_code=422, detail=t("Bitte die Entität für die Ansteuerung wählen ({domains})", domains=", ".join(d.rstrip(".") for d in domains)))
+        overrides[role] = RoleOverride(entity_id=entity)
+    if settings.method == "sg_relays" and not contact1 and body.sg_contact1_entity:
+        # Contact 1 stays bound so a handed back heat pump has it off as well
+        overrides["sg_contact1"] = RoleOverride(entity_id=body.sg_contact1_entity)
+    if settings.method == "sg_select" and not {"normal", "boost"} <= settings.options.keys():
+        raise HTTPException(status_code=422, detail=t("Bitte die Optionen für „normal“ und „verstärkt“ wählen"))
+    if settings.method == "setpoint" and settings.setpoint_normal is None:
+        raise HTTPException(status_code=422, detail=t("Bitte den normalen Sollwert angeben"))
+    return overrides
 
 
 def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, RoleOverride], dict[str, float], dict[str, float] | None]:
@@ -466,6 +506,7 @@ async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, A
         role_overrides=overrides,
         kind="heater" if body.kind == "heater" else None,
         power_steps=steps,
+        heat_pump=body.heat_pump if body.type == "heat_pump" else None,
     )
     config.devices.append(device)
     store.save(config)
@@ -487,11 +528,12 @@ async def update_manual_device(request: Request, device_id: str, body: ManualDev
     device.name = body.name.strip() or device.name
     device.role_overrides = overrides
     # Learned or entered values of the device stay, the setup values are replaced
-    for name in ("max_power", "daily_energy_wh", "tank_l"):
+    for name in ("max_power", "daily_energy_wh", "tank_l", "voltage"):
         device.parameters.pop(name, None)
     device.parameters.update(parameters)
     device.kind = "heater" if body.kind == "heater" else None
     device.power_steps = steps
+    device.heat_pump = body.heat_pump if body.type == "heat_pump" else None
     store.save(config)
     _replan(request)
     return device_with_relations(config, device)

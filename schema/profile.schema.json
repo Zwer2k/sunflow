@@ -139,6 +139,10 @@
         "refresh": {"$ref": "#/$defs/duration"}
       }
     },
+    "heat_pump_control": {
+      "description": "Steps that put a heat pump into a state; Sunflow sets sg_contact1, sg_contact2, sg_option, setpoint, surplus_w and boost_switch for the state and method. Roles of other methods are not bound and left out.",
+      "$ref": "#/$defs/steps"
+    },
     "relays": {
       "description": "One relay per phase (roles switch_l1..switch_l3): the power steps are the number of relays on; Sunflow picks which (rotating) and sets relay_l1..relay_l3 to on/off for the charge steps.",
       "type": "boolean"
