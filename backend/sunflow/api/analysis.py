@@ -160,7 +160,11 @@ async def get_appliance_usage(request: Request) -> list[dict[str, Any]]:
     """Consumers that are only measured: what they use and when, learned from the statistics."""
     config = request.app.state.store.load()
     profiles = _library(request).profiles
-    measured = [d for d in config.devices if "appliance" in profiles[d.profile]["capabilities"]]
+    # A heat pump runs by the weather, not in cycles like a washing machine
+    measured = [
+        d for d in config.devices
+        if "appliance" in profiles[d.profile]["capabilities"] and "heat_pump" not in profiles[d.profile]["capabilities"]
+    ]
     cache = getattr(request.app.state, "appliance_cache", None)
     now = datetime.now(UTC)
     key = [(d.id, d.role_overrides["power"].entity_id) for d in measured if "power" in d.role_overrides]

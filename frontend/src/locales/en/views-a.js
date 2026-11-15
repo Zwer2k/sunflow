@@ -297,4 +297,6 @@ export default {
   "Ø letzte Minuten": "Ø last minutes",
   "jetzt, mit Messdifferenz": "now, incl. reading difference",
   "Verluste": "Losses",
+  "Wärme {power}": "Heat {power}",
+  "⚠ COP unplausibel": "⚠ COP implausible",
 };

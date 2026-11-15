@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.79.2
+
+- Heat pump (stage 1): new own load "Heat pump – measure". Electrical power in total, per phase (1–3 power or current sensors, current × voltage) or by meter, plus heat output, COP, tank and outside temperature – all optional, with suggestions from the heat pump's Home Assistant device. From two of power, heat and COP Sunflow computes the third; the live view shows heat and COP (≈ when computed) and flags an implausible COP. Sunflow does not switch the heat pump yet; it stays part of the household load forecast. Draft of the next stages (SG-Ready, heating rod): design/waermepumpe.md.
+
 ## 0.79.1
 
 - Integration: adding it by hand now explains that it needs the Sunflow App, where to find address and token, and links the installation guide.

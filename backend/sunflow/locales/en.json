@@ -212,5 +212,7 @@
   "Karte {number}": "Card {number}",
   "Eine Kartennummer ist an einer Wallbox mehrfach vergeben": "A card number is used more than once at one wallbox",
   "Keine Ladevorgänge von evcc gelesen: {error}": "No charging sessions read from evcc: {error}",
-  "Adresse von evcc oder eine Datei angeben": "Enter evcc's address or choose a file"
+  "Adresse von evcc oder eine Datei angeben": "Enter evcc's address or choose a file",
+  "Messungen müssen Sensoren sein": "Measurements must be sensors",
+  "Bitte den Stromverbrauch der Wärmepumpe angeben (oder Wärmeleistung und COP)": "Please choose the electrical power of the heat pump (or heat output and COP)"
 }

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 from sunflow import i18n
 from sunflow.config.models import DisplaySettings, SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.heat_pump import DEFAULT_VOLTAGE, reading as heat_pump_reading
 from sunflow.devices.optimizers import optimizers as optimizer_list
 from sunflow.devices.site import (
     PV_OUTPUT_ROLES,
@@ -107,7 +108,27 @@ async def get_live(request: Request) -> dict[str, Any]:
         if load_device is not None and device.id == load_device.id:
             load_w = value("load_power")
             displays["load"] = display("load_power")
-        if "appliance" in capabilities:
+        if "heat_pump" in capabilities:
+            measured = heat_pump_reading(
+                {role: value(role) for role in roles}, device.parameters.get("voltage", DEFAULT_VOLTAGE)
+            )
+            consumers.append(
+                {
+                    "device_id": device.id,
+                    "name": device.name,
+                    "kind": "heat_pump",
+                    "power_w": measured.electric_w,
+                    "display": display("power"),
+                    "level": value("temperature"),
+                    "level_estimated": False,
+                    "vehicle": None,
+                    "level_unit": "°C",
+                    "charging": None,
+                    "connected": None,
+                    "heat_pump": measured.as_dict() | {"outside_temperature": value("outside_temperature")},
+                }
+            )
+        elif "appliance" in capabilities:
             # Only measured (washing machine, stove …): for pictures of the site, not planned
             appliances.append(
                 {"device_id": device.id, "name": device.name, "power_w": value("power"), "display": display("power")}

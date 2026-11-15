@@ -63,9 +63,25 @@ const ICONS = {
   vehicle: "M3 16v-4l2-5h14l2 5v4zM3 16v3h3v-3M18 16v3h3v-3M7 12h0M17 12h0",
   heater: "M12 3c3 4 5 6 5 10a5 5 0 0 1-10 0c0-4 2-6 5-10zM12 13v4",
   load: "M13 2L4 14h7l-1 8 9-12h-7z",
+  // Outdoor unit: housing with fan
+  heat_pump: "M3 5h18v14H3zM10 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0M13 9v6M10 12h6M5 8h2M5 11h2M5 14h2",
   // Heat rising: what is lost in conversion
   losses: "M8 20c-2-3 2-5 0-8s2-5 0-8M12 20c-2-3 2-5 0-8s2-5 0-8M16 20c-2-3 2-5 0-8s2-5 0-8",
 };
+
+/** Heat and COP of a heat pump (short: COP only); computed values get "≈", implausible ones a warning. */
+function heatPumpDetail(consumer, short = false) {
+  const reading = consumer.heat_pump;
+  if (!reading) return null;
+  const approx = (source) => (source === "computed" ? "≈ " : "");
+  const parts = [];
+  if (!short && reading.heat_w !== null && reading.heat_w > 0) {
+    parts.push(t("Wärme {power}", { power: `${approx(reading.heat_source)}${formatPower(reading.heat_w)}` }));
+  }
+  if (reading.cop !== null) parts.push(`COP ${approx(reading.cop_source)}${decimal(reading.cop.toFixed(1))}`);
+  if (reading.problem) parts.push(short ? "⚠" : t("⚠ COP unplausibel"));
+  return parts.join(" · ") || null;
+}
 
 const dayFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const hourFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
@@ -610,7 +626,9 @@ class SunflowLive extends LitElement {
       ${live.consumers.map((c, i) => {
         const level = c.level !== null && c.level !== undefined ? c.level : null;
         const levelText = level === null ? null : `${c.level_estimated ? "≈ " : ""}${Math.round(level)}${c.level_unit === "°C" ? " °C" : " %"}`;
-        const detail = c.kind === "vehicle" && c.connected === false ? t("kein Auto") : [c.vehicle, levelText].filter(Boolean).join(" ") || null;
+        const detail = c.kind === "vehicle" && c.connected === false
+          ? t("kein Auto")
+          : [[c.vehicle, levelText].filter(Boolean).join(" "), heatPumpDetail(c)].filter(Boolean).join(" · ") || null;
         return tile(c.kind in ICONS ? c.kind : "load", consumerColor(i), c.name, formatPower(c.power_w ?? 0, c.display), detail,
           c.level_unit === "°C" ? null : level);
       })}
@@ -772,7 +790,7 @@ class SunflowLive extends LitElement {
     const detail =
       consumer.kind === "vehicle" && consumer.connected === false
         ? t("kein Auto")
-        : [consumer.vehicle, level].filter(Boolean).join(" ") || null;
+        : [[consumer.vehicle, level].filter(Boolean).join(" "), heatPumpDetail(consumer, true)].filter(Boolean).join(" · ") || null;
     return this._node(
       consumer.kind in ICONS ? consumer.kind : "load",
       position,

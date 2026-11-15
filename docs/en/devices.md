@@ -108,10 +108,19 @@ loads". Power, meter and temperature are optional.
 | Power levels | `generic/stepped` | select with levels in W/kW | ESPHome heating rod with levels | 🧪 |
 | Target current | `generic/current` | number in A, optional switch | wallbox or heating rod with adjustable current | 🧪 |
 | Only measure | `generic/meter` | none – power measurement (sensor), optional meter | stove, washing machine, dryer, dishwasher | – |
+| Heat pump | `generic/heat_pump` | none – electrical power (total, per phase in W or A, meter), heat output, COP, temperatures; all optional | heat pump | – |
 
 Sunflow never switches "Only measure". From the hourly values of the last 8 weeks it learns how
 much the device uses per day, on how many days it runs and at which hour usually (workdays and
 weekends separately); shown under Analysis → Learning. It does not affect planning yet.
+
+Sunflow does not switch a "Heat pump" yet either. The electrical power can be measured in total, per
+phase (1–3 power or current sensors, current × voltage) or by a meter, plus heat output and COP.
+From two of power, heat and COP Sunflow computes the third and shows in the live view whether a
+value is measured or computed; if the COP does not fit (below 1 or above 7, or measured and computed
+COP differ a lot), it says so. The heat pump stays part of the household load, whose forecast
+already takes the outside temperature into account. Control by SG-Ready and a heating rod follow
+([draft, German](../../design/waermepumpe.md)).
 
 ### Charge battery (e-bike, tool batteries)
 

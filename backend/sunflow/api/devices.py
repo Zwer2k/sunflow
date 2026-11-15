@@ -34,6 +34,7 @@ from sunflow.devices.executor import (
     plan_action,
     plan_setup,
 )
+from sunflow.devices.heat_pump import PHASES
 from sunflow.devices.resolver import (
     CANONICAL_SIGNS,
     check_balance,
@@ -218,7 +219,7 @@ class ManualDevice(BaseModel):
     """A consumer added by hand: switched (Shelly …), in power steps (select), by current (number) or only measured."""
 
     name: str
-    type: Literal["switch", "stepped", "current", "meter"] = "switch"
+    type: Literal["switch", "stepped", "current", "meter", "heat_pump"] = "switch"
     switch_entity: str | None = None
     level_entity: str | None = None
     current_entity: str | None = None
@@ -232,6 +233,14 @@ class ManualDevice(BaseModel):
     daily_energy_wh: FiniteFloat | None = Field(default=None, ge=0)
     # Stepped: option -> watts; None reads them from the option names ("0,7kW")
     power_steps: dict[str, FiniteFloat] | None = None
+    # Heat pump: power or current per phase (index 0 is L1; None for a phase without sensor)
+    phase_power_entities: list[str | None] = Field(default_factory=list, max_length=3)
+    phase_current_entities: list[str | None] = Field(default_factory=list, max_length=3)
+    voltage: FiniteFloat | None = Field(default=None, ge=100, le=260)
+    heat_power_entity: str | None = None
+    heat_energy_entity: str | None = None
+    cop_entity: str | None = None
+    outside_temperature_entity: str | None = None
 
 
 MANUAL_PROFILES = {
@@ -239,6 +248,7 @@ MANUAL_PROFILES = {
     "stepped": "generic/stepped",
     "current": "generic/current",
     "meter": "generic/meter",
+    "heat_pump": "generic/heat_pump",
 }
 MANUAL_PROFILE = MANUAL_PROFILES["switch"]
 SWITCH_DOMAINS = ("switch.", "input_boolean.")
@@ -263,8 +273,37 @@ def power_steps_from_options(options: list[str]) -> dict[str, float]:
     return steps
 
 
+def _heat_pump_setup(body: ManualDevice) -> tuple[dict[str, RoleOverride], dict[str, float], None]:
+    """Role bindings and parameters of a heat pump; every measurement is optional, but one is needed."""
+    bindings: dict[str, str | None] = {
+        "power": body.power_entity,
+        "energy": body.energy_entity,
+        "heat_power": body.heat_power_entity,
+        "heat_energy": body.heat_energy_entity,
+        "cop": body.cop_entity,
+        "temperature": body.temperature_entity,
+        "outside_temperature": body.outside_temperature_entity,
+    }
+    for phase, entity in zip(PHASES, body.phase_power_entities, strict=False):
+        bindings[f"power_{phase}"] = entity
+    for phase, entity in zip(PHASES, body.phase_current_entities, strict=False):
+        bindings[f"current_{phase}"] = entity
+    overrides = {role: RoleOverride(entity_id=entity) for role, entity in bindings.items() if entity}
+    if any(not entity.startswith("sensor.") for entity in (o.entity_id for o in overrides.values()) if entity):
+        raise HTTPException(status_code=422, detail=t("Messungen müssen Sensoren sein"))
+    electric = {"power", "energy", "power_l1", "power_l2", "power_l3", "current_l1", "current_l2", "current_l3"}
+    if not electric & overrides.keys() and not {"heat_power", "cop"} <= overrides.keys():
+        raise HTTPException(
+            status_code=422, detail=t("Bitte den Stromverbrauch der Wärmepumpe angeben (oder Wärmeleistung und COP)")
+        )
+    parameters = {"voltage": body.voltage} if body.voltage else {}
+    return overrides, parameters, None
+
+
 def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, RoleOverride], dict[str, float], dict[str, float] | None]:
     """Role bindings, parameters and power steps of a consumer added by hand; 422 on missing or wrong entities."""
+    if body.type == "heat_pump":
+        return _heat_pump_setup(body)
     if body.type == "meter":
         # Not switched: the power measurement is what it is about
         if not body.power_entity or not body.power_entity.startswith("sensor."):
@@ -308,12 +347,22 @@ def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, Rol
     return overrides, parameters, steps
 
 
+def _numeric(state: dict[str, Any]) -> bool:
+    try:
+        float(state.get("state"))
+    except TypeError, ValueError:
+        return False
+    return True
+
+
 @router.get("/entities/candidates")
 async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]:
     """Entities that can switch a consumer, power sensors to measure it and % sensors (vehicle SoC)."""
     snapshot = await _snapshot(request)
     switches, power, percent, presence, voltage = [], [], [], [], []
     selects, numbers, temperature, energy, triggers = [], [], [], [], []
+    # Heat pumps: current per phase and plain numbers (COP)
+    currents, ratios = [], []
     # The device's name is the natural name of a consumer or car (the entity's adds "Switch" etc.)
     devices = {d["id"]: d.get("name_by_user") or d.get("name") for d in snapshot.devices}
     device_of = {e["entity_id"]: devices.get(e.get("device_id")) for e in snapshot.entities}
@@ -351,7 +400,13 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
             temperature.append(item)
         elif entity_id.startswith("sensor.") and attributes.get("device_class") == "energy":
             energy.append(item)
+        elif entity_id.startswith("sensor.") and attributes.get("unit_of_measurement") == "A":
+            currents.append(item)
+        elif entity_id.startswith("sensor.") and attributes.get("unit_of_measurement") in (None, "", "COP") and _numeric(state):
+            ratios.append(item)
     return {
+        "currents": currents,
+        "ratios": ratios,
         "switches": switches,
         "power": power,
         "percent": percent,

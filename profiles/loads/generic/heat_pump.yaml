@@ -1,0 +1,26 @@
+# A heat pump added by hand, only measured for now. Every measurement is optional; from
+# two of electrical power, heat output and COP Sunflow computes the third.
+profile: generic/heat_pump
+version: 1
+match:
+  integration: manual
+
+capabilities: [appliance, heat_pump]
+
+roles:
+  power: {key: manual_power, unit: W, optional: true}
+  power_l1: {key: manual_power_l1, unit: W, optional: true}
+  power_l2: {key: manual_power_l2, unit: W, optional: true}
+  power_l3: {key: manual_power_l3, unit: W, optional: true}
+  current_l1: {key: manual_current_l1, unit: A, optional: true}
+  current_l2: {key: manual_current_l2, unit: A, optional: true}
+  current_l3: {key: manual_current_l3, unit: A, optional: true}
+  energy: {key: manual_energy, unit: Wh, optional: true}
+  heat_power: {key: manual_heat_power, unit: W, optional: true}
+  heat_energy: {key: manual_heat_energy, unit: Wh, optional: true}
+  cop: {key: manual_cop, unit: "", optional: true}
+  temperature: {key: manual_temperature, unit: "°C", optional: true}
+  outside_temperature: {key: manual_outside_temperature, unit: "°C", optional: true}
+
+parameters:
+  voltage: {unit: V, default: 230, min: 100, max: 260}

@@ -110,10 +110,19 @@ Geräte, die Sunflow nicht von selbst erkennt, legst du in den Einstellungen unt
 | Leistungsstufen | `generic/stepped` | Auswahl (select) mit Stufen in W/kW | ESPHome-Heizstab mit Stufen | 🧪 |
 | Ziel-Stromstärke | `generic/current` | Zahl (number) in A, optional Schalter | Wallbox oder Heizstab mit einstellbarem Strom | 🧪 |
 | Nur messen | `generic/meter` | keine – Leistungsmessung (sensor), optional Zähler | Herd, Waschmaschine, Trockner, Spülmaschine | – |
+| Wärmepumpe | `generic/heat_pump` | keine – Strom (gesamt, je Phase in W oder A, Zähler), Wärmeleistung, COP, Temperaturen; alles optional | Wärmepumpe | – |
 
 „Nur messen“ schaltet Sunflow nie. Es lernt aus den Stundenwerten der letzten 8 Wochen, wie viel
 das Gerät am Tag braucht, an wie vielen Tagen es läuft und zu welcher Stunde meist (werktags und am
 Wochenende getrennt); zu sehen unter Analyse → Lernen. Auf die Planung wirkt es noch nicht.
+
+„Wärmepumpe“ schaltet Sunflow ebenfalls noch nicht. Gemessen werden kann der Strom gesamt, je Phase
+(1–3 Leistungs- oder Stromsensoren, Strom × Spannung) oder über einen Zähler, dazu Wärmeleistung
+und COP. Aus zwei von Strom, Wärme und COP berechnet Sunflow den dritten Wert und zeigt im
+Live-Bild, ob ein Wert gemessen oder berechnet ist; passt der COP nicht (unter 1 oder über 7,
+oder gemessener und berechneter COP weichen stark ab), weist es darauf hin. Die Wärmepumpe bleibt
+Teil des Hausverbrauchs, dessen Prognose die Außentemperatur schon berücksichtigt. Steuerung über
+SG-Ready und ein Heizstab folgen ([Entwurf](../design/waermepumpe.md)).
 
 ### Akku laden (E-Bike, Werkzeugakkus)
 

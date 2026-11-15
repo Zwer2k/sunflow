@@ -154,15 +154,87 @@ const MANUAL_TYPES = {
   stepped: t("Leistungsstufen (Auswahl)"),
   current: t("Stromstärke (Zahl)"),
   meter: t("nicht steuerbar – nur messen"),
+  heat_pump: t("Wärmepumpe – messen"),
+};
+const PHASE_NAMES = ["L1", "L2", "L3"];
+// How the heat pump's electrical power is measured
+const HEAT_PUMP_ELECTRIC = {
+  power: t("Gesamtleistung (W)"),
+  phase_power: t("Leistung je Phase (W)"),
+  phase_current: t("Strom je Phase (A)"),
+  energy: t("nur Zähler (kWh)"),
 };
 // Capabilities of the hand-made profiles (they are not part of discovery): a meter is only measured
-const MANUAL_CAPABILITIES = { meter: ["appliance"] };
+const MANUAL_CAPABILITIES = { meter: ["appliance"], heat_pump: ["appliance", "heat_pump"] };
 const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
 
 const EMPTY_MANUAL = {
   name: "", type: "switch", kind: "load", switch_entity: "", level_entity: "", current_entity: "", power_entity: "",
   energy_entity: "", temperature_entity: "", steps: {}, max_power: "", daily_energy: "", tank_l: "",
+  // Heat pump: what is measured, each optional
+  electric_on: true, electric_mode: "power", phase_power: ["", "", ""], phase_current: ["", "", ""], voltage: "",
+  heat_on: false, heat_mode: "power", heat_power_entity: "", heat_energy_entity: "", cop_on: false, cop_entity: "",
+  outside_temperature_entity: "",
 };
+/** Whether the heat pump form names enough to know what it draws (electrical power, or heat with COP). */
+function heatPumpMeasured(form) {
+  const electric = form.electric_on && ({
+    power: form.power_entity,
+    phase_power: form.phase_power.some(Boolean),
+    phase_current: form.phase_current.some(Boolean),
+    energy: form.energy_entity,
+  })[form.electric_mode];
+  return Boolean(electric || (form.heat_on && form.heat_power_entity && form.cop_on && form.cop_entity));
+}
+
+/** The API fields of the heat pump form; only ticked measurements are sent. */
+function heatPumpBody(form) {
+  const electric = form.electric_on ? form.electric_mode : null;
+  const phases = (list) => (list.some(Boolean) ? list.map((e) => e || null) : []);
+  const voltage = form.voltage === "" ? null : fromDisplay(form.voltage, "");
+  return {
+    kind: "load",
+    power_entity: electric === "power" ? form.power_entity || null : null,
+    energy_entity: electric ? form.energy_entity || null : null,
+    phase_power_entities: electric === "phase_power" ? phases(form.phase_power) : [],
+    phase_current_entities: electric === "phase_current" ? phases(form.phase_current) : [],
+    voltage: electric === "phase_current" ? voltage : null,
+    heat_power_entity: form.heat_on && form.heat_mode === "power" ? form.heat_power_entity || null : null,
+    heat_energy_entity: form.heat_on ? form.heat_energy_entity || null : null,
+    cop_entity: form.cop_on ? form.cop_entity || null : null,
+    temperature_entity: form.temperature_entity || null,
+    outside_temperature_entity: form.outside_temperature_entity || null,
+    max_power: null,
+    daily_energy_wh: null,
+    tank_l: null,
+  };
+}
+
+/** The heat pump form from a stored device (role -> entity). */
+function heatPumpForm(role, parameters) {
+  const phases = (prefix) => PHASE_NAMES.map((p) => role(`${prefix}_${p.toLowerCase()}`));
+  const phasePower = phases("power");
+  const phaseCurrent = phases("current");
+  const electricMode = role("power") ? "power"
+    : phasePower.some(Boolean) ? "phase_power"
+    : phaseCurrent.some(Boolean) ? "phase_current"
+    : role("energy") ? "energy" : "power";
+  return {
+    electric_on: Boolean(role("power") || role("energy") || phasePower.some(Boolean) || phaseCurrent.some(Boolean)),
+    electric_mode: electricMode,
+    phase_power: phasePower,
+    phase_current: phaseCurrent,
+    voltage: parameters.voltage ? String(parameters.voltage) : "",
+    heat_on: Boolean(role("heat_power") || role("heat_energy")),
+    heat_mode: role("heat_power") || !role("heat_energy") ? "power" : "energy",
+    heat_power_entity: role("heat_power"),
+    heat_energy_entity: role("heat_energy"),
+    cop_on: Boolean(role("cop")),
+    cop_entity: role("cop"),
+    outside_temperature_entity: role("outside_temperature"),
+  };
+}
+
 const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" };
 
 const PRICE_ADAPTERS = {
@@ -1690,13 +1762,16 @@ class SunflowApp extends LitElement {
       (this._manual = withSuggestedName({ ...this._manual, [field]: value }, (list ?? []).find((c) => c.entity_id === value)));
     const entity = (list, detail) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: detail(c) }));
     const unitDetail = (c) => `${c.state ?? "–"} ${c.unit ?? ""}`;
-    const control = { switch: form.switch_entity, stepped: form.level_entity, current: form.current_entity, meter: form.power_entity }[form.type];
+    const control = form.type === "heat_pump"
+      ? heatPumpMeasured(form)
+      : { switch: form.switch_entity, stepped: form.level_entity, current: form.current_entity, meter: form.power_entity }[form.type];
     const measureOnly = form.type === "meter";
+    const heatPump = form.type === "heat_pump";
     const selected = (candidates?.selects ?? []).find((c) => c.entity_id === form.level_entity);
     return html`
       <section class="device">
         <div class="device-title">${t("Eigene Verbraucher")}</div>
-        <p class="small muted help">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant. Nicht steuerbare Geräte mit eigener Leistungsmessung (Herd, Waschmaschine …) lassen sich zum Lernen „nur messen“.")}</p>
+        <p class="small muted help">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant. Nicht steuerbare Geräte mit eigener Leistungsmessung (Herd, Waschmaschine …) lassen sich zum Lernen „nur messen“. Eine Wärmepumpe wird mit Strom, Wärme und COP gemessen.")}</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
               (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
@@ -1711,7 +1786,7 @@ class SunflowApp extends LitElement {
                   <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>${t("Bearbeiten")}</button>
                   <button class="secondary danger" @click=${() => this._removeDevice(d)}>${t("Entfernen")}</button>
                 </span>
-                ${d.kind === "heater" || d.disabled || d.profile === "generic/meter" ? nothing : this._renderCharger(d)}</li>`,
+                ${d.kind === "heater" || d.disabled || ["generic/meter", "generic/heat_pump"].includes(d.profile) ? nothing : this._renderCharger(d)}</li>`,
             )}</ul>`
           : nothing}
         ${candidates === null
@@ -1731,7 +1806,9 @@ class SunflowApp extends LitElement {
                     ${Object.entries(MANUAL_TYPES).map(([value, label]) => html`<option value=${value} ?selected=${form.type === value}>${label}</option>`)}
                   </select>
                 </label>
-                ${measureOnly
+                ${heatPump
+                  ? this._renderHeatPumpFields(form, candidates, entity, unitDetail)
+                  : measureOnly
                   ? html`<p class="small muted field help">${t("Sunflow schaltet das Gerät nie. Es lernt aus der Leistungsmessung, wann und wie viel es läuft (Analyse → Lernen).")}</p>`
                   : html`<label class="field">
                       <span class="field-label">${t("Art")}</span>
@@ -1764,7 +1841,7 @@ class SunflowApp extends LitElement {
                         @change=${(e) => setEntity("current_entity", e.detail.value, candidates?.numbers)}></sf-picker>
                     </div>`
                   : nothing}
-                <div class="field">
+                ${heatPump ? nothing : html`<div class="field">
                   <span class="field-label">${measureOnly ? t("Leistungsmessung") : t("Leistungsmessung (optional)")}</span>
                   <sf-picker label=${t("Leistungsmessung")} empty-label=${measureOnly ? nothing : t("keine")} placeholder=${t("Name oder Entität suchen …")}
                     .value=${form.power_entity} .options=${entity(candidates.power, unitDetail)}
@@ -1775,15 +1852,15 @@ class SunflowApp extends LitElement {
                   <sf-picker label=${t("Verbrauchsmessung")} empty-label=${t("keine")} placeholder=${t("Energiezähler (kWh) …")}
                     .value=${form.energy_entity} .options=${entity(candidates.energy, unitDetail)}
                     @change=${(e) => setEntity("energy_entity", e.detail.value, candidates?.energy)}></sf-picker>
-                </div>
-                ${form.type !== "stepped" && !measureOnly
+                </div>`}
+                ${form.type !== "stepped" && !measureOnly && !heatPump
                   ? html`<label class="field">
                       <span class="field-label">${t("Leistung")}</span>
                       <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
                         @input=${(e) => set("max_power", e.target.value)}><span class="muted">W</span></span>
                     </label>`
                   : nothing}
-                ${measureOnly
+                ${measureOnly || heatPump
                   ? nothing
                   : form.kind === "heater"
                   ? html`
@@ -1828,6 +1905,115 @@ class SunflowApp extends LitElement {
     `;
   }
 
+  /** What a heat pump measures: electrical power, heat and COP, each only when ticked. */
+  _renderHeatPumpFields(form, candidates, entity, unitDetail) {
+    const set = (changes) => (this._manual = { ...this._manual, ...changes });
+    const setEntity = (field, value, list) =>
+      (this._manual = withSuggestedName({ ...this._manual, [field]: value }, (list ?? []).find((c) => c.entity_id === value)));
+    const setPhase = (field, index, value, list) => {
+      const phases = [...this._manual[field]];
+      phases[index] = value;
+      this._manual = withSuggestedName({ ...this._manual, [field]: phases }, (list ?? []).find((c) => c.entity_id === value));
+    };
+    const picker = (label, value, list, onChange, empty = t("keine")) => html`<div class="field">
+      <span class="field-label">${label}</span>
+      <sf-picker label=${label} empty-label=${empty} placeholder=${t("Name oder Entität suchen …")}
+        .value=${value} .options=${entity(list, unitDetail)} @change=${(e) => onChange(e.detail.value)}></sf-picker>
+    </div>`;
+    const check = (field, label) => html`<label class="group-head">
+      <input type="checkbox" .checked=${form[field]} @change=${(e) => set({ [field]: e.target.checked })}> ${label}</label>`;
+    const head = (label) => html`<div class="group-head">${label}</div>`;
+    const devices = [...new Set([...(candidates.power ?? []), ...(candidates.energy ?? []), ...(candidates.temperature ?? [])]
+      .map((c) => c.device).filter(Boolean))].sort();
+    const phases = (field, list, label) => PHASE_NAMES.map((phase, i) =>
+      picker(`${label} ${phase}`, form[field][i], list, (value) => setPhase(field, i, value, list)));
+    return html`
+      <p class="small muted field help wide-help">${t("Sunflow schaltet die Wärmepumpe noch nicht. Es misst Strom, Wärme und COP – aus zwei davon berechnet es den dritten Wert. Alles ist optional, der Stromverbrauch (oder Wärme und COP) wird gebraucht.")}</p>
+      ${devices.length
+        ? html`<label class="field">
+            <span class="field-label">${t("Vorschläge aus Gerät")}</span>
+            <select @change=${(e) => e.target.value && this._suggestHeatPump(e.target.value)}>
+              <option value="">${t("– Gerät wählen –")}</option>
+              ${devices.map((d) => html`<option value=${d}>${d}</option>`)}
+            </select>
+          </label>`
+        : nothing}
+      ${check("electric_on", t("Stromverbrauch"))}
+      ${form.electric_on
+        ? html`<label class="field">
+            <span class="field-label">${t("Messung")}</span>
+            <select @change=${(e) => set({ electric_mode: e.target.value })}>
+              ${Object.entries(HEAT_PUMP_ELECTRIC).map(([value, label]) => html`<option value=${value} ?selected=${form.electric_mode === value}>${label}</option>`)}
+            </select>
+          </label>
+          ${form.electric_mode === "power"
+            ? picker(t("Leistung"), form.power_entity, candidates.power, (v) => setEntity("power_entity", v, candidates.power), nothing)
+            : nothing}
+          ${form.electric_mode === "phase_power" ? phases("phase_power", candidates.power, t("Leistung")) : nothing}
+          ${form.electric_mode === "phase_current"
+            ? html`${phases("phase_current", candidates.currents, t("Strom"))}
+              <label class="field">
+                <span class="field-label">${t("Spannung")}</span>
+                <span class="input-unit"><input inputmode="decimal" placeholder="230" .value=${form.voltage}
+                  @input=${(e) => set({ voltage: e.target.value })}><span class="muted">V</span></span>
+              </label>`
+            : nothing}
+          ${form.electric_mode === "energy"
+            ? picker(t("Zähler"), form.energy_entity, candidates.energy, (v) => setEntity("energy_entity", v, candidates.energy), nothing)
+            : picker(t("Zähler (optional)"), form.energy_entity, candidates.energy, (v) => setEntity("energy_entity", v, candidates.energy))}`
+        : nothing}
+      ${check("heat_on", t("Wärmeleistung"))}
+      ${form.heat_on
+        ? html`<label class="field">
+            <span class="field-label">${t("Messung")}</span>
+            <select @change=${(e) => set({ heat_mode: e.target.value })}>
+              <option value="power" ?selected=${form.heat_mode === "power"}>${t("Leistung (W)")}</option>
+              <option value="energy" ?selected=${form.heat_mode === "energy"}>${t("nur Zähler (kWh)")}</option>
+            </select>
+          </label>
+          ${form.heat_mode === "power"
+            ? picker(t("Wärmeleistung"), form.heat_power_entity, candidates.power, (v) => set({ heat_power_entity: v }), nothing)
+            : nothing}
+          ${picker(form.heat_mode === "energy" ? t("Wärmezähler") : t("Wärmezähler (optional)"), form.heat_energy_entity, candidates.energy,
+            (v) => set({ heat_energy_entity: v }), form.heat_mode === "energy" ? nothing : t("keiner"))}
+          <span class="small muted help field wide-help">${t("Manche Integrationen nennen die Wärmeleistung nur „Leistung“ – hier gehört die abgegebene Wärme hin, nicht der Stromverbrauch.")}</span>`
+        : nothing}
+      ${check("cop_on", t("COP"))}
+      ${form.cop_on ? picker(t("COP"), form.cop_entity, candidates.ratios, (v) => set({ cop_entity: v }), nothing) : nothing}
+      ${head(t("Temperaturen"))}
+      ${picker(t("Speichertemperatur (optional)"), form.temperature_entity, candidates.temperature, (v) => set({ temperature_entity: v }))}
+      ${picker(t("Außentemperatur (optional)"), form.outside_temperature_entity, candidates.temperature, (v) => set({ outside_temperature_entity: v }))}
+    `;
+  }
+
+  /** Fill the empty heat pump fields with the entities of one Home Assistant device. */
+  _suggestHeatPump(deviceName) {
+    const candidates = this._candidates ?? {};
+    const of = (list, test = () => true) => (list ?? []).find((c) => c.device === deviceName && test(c))?.entity_id ?? "";
+    const named = (pattern) => (c) => pattern.test(`${c.name} ${c.entity_id}`);
+    // "Wärmepumpe" / "heat pump" itself is no hint of heat output
+    const heat = /w(ä|ae)rme(?!pumpe)|heat(?![ _-]?pump)|therm/i;
+    const outside = /au(ß|ss)en|outdoor|outside|ambient/i;
+    const form = this._manual;
+    const fill = (field, value) => (form[field] || !value ? {} : { [field]: value });
+    const heatPower = of(candidates.power, named(heat));
+    const heatEnergy = of(candidates.energy, named(heat));
+    const cop = of(candidates.ratios, named(/cop|leistungszahl/i));
+    this._manual = {
+      ...form,
+      ...(form.name ? {} : { name: deviceName, suggestedName: deviceName }),
+      ...fill("power_entity", of(candidates.power, (c) => !heat.test(`${c.name} ${c.entity_id}`))),
+      ...fill("energy_entity", of(candidates.energy, (c) => !heat.test(`${c.name} ${c.entity_id}`))),
+      ...fill("heat_power_entity", heatPower),
+      ...fill("heat_energy_entity", heatEnergy),
+      ...fill("cop_entity", cop),
+      ...fill("outside_temperature_entity", of(candidates.temperature, named(outside))),
+      ...fill("temperature_entity", of(candidates.temperature, (c) => !outside.test(`${c.name} ${c.entity_id}`))),
+      heat_on: form.heat_on || Boolean(heatPower || heatEnergy),
+      cop_on: form.cop_on || Boolean(cop),
+    };
+  }
+
   /** A select chosen for the power steps: its options with the watts read from their names. */
   _setStepEntity(entityId) {
     const options = (this._candidates?.selects ?? []).find((c) => c.entity_id === entityId)?.options ?? [];
@@ -1868,6 +2054,7 @@ class SunflowApp extends LitElement {
       max_power: toDisplay(device.parameters.max_power, "W"),
       daily_energy: toDisplay(device.parameters.daily_energy_wh, "Wh"),
       tank_l: device.parameters.tank_l ? String(device.parameters.tank_l) : "",
+      ...heatPumpForm(role, device.parameters),
     };
   }
 
@@ -1900,7 +2087,12 @@ class SunflowApp extends LitElement {
       max_power: form.type === "stepped" || form.type === "meter" ? null : power ?? 500,
       daily_energy_wh: daily === null || form.kind === "heater" || form.type === "meter" ? null : daily * 1000,
       power_steps: form.type === "stepped" && Object.keys(form.steps).length ? form.steps : null,
+      ...(form.type === "heat_pump" ? heatPumpBody(form) : {}),
     };
+    if (form.type === "heat_pump" && body.voltage === undefined) {
+      this._error = t("Bitte gültige Zahlen eingeben.");
+      return;
+    }
     try {
       const device = this._manualEditId ? await api.updateManual(this._manualEditId, body) : await api.addManual(body);
       this._configDevices = { ...this._configDevices, [device.ha_device_id]: device };
@@ -3325,6 +3517,10 @@ class SunflowApp extends LitElement {
     }
     .vehicle-soc { margin: 10px 0; max-width: 520px; }
     .field.wide { max-width: 520px; }
+    /* One measured quantity of a heat pump: its tick starts a new row */
+    .fields > .group-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600;
+      padding-top: 12px; border-top: 1px solid var(--sf-border); }
+    .fields > .help.wide-help { grid-column: 1 / -1; }
     .field-label { font-weight: 500; }
     .field select { min-height: 44px; font-size: 14px; }
     .input-unit { display: flex; align-items: center; gap: 8px; }

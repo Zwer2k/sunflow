@@ -89,7 +89,7 @@ def device_category(profile: dict[str, Any], device: DeviceConfig, snapshot: Sna
         return "battery"
     if "grid_meter" in capabilities:
         return "meter"
-    return "heat" if device.kind == "heater" else "load"
+    return "heat" if "heat_pump" in capabilities or device.kind == "heater" else "load"
 
 
 def device_parameters(
