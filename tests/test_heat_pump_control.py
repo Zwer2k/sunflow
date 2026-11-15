@@ -187,3 +187,18 @@ def test_control_setup_refuses(settings: HeatPumpSettings) -> None:
 
     with pytest.raises(HTTPException):
         _manual_setup(body, SNAPSHOT)
+
+
+@pytest.mark.parametrize(
+    ("profile", "kind"),
+    [
+        pytest.param("generic/heat_pump", "heat_pump", id="heat pump"),
+        pytest.param("generic/relays", "loadpoint", id="heating rod"),
+        pytest.param("solax_modbus/sofar", "battery", id="battery"),
+    ],
+)
+def test_control_kind(library: ProfileLibrary, profile: str, kind: str) -> None:
+    """The control tab names a heat pump as such, not as a battery."""
+    from sunflow.api.control import control_kind
+
+    assert control_kind(library.profiles[profile]) == kind

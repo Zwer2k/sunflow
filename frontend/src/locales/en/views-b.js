@@ -245,7 +245,7 @@ export default {
   "Fehler: {error} – nächster Versuch in einer Minute": "Error: {error} – next attempt in one minute",
   "Sunflow steuern lassen?": "Let Sunflow take control?",
   "Der Hauptschalter „Sunflow steuert“ wird mit eingeschaltet.": "The main switch \"Sunflow controls\" will be switched on as well.",
-  "Sunflow schaltet dann laufend an den Geräten: am Wechselrichter Passiv-Modus mit Lade- und Entladefenster (der Betriebsmodus wird einmalig umgestellt), an Ladepunkten Laden starten und sperren.": "Sunflow then continuously switches the devices: passive mode with charge and discharge windows on the inverter (the operating mode is changed once), starting and blocking charging on loadpoints.",
+  "Sunflow schaltet dann laufend an den Geräten: am Wechselrichter Passiv-Modus mit Lade- und Entladefenster (der Betriebsmodus wird einmalig umgestellt), an Ladepunkten Laden starten und sperren, an der Wärmepumpe SG-Ready-Kontakte, Sollwert oder Boost.": "Sunflow then continuously switches the devices: passive mode with charge and discharge windows on the inverter (the operating mode is changed once), starting and blocking charging on loadpoints, on the heat pump SG-Ready contacts, setpoint or boost.",
   "Ausschalten gibt alles zurück.": "Switching off hands everything back.",
   "Einschalten": "Switch on",
   "Steuerung nicht umgeschaltet: {error}": "Control not switched: {error}",
@@ -422,4 +422,9 @@ export default {
   "Aufteilung der Energie": "Share of the energy",
   "ohne Fahrzeug": "no vehicle",
   "Andere": "Other",
+  "Wärmepumpe normal": "Heat pump normal",
+  "Wärmepumpe verstärkt": "Heat pump boosted",
+  "Wärmepumpe gesperrt": "Heat pump blocked",
+  "Wärmepumpe Anlaufbefehl": "Heat pump forced on",
+  "Wärmepumpe": "Heat pump",
 };

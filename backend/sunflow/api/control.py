@@ -297,6 +297,13 @@ class ControlSwitch(BaseModel):
     device_enabled: bool | None = None
 
 
+def control_kind(profile: dict[str, Any]) -> str:
+    """What Sunflow steers on a device: a heat pump, a loadpoint or a battery (or its PV limit)."""
+    if "heat_pump_control" in profile:
+        return "heat_pump"
+    return "loadpoint" if "charge_control" in profile else "battery"
+
+
 async def _control_status(request: Request, config: SunflowConfig) -> dict[str, Any]:
     controller: PlanController = request.app.state.controller
     snapshot = await _snapshot(request)
@@ -312,7 +319,7 @@ async def _control_status(request: Request, config: SunflowConfig) -> dict[str, 
                 "enabled": config.control.devices.get(device.id, False),
                 "blocked": controller.eligible(config, device),
                 "status": asdict(status) if status else None,
-                "kind": "loadpoint" if "charge_control" in _library(request).profiles[device.profile] else "battery",
+                "kind": control_kind(_library(request).profiles[device.profile]),
                 "category": device_category(_library(request).profiles[device.profile], device, snapshot),
             }
         )

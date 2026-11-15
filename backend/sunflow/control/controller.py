@@ -1479,7 +1479,8 @@ class PlanController:
             access, status, f"{HEAT_PUMP_PREFIX}{choice.state}", None, now, {"surplus_w": choice.surplus_w},
             refresh=HEAT_PUMP_REFRESH, reason=text,
         )
-        status.active, status.action, status.power_w, status.reason = True, choice.state, None, text
+        # The state is the action; the reason says why
+        status.active, status.action, status.power_w, status.reason = True, choice.state, None, choice.reason
         self.heat_pump_shadow.pop(device.id, None)
 
     async def _hand_back(self, device: DeviceConfig, status: DeviceControl) -> None:

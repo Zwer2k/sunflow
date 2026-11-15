@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.79.5
+
+- Control tab: a heat pump is labelled "Heat pump" (it showed as "Battery") and its states read "Heat pump boosted", "blocked" etc. in the status and the control log; the confirmation names what Sunflow switches on a heat pump.
+
 ## 0.79.4
 
 - Heat pump (stage 3): own settings area "Heat pump" (moved out of Custom loads) with measuring, control, the heating rods by season and the heating season.
