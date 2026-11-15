@@ -108,6 +108,7 @@ Geräte, die Sunflow nicht von selbst erkennt, legst du in den Einstellungen unt
 |---|---|---|---|---|
 | Ein/Aus | `generic/switch` | Schalter (switch, input_boolean) | Shelly, Steckdose, E-Bike-Lader | 🧪 |
 | Leistungsstufen | `generic/stepped` | Auswahl (select) mit Stufen in W/kW | ESPHome-Heizstab mit Stufen | 🧪 |
+| Relais je Phase | `generic/relays` | 1–3 Schalter, je einer pro Phase, mit gleicher Leistung | Heizstab mit 1–3 Heizelementen | 🧪 |
 | Ziel-Stromstärke | `generic/current` | Zahl (number) in A, optional Schalter | Wallbox oder Heizstab mit einstellbarem Strom | 🧪 |
 | Nur messen | `generic/meter` | keine – Leistungsmessung (sensor), optional Zähler | Herd, Waschmaschine, Trockner, Spülmaschine | – |
 | Wärmepumpe | `generic/heat_pump` | keine – Strom (gesamt, je Phase in W oder A, Zähler), Wärmeleistung, COP, Temperaturen; alles optional | Wärmepumpe | – |
@@ -123,6 +124,35 @@ Live-Bild, ob ein Wert gemessen oder berechnet ist; passt der COP nicht (unter 1
 oder gemessener und berechneter COP weichen stark ab), weist es darauf hin. Die Wärmepumpe bleibt
 Teil des Hausverbrauchs, dessen Prognose die Außentemperatur schon berücksichtigt. Steuerung über
 SG-Ready und ein Heizstab folgen ([Entwurf](../design/waermepumpe.md)).
+
+### Heizstab mit Relais je Phase
+
+„Relais je Phase (1–3)“ ist ein Heizstab mit bis zu drei Heizelementen, je eines über ein eigenes
+Relais (Shelly, Schütz) geschaltet. Angegeben werden die Relais für L1–L3 (eines reicht) und die
+Leistung eines Elements. Sunflow schaltet so viele Relais ein, wie in die geplante Leistung
+passen (bei 3 × 2 kW also 2, 4 oder 6 kW), und wechselt jeden Tag, welches Relais zuerst kommt,
+damit sie gleichmäßig verschleißen.
+
+### Heizstab neben einer Wärmepumpe
+
+Unter Einstellungen → Verbraucher lässt sich bei jedem Heizstab **Nach Jahreszeit** einschalten:
+
+| | Standard | Wahlweise |
+|---|---|---|
+| Heizperiode | Aus – die Wärmepumpe heizt effizienter | Nur PV-Überschuss, Automatisch |
+| Sommer | Automatisch (nach Kosten) | Aus, Nur PV-Überschuss |
+
+Der Modus der Jahreszeit ersetzt die Strategie des Heizstabs. Reicht die Wärmepumpe im Winter
+nicht, unter Steuerung „Schnellstmöglich“ wählen: Das gilt bis zur gewählten Zeit, höchstens aber
+für die eingestellten Stunden (Standard 24 h), damit der Heizstab nicht den Rest des Winters
+läuft. Über die Aktion `sunflow_ems.set_consumer` geht das auch per Automation.
+
+Die **Heizperiode** gilt für alle Heizstäbe und wird erkannt
+
+- nach **Außentemperatur**: Liegt das Tagesmittel eines Sensors drei Tage in Folge unter 15 °C,
+  beginnt sie; drei Tage darüber beenden sie (Schwelle und Tage einstellbar),
+- nach **Datum** (z. B. 01.10. bis 30.04.) oder
+- aus einer **Entität**, etwa dem Sommer-/Winterbetrieb der Wärmepumpe.
 
 ### Akku laden (E-Bike, Werkzeugakkus)
 

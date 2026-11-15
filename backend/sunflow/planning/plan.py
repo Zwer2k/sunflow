@@ -487,7 +487,12 @@ def flex_loads(
             info.reason = t("Ziel bereits erreicht")
             continue
         if paused:
-            info.reason = t("pausiert")
+            override = config.overrides.get(device.id)
+            by_hand = override is not None and override.active(slot_starts[0]) and override.paused
+            # Off for the season (heating rod next to a heat pump) is no pause by hand
+            info.reason = t("pausiert") if by_hand or config.season_mode(config.flex_of(device.id)) != "off" else (
+                t("aus in der Heizperiode") if config.heating_season.active else t("aus im Sommer")
+            )
             continue
         rank = flex_ids.index(device.id) if device.id in flex_ids else len(flex_ids)
         end = slot_starts[later_needs[-1][1] - 1] + SLOT if later_needs else info.deadline

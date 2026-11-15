@@ -106,6 +106,7 @@ loads". Power, meter and temperature are optional.
 |---|---|---|---|---|
 | On/off | `generic/switch` | switch (switch, input_boolean) | Shelly, smart plug, e-bike charger | 🧪 |
 | Power levels | `generic/stepped` | select with levels in W/kW | ESPHome heating rod with levels | 🧪 |
+| Relay per phase | `generic/relays` | 1–3 switches, one per phase, with equal power | heating rod with 1–3 elements | 🧪 |
 | Target current | `generic/current` | number in A, optional switch | wallbox or heating rod with adjustable current | 🧪 |
 | Only measure | `generic/meter` | none – power measurement (sensor), optional meter | stove, washing machine, dryer, dishwasher | – |
 | Heat pump | `generic/heat_pump` | none – electrical power (total, per phase in W or A, meter), heat output, COP, temperatures; all optional | heat pump | – |
@@ -121,6 +122,34 @@ value is measured or computed; if the COP does not fit (below 1 or above 7, or m
 COP differ a lot), it says so. The heat pump stays part of the household load, whose forecast
 already takes the outside temperature into account. Control by SG-Ready and a heating rod follow
 ([draft, German](../../design/waermepumpe.md)).
+
+### Heating rod with a relay per phase
+
+"Relay per phase (1–3)" is a heating rod with up to three elements, each switched by its own relay
+(Shelly, contactor). Enter the relays for L1–L3 (one is enough) and the power of one element.
+Sunflow switches on as many relays as fit into the planned power (with 3 × 2 kW: 2, 4 or 6 kW) and
+changes every day which relay comes first, so they wear evenly.
+
+### Heating rod next to a heat pump
+
+Under Settings → Loads each heating rod can be set **By season**:
+
+| | Default | Optional |
+|---|---|---|
+| Heating season | Off – the heat pump heats more efficiently | Only PV surplus, Automatic |
+| Summer | Automatic (by cost) | Off, Only PV surplus |
+
+The season's mode replaces the rod's strategy. If the heat pump is not enough in winter, choose
+"As fast as possible" under Control: it applies until the chosen time, but at most for the set
+hours (default 24 h), so the rod does not run for the rest of the winter. The action
+`sunflow_ems.set_consumer` does the same from an automation.
+
+The **heating season** applies to all heating rods and is detected
+
+- by **outside temperature**: a sensor's daily mean below 15 °C on three days in a row starts it,
+  three days above end it (threshold and days adjustable),
+- by **date** (e.g. 01.10. to 30.04.) or
+- from an **entity**, such as the heat pump's summer/winter mode.
 
 ### Charge battery (e-bike, tool batteries)
 

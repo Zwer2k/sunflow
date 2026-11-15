@@ -1,6 +1,6 @@
 # Entwurf: Wärmepumpe in Sunflow
 
-Stand: 15.11.2026 · Status: Entwurf, Stufe 1 in Arbeit
+Stand: 15.11.2026 · Status: Stufe 1 und 2 umgesetzt, Stufe 3 und 4 offen
 
 Sunflow soll Wärmepumpen messen, prognostizieren und – wo möglich – über SG-Ready in
 günstige oder sonnige Stunden schieben, dazu einen Heizstab im Speicher in Stufen nutzen.
@@ -118,7 +118,9 @@ Speichertemperatur trotz laufender Wärmepumpe nicht, meldet Sunflow das (Hinwei
 1. **Gerät „Wärmepumpe“ mit Messung** (alle Varianten), Live-Werte mit Herkunft und
    Plausibilitätsprüfung. Die Wärmepumpe bleibt in der Prognose des Hausverbrauchs; das gelernte
    Verbrauchsmodell berücksichtigt die Außentemperatur bereits.
-2. **Heizstab** mit 1–3 Relais, Modi, Jahreszeit und Zuschalten von Hand.
+2. **Heizstab** mit 1–3 Relais, Modi, Jahreszeit und Zuschalten von Hand. „Automatisch“ plant
+   bis Stufe 4 nach Strompreis, noch ohne Vergleich mit dem COP der Wärmepumpe; Schieflast und
+   der Hinweis „Wärmepumpe reicht nicht“ folgen.
 3. **SG-Ready**, zuerst „Normal ↔ Verstärkt“ über Kontakt 2, Sperre später; eigene Prognose
    der Wärmepumpe nach Außentemperatur.
 4. **Gemeinsame Planung** von Wärmepumpe und Heizstab im Optimierer (Wärmespeicher mit zwei

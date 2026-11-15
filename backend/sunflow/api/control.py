@@ -11,6 +11,7 @@ from sunflow.config.models import (
     BATTERY_PRIORITY_ID,
     BatteryOverride,
     DeviceOverride,
+    HeatingSeason,
     PriorityCondition,
     StrategyOverride,
     SunflowConfig,
@@ -228,6 +229,11 @@ async def set_device_override(request: Request, device_id: str, body: DeviceOver
     limit = config.flex_of(device_id).target_max
     if body.target is not None and limit is not None and body.target > limit:
         raise HTTPException(status_code=422, detail=f"Target above the configured maximum of {limit:g}")
+    flex = config.flex_of(device_id)
+    if body.strategy == "fast" and config.season_mode(flex) == "off":
+        # Switched on by hand against its season (e.g. a heating rod in winter): not forgotten all season
+        latest = datetime.now(UTC) + timedelta(hours=flex.manual_max_h)
+        body = body.model_copy(update={"until": min(body.until, latest) if body.until is not None else latest})
     config.overrides[device_id] = body
     store.save(config)
     _replan(request)
@@ -242,6 +248,26 @@ async def clear_device_override(request: Request, device_id: str) -> None:
     config.overrides.pop(device_id, None)
     store.save(config)
     _replan(request)
+
+
+@router.get("/config/heating-season")
+async def get_heating_season(request: Request) -> dict[str, Any]:
+    """When the heating season is, and whether it is now."""
+    return request.app.state.store.load().heating_season.model_dump(mode="json")
+
+
+@router.put("/config/heating-season")
+async def set_heating_season(request: Request, body: HeatingSeason) -> dict[str, Any]:
+    """How the heating season is told; the current state stays until the next check."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.heating_season = body.model_copy(
+        update={"active": config.heating_season.active, "changed_at": config.heating_season.changed_at}
+    )
+    store.save(config)
+    # Checked again before the plan
+    _replan(request)
+    return config.heating_season.model_dump(mode="json")
 
 
 class LiveControl(BaseModel):

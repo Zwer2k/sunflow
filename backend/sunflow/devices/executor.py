@@ -171,7 +171,11 @@ def plan_steps(
             case "select":
                 service, data = "select_option", {"option": str(render(spec["option"], variables))}
             case "switch":
-                service, data = f"turn_{spec['state']}", {}
+                # A fixed state, or one Sunflow sets per call (e.g. which relay of a heating rod is on)
+                state = render(spec["state"], variables)
+                if state not in ("on", "off"):
+                    raise ExecutorError(f"Invalid switch state {state!r}")
+                service, data = f"turn_{state}", {}
             case _:
                 service, data = "press", {}
         calls.append(

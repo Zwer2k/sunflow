@@ -219,7 +219,7 @@ class ManualDevice(BaseModel):
     """A consumer added by hand: switched (Shelly …), in power steps (select), by current (number) or only measured."""
 
     name: str
-    type: Literal["switch", "stepped", "current", "meter", "heat_pump"] = "switch"
+    type: Literal["switch", "stepped", "current", "meter", "heat_pump", "relays"] = "switch"
     switch_entity: str | None = None
     level_entity: str | None = None
     current_entity: str | None = None
@@ -241,6 +241,9 @@ class ManualDevice(BaseModel):
     heat_energy_entity: str | None = None
     cop_entity: str | None = None
     outside_temperature_entity: str | None = None
+    # Relays: one switch per phase (index 0 is L1; None for a phase without relay) and the power of one
+    relay_entities: list[str | None] = Field(default_factory=list, max_length=3)
+    relay_power_w: FiniteFloat | None = Field(default=None, gt=0, le=10_000)
 
 
 MANUAL_PROFILES = {
@@ -249,6 +252,7 @@ MANUAL_PROFILES = {
     "current": "generic/current",
     "meter": "generic/meter",
     "heat_pump": "generic/heat_pump",
+    "relays": "generic/relays",
 }
 MANUAL_PROFILE = MANUAL_PROFILES["switch"]
 SWITCH_DOMAINS = ("switch.", "input_boolean.")
@@ -312,6 +316,48 @@ def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, Rol
         if body.energy_entity:
             overrides["energy"] = RoleOverride(entity_id=body.energy_entity)
         return overrides, {}, None
+    if body.type == "relays":
+        overrides = _relay_overrides(body)
+    else:
+        overrides = _control_override(body)
+    for role_name, value in (("power", body.power_entity), ("energy", body.energy_entity), ("temperature", body.temperature_entity)):
+        if value:
+            overrides[role_name] = RoleOverride(entity_id=value)
+    if body.kind == "heater" and (not body.temperature_entity or not body.tank_l):
+        raise HTTPException(status_code=422, detail=t("Für Wärme bitte Temperatursensor und Speichervolumen angeben"))
+    steps = None
+    if body.type == "relays":
+        relays = sum(1 for role in overrides if role.startswith("switch_"))
+        steps = {str(n): n * body.relay_power_w for n in range(relays + 1)}
+    elif body.type == "stepped":
+        options = snapshot.states.get(body.level_entity, {}).get("attributes", {}).get("options") or []
+        steps = body.power_steps or power_steps_from_options(options)
+        if not any(w > 0 for w in steps.values()) or not any(w <= 0 for w in steps.values()):
+            raise HTTPException(status_code=422, detail=t("Leistungsstufen und eine Stufe „aus“ angeben"))
+    parameters: dict[str, float] = {}
+    # Relays: their steps say it; stepped: an entered power wins over the largest step
+    max_power = body.max_power if body.max_power and body.type != "relays" else max(steps.values()) if steps else None
+    if max_power:
+        parameters["max_power"] = max_power
+    if body.daily_energy_wh is not None:
+        parameters["daily_energy_wh"] = body.daily_energy_wh
+    if body.kind == "heater" and body.tank_l:
+        parameters["tank_l"] = body.tank_l
+    return overrides, parameters, steps
+
+
+def _relay_overrides(body: ManualDevice) -> dict[str, RoleOverride]:
+    """One relay per phase, each in its phase's role."""
+    relays = {f"switch_{phase}": entity for phase, entity in zip(PHASES, body.relay_entities, strict=False) if entity}
+    if not relays or any(not e.startswith(SWITCH_DOMAINS) for e in relays.values()):
+        raise HTTPException(status_code=422, detail=t("Bitte mindestens ein Relais (switch oder input_boolean) wählen"))
+    if not body.relay_power_w:
+        raise HTTPException(status_code=422, detail=t("Bitte die Leistung je Relais angeben"))
+    return {role: RoleOverride(entity_id=entity) for role, entity in relays.items()}
+
+
+def _control_override(body: ManualDevice) -> dict[str, RoleOverride]:
+    """The entity that switches, steps or sets the current of a consumer."""
     controls = {
         "switch": ("switch", body.switch_entity, SWITCH_DOMAINS, N_("Schalter (switch oder input_boolean)")),
         "stepped": ("level", body.level_entity, SELECT_DOMAINS, N_("Auswahl der Leistungsstufe (select)")),
@@ -325,26 +371,7 @@ def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, Rol
         if not body.switch_entity.startswith(SWITCH_DOMAINS):
             raise HTTPException(status_code=422, detail=t("Der Schalter muss ein switch oder input_boolean sein"))
         overrides["switch"] = RoleOverride(entity_id=body.switch_entity)
-    for role_name, value in (("power", body.power_entity), ("energy", body.energy_entity), ("temperature", body.temperature_entity)):
-        if value:
-            overrides[role_name] = RoleOverride(entity_id=value)
-    if body.kind == "heater" and (not body.temperature_entity or not body.tank_l):
-        raise HTTPException(status_code=422, detail=t("Für Wärme bitte Temperatursensor und Speichervolumen angeben"))
-    steps = None
-    if body.type == "stepped":
-        options = snapshot.states.get(entity, {}).get("attributes", {}).get("options") or []
-        steps = body.power_steps or power_steps_from_options(options)
-        if not any(w > 0 for w in steps.values()) or not any(w <= 0 for w in steps.values()):
-            raise HTTPException(status_code=422, detail=t("Leistungsstufen und eine Stufe „aus“ angeben"))
-    parameters: dict[str, float] = {}
-    max_power = body.max_power or (max(steps.values()) if steps else None)
-    if max_power:
-        parameters["max_power"] = max_power
-    if body.daily_energy_wh is not None:
-        parameters["daily_energy_wh"] = body.daily_energy_wh
-    if body.kind == "heater" and body.tank_l:
-        parameters["tank_l"] = body.tank_l
-    return overrides, parameters, steps
+    return overrides
 
 
 def _numeric(state: dict[str, Any]) -> bool:

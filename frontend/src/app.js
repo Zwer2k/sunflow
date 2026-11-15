@@ -153,6 +153,7 @@ const MANUAL_TYPES = {
   switch: t("Schalter (ein/aus)"),
   stepped: t("Leistungsstufen (Auswahl)"),
   current: t("Stromstärke (Zahl)"),
+  relays: t("Relais je Phase (1–3)"),
   meter: t("nicht steuerbar – nur messen"),
   heat_pump: t("Wärmepumpe – messen"),
 };
@@ -175,7 +176,25 @@ const EMPTY_MANUAL = {
   electric_on: true, electric_mode: "power", phase_power: ["", "", ""], phase_current: ["", "", ""], voltage: "",
   heat_on: false, heat_mode: "power", heat_power_entity: "", heat_energy_entity: "", cop_on: false, cop_entity: "",
   outside_temperature_entity: "",
+  // One relay per phase (heating rod with 1–3 elements)
+  relays: ["", "", ""], relay_power: "",
 };
+/** "10-01" -> "01.10" */
+function mmddToText(mmdd) {
+  const [month, day] = (mmdd ?? "").split("-");
+  return month && day ? `${day}.${month}` : "";
+}
+
+/** "1.10." -> "10-01"; null when it is no date. */
+function textToMmdd(text) {
+  const match = text.trim().match(/^(\d{1,2})\.(\d{1,2})\.?$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 /** Whether the heat pump form names enough to know what it draws (electrical power, or heat with COP). */
 function heatPumpMeasured(form) {
   const electric = form.electric_on && ({
@@ -315,6 +334,7 @@ class SunflowApp extends LitElement {
     _efficiency: { state: true },
     _flexEdits: { state: true },
     _candidates: { state: true },
+    _heatingSeason: { state: true },
     _manual: { state: true },
     _direct: { state: true },
     _directProfiles: { state: true },
@@ -373,6 +393,7 @@ class SunflowApp extends LitElement {
     this._efficiency = {};
     this._flexEdits = {};
     this._candidates = null;
+    this._heatingSeason = null;
     this._chargerEdits = {};
     this._manual = { ...EMPTY_MANUAL };
     this._direct = null;
@@ -973,7 +994,7 @@ class SunflowApp extends LitElement {
     if (this._nameEdits[device.id] !== undefined) changes.name = this._nameEdits[device.id];
     if (this._flexEdits[device.id] !== undefined) {
       const flex = { ...device.flex, ...this._flexEdits[device.id] };
-      if (flex.target === undefined || flex.target_max === undefined || flex.alternative_cost_ct === undefined) {
+      if (flex.target === undefined || flex.target_max === undefined || flex.alternative_cost_ct === undefined || flex.manual_max_h === undefined) {
         this._error = t("Bitte gültige Zahlen bei der Planung eingeben.");
         return false;
       }
@@ -1764,6 +1785,8 @@ class SunflowApp extends LitElement {
     const unitDetail = (c) => `${c.state ?? "–"} ${c.unit ?? ""}`;
     const control = form.type === "heat_pump"
       ? heatPumpMeasured(form)
+      : form.type === "relays"
+      ? form.relays.some(Boolean) && form.relay_power !== ""
       : { switch: form.switch_entity, stepped: form.level_entity, current: form.current_entity, meter: form.power_entity }[form.type];
     const measureOnly = form.type === "meter";
     const heatPump = form.type === "heat_pump";
@@ -1825,6 +1848,24 @@ class SunflowApp extends LitElement {
                         @change=${(e) => setEntity("switch_entity", e.detail.value, candidates?.switches)}></sf-picker>
                     </div>`
                   : nothing}
+                ${form.type === "relays"
+                  ? html`${PHASE_NAMES.map((phase, i) => html`<div class="field">
+                      <span class="field-label">${t("Relais {phase}", { phase })}</span>
+                      <sf-picker label=${t("Relais {phase}", { phase })} empty-label=${t("keins")} placeholder=${t("Name oder Entität suchen …")}
+                        .value=${form.relays[i]} .options=${entity(candidates.switches, (c) => c.state)}
+                        @change=${(e) => {
+                          const relays = [...this._manual.relays];
+                          relays[i] = e.detail.value;
+                          this._manual = withSuggestedName({ ...this._manual, relays }, (candidates.switches ?? []).find((c) => c.entity_id === e.detail.value));
+                        }}></sf-picker>
+                    </div>`)}
+                    <label class="field">
+                      <span class="field-label">${t("Leistung je Relais")}</span>
+                      <span class="input-unit"><input inputmode="decimal" placeholder="2000" .value=${form.relay_power}
+                        @input=${(e) => set("relay_power", e.target.value)}><span class="muted">W</span></span>
+                      <span class="small muted help">${t("Sunflow schaltet so viele Relais ein, wie in die geplante Leistung passen, und wechselt täglich, welches zuerst kommt.")}</span>
+                    </label>`
+                  : nothing}
                 ${form.type === "stepped"
                   ? html`<div class="field">
                       <span class="field-label">${t("Leistungsstufe (Auswahl)")}</span>
@@ -1853,7 +1894,7 @@ class SunflowApp extends LitElement {
                     .value=${form.energy_entity} .options=${entity(candidates.energy, unitDetail)}
                     @change=${(e) => setEntity("energy_entity", e.detail.value, candidates?.energy)}></sf-picker>
                 </div>`}
-                ${form.type !== "stepped" && !measureOnly && !heatPump
+                ${form.type !== "stepped" && form.type !== "relays" && !measureOnly && !heatPump
                   ? html`<label class="field">
                       <span class="field-label">${t("Leistung")}</span>
                       <span class="input-unit"><input inputmode="decimal" placeholder="500" .value=${form.max_power}
@@ -2055,6 +2096,8 @@ class SunflowApp extends LitElement {
       daily_energy: toDisplay(device.parameters.daily_energy_wh, "Wh"),
       tank_l: device.parameters.tank_l ? String(device.parameters.tank_l) : "",
       ...heatPumpForm(role, device.parameters),
+      relays: PHASE_NAMES.map((p) => role(`switch_${p.toLowerCase()}`)),
+      relay_power: device.power_steps?.["1"] ? toDisplay(device.power_steps["1"], "W") : "",
     };
   }
 
@@ -2069,6 +2112,11 @@ class SunflowApp extends LitElement {
     const power = form.max_power === "" ? null : fromDisplay(form.max_power, "W");
     const daily = fromDisplay(form.daily_energy, "kWh");
     const tank = form.tank_l === "" ? null : fromDisplay(form.tank_l, "");
+    const relayPower = form.type === "relays" ? fromDisplay(form.relay_power, "W") : null;
+    if (relayPower === undefined) {
+      this._error = t("Bitte gültige Zahlen eingeben.");
+      return;
+    }
     if (power === undefined || daily === undefined || tank === undefined || Object.values(form.steps).some((w) => w === undefined)) {
       this._error = t("Bitte gültige Zahlen eingeben.");
       return;
@@ -2088,6 +2136,9 @@ class SunflowApp extends LitElement {
       daily_energy_wh: daily === null || form.kind === "heater" || form.type === "meter" ? null : daily * 1000,
       power_steps: form.type === "stepped" && Object.keys(form.steps).length ? form.steps : null,
       ...(form.type === "heat_pump" ? heatPumpBody(form) : {}),
+      ...(form.type === "relays"
+        ? { relay_entities: form.relays.map((e) => e || null), relay_power_w: relayPower, max_power: null }
+        : {}),
     };
     if (form.type === "heat_pump" && body.voltage === undefined) {
       this._error = t("Bitte gültige Zahlen eingeben.");
@@ -2662,7 +2713,7 @@ class SunflowApp extends LitElement {
 
   _renderFlexSettings(device, params) {
     const names = new Set(params.map((p) => p.name));
-    const kind = names.has("tank_l") ? "heater" : names.has("vehicle_capacity_wh") ? "vehicle" : "load";
+    const kind = names.has("tank_l") || device.kind === "heater" ? "heater" : names.has("vehicle_capacity_wh") ? "vehicle" : "load";
     const flex = { ...device.flex, ...(this._flexEdits[device.id] ?? {}) };
     const set = (field, value) =>
       (this._flexEdits = { ...this._flexEdits, [device.id]: { ...(this._flexEdits[device.id] ?? {}), [field]: value } });
@@ -2738,8 +2789,117 @@ class SunflowApp extends LitElement {
               ? t("Aus: der Speicher versorgt nur das Haus; geheizt wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")
               : t("Aus: der Speicher versorgt nur das Haus; geladen wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")}</span>
           </label>
+          ${kind === "heater" ? this._renderSeasonModes(flex, set) : nothing}
         </div>
       </fieldset>
+    `;
+  }
+
+  /** A heating rod by season: e.g. off in the heating season (the heat pump is cheaper), automatic in summer. */
+  _renderSeasonModes(flex, set) {
+    const seasonal = flex.heating_mode != null || flex.summer_mode != null;
+    const modes = { off: t("Aus"), pv_only: t("Nur PV-Überschuss"), cost: t("Automatisch (nach Kosten)") };
+    const modeSelect = (field, label) => html`<label class="field">
+      <span class="field-label">${label}</span>
+      <select @change=${(e) => set(field, e.target.value)}>
+        ${Object.entries(modes).map(([value, text]) => html`<option value=${value} ?selected=${flex[field] === value}>${text}</option>`)}
+      </select>
+    </label>`;
+    return html`
+      <label class="group-head">
+        <input type="checkbox" .checked=${seasonal} @change=${(e) => {
+          set("heating_mode", e.target.checked ? "off" : null);
+          set("summer_mode", e.target.checked ? "cost" : null);
+        }}> ${t("Nach Jahreszeit (Heizstab neben einer Wärmepumpe)")}</label>
+      ${seasonal
+        ? html`
+          <p class="small muted help wide-help">${t("In der Heizperiode heizt die Wärmepumpe viel effizienter, der Heizstab bleibt dann meist aus. Reicht die Wärmepumpe nicht, unter Steuerung „Schnellstmöglich“ wählen – das gilt höchstens für die Stunden unten. Der Modus der Jahreszeit ersetzt die Strategie oben.")}</p>
+          ${modeSelect("heating_mode", t("Heizperiode"))}
+          ${modeSelect("summer_mode", t("Sommer"))}
+          <label class="field">
+            <span class="field-label">${t("Von Hand an höchstens")}</span>
+            <span class="input-unit"><input inputmode="decimal" .value=${toDisplay(flex.manual_max_h ?? 24, "")}
+              @input=${(e) => set("manual_max_h", fromDisplay(e.target.value, "") ?? 24)}><span class="muted">h</span></span>
+          </label>
+          ${this._renderHeatingSeason()}`
+        : nothing}
+    `;
+  }
+
+  /** How the heating season is told (shared by all heating rods); saved on change. */
+  _renderHeatingSeason() {
+    const season = this._heatingSeason;
+    if (season === null) {
+      this._heatingSeason = undefined;
+      api.heatingSeason().then((loaded) => (this._heatingSeason = loaded)).catch(() => (this._heatingSeason = null));
+      if (this._candidates === null) this._loadCandidates();
+    }
+    if (!season) return html`<p class="small muted wide-help">${t("Lade …")}</p>`;
+    const save = async (changes) => {
+      try {
+        this._heatingSeason = await api.setHeatingSeason({ ...season, ...changes });
+      } catch (err) {
+        this._error = t("Heizperiode konnte nicht gespeichert werden: {error}", { error: err.message });
+      }
+    };
+    const candidates = this._candidates ?? {};
+    const options = (list) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} ${c.unit ?? ""}` }));
+    const since = season.changed_at ? new Date(season.changed_at).toLocaleDateString(locale(), { day: "numeric", month: "numeric" }) : null;
+    const now = season.active ? t("Gerade Heizperiode") : t("Gerade Sommer");
+    return html`
+      <div class="group-head">${t("Heizperiode erkennen (für alle Heizstäbe)")}<span class="small muted">· ${since ? t("{state} seit {date}", { state: now, date: since }) : now}</span></div>
+      <label class="field">
+        <span class="field-label">${t("Erkennen nach")}</span>
+        <select @change=${(e) => save({ source: e.target.value })}>
+          <option value="temperature" ?selected=${season.source === "temperature"}>${t("Außentemperatur")}</option>
+          <option value="dates" ?selected=${season.source === "dates"}>${t("Datum")}</option>
+          <option value="entity" ?selected=${season.source === "entity"}>${t("Entität (z. B. Sommer/Winter der Wärmepumpe)")}</option>
+        </select>
+      </label>
+      ${season.source === "temperature"
+        ? html`
+          <div class="field">
+            <span class="field-label">${t("Außentemperatur")}</span>
+            <sf-picker label=${t("Außentemperatur")} placeholder=${t("Name oder Entität suchen …")}
+              .value=${season.temperature_entity ?? ""} .options=${options(candidates.temperature)}
+              @change=${(e) => save({ temperature_entity: e.detail.value || null })}></sf-picker>
+          </div>
+          <label class="field">
+            <span class="field-label">${t("Heizperiode unter (Tagesmittel)")}</span>
+            <span class="input-unit"><input inputmode="decimal" .value=${toDisplay(season.threshold_c, "")}
+              @change=${(e) => { const v = fromDisplay(e.target.value, ""); if (v != null) save({ threshold_c: v }); }}><span class="muted">°C</span></span>
+          </label>
+          <label class="field">
+            <span class="field-label">${t("Wechsel nach")}</span>
+            <span class="input-unit"><input inputmode="numeric" .value=${String(season.days)}
+              @change=${(e) => { const v = Number.parseInt(e.target.value, 10); if (v >= 1) save({ days: v }); }}><span class="muted">${t("Tagen in Folge")}</span></span>
+          </label>`
+        : nothing}
+      ${season.source === "dates"
+        ? html`
+          <label class="field">
+            <span class="field-label">${t("Von (TT.MM.)")}</span>
+            <input .value=${mmddToText(season.start)} placeholder="01.10" @change=${(e) => { const v = textToMmdd(e.target.value); if (v) save({ start: v }); }}>
+          </label>
+          <label class="field">
+            <span class="field-label">${t("Bis (TT.MM.)")}</span>
+            <input .value=${mmddToText(season.end)} placeholder="30.04" @change=${(e) => { const v = textToMmdd(e.target.value); if (v) save({ end: v }); }}>
+          </label>`
+        : nothing}
+      ${season.source === "entity"
+        ? html`
+          <div class="field">
+            <span class="field-label">${t("Entität")}</span>
+            <sf-picker label=${t("Entität")} placeholder=${t("Name oder Entität suchen …")}
+              .value=${season.entity_id ?? ""} .options=${options([...(candidates.selects ?? []), ...(candidates.switches ?? []), ...(candidates.presence ?? [])])}
+              @change=${(e) => save({ entity_id: e.detail.value || null })}></sf-picker>
+          </div>
+          <label class="field">
+            <span class="field-label">${t("Zustände für Heizperiode")}</span>
+            <input .value=${season.entity_states.join(", ")}
+              @change=${(e) => save({ entity_states: e.target.value.split(",").map((v) => v.trim()).filter(Boolean) })}>
+          </label>`
+        : nothing}
     `;
   }
 

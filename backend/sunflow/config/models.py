@@ -36,6 +36,30 @@ class MeasuredBy(BaseModel):
     role: str
 
 
+HeaterMode = Literal["off", "pv_only", "cost"]
+
+
+class HeatingSeason(BaseModel):
+    """When the heating season is: heating rods follow a mode of their own in and outside of it."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    source: Literal["temperature", "dates", "entity"] = "temperature"
+    # Daily mean of the outside temperature below the threshold on `days` days in a row starts it
+    temperature_entity: str | None = None
+    threshold_c: float = Field(default=15, ge=5, le=25)
+    days: int = Field(default=3, ge=1, le=7)
+    # "MM-DD"
+    start: str = Field(default="10-01", pattern=r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
+    end: str = Field(default="04-30", pattern=r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
+    # E.g. the heat pump's summer/winter mode; these states mean heating season
+    entity_id: str | None = None
+    entity_states: list[str] = Field(default_factory=lambda: ["on", "heating", "winter", "heizen"])
+    # Current state, kept between restarts (the temperature only changes it after `days` days)
+    active: bool = True
+    changed_at: datetime | None = None
+
+
 class FlexSettings(BaseModel):
     """How a flexible consumer (EV, heater, switchable load) should be planned."""
 
@@ -51,6 +75,11 @@ class FlexSettings(BaseModel):
     uses_battery: bool = True
     # Price of the alternative heat source (district heating, gas) in ct per kWh of heat
     alternative_cost_ct: float | None = None
+    # A heating rod by season: "off", only PV surplus or by cost; None: the strategy all year
+    heating_mode: HeaterMode | None = None
+    summer_mode: HeaterMode | None = None
+    # Switched on by hand ("fast") while its season mode is off: ends after this many hours at the latest
+    manual_max_h: float = Field(default=24, ge=1, le=168)
 
 
 class AuxBatteryGuard(BaseModel):
@@ -575,6 +604,7 @@ class SunflowConfig(BaseModel):
     disabled_devices: list[DeviceConfig] = Field(default_factory=list)
     # Wallbox id -> vehicle chosen in the control tab (until the car is unplugged)
     selected_vehicles: dict[str, str] = Field(default_factory=dict)
+    heating_season: HeatingSeason = Field(default_factory=HeatingSeason)
 
     def flex_of(self, device_id: str) -> FlexSettings:
         """How a consumer is planned (defaults when nothing was set)."""
@@ -640,13 +670,24 @@ class SunflowConfig(BaseModel):
     def effective_flex(
         self, device: DeviceConfig, now: datetime, base: FlexSettings | None = None
     ) -> tuple[FlexSettings, bool]:
-        """Planning settings (base: e.g. a charging profile) with an active override, and whether it is paused."""
+        """Planning settings (base: e.g. a charging profile) with an active override, and whether it is paused.
+
+        A heating rod's season mode replaces its strategy ("off" pauses it); a strategy set by hand wins.
+        """
         settings = base or self.flex_of(device.id)
+        mode = self.season_mode(settings)
+        season_off = mode == "off"
+        if mode in ("pv_only", "cost"):
+            settings = settings.model_copy(update={"strategy": mode})
         override = self.overrides.get(device.id)
         if override is None or not override.active(now):
-            return settings, False
+            return settings, season_off
         changes = {k: v for k, v in (("strategy", override.strategy), ("target", override.target)) if v is not None}
-        return settings.model_copy(update=changes), override.paused
+        return settings.model_copy(update=changes), override.paused or (season_off and override.strategy is None)
+
+    def season_mode(self, settings: FlexSettings) -> HeaterMode | None:
+        """The mode of a heating rod in the current season; None without season modes."""
+        return settings.heating_mode if self.heating_season.active else settings.summer_mode
 
     def effective_strategy(self, now: datetime) -> Strategy:
         """Return the battery strategy with an active override applied."""

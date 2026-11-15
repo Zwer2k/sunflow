@@ -26,6 +26,7 @@ from sunflow.devices.site import (
     site_status,
 )
 from sunflow.ha import HAClient, HAError
+from sunflow.planning.heating_season import current_season, uses_seasons, with_season
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import (
@@ -773,8 +774,27 @@ class ShadowRunner:
             for key, expected in stored.items()
         }
 
+    async def _update_heating_season(self) -> None:
+        """Heating rods follow the season: checked before each plan, stored when it changes."""
+        config = self._store.load()
+        if not uses_seasons(config):
+            return
+        now = datetime.now(UTC)
+        try:
+            snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
+            active = await current_season(
+                self._client, config.heating_season, snapshot.states, now, await local_timezone(self._client)
+            )
+        except HAError as err:
+            _LOGGER.warning("Checking the heating season failed: %s", err)
+            return
+        if with_season(config, active, now):
+            _LOGGER.info("Heating season %s", "started" if active else "ended")
+            self._store.save(config)
+
     async def _replan(self, start: datetime) -> None:
         await i18n.update_language(self._client, self._store.load().display.language)
+        await self._update_heating_season()
         correction = await self.pv_correction()
         self.learn_sun()
         result = await current_plan(

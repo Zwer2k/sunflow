@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.79.3
+
+- Heating rod (heat pump stage 2): new own load "Relay per phase (1–3)" – Sunflow switches as many relays as fit into the planned power and rotates daily which comes first.
+- Heating rods can follow the season (Settings → Loads → "By season"): by default off in the heating season, where the heat pump heats more efficiently, and automatic in summer; each mode is adjustable. "As fast as possible" by hand works against the season but ends after at most the set hours (default 24 h). The heating season is detected by outside temperature (daily mean below 15 °C on 3 days in a row), by date or from an entity; the plan says "off in the heating season" instead of "paused".
+
 ## 0.79.2
 
 - Heat pump (stage 1): new own load "Heat pump – measure". Electrical power in total, per phase (1–3 power or current sensors, current × voltage) or by meter, plus heat output, COP, tank and outside temperature – all optional, with suggestions from the heat pump's Home Assistant device. From two of power, heat and COP Sunflow computes the third; the live view shows heat and COP (≈ when computed) and flags an implausible COP. Sunflow does not switch the heat pump yet; it stays part of the household load forecast. Draft of the next stages (SG-Ready, heating rod): design/waermepumpe.md.

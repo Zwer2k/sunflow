@@ -489,6 +489,19 @@ def choose_step(steps: dict[str, float], power: float) -> str | None:
     return max(fitting)[1] if fitting else None
 
 
+RELAY_PHASES = ("l1", "l2", "l3")
+
+
+def relay_states(count: int, bound: list[str], day: int) -> dict[str, str]:
+    """Which relays of a heating rod are on for `count` phases; the first one moves on every day.
+
+    bound: the phases with a relay, e.g. ["l1", "l3"]. All relays wear evenly that way.
+    """
+    start = day % len(bound) if bound else 0
+    on = {bound[(start + i) % len(bound)] for i in range(min(count, len(bound)))}
+    return {f"relay_{phase}": "on" if phase in on else "off" for phase in RELAY_PHASES}
+
+
 def off_step(steps: dict[str, float]) -> str | None:
     """The option that switches a stepped consumer off."""
     return next((option for option, watts in steps.items() if watts <= 0), None)
@@ -1163,6 +1176,9 @@ class PlanController:
                         action, reason = "stop", t("geplante Leistung unter der kleinsten Stufe")
                     else:
                         runtime["step_option"] = option
+                        if profile.get("relays"):
+                            bound = [p for p in RELAY_PHASES if f"switch_{p}" in device.role_overrides]
+                            runtime |= relay_states(int(option), bound, now.toordinal())
             unchanged = (
                 action == "charge"
                 and runtime["current_a"] == status.current_a

@@ -139,6 +139,10 @@
         "refresh": {"$ref": "#/$defs/duration"}
       }
     },
+    "relays": {
+      "description": "One relay per phase (roles switch_l1..switch_l3): the power steps are the number of relays on; Sunflow picks which (rotating) and sets relay_l1..relay_l3 to on/off for the charge steps.",
+      "type": "boolean"
+    },
     "phase_switch": {
       "description": "Switching a charger between 1 and 3 phases: steps for one and three; remember: select whose option is restored when Sunflow hands the charger back.",
       "type": "object",
@@ -354,7 +358,7 @@
         "switch": {
           "allOf": [
             {"$ref": "#/$defs/step_options"},
-            {"required": ["state"], "properties": {"state": {"enum": ["on", "off"]}}}
+            {"required": ["state"], "properties": {"state": {"anyOf": [{"enum": ["on", "off"]}, {"type": "string", "pattern": "^\\{\\{ *[a-z0-9_]+ *\\}\\}$"}]}}}
           ]
         },
         "press": {

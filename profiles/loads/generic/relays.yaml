@@ -1,0 +1,33 @@
+# A heating rod (or other load) with one relay per phase, added by hand: off, one, two or
+# three phases on. Sunflow picks the number of relays for the planned power and rotates
+# which ones, so they wear evenly.
+profile: generic/relays
+version: 1
+match:
+  integration: manual
+
+capabilities: [load]
+relays: true
+
+roles:
+  switch_l1: {key: manual_switch_l1, optional: true}
+  switch_l2: {key: manual_switch_l2, optional: true}
+  switch_l3: {key: manual_switch_l3, optional: true}
+  power: {key: manual_power, unit: W, optional: true}
+  energy: {key: manual_energy, unit: Wh, optional: true}
+  temperature: {key: manual_temperature, unit: "°C", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 6000, min: 0}
+  daily_energy_wh: {unit: Wh, min: 0}
+  tank_l: {unit: L, min: 0, kind: heater}
+
+charge_control:
+  charge:
+    - switch: {role: switch_l1, state: "{{ relay_l1 }}", optional: true, write: if_differs}
+    - switch: {role: switch_l2, state: "{{ relay_l2 }}", optional: true, write: if_differs}
+    - switch: {role: switch_l3, state: "{{ relay_l3 }}", optional: true, write: if_differs}
+  stop:
+    - switch: {role: switch_l1, state: "off", optional: true, write: if_differs}
+    - switch: {role: switch_l2, state: "off", optional: true, write: if_differs}
+    - switch: {role: switch_l3, state: "off", optional: true, write: if_differs}
