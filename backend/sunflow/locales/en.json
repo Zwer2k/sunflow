@@ -249,5 +249,7 @@
   "von Hand freigegeben": "released by hand",
   "Wärmepumpe entscheidet": "heat pump decides",
   "keine Außentemperatur – Wärmepumpe entscheidet": "no outside temperature – heat pump decides",
-  "kälter als {limit} °C": "colder than {limit} °C"
+  "kälter als {limit} °C": "colder than {limit} °C",
+  "Haus warm genug ({temp} °C)": "house warm enough ({temp} °C)",
+  "Sperre würde das Haus unter {temp} °C kühlen": "a block would cool the house below {temp} °C"
 }

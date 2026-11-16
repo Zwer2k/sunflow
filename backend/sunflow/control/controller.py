@@ -41,6 +41,7 @@ from sunflow.control.heat_pump import (
     RELEASE as HEAT_PUMP_RELEASE,
     Choice as HeatPumpChoice,
     HeatPumpTrack,
+    HouseView,
     RodChoice,
     next_rod,
     next_state as next_heat_pump_state,
@@ -68,6 +69,7 @@ from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
 from sunflow.i18n import N_, number, t
+from sunflow.planning.house_model import HouseModel
 from sunflow.planning.optimizer import ON_OFF_MIN_SHARE
 from sunflow.planning.vehicles import vehicle_at, vehicle_max_current
 
@@ -911,6 +913,8 @@ class PlanController:
         self.heat_pump_shadow: dict[str, HeatPumpChoice] = {}
         # The built-in heating rod's state per heat pump, set or (shadow mode) recommended
         self.heat_pump_rod: dict[str, RodChoice] = {}
+        # The learned house (set by the runner while it predicts better than "it stays")
+        self.house_model: HouseModel | None = None
 
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive, a loadpoint with charge control or a PV limit."""
@@ -1457,6 +1461,37 @@ class PlanController:
             status.current_a, status.last_current_write = current, now
         status.active, status.action, status.power_w, status.reason = True, "charge", power, reason
 
+    def _outside(self, config: SunflowConfig, device: DeviceConfig, snapshot: Snapshot) -> float | None:
+        """Outside temperature now: the heat pump's sensor, else the learning source."""
+        role = device.role_overrides.get("outside_temperature")
+        source = role.entity_id if role and role.entity_id else config.learning_sources.outdoor_temperature
+        return temperature(snapshot.states, source)
+
+    def _house_view(self, config: SunflowConfig, device: DeviceConfig, snapshot: Snapshot) -> HouseView | None:
+        """The learned house with its rooms now; None without a useful model or current values."""
+        house = config.house
+        outside = self._outside(config, device, snapshot)
+        if self.house_model is None or outside is None:
+            return None
+        rooms = [(r, value) for r in house.rooms if (value := temperature(snapshot.states, r.entity_id)) is not None]
+        if not rooms:
+            return None
+        inside = sum(r.weight * v for r, v in rooms) / sum(r.weight for r, _ in rooms)
+        reference = next((v for r, v in rooms if r.reference), inside)
+        tz = self.tz
+
+        def lower(moment: datetime) -> float:
+            if house.night_min is None:
+                return house.comfort_min
+            clock = moment.astimezone(tz).strftime("%H:%M")
+            start, end = house.night_start, house.night_end
+            night = start <= clock or clock < end if start > end else start <= clock < end
+            return house.night_min if night else house.comfort_min
+
+        return HouseView(
+            model=self.house_model, inside=inside, offset=reference - inside, outside=outside, upper=house.comfort_max, lower=lower
+        )
+
     def _rod(
         self, config: SunflowConfig, device: DeviceConfig, plan: Any, on_plan: bool, now: datetime, snapshot: Snapshot,
         track: HeatPumpTrack,
@@ -1466,9 +1501,7 @@ class PlanController:
         if settings.rod is None:
             self.heat_pump_rod.pop(device.id, None)
             return "free"
-        role = device.role_overrides.get("outside_temperature")
-        source = role.entity_id if role and role.entity_id else config.learning_sources.outdoor_temperature
-        outside = temperature(snapshot.states, source)
+        outside = self._outside(config, device, snapshot)
         slots = plan.plan.slots if on_plan else []
         choice = next_rod(settings.rod, slots, now, config.heating_season.active, outside, settings.min_surplus_w, track)
         self.heat_pump_rod[device.id] = choice
@@ -1491,7 +1524,10 @@ class PlanController:
             self.heat_pump_shadow[device.id] = HeatPumpChoice(state="normal", reason=reason)
             return
         settings = device.heat_pump or HeatPumpSettings()
-        self.heat_pump_shadow[device.id] = next_heat_pump_state(settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None))
+        house = self._house_view(config, device, snapshot)
+        self.heat_pump_shadow[device.id] = next_heat_pump_state(
+            settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None), house, config.heating_season.active
+        )
 
     async def _heat_pump(
         self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime, live: Any,
@@ -1504,7 +1540,11 @@ class PlanController:
         track = self._heat_pumps.setdefault(device.id, HeatPumpTrack())
         _, _, reason = desired_action(plan, plan_at, now)
         if reason == t(ON_PLAN):
-            choice = next_heat_pump_state(settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None))
+            house = self._house_view(self._config, device, snapshot)
+            choice = next_heat_pump_state(
+                settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None), house,
+                self._config.heating_season.active,
+            )
         else:
             # Without a current plan: normal operation
             track.state, track.since = "normal", now

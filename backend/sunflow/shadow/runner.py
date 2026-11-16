@@ -27,6 +27,7 @@ from sunflow.devices.site import (
 )
 from sunflow.ha import HAClient, HAError
 from sunflow.planning.heating_season import current_season, uses_seasons, with_season
+from sunflow.planning.house_model import HouseModel, fit as fit_house, house_data
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import (
@@ -89,6 +90,8 @@ SUN_REFRESH = timedelta(hours=24)
 SUN_RETRY = timedelta(minutes=15)
 # The state of the modules (leaves blown away by the wind) from the last days: more often
 SUN_LEVEL_REFRESH = timedelta(hours=3)
+# The house model learns from four weeks of hourly values: a few times a day is enough
+HOUSE_REFRESH = timedelta(hours=6)
 # A failed replan runs every query again; not every minute while Home Assistant has a
 # problem. The pause doubles with each failure up to the maximum
 REPLAN_RETRY = timedelta(minutes=5)
@@ -349,6 +352,9 @@ class ShadowRunner:
         self.snow_ahead: dict[str, Any] | None = None
         self._location: tuple[float, float] | None = None
         self.sun_learned_at: datetime | None = None
+        self.house_model: HouseModel | None = None
+        self._house_at: datetime | None = None
+        self._house_task: asyncio.Task[None] | None = None
         self._sun_level_at: datetime | None = None
         self.sun_error: str | None = None
         self._sun_task: asyncio.Task[None] | None = None
@@ -774,6 +780,28 @@ class ShadowRunner:
             for key, expected in stored.items()
         }
 
+    def learn_house(self) -> None:
+        """Learn the house in the background when rooms are set and the model is old."""
+        now = datetime.now(UTC)
+        if not self._store.load().house.rooms or (self._house_task is not None and not self._house_task.done()):
+            return
+        if self._house_at is None or now - self._house_at > HOUSE_REFRESH:
+            self._house_task = asyncio.create_task(self._learn_house())
+
+    async def _learn_house(self) -> None:
+        now = datetime.now(UTC)
+        try:
+            data = await house_data(self._client, self._store.load(), now)
+            model = fit_house(data.rows, now)
+        except HAError as err:
+            _LOGGER.warning("Learning the house failed: %s", err)
+            model = None
+        self._house_at = now
+        # The rules use it only while it predicts better than "the temperature stays"
+        self.house_model = model if model is not None and model.useful else None
+        if self.controller is not None:
+            self.controller.house_model = self.house_model
+
     async def _update_heating_season(self) -> None:
         """Heating rods follow the season: checked before each plan, stored when it changes."""
         config = self._store.load()
@@ -798,6 +826,7 @@ class ShadowRunner:
         if self.controller is not None:
             # "A day" of the heat pump's block limits and price ranks is Home Assistant's
             self.controller.tz = await local_timezone(self._client)
+        self.learn_house()
         correction = await self.pv_correction()
         self.learn_sun()
         result = await current_plan(

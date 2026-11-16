@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.79.9
+
+- Wärmepumpe mit Hausmodell: In der Heizperiode sperrt Sunflow die Wärmepumpe nur, solange der Referenzraum ohne Heizen bis zum Ende der Sperre im Komfortband bleibt (nachts mit Absenkung); kühlt das Haus schneller, endet die Sperre sofort. Verstärken endet an der Obergrenze. Genutzt nur, solange das Modell besser vorhersagt als „bleibt gleich“.
+- Die Heizperiode wird jetzt auch für Wärmepumpen und ihren eingebauten Heizstab erkannt, nicht nur für Heizstäbe als Verbraucher.
+
 ## 0.79.8
 
 - Haus: Raumtemperaturen (gewichtet, mit Referenzraum), optional ein Wärmemengenzähler und ein Komfortband mit Nachtabsenkung im Bereich Wärmepumpe.

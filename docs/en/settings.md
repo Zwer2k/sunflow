@@ -97,8 +97,13 @@ the last four weeks Sunflow learns a simple thermal model of the house:
 Sunflow holds back the last two days and computes them anew from the measurement each day; the
 model is used only when it beats "the temperature stays the same" there and its values are
 plausible (from 7 days). A chart shows the last week measured and expected by the model. Rooms whose
-temperature jumps far more than the others' (sun, radiator, window at the sensor) are named. For now
-the model is only shown; planning the heat pump with it follows.
+temperature jumps far more than the others' (sun, radiator, window at the sensor) are named.
+
+Once the model is reliable it safeguards the heat pump's rules: in the heating season Sunflow
+**blocks** it only if the reference room's predicted temperature without heating stays above the
+lower bound until the block ends (the night setback applies at night); if the house cools faster, a
+running block ends at once. **Boosting** ends at the upper bound in the heating season; in summer the
+heat pump heats hot water and the rooms do not count. Planning preheating follows.
 
 ## Loads
 

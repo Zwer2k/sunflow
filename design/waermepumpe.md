@@ -167,8 +167,13 @@ und b > 0. Typische Einfamilienhäuser: 80–400 W/K, 10–40 kWh/K, τ 30–150
 | OpenEMS, evcc | Feste Regeln für SG-Ready (Schwellen, Sperre max. 2 h, Mindestzeiten) | bestätigt unsere Regeln; SG-Ready verlangt mind. 10 min je Signal |
 | adaptive_flow_control | Lernt den Vorlauf-Sollwert (Ridge, verzögerte Bewertung) | Kann neben Sunflow laufen: Sunflow verschiebt dessen Raum-Sollwert |
 
-**Nächste Schritte:** (2) Regeln aus Stufe 3 mit dem Modell absichern: Sperre nur, solange die
-vorhergesagte Raumtemperatur über dem Band bleibt, Verstärken bis zur Obergrenze; (3) Stufe 4.
+**Regeln abgesichert (umgesetzt, `control/heat_pump.py` `HouseView`):** In der Heizperiode sperrt
+Sunflow nur, wenn der Referenzraum ohne Heizen und Sonne bis zum Ende der Sperre (Höchstdauer,
+Tagesrest, Ende der teuren Stunden) über der Untergrenze bleibt; sonst endet die Sperre sofort.
+Verstärken endet an der Obergrenze (mit Mindestdauer). Das Modell lernt der Runner alle 6 h und
+nutzt es nur, solange es besser ist als „bleibt gleich“.
+
+**Nächster Schritt:** Stufe 4.
 Beim Lernen beachten: Sobald Sunflow die Wärmepumpe verschiebt, verzerrt die Rückkopplung das
 Modell; deshalb erst im Schattenbetrieb vergleichen.
 

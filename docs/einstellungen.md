@@ -98,7 +98,13 @@ Die letzten zwei Tage hält Sunflow zurück und rechnet sie jeden Tag neu vom Me
 wird das Modell erst, wenn es dabei besser ist als „die Temperatur bleibt gleich“ und die Werte
 plausibel sind (ab 7 Tagen). Ein Diagramm zeigt die letzte Woche gemessen und vom Modell erwartet.
 Räume, deren Temperatur viel stärker springt als die der anderen (Sonne, Heizkörper, Fenster am
-Sensor), werden genannt. Noch wird das Modell nur angezeigt; die Planung der Wärmepumpe folgt.
+Sensor), werden genannt.
+
+Ist das Modell zuverlässig, sichert es die Regeln der Wärmepumpe ab: In der Heizperiode **sperrt**
+Sunflow sie nur, wenn die vorhergesagte Temperatur des Referenzraums ohne Heizen bis zum Ende der
+Sperre über der Untergrenze bleibt (nachts gilt die Absenkung); kühlt das Haus schneller, endet eine
+laufende Sperre sofort. **Verstärken** endet in der Heizperiode an der Obergrenze; im Sommer
+heizt die Wärmepumpe Warmwasser, dort zählen die Räume nicht. Das Vorheizen zu planen folgt.
 
 ## Verbraucher
 

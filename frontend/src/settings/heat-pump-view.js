@@ -911,7 +911,7 @@ class SunflowHeatPump extends LitElement {
     return html`
       <section class="device">
         <span class="device-title">${t("Haus")}</span>
-        <p class="small muted">${t("Aus den Raumtemperaturen lernt Sunflow, wie schnell das Haus auskühlt und wie stark Heizung und Sonne es erwärmen. Damit lässt sich später planen, wie lange die Wärmepumpe pausieren darf und wann Vorheizen lohnt. Sunflow regelt keine einzelnen Räume.")}</p>
+        <p class="small muted">${t("Aus den Raumtemperaturen lernt Sunflow, wie schnell das Haus auskühlt und wie stark Heizung und Sonne es erwärmen. Damit sperrt es die Wärmepumpe nur so lange, wie das Haus im Komfortband bleibt; das Vorheizen zu planen folgt. Sunflow regelt keine einzelnen Räume.")}</p>
         <fieldset class="group">
           <legend>${t("Räume")}</legend>
           ${house.rooms.map((room, i) => html`<div class="room">
@@ -1004,7 +1004,9 @@ class SunflowHeatPump extends LitElement {
       <div class="learned">
         <span class="field-label">${t("Gelernt")}</span>
         <p class="small ${result.state === "ready" ? "muted" : "warn-text"}">${result.state === "ready"
-          ? t("Aus {days} Tagen · {heat}", { days: result.days, heat })
+          ? `${t("Aus {days} Tagen · {heat}", { days: result.days, heat })}${result.used
+            ? ` · ${t("Die Wärmepumpe sperrt nur, solange das Haus im Komfortband bleibt, und verstärkt in der Heizperiode bis zur Obergrenze.")}`
+            : ""}`
           : m.plausible
             ? t("Noch unsicher: Die Vorhersage ist nicht besser als „die Temperatur bleibt“. Sunflow nutzt das Modell noch nicht. ({heat})", { heat })
             : t("Noch nicht plausibel – vielleicht heizt etwas, das nicht gemessen wird, oder ein Sensor hängt in der Sonne. ({heat})", { heat })}</p>

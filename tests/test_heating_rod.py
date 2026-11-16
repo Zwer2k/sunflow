@@ -154,8 +154,10 @@ def test_without_season_modes() -> None:
     config = SunflowConfig(devices=[ROD, HEAT_PUMP], heating_season=HeatingSeason(active=True))
 
     assert config.effective_flex(ROD, NOW) == (FlexSettings(), False)
-    assert not uses_seasons(config)
-    assert uses_seasons(_config(True))
+    assert not uses_seasons(SunflowConfig(devices=[ROD]))
+    assert not uses_seasons(_config(True, linked=False))
+    # A heat pump's rules and its built-in rod follow the season as well
+    assert uses_seasons(config)
 
 
 def test_season_modes_need_a_heat_pump() -> None:
@@ -163,7 +165,6 @@ def test_season_modes_need_a_heat_pump() -> None:
     config = _config(True, linked=False)
 
     assert config.effective_flex(ROD, NOW) == (config.flex_of("rod"), False)
-    assert not uses_seasons(config)
 
 
 def test_season_change_is_stored() -> None:

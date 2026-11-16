@@ -50,8 +50,11 @@ async def house_model(request: Request) -> dict[str, Any]:
     now = datetime.now(UTC)
     key = config.house.model_dump_json() + str(config.learning_sources.outdoor_temperature)
     cached = getattr(request.app.state, "house_model", None)
+    runner = getattr(request.app.state, "runner", None)
+    # Whether the heat pump's rules use it right now (learned by the runner a few times a day)
+    used = {"used": getattr(runner, "house_model", None) is not None}
     if cached and cached[0] == key and now - cached[1] < CACHE_FOR:
-        return cached[2]
+        return cached[2] | used
     try:
         data = await house_data(request.app.state.ha, config, now)
     except HAError as err:
@@ -81,4 +84,4 @@ async def house_model(request: Request) -> dict[str, Any]:
             "chart": chart(model, data.rows),
         }
     request.app.state.house_model = (key, now, result)
-    return result
+    return result | used

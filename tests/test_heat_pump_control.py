@@ -13,6 +13,7 @@ from sunflow.api.devices import ManualDevice, _manual_setup
 from sunflow.config.models import BuiltinRod, HeatPumpSettings
 from sunflow.control.heat_pump import (
     HeatPumpTrack,
+    HouseView,
     next_rod,
     next_state,
     runtime,
@@ -22,6 +23,7 @@ from sunflow.control.heat_pump import (
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.executor import plan_steps
 from sunflow.devices.profiles import ProfileLibrary
+from sunflow.planning.house_model import HouseModel
 
 START = datetime(2026, 11, 16, tzinfo=UTC)
 SLOT = timedelta(minutes=15)
@@ -345,3 +347,65 @@ def test_builtin_rod_setup(tmp_path: Path, settings: dict[str, object], status: 
     body = HEAT_PUMP | {"rod_entity": "switch.aux_off", "heat_pump": settings}
 
     assert _client(tmp_path).post("/api/v1/config/devices/manual", json=body).status_code == status
+
+
+MODEL = HouseModel(a=0.02, b=0.04, c=None, d=0.0, days=14, samples=300, error_k=0.2, baseline_k=0.8)
+
+
+def _view(inside: float, outside: float, lower: float = 20.0, upper: float = 22.0) -> HouseView:
+    return HouseView(model=MODEL, inside=inside, outside=outside, upper=upper, lower=lambda _moment: lower)
+
+
+@pytest.mark.parametrize(
+    ("house", "season", "expected"),
+    [
+        pytest.param(_view(21.5, 0.0), True, "block", id="warm house may pause"),
+        pytest.param(_view(20.3, -5.0), True, "normal", id="block would cool below the band"),
+        pytest.param(_view(20.3, -5.0), False, "block", id="summer: rooms do not count"),
+    ],
+)
+def test_block_within_the_comfort_band(house: HouseView, season: bool, expected: str) -> None:
+    """A block is set only while the house stays above the lower bound until it ends."""
+    settings = HeatPumpSettings(method="sg_relays", use_block=True, expensive_hours=1, block_max_min=120)
+    now = START + timedelta(hours=3, minutes=5)
+
+    assert wanted_state(settings, _day(PRICES), now, UTC, HeatPumpTrack(), None, house, season).state == expected
+
+
+@pytest.mark.parametrize(
+    ("house", "season", "expected"),
+    [
+        pytest.param(_view(21.0, 5.0), True, "boost", id="room for more heat"),
+        pytest.param(_view(22.1, 5.0), True, "normal", id="upper bound reached"),
+        pytest.param(_view(22.1, 5.0), False, "boost", id="summer: hot water"),
+    ],
+)
+def test_boost_up_to_the_upper_bound(house: HouseView, season: bool, expected: str) -> None:
+    """Boosting heats the rooms only up to the upper bound in the heating season."""
+    slots = _day(PRICES, 2000)
+
+    assert wanted_state(HeatPumpSettings(method="sg_relays"), slots, START, UTC, HeatPumpTrack(), None, house, season).state == expected
+
+
+def test_block_ends_early_when_the_house_cools() -> None:
+    """A running block ends as soon as the rest of it would cool the house too far, despite the minimum time."""
+    settings = HeatPumpSettings(method="sg_relays", use_block=True, expensive_hours=6, min_state_min=60)
+    track = HeatPumpTrack()
+    slots = _day([0.40] * 6)
+
+    assert next_state(settings, slots, START, UTC, track, None, _view(21.0, 0.0), True).state == "block"
+    assert next_state(settings, slots, START + timedelta(minutes=10), UTC, track, None, _view(20.1, -10.0), True).state == "normal"
+
+
+def test_reference_room_and_night_setback() -> None:
+    """The band applies to the reference room; at night the lower bound may be lower."""
+    night = HouseView(
+        model=MODEL, inside=20.0, offset=-0.5, outside=0.0, upper=22.0,
+        lower=lambda moment: 18.0 if moment.hour < 6 else 20.0,
+    )
+
+    margin, bound = night.coldest_margin(START, 120)
+
+    assert night.reference == 19.5
+    assert bound == 18.0
+    assert 0 < margin < 1.5

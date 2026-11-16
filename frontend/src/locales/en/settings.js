@@ -499,7 +499,7 @@ export default {
   "Die Einstellung liegt meist im Flash-Speicher der Wärmepumpe – selten schreiben.": "The setting usually sits in the heat pump's flash memory – write it rarely.",
   "Reicht die Wärmepumpe nicht, gibst du den Heizstab auf dieser Seite für 24 h frei. Wird die Wärmepumpe nicht mehr von Sunflow gesteuert, stellt Sunflow den normalen Wert wieder her.": "If the heat pump is not enough, release the heating rod on this page for 24 h. When Sunflow no longer controls the heat pump, it restores the normal value.",
   "Ein Heizstab außerhalb der Wärmepumpe, den Sunflow selbst schaltet – meist im Warmwasser- oder Pufferspeicher.": "A heating rod outside the heat pump that Sunflow switches itself – usually in the hot water or buffer tank.",
-  "Aus den Raumtemperaturen lernt Sunflow, wie schnell das Haus auskühlt und wie stark Heizung und Sonne es erwärmen. Damit lässt sich später planen, wie lange die Wärmepumpe pausieren darf und wann Vorheizen lohnt. Sunflow regelt keine einzelnen Räume.": "From the room temperatures Sunflow learns how fast the house cools down and how much heating and sun warm it. This later lets it plan how long the heat pump may pause and when preheating pays off. Sunflow does not control single rooms.",
+  "Aus den Raumtemperaturen lernt Sunflow, wie schnell das Haus auskühlt und wie stark Heizung und Sonne es erwärmen. Damit sperrt es die Wärmepumpe nur so lange, wie das Haus im Komfortband bleibt; das Vorheizen zu planen folgt. Sunflow regelt keine einzelnen Räume.": "From the room temperatures Sunflow learns how fast the house cools down and how much heating and sun warm it. With that it blocks the heat pump only as long as the house stays within the comfort band; planning preheating follows. Sunflow does not control single rooms.",
   "Räume": "Rooms",
   "Gewicht": "Weight",
   "Referenzraum": "Reference room",
@@ -545,4 +545,5 @@ export default {
   "Raumtemperatur der letzten 7 Tage, gemessen und vom Modell erwartet": "Room temperature of the last 7 days, measured and expected by the model",
   "Komfort min": "Comfort min",
   "Komfort max": "Comfort max",
+  "Die Wärmepumpe sperrt nur, solange das Haus im Komfortband bleibt, und verstärkt in der Heizperiode bis zur Obergrenze.": "The heat pump blocks only while the house stays within the comfort band, and boosts up to the upper bound in the heating season.",
 };
