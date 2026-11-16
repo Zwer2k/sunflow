@@ -173,7 +173,17 @@ Tagesrest, Ende der teuren Stunden) über der Untergrenze bleibt; sonst endet di
 Verstärken endet an der Obergrenze (mit Mindestdauer). Das Modell lernt der Runner alle 6 h und
 nutzt es nur, solange es besser ist als „bleibt gleich“.
 
-**Nächster Schritt:** Stufe 4.
+**Stufe 4 (umgesetzt als Test, `planning/house_plan.py`, `ThermalLoad` im Optimierer):** je
+Viertelstunde Wärmepumpen-Leistung P und Raumtemperatur T als Variablen,
+`T[t] = T[t-1] + dt·(a·(T_außen − T[t-1]) + d) + b·COP[t]·P[t]·dt`, COP vorab nach Carnot aus der
+Wetterprognose; Band weich (darunter 50 €/K·h, darüber 0,2 €/K·h), Wärme am Ende zum mittleren
+Preis/COP bewertet. Der Bedarf ohne Planung (Untergrenze halten, höchstens 70 % der Lastprognose)
+geht aus der Last heraus und in den Vergleich ein. Steuerung: geplant > Bedarf + max(300 W, 25 %)
+verstärken, darunter sperren. Laufzeit 96 h mit Haus etwa 0,1 s.
+
+**Offen:** Sonne in der Planung (Gewinne aus der PV-Prognose), gelernter COP statt Carnot,
+Warmwasser als zweiter Speicher am selben Verdichter, Heizstab gemeinsam planen, Vergleich mit dem
+Schattenbetrieb.
 Beim Lernen beachten: Sobald Sunflow die Wärmepumpe verschiebt, verzerrt die Rückkopplung das
 Modell; deshalb erst im Schattenbetrieb vergleichen.
 
@@ -189,8 +199,8 @@ Modell; deshalb erst im Schattenbetrieb vergleichen.
    PV-Überschuss oder Boost-Schalter, einstellbar; Regeln aus dem Plan (Überschuss, günstigste
    und teuerste Stunden, Mindestdauer, Sperrgrenzen), Schattenmodus. Eigener Einstellungsbereich
    „Wärmepumpe“. Offen: eigene Prognose der Wärmepumpe nach Außentemperatur.
-4. **Gemeinsame Planung** von Wärmepumpe und Heizstab im Optimierer (Wärmespeicher mit zwei
-   Erzeugern unterschiedlicher Effizienz).
+4. **Gemeinsame Planung** im Optimierer: das Haus als Wärmespeicher (umgesetzt als Test,
+   „Vorheizen planen“); offen: Warmwasser und Heizstab als weitere Speicher bzw. Erzeuger.
 
 Jede Stufe läuft zuerst im Schattenmodus.
 

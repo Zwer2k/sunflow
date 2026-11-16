@@ -69,7 +69,7 @@ from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
 from sunflow.i18n import N_, number, t
-from sunflow.planning.house_model import HouseModel
+from sunflow.planning.house_model import HouseModel, lower_bound, room_now
 from sunflow.planning.optimizer import ON_OFF_MIN_SHARE
 from sunflow.planning.vehicles import vehicle_at, vehicle_max_current
 
@@ -1473,23 +1473,17 @@ class PlanController:
         outside = self._outside(config, device, snapshot)
         if self.house_model is None or outside is None:
             return None
-        rooms = [(r, value) for r in house.rooms if (value := temperature(snapshot.states, r.entity_id)) is not None]
-        if not rooms:
+        now = room_now(house, snapshot.states)
+        if now is None:
             return None
-        inside = sum(r.weight * v for r, v in rooms) / sum(r.weight for r, _ in rooms)
-        reference = next((v for r, v in rooms if r.reference), inside)
+        inside, offset = now
         tz = self.tz
 
         def lower(moment: datetime) -> float:
-            if house.night_min is None:
-                return house.comfort_min
-            clock = moment.astimezone(tz).strftime("%H:%M")
-            start, end = house.night_start, house.night_end
-            night = start <= clock or clock < end if start > end else start <= clock < end
-            return house.night_min if night else house.comfort_min
+            return lower_bound(house, moment, tz)
 
         return HouseView(
-            model=self.house_model, inside=inside, offset=reference - inside, outside=outside, upper=house.comfort_max, lower=lower
+            model=self.house_model, inside=inside, offset=offset, outside=outside, upper=house.comfort_max, lower=lower
         )
 
     def _rod(
@@ -1526,7 +1520,8 @@ class PlanController:
         settings = device.heat_pump or HeatPumpSettings()
         house = self._house_view(config, device, snapshot)
         self.heat_pump_shadow[device.id] = next_heat_pump_state(
-            settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None), house, config.heating_season.active
+            settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None), house, config.heating_season.active,
+            device.id,
         )
 
     async def _heat_pump(
@@ -1543,7 +1538,7 @@ class PlanController:
             house = self._house_view(self._config, device, snapshot)
             choice = next_heat_pump_state(
                 settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None), house,
-                self._config.heating_season.active,
+                self._config.heating_season.active, device.id,
             )
         else:
             # Without a current plan: normal operation

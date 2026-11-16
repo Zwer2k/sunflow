@@ -104,7 +104,19 @@ Ist das Modell zuverlässig, sichert es die Regeln der Wärmepumpe ab: In der He
 Sunflow sie nur, wenn die vorhergesagte Temperatur des Referenzraums ohne Heizen bis zum Ende der
 Sperre über der Untergrenze bleibt (nachts gilt die Absenkung); kühlt das Haus schneller, endet eine
 laufende Sperre sofort. **Verstärken** endet in der Heizperiode an der Obergrenze; im Sommer
-heizt die Wärmepumpe Warmwasser, dort zählen die Räume nicht. Das Vorheizen zu planen folgt.
+heizt die Wärmepumpe Warmwasser, dort zählen die Räume nicht.
+
+**Vorheizen planen (Test):** An der Wärmepumpe unter Ansteuerung einschaltbar, mit der höchsten
+elektrischen Leistung. Sunflow plant die Wärmepumpe dann im Optimierer zusammen mit Speicher und
+Verbrauchern; die Raumtemperatur ist dort ein Wärmespeicher. Es heizt in sonnigen oder günstigen
+Stunden vor und lässt das Haus in teuren auskühlen, immer im Komfortband (darunter ist sehr
+teuer, darüber leicht). Der COP folgt der Außentemperatur der Wetterprognose. Was die Wärmepumpe
+ohne Planung ziehen würde, nimmt Sunflow aus der Verbrauchsprognose heraus und rechnet es beim
+Vergleich „ohne Sunflow“ wieder ein. Liegt die geplante Leistung deutlich über diesem Bedarf, wird
+verstärkt („Vorheizen nach Plan“), deutlich darunter gesperrt („Pause nach Plan“), mit allen
+Grenzen der Sperre und der Prüfung oben; das ersetzt die günstigsten und teuersten Stunden. Gilt
+nur in der Heizperiode und sobald das Hausmodell zuverlässig ist und die Wärme der Heizung kennt.
+Der Abschnitt „Haus“ zeigt die geplante Raumtemperatur der nächsten 48 Stunden.
 
 ## Verbraucher
 

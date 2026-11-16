@@ -17,14 +17,14 @@ are held out and simulated freely, a day at a time: the model counts as useful o
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 import math
 from statistics import median
 from typing import Any
 
 import numpy as np
 
-from sunflow.config.models import DeviceConfig, SunflowConfig
+from sunflow.config.models import DeviceConfig, HouseSettings, SunflowConfig
 from sunflow.ha import HAClient
 from sunflow.planning.load_forecast import fetch_hourly_means
 
@@ -238,6 +238,34 @@ def restless_rooms(per_room: dict[str, dict[datetime, float]], inside: dict[date
         return []
     typical = median(spread.values())
     return sorted(e for e, v in spread.items() if v > max(RESTLESS_FACTOR * typical, RESTLESS_MIN_K))
+
+
+def lower_bound(house: HouseSettings, moment: datetime, tz: tzinfo) -> float:
+    """The comfort band's lower bound at a moment: the night setback at night."""
+    if house.night_min is None:
+        return house.comfort_min
+    clock = moment.astimezone(tz).strftime("%H:%M")
+    start, end = house.night_start, house.night_end
+    night = (start <= clock or clock < end) if start > end else start <= clock < end
+    return house.night_min if night else house.comfort_min
+
+
+def room_now(house: HouseSettings, states: dict[str, dict[str, Any]]) -> tuple[float, float] | None:
+    """Weighted mean of the rooms now and the reference room's offset to it; None without values."""
+    rooms = [(r, value) for r in house.rooms if (value := _state(states, r.entity_id)) is not None]
+    if not rooms:
+        return None
+    inside = sum(r.weight * v for r, v in rooms) / sum(r.weight for r, _ in rooms)
+    reference = next((v for r, v in rooms if r.reference), inside)
+    return inside, reference - inside
+
+
+def _state(states: dict[str, dict[str, Any]], entity_id: str) -> float | None:
+    try:
+        value = float(states[entity_id]["state"])
+    except KeyError, TypeError, ValueError:
+        return None
+    return value if math.isfinite(value) else None
 
 
 def heat_pump(config: SunflowConfig) -> DeviceConfig | None:

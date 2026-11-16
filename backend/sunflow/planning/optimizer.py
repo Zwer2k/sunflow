@@ -175,6 +175,35 @@ class FlexLoad:
         return [(0, first_end, self.energy_wh), *self.later_needs]
 
 
+@dataclass(frozen=True, kw_only=True)
+class ThermalLoad:
+    """A heat pump warming the house, with the room temperature as a heat storage (linear, like EMHASS).
+
+    Per slot with the learned house (K/h): T[t] = T[t-1] + dt·(a·(T_out[t] - T[t-1]) + gains)
+    + b·COP[t]·P[t]·dt/1000, b in K per kWh of heat. Below lower the plan pays cold_cost, above
+    upper warm_cost (sun can push it there without the heat pump), per K and hour.
+    """
+
+    name: str
+    a: float
+    b: float
+    gains: float
+    # The model's temperature now and the bounds for it (the reference room's band, shifted)
+    inside: float
+    outside: list[float]
+    cop: list[float]
+    lower: list[float]
+    upper: list[float]
+    max_power_w: float
+    # What it draws without planning (holding the lower bound); taken out of the house load
+    # and added back for the comparison without Sunflow
+    baseline_w: list[float]
+    cold_cost: float = 50.0
+    warm_cost: float = 0.02
+    # Reference room minus the model's mean: the plan shows the reference room's temperature
+    offset: float = 0.0
+
+
 @dataclass(kw_only=True)
 class FlexResult:
     """How much of a flexible load's need the plan covers."""
@@ -234,6 +263,10 @@ class PlanSlot:
     action: Action
     action_power_w: float | None
     flex_w: dict[str, float] = field(default_factory=dict)
+    # Heat pumps planned with the house: power and what they would draw unplanned (W), room temperature (°C)
+    heat_w: dict[str, float] = field(default_factory=dict)
+    heat_base_w: dict[str, float] = field(default_factory=dict)
+    room_c: dict[str, float] = field(default_factory=dict)
     # PV the plan limits away (negative feed-in, above the grid friendly export limit)
     curtail_w: float = 0.0
     price_estimated: bool = False
@@ -406,6 +439,7 @@ def optimize(
     battery: BatterySpec | list[BatterySpec],
     settings: Settings = Settings(),
     flex: list[FlexLoad] | tuple[FlexLoad, ...] = (),
+    thermal: list[ThermalLoad] | tuple[ThermalLoad, ...] = (),
 ) -> Plan:
     """Compute the cost-optimal schedule of one or more batteries and the flexible loads.
 
@@ -434,6 +468,13 @@ def optimize(
         first = base + len(flex) * n + sum(len(x) for x in u)
         u.append(list(range(first, first + len(load_needs))))
     count = base + len(flex) * n + sum(len(x) for x in u)
+    # Heat pumps with the house: power, room temperature, degrees below and above the band (each n)
+    thermal = list(thermal)
+    hp = [count + 4 * n * k + np.arange(n) for k in range(len(thermal))]
+    room = [index + n for index in hp]
+    cold = [index + 2 * n for index in hp]
+    warm = [index + 3 * n for index in hp]
+    count += 4 * n * len(thermal)
     eta_c = [b.efficiency_charge for b in batteries]
     eta_d = [b.efficiency_discharge for b in batteries]
     eta_g = [b.efficiency_charge_grid or b.efficiency_charge for b in batteries]
@@ -551,8 +592,14 @@ def optimize(
             cost[index] = unmet / 1000
         for t in range(n):
             cost[f[k][t]] += (load.urgency * t / n - load.priority_bonus) * DT_H / 1000
+    for k, heat in enumerate(thermal):
+        for t in range(n):
+            cost[cold[k][t]] = heat.cold_cost * dts[t]
+            cost[warm[k][t]] = heat.warm_cost * dts[t]
+        # Warmth left at the end saves heat pump power later: worth it at the mean price and COP
+        cost[room[k][-1]] -= mean_price / heat.b / max(float(np.mean(heat.cop)), 1.0)
 
-    rows = n + m * n + sum(len(x) for x in u)
+    rows = n + m * n + sum(len(x) for x in u) + n * len(thermal)
     a_eq = lil_matrix((rows, count))
     b_eq = np.zeros(rows)
     for t, slot in enumerate(inputs):
@@ -564,6 +611,8 @@ def optimize(
             a_eq[t, c[k][t]] = -1
         for k in range(len(flex)):
             a_eq[t, f[k][t]] = -1
+        for k in range(len(thermal)):
+            a_eq[t, hp[k][t]] = -1
         b_eq[t] = slot.load_w - slot.pv_w
         if cu is not None:
             a_eq[t, cu[t]] = -1
@@ -587,6 +636,17 @@ def optimize(
                 a_eq[row, f[k][t]] = dts[t]
             a_eq[row, unmet_index] = 1
             b_eq[row] = energy
+            row += 1
+    for k, heat in enumerate(thermal):
+        for t in range(n):
+            # T[t] - (1 - a·dt)·T[t-1] - b·COP·dt/1000·P[t] = dt·(a·T_out + gains)
+            a_eq[row, room[k][t]] = 1
+            a_eq[row, hp[k][t]] = -heat.b * heat.cop[t] * dts[t] / 1000
+            b_eq[row] = dts[t] * (heat.a * heat.outside[t] + heat.gains)
+            if t == 0:
+                b_eq[row] += (1 - heat.a * dts[t]) * heat.inside
+            else:
+                a_eq[row, room[k][t - 1]] = -(1 - heat.a * dts[t])
             row += 1
 
     soc_upper: list[float] = []
@@ -617,7 +677,7 @@ def optimize(
         # The grid only carries what the house, loads and batteries can take or give
         upper[gi[t]] = max(slot.load_w, 0) + sum(b.max_charge_w for b in batteries) + sum(
             load.max_power_w for load in flex if load.available[t]
-        )
+        ) + sum(heat.max_power_w for heat in thermal)
         # Export beyond the PV surplus would be stored energy sold at the feed-in price
         upper[ge[t]] = surplus + sum(
             b.max_discharge_w for b in batteries if settings.allow_battery_export and b.force_discharge
@@ -629,6 +689,9 @@ def optimize(
             if load.pv_only:
                 limit = min(limit, max(slot.pv_w - slot.load_w, 0.0))
             upper[f[k][t]] = limit
+        for k, heat in enumerate(thermal):
+            upper[hp[k][t]] = heat.max_power_w
+            lower[room[k][t]], upper[room[k][t]] = -np.inf, np.inf
 
     # Import and export (charge and discharge) at the same time is physically impossible.
     # A linear model only does it when it pays: import cheaper than export, or negative
@@ -738,6 +801,11 @@ def optimize(
             for t in range(n):
                 # flow - over <= limit: only the part above the limit costs the penalty
                 gate_rows.append(({flow[t]: 1, over[t]: -1}, limit))
+    for k, heat in enumerate(thermal):
+        for t in range(n):
+            # T + cold >= lower and T - warm <= upper: only the degrees outside the band cost
+            gate_rows.append(({room[k][t]: -1, cold[k][t]: -1}, -heat.lower[t]))
+            gate_rows.append(({room[k][t]: 1, warm[k][t]: -1}, heat.upper[t]))
     for k in range(m):
         if hs[k] is not None:
             # soc - above <= threshold: only the energy above it costs
@@ -776,7 +844,7 @@ def optimize(
     # A start follows from the on/off binaries (minimized, it is 0 or 1 anyway): no branching on it
     integrality[on_off_starts] = 0
     binary_total = total
-    smoothed = [gi, ge, *f]
+    smoothed = [gi, ge, *f, *hp]
 
     def solve(smooth: bool, fixed_binaries: np.ndarray | None = None) -> Any:
         """Solve; smoothing adds delta[t] >= |v[t] - v[t-1]| for grid flows and flexible loads."""
@@ -895,7 +963,7 @@ def optimize(
         return plan
     x = result.x
     for t, slot in enumerate(inputs):
-        flex_now = sum(x[f[k][t]] for k in range(len(flex)))
+        flex_now = sum(x[f[k][t]] for k in range(len(flex))) + sum(x[hp[k][t]] for k in range(len(thermal)))
         curtail = float(x[cu[t]]) if cu is not None else 0.0
         net = [float(x[d[k][t]] - x[c[k][t]]) for k in range(m)]
         shares: dict[str, BatterySlot] = {}
@@ -943,6 +1011,9 @@ def optimize(
                 action="auto",
                 action_power_w=None,
                 flex_w={load.name: float(x[f[k][t]]) for k, load in enumerate(flex)},
+                heat_w={heat.name: float(x[hp[k][t]]) for k, heat in enumerate(thermal)},
+                heat_base_w={heat.name: heat.baseline_w[t] for heat in thermal},
+                room_c={heat.name: float(x[room[k][t]]) + heat.offset for k, heat in enumerate(thermal)},
                 curtail_w=curtail,
                 price_estimated=slot.price_estimated,
                 batteries=shares,
@@ -971,6 +1042,10 @@ def optimize(
     )
     # The running slot for what is left of it, as in the plan: else the savings swing within every quarter hour
     baseline_inputs, plan.baseline_alternative_cost = immediate_flex(inputs, flex, dts)
+    # Without Sunflow the heat pumps draw what they would unplanned
+    baseline_inputs = [
+        replace(slot, load_w=slot.load_w + sum(heat.baseline_w[t] for heat in thermal)) for t, slot in enumerate(baseline_inputs)
+    ]
     plan.baseline_cost, baseline_socs = simulate_self_consumption(baseline_inputs, batteries, plan.baseline_slot_costs, dts)
     plan.baseline_cost += plan.baseline_alternative_cost
     plan.baseline_terminal_value = sum(terminal[k] * baseline_socs[k] for k in range(m)) / 1000

@@ -103,7 +103,18 @@ Once the model is reliable it safeguards the heat pump's rules: in the heating s
 **blocks** it only if the reference room's predicted temperature without heating stays above the
 lower bound until the block ends (the night setback applies at night); if the house cools faster, a
 running block ends at once. **Boosting** ends at the upper bound in the heating season; in summer the
-heat pump heats hot water and the rooms do not count. Planning preheating follows.
+heat pump heats hot water and the rooms do not count.
+
+**Plan preheating (test):** switched on at the heat pump under control, with its maximum electric
+power. Sunflow then plans the heat pump in the optimizer together with the battery and loads; the
+room temperature is a heat storage there. It preheats in sunny or cheap hours and lets the house cool
+in dear ones, always within the comfort band (below it is very expensive, above it slightly). The COP
+follows the outside temperature of the weather forecast. What the heat pump would draw unplanned is
+taken out of the load forecast and added back for the comparison "without Sunflow". Planned power
+well above that draw boosts ("preheating as planned"), well below it blocks ("pause as planned"),
+with all block limits and the check above; this replaces the cheapest and dearest hours. Only in
+the heating season and once the house model is reliable and knows the heating's heat. The section
+"House" shows the planned room temperature of the next 48 hours.
 
 ## Loads
 

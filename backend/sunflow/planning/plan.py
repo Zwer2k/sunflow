@@ -46,6 +46,8 @@ from .load_forecast import (
     subtract_loads,
     unmeasured_consumers,
 )
+from .house_model import HouseModel
+from .house_plan import thermal_loads
 from .load_model import LoadModel
 from .optimizer import DT_H, BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
 from .price_estimate import extend_prices
@@ -1577,6 +1579,7 @@ async def compute_plan(
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
     pv_recent: tuple[float, float, float] | None = None,
+    house_model: HouseModel | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule.
 
@@ -1930,8 +1933,10 @@ async def compute_plan(
             settings,
             reserve_dip_wh=tuple(reserve_dips(inputs, batteries[0], settings.reserve_wh, floor, tz)),
         )
+    thermal, inputs, thermal_warnings = thermal_loads(config, snapshot, inputs, weather["temperature"], house_model, tz)
+    warnings += thermal_warnings
     # The solver is CPU bound; keep the event loop (HA connection, API) responsive
-    plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads)
+    plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads, thermal)
     device_actions(plan, profile, battery_device.id)
     for device, _ in others:
         device_actions(plan, profiles[device.profile], device.id)

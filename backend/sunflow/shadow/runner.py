@@ -129,6 +129,7 @@ async def current_plan(
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
     pv_recent: tuple[float, float, float] | None = None,
+    house_model: HouseModel | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -150,6 +151,7 @@ async def current_plan(
         chargers,
         sun_corrections,
         pv_recent,
+        house_model,
     )
 
 
@@ -843,6 +845,7 @@ class ShadowRunner:
             chargers=self.controller.chargers if self.controller is not None else None,
             sun_corrections=self.sun_corrections(),
             pv_recent=await asyncio.to_thread(self.pv_recent, await local_timezone(self._client)),
+            house_model=self.house_model,
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)

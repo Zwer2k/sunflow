@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.79.10
+
+- Vorheizen planen (Test): Die Wärmepumpe wird im Optimierer zusammen mit Speicher und Verbrauchern geplant, das Haus ist dort ein Wärmespeicher. Sunflow heizt in sonnigen oder günstigen Stunden vor und lässt das Haus in teuren auskühlen, im Komfortband; die Steuerung folgt dem Plan („Vorheizen nach Plan“, „Pause nach Plan“). Einschaltbar an der Wärmepumpe, mit ihrer höchsten Leistung; nur in der Heizperiode mit zuverlässigem Hausmodell.
+- Der Abschnitt „Haus“ zeigt die geplante Raumtemperatur der nächsten 48 Stunden.
+
 ## 0.79.9
 
 - Wärmepumpe mit Hausmodell: In der Heizperiode sperrt Sunflow die Wärmepumpe nur, solange der Referenzraum ohne Heizen bis zum Ende der Sperre im Komfortband bleibt (nachts mit Absenkung); kühlt das Haus schneller, endet die Sperre sofort. Verstärken endet an der Obergrenze. Genutzt nur, solange das Modell besser vorhersagt als „bleibt gleich“.

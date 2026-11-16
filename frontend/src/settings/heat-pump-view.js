@@ -57,7 +57,7 @@ const EMPTY = {
   temperature_entity: "", outside_temperature_entity: "",
   method: "", sg_contact1_entity: "", sg_contact2_entity: "", contact1_inverted: false, contact2_inverted: false,
   sg_select_entity: "", options: {}, setpoint_entity: "", setpoint_normal: "", surplus_entity: "", boost_switch_entity: "",
-  use_block: false, use_forced: false,
+  use_block: false, use_forced: false, preheat: false, max_power_w: "3000",
   rod_kind: "", rod_id: "", rod_heating_mode: "off", rod_summer_mode: "pv_only", rod_manual_h: "24",
   rod_method: "block_switch", rod_entity: "", rod_options: {}, rod_limit_normal: "", rod_limit_max: "", rod_limit_blocked: "0",
   rod_heating: "need", rod_summer: "pv", rod_bivalence: "-5", rod_min_state: "60", rod_released_until: null,
@@ -102,6 +102,8 @@ function formOf(device, planning) {
     boost_switch_entity: role("boost_switch"),
     use_block: Boolean(settings.use_block),
     use_forced: Boolean(settings.use_forced),
+    preheat: Boolean(settings.preheat),
+    max_power_w: toDisplay(settings.max_power_w ?? 3000, ""),
     ...rodFormOf(settings.rod_id, planning),
     ...builtinFormOf(settings.rod, role(ROD_ROLES[settings.rod?.method] ?? "")),
     rules: Object.fromEntries(Object.keys(RULE_DEFAULTS).map((k) => [k, toDisplay(settings[k] ?? RULE_DEFAULTS[k], "")])),
@@ -162,6 +164,8 @@ function bodyOf(form) {
   const voltage = electric === "phase_current" ? number(form.voltage) : null;
   const setpoint = number(form.setpoint_normal);
   const rodHours = number(form.rod_manual_h);
+  const maxPower = number(form.max_power_w);
+  if (maxPower === undefined || (maxPower !== null && !(maxPower > 0))) return undefined;
   const builtin = form.rod_kind === "builtin";
   const rodNumbers = builtin
     ? [number(form.rod_limit_normal), number(form.rod_limit_max), number(form.rod_limit_blocked), number(form.rod_bivalence)]
@@ -213,6 +217,8 @@ function bodyOf(form) {
       use_forced: Boolean(method && CAN_FORCE.has(method) && form.use_forced),
       options: Object.fromEntries(Object.entries(form.options).filter(([, option]) => option)),
       setpoint_normal: setpoint,
+      preheat: Boolean(method && form.preheat),
+      max_power_w: maxPower ?? 3000,
       rod: rod,
       rod_id: form.rod_kind === "consumer" ? form.rod_id || null : null,
       ...Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v ?? RULE_DEFAULTS[k]])),
@@ -276,6 +282,7 @@ class SunflowHeatPump extends LitElement {
     _house: { state: true },
     _houseEdit: { state: true },
     _houseModel: { state: true },
+    _heatPlan: { state: true },
     _form: { state: true },
     _editId: { state: true },
     _error: { state: true },
@@ -327,6 +334,19 @@ class SunflowHeatPump extends LitElement {
       this._houseModel = await api.houseModel();
     } catch (err) {
       this._houseModel = { state: "error", error: err.message };
+    }
+    const pump = this._heatPumps.find((d) => d.heat_pump?.preheat);
+    if (!pump) {
+      this._heatPlan = null;
+      return;
+    }
+    try {
+      const plan = await api.plan();
+      const slots = (plan.slots ?? []).filter((slot) => slot.room_c?.[pump.id] != null);
+      this._heatPlan = slots.length ? { id: pump.id, slots } : null;
+    } catch {
+      // The plan is a bonus here
+      this._heatPlan = null;
     }
   }
 
@@ -659,6 +679,18 @@ class SunflowHeatPump extends LitElement {
                   : nothing}`
               : nothing}
             ${CAN_FORCE.has(method) ? check("use_forced", t("Anlaufbefehl (Zustand 4) bei negativem Strompreis")) : nothing}
+            ${check("preheat", t("Vorheizen mit dem Hausmodell planen (Test)"))}
+            ${form.preheat
+              ? html`<p class="small muted">${t("Sunflow plant die Wärmepumpe zusammen mit Speicher und Verbrauchern: Es heizt in sonnigen oder günstigen Stunden vor und lässt das Haus in teuren auskühlen, immer im Komfortband (Abschnitt „Haus“). Das ersetzt die günstigsten und teuersten Stunden oben. Nur in der Heizperiode und sobald das Hausmodell zuverlässig ist und die Wärme kennt.")}</p>
+                <div class="fields">
+                  <label class="field">
+                    <span class="field-label">${t("Höchste Leistung (Strom)")}</span>
+                    <span class="input-unit"><input inputmode="decimal" placeholder="3000" .value=${form.max_power_w}
+                      @input=${(e) => this._set({ max_power_w: e.target.value })}><span class="muted">W</span></span>
+                    <span class="small muted">${t("was die Wärmepumpe bei voller Leistung zieht")}</span>
+                  </label>
+                </div>`
+              : nothing}
             <p class="small muted">${t("Gesteuert wird erst, wenn die Wärmepumpe unter Steuerung eingeschaltet ist; bis dahin zeigt Sunflow nur, was es setzen würde.")}</p>`
           : nothing}
       </fieldset>
@@ -1022,7 +1054,8 @@ class SunflowHeatPump extends LitElement {
           ? html`<p class="small warn-text">${t("Auffällig unruhig – vielleicht Sonne, Heizkörper oder Fenster am Sensor: {rooms}. Ein geringeres Gewicht oder ein anderer Sensor hilft.", { rooms: result.restless.map(name).join(", ") })}</p>`
           : nothing}
         ${points.length
-          ? html`<div class="legend small">
+          ? html`<span class="field-label">${t("Letzte 7 Tage")}</span>
+            <div class="legend small">
               <span class="legend-item"><span class="swatch" style="background: ${SERIES_COLORS[0]}"></span>${t("gemessen")}</span>
               <span class="legend-item"><span class="swatch" style="background: ${SERIES_COLORS[1]}"></span>${t("Modell (startet jeden Tag neu)")}</span>
             </div>
@@ -1040,7 +1073,34 @@ class SunflowHeatPump extends LitElement {
               },
             )}`
           : nothing}
+        ${this._renderHeatPlan(house)}
       </div>
+    `;
+  }
+
+  /** The planned room temperature and when the heat pump preheats or pauses (preheating planned). */
+  _renderHeatPlan(house) {
+    const plan = this._heatPlan;
+    if (!plan) return nothing;
+    const slots = plan.slots.slice(0, 48 * 4);
+    const id = plan.id;
+    const margin = (s) => Math.max(300, 0.25 * (s.heat_base_w?.[id] ?? 0));
+    const preheat = slots.filter((s) => s.heat_w[id] > (s.heat_base_w?.[id] ?? 0) + margin(s)).length / 4;
+    const pause = slots.filter((s) => s.heat_w[id] < (s.heat_base_w?.[id] ?? 0) - margin(s)).length / 4;
+    const values = slots.map((s) => s.room_c[id]);
+    return html`
+      <span class="field-label">${t("Plan der nächsten 48 h")}</span>
+      <p class="small muted">${t("Vorheizen {preheat} h, Pause {pause} h", { preheat: decimal(preheat.toFixed(1)), pause: decimal(pause.toFixed(1)) })}</p>
+      ${lineChart(
+        [{ name: t("Raumtemperatur geplant"), color: SERIES_COLORS[1], points: slots.map((s) => ({ start: s.start, end: s.end, value: s.room_c[id] })) }],
+        {
+          label: t("Geplante Raumtemperatur der nächsten 48 Stunden"),
+          formatY: (v) => `${decimal(v.toFixed(1))} °C`,
+          yMin: Math.floor(Math.min(house.night_min ?? house.comfort_min, ...values) - 1),
+          yMax: Math.ceil(Math.max(house.comfort_max, ...values) + 1),
+          limits: [{ value: house.comfort_min, label: t("Komfort min") }, { value: house.comfort_max, label: t("Komfort max") }],
+        },
+      )}
     `;
   }
 

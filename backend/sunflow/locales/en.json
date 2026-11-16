@@ -251,5 +251,9 @@
   "keine Außentemperatur – Wärmepumpe entscheidet": "no outside temperature – heat pump decides",
   "kälter als {limit} °C": "colder than {limit} °C",
   "Haus warm genug ({temp} °C)": "house warm enough ({temp} °C)",
-  "Sperre würde das Haus unter {temp} °C kühlen": "a block would cool the house below {temp} °C"
+  "Sperre würde das Haus unter {temp} °C kühlen": "a block would cool the house below {temp} °C",
+  "Vorheizen nach Plan": "preheating as planned",
+  "Pause nach Plan": "pause as planned",
+  "Vorheizen nicht geplant: Das Hausmodell ist noch nicht zuverlässig oder kennt die Wärme der Heizung nicht.": "Preheating not planned: the house model is not reliable yet or does not know the heating's heat.",
+  "Vorheizen nicht geplant: Raum- oder Außentemperatur fehlt.": "Preheating not planned: room or outside temperature is missing."
 }

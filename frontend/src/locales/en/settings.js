@@ -546,4 +546,13 @@ export default {
   "Komfort min": "Comfort min",
   "Komfort max": "Comfort max",
   "Die Wärmepumpe sperrt nur, solange das Haus im Komfortband bleibt, und verstärkt in der Heizperiode bis zur Obergrenze.": "The heat pump blocks only while the house stays within the comfort band, and boosts up to the upper bound in the heating season.",
+  "Vorheizen mit dem Hausmodell planen (Test)": "Plan preheating with the house model (test)",
+  "Sunflow plant die Wärmepumpe zusammen mit Speicher und Verbrauchern: Es heizt in sonnigen oder günstigen Stunden vor und lässt das Haus in teuren auskühlen, immer im Komfortband (Abschnitt „Haus“). Das ersetzt die günstigsten und teuersten Stunden oben. Nur in der Heizperiode und sobald das Hausmodell zuverlässig ist und die Wärme kennt.": "Sunflow plans the heat pump together with the battery and loads: it preheats in sunny or cheap hours and lets the house cool in dear ones, always within the comfort band (section “House”). This replaces the cheapest and dearest hours above. Only in the heating season and once the house model is reliable and knows the heat.",
+  "Höchste Leistung (Strom)": "Maximum power (electric)",
+  "was die Wärmepumpe bei voller Leistung zieht": "what the heat pump draws at full output",
+  "Plan der nächsten 48 h": "Plan for the next 48 h",
+  "Vorheizen {preheat} h, Pause {pause} h": "Preheating {preheat} h, pause {pause} h",
+  "Raumtemperatur geplant": "Room temperature planned",
+  "Geplante Raumtemperatur der nächsten 48 Stunden": "Planned room temperature of the next 48 hours",
+  "Letzte 7 Tage": "Last 7 days",
 };

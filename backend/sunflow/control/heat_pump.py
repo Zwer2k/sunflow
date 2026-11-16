@@ -152,11 +152,44 @@ def _dear_minutes(slots: list[Any], index: int, tz: tzinfo, hours: int) -> float
     return minutes
 
 
+# The plan's heat pump power counts as preheating or pause beyond this much from what it would draw anyway
+PLAN_MARGIN_W = 300.0
+PLAN_MARGIN_SHARE = 0.25
+
+
+def _heat_plan(slot: Any, name: str | None) -> str | None:
+    """What the plan with the house wants in a slot: boost (preheat), block (pause), normal; None without it."""
+    planned = getattr(slot, "heat_w", {}).get(name) if name else None
+    if planned is None:
+        return None
+    base = slot.heat_base_w.get(name, 0.0)
+    margin = max(PLAN_MARGIN_W, PLAN_MARGIN_SHARE * base)
+    if planned > base + margin:
+        return "boost"
+    if planned < base - margin:
+        return "block"
+    return "normal"
+
+
+def _planned_pause_minutes(slots: list[Any], index: int, name: str) -> float:
+    """How long the planned pause from now lasts (minutes)."""
+    minutes = 0.0
+    for slot in slots[index:]:
+        if _heat_plan(slot, name) != "block":
+            break
+        minutes += (slot.end - max(slot.start, slots[index].start)).total_seconds() / 60
+    return minutes
+
+
 def wanted_state(
     settings: HeatPumpSettings, slots: list[Any], now: datetime, tz: tzinfo, track: HeatPumpTrack, grid_w: float | None,
-    house: HouseView | None = None, season: bool = True,
+    house: HouseView | None = None, season: bool = True, name: str | None = None,
 ) -> Choice:
-    """The state the plan suggests now; with a learned house, within its comfort band."""
+    """The state the plan suggests now; with a learned house, within its comfort band.
+
+    A plan made with the house (name: the heat pump's) decides preheating and pauses itself;
+    otherwise surplus, cheap and dear hours do.
+    """
     index = next((i for i, s in enumerate(slots) if s.start <= now < s.end), None)
     if index is None:
         return Choice(state="normal", reason=t("kein aktueller Plan"))
@@ -166,52 +199,58 @@ def wanted_state(
     cheaper, dearer = _rank(slots, index, tz)
     if settings.use_forced and method in CAN_FORCE and slot.price < 0:
         return Choice(state="forced", reason=t("negativer Strompreis"), surplus_w=surplus)
+    planned = _heat_plan(slot, name)
     # Planned surplus that is there: imports while boosting mean the forecast was too high
     surplus_there = grid_w is None or grid_w < IMPORT_TOLERANCE_W or track.state not in ("boost", "forced")
-    wants_boost = (surplus >= settings.min_surplus_w and surplus_there) or (
-        settings.cheap_hours and cheaper < settings.cheap_hours * SLOTS_PER_HOUR
-    )
-    # In the heating season boosting heats the rooms: not beyond the band (in summer it is hot water)
-    if wants_boost and house is not None and season and house.reference >= house.upper:
-        return Choice(
-            state="normal", reason=t("Haus warm genug ({temp} °C)", temp=f"{house.reference:.1f}"), surplus_w=surplus
-        )
-    if surplus >= settings.min_surplus_w and surplus_there:
-        return Choice(state="boost", reason=t("PV-Überschuss"), surplus_w=surplus)
-    if settings.cheap_hours and cheaper < settings.cheap_hours * SLOTS_PER_HOUR:
-        return Choice(state="boost", reason=t("günstige Stunde"), surplus_w=surplus)
-    blocking = settings.use_block and method in CAN_BLOCK and settings.expensive_hours
-    if blocking and dearer < settings.expensive_hours * SLOTS_PER_HOUR:
+    if planned is not None:
+        boost = (planned == "boost", t("Vorheizen nach Plan"))
+        pause = planned == "block"
+    else:
+        on_surplus = surplus >= settings.min_surplus_w and surplus_there
+        cheap = bool(settings.cheap_hours) and cheaper < settings.cheap_hours * SLOTS_PER_HOUR
+        boost = (on_surplus or cheap, t("PV-Überschuss") if on_surplus else t("günstige Stunde"))
+        pause = bool(settings.expensive_hours) and dearer < settings.expensive_hours * SLOTS_PER_HOUR
+    if boost[0]:
+        # In the heating season boosting heats the rooms: not beyond the band (in summer it is hot water)
+        if house is not None and season and house.reference >= house.upper:
+            return Choice(
+                state="normal", reason=t("Haus warm genug ({temp} °C)", temp=f"{house.reference:.1f}"), surplus_w=surplus
+            )
+        return Choice(state="boost", reason=boost[1], surplus_w=surplus)
+    if pause and settings.use_block and method in CAN_BLOCK:
         running = now - track.since if track.state == "block" and track.since else timedelta()
         if running >= timedelta(minutes=settings.block_max_min):
             return Choice(state="normal", reason=t("Sperre lange genug"), limit=True)
         if track.blocked >= timedelta(minutes=settings.block_day_max_min):
             return Choice(state="normal", reason=t("Sperrzeit für heute erreicht"), limit=True)
         if house is not None and season:
+            ahead = _planned_pause_minutes(slots, index, name) if planned is not None else _dear_minutes(
+                slots, index, tz, settings.expensive_hours
+            )
             left = min(
                 settings.block_max_min - running.total_seconds() / 60,
                 settings.block_day_max_min - track.blocked.total_seconds() / 60,
-                _dear_minutes(slots, index, tz, settings.expensive_hours),
+                ahead,
             )
             margin, bound = house.coldest_margin(now, left)
             if margin < 0:
                 return Choice(
                     state="normal", reason=t("Sperre würde das Haus unter {temp} °C kühlen", temp=f"{bound:g}"), limit=True
                 )
-        return Choice(state="block", reason=t("teure Stunde"))
+        return Choice(state="block", reason=t("Pause nach Plan") if planned is not None else t("teure Stunde"))
     return Choice(state="normal", reason=t("nach Plan: normal"))
 
 
 def next_state(
     settings: HeatPumpSettings, slots: list[Any], now: datetime, tz: tzinfo, track: HeatPumpTrack, grid_w: float | None,
-    house: HouseView | None = None, season: bool = True,
+    house: HouseView | None = None, season: bool = True, name: str | None = None,
 ) -> Choice:
     """The wanted state, kept back until the current one ran its minimum time (compressor protection).
 
     Ending a block too long or over the daily limit is never held back.
     """
     track.advance(now, tz)
-    choice = wanted_state(settings, slots, now, tz, track, grid_w, house, season)
+    choice = wanted_state(settings, slots, now, tz, track, grid_w, house, season, name)
     young = track.since is not None and now - track.since < timedelta(minutes=settings.min_state_min)
     if choice.state != track.state and young and not choice.limit:
         held: HeatPumpState = track.state  # type: ignore[assignment]

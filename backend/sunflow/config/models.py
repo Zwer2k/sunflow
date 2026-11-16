@@ -296,6 +296,10 @@ class HeatPumpSettings(BaseModel):
     min_state_min: int = Field(default=20, ge=5, le=120)
     block_max_min: int = Field(default=120, ge=15, le=240)
     block_day_max_min: int = Field(default=240, ge=15, le=720)
+    # Plan heating with the learned house: preheat in sunny or cheap hours, pause in dear ones (test)
+    preheat: bool = False
+    # Electric power at full output, for planning
+    max_power_w: float = Field(default=3000, gt=0, le=50_000)
     # The heat pump's own heating rod, or (the alternative) a consumer of kind heater beside it;
     # the consumer's season modes count only while linked
     rod: BuiltinRod | None = None
