@@ -26,7 +26,12 @@ from sunflow.devices.site import (
     site_status,
 )
 from sunflow.ha import HAClient, HAError
-from sunflow.planning.heating_season import current_season, uses_seasons, with_season
+from sunflow.planning.heating_season import (
+    current_season,
+    season_source,
+    uses_seasons,
+    with_season,
+)
 from sunflow.planning.house_model import HouseModel, fit as fit_house, house_data
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
@@ -782,10 +787,20 @@ class ShadowRunner:
             for key, expected in stored.items()
         }
 
+    def relearn_house(self) -> None:
+        """The rooms changed: the old model no longer applies, learn anew with the next plan."""
+        self._house_at = None
+        self.house_model = None
+        if self.controller is not None:
+            self.controller.house_model = None
+
     def learn_house(self) -> None:
         """Learn the house in the background when rooms are set and the model is old."""
         now = datetime.now(UTC)
-        if not self._store.load().house.rooms or (self._house_task is not None and not self._house_task.done()):
+        if not self._store.load().house.rooms:
+            self.relearn_house()
+            return
+        if self._house_task is not None and not self._house_task.done():
             return
         if self._house_at is None or now - self._house_at > HOUSE_REFRESH:
             self._house_task = asyncio.create_task(self._learn_house())
@@ -795,8 +810,9 @@ class ShadowRunner:
         try:
             data = await house_data(self._client, self._store.load(), now)
             model = fit_house(data.rows, now)
-        except HAError as err:
-            _LOGGER.warning("Learning the house failed: %s", err)
+        except Exception as err:  # noqa: BLE001
+            # Tried again with the next refresh, not with every plan
+            _LOGGER.warning("Learning the house failed: %s", err, exc_info=not isinstance(err, HAError))
             model = None
         self._house_at = now
         # The rules use it only while it predicts better than "the temperature stays"
@@ -813,7 +829,7 @@ class ShadowRunner:
         try:
             snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
             active = await current_season(
-                self._client, config.heating_season, snapshot.states, now, await local_timezone(self._client)
+                self._client, season_source(config), snapshot.states, now, await local_timezone(self._client)
             )
         except HAError as err:
             _LOGGER.warning("Checking the heating season failed: %s", err)

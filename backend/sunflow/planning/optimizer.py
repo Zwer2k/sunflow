@@ -470,11 +470,16 @@ def optimize(
     count = base + len(flex) * n + sum(len(x) for x in u)
     # Heat pumps with the house: power, room temperature, degrees below and above the band (each n)
     thermal = list(thermal)
+    # PV left after the house with the heat pumps' usual draw: what PV-only uses and PV charging may take
+    pv_rest = [inputs[t].pv_w - inputs[t].load_w - sum(heat.baseline_w[t] for heat in thermal) for t in range(n)]
     hp = [count + 4 * n * k + np.arange(n) for k in range(len(thermal))]
     room = [index + n for index in hp]
     cold = [index + 2 * n for index in hp]
     warm = [index + 3 * n for index in hp]
     count += 4 * n * len(thermal)
+    # The end temperature that counts for later, at most the upper bound: warmth above it is no saving
+    kept = [count + k for k in range(len(thermal))]
+    count += len(thermal)
     eta_c = [b.efficiency_charge for b in batteries]
     eta_d = [b.efficiency_discharge for b in batteries]
     eta_g = [b.efficiency_charge_grid or b.efficiency_charge for b in batteries]
@@ -597,7 +602,7 @@ def optimize(
             cost[cold[k][t]] = heat.cold_cost * dts[t]
             cost[warm[k][t]] = heat.warm_cost * dts[t]
         # Warmth left at the end saves heat pump power later: worth it at the mean price and COP
-        cost[room[k][-1]] -= mean_price / heat.b / max(float(np.mean(heat.cop)), 1.0)
+        cost[kept[k]] -= mean_price / heat.b / max(float(np.mean(heat.cop)), 1.0)
 
     rows = n + m * n + sum(len(x) for x in u) + n * len(thermal)
     a_eq = lil_matrix((rows, count))
@@ -665,7 +670,7 @@ def optimize(
     lower = np.zeros(count)
     upper = np.full(count, np.inf)
     for t, slot in enumerate(inputs):
-        surplus = max(slot.pv_w - slot.load_w, 0)
+        surplus = max(pv_rest[t], 0)
         for k, b in enumerate(batteries):
             # Without grid charging only the surplus over the house load may go into the battery
             upper[c[k][t]] = b.max_charge_w if grid_charge[k] else min(b.max_charge_w, surplus)
@@ -687,11 +692,13 @@ def optimize(
         for k, load in enumerate(flex):
             limit = load.max_power_w if load.available[t] else 0.0
             if load.pv_only:
-                limit = min(limit, max(slot.pv_w - slot.load_w, 0.0))
+                limit = min(limit, max(pv_rest[t], 0.0))
             upper[f[k][t]] = limit
         for k, heat in enumerate(thermal):
             upper[hp[k][t]] = heat.max_power_w
             lower[room[k][t]], upper[room[k][t]] = -np.inf, np.inf
+    for k, heat in enumerate(thermal):
+        lower[kept[k]], upper[kept[k]] = -np.inf, heat.upper[-1]
 
     # Import and export (charge and discharge) at the same time is physically impossible.
     # A linear model only does it when it pays: import cheaper than export, or negative
@@ -806,6 +813,8 @@ def optimize(
             # T + cold >= lower and T - warm <= upper: only the degrees outside the band cost
             gate_rows.append(({room[k][t]: -1, cold[k][t]: -1}, -heat.lower[t]))
             gate_rows.append(({room[k][t]: 1, warm[k][t]: -1}, heat.upper[t]))
+        # kept <= T at the end
+        gate_rows.append(({kept[k]: 1, room[k][-1]: -1}, 0.0))
     for k in range(m):
         if hs[k] is not None:
             # soc - above <= threshold: only the energy above it costs
@@ -830,8 +839,8 @@ def optimize(
         for index, (t, wh, _) in zip(headroom_over, headrooms, strict=True)
     )
     if m > 1:
-        for t, slot in enumerate(inputs):
-            surplus = max(slot.pv_w - slot.load_w, 0.0)
+        for t in range(n):
+            surplus = max(pv_rest[t], 0.0)
             # Batteries charge from PV or the grid, not from each other (that only loses energy)
             gate_rows.append(({**{c[k][t]: 1 for k in range(m)}, gi[t]: -1}, surplus))
             if split_grid:
@@ -898,26 +907,29 @@ def optimize(
                 for k, load in enumerate(flex):
                     if load.uses_battery:
                         a_ub[row, f[k][t]] = -1
+                # The heat pumps are part of the house the battery serves
+                for k in range(len(thermal)):
+                    a_ub[row, hp[k][t]] = -1
                 b_ub[row] = slot.load_w
                 row += 1
         if len(pv_only) > 1:
             # Together, PV-only loads cannot take more than the surplus
-            for t, slot in enumerate(inputs):
+            for t in range(n):
                 for k in pv_only:
                     a_ub[row, f[k][t]] = 1
-                b_ub[row] = max(slot.pv_w - slot.load_w, 0.0)
+                b_ub[row] = max(pv_rest[t], 0.0)
                 row += 1
         for k in range(m):
             if cg[k] is None:
                 continue
-            for t, slot in enumerate(inputs):
+            for t in range(n):
                 # The grid share is part of the charge
                 a_ub[row, cg[k][t]], a_ub[row, c[k][t]] = 1, -1
                 row += 1
                 if m == 1:
                     # The rest cannot exceed the PV surplus (several batteries: a joint row)
                     a_ub[row, c[k][t]], a_ub[row, cg[k][t]] = 1, -1
-                    b_ub[row] = max(slot.pv_w - slot.load_w, 0.0)
+                    b_ub[row] = max(pv_rest[t], 0.0)
                     row += 1
         for coefficients, bound in gate_rows:
             for index, value in coefficients.items():

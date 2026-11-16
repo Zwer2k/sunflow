@@ -409,3 +409,52 @@ def test_reference_room_and_night_setback() -> None:
     assert night.reference == 19.5
     assert bound == 18.0
     assert 0 < margin < 1.5
+
+
+def test_rod_keeps_writes_for_releasing() -> None:
+    """After six changes a day the rod is not blocked again, so releasing it never hits the flash limit."""
+    rod = ROD_SETTINGS.model_copy(update={"min_state_min": 15})
+    track = HeatPumpTrack()
+    states = []
+    for step in range(12):
+        outside = -10.0 if step % 2 else 5.0
+        states.append(next_rod(rod, _day(PRICES), START + timedelta(minutes=20 * step), True, outside, 1500, track).state)
+
+    assert states[:7] == ["blocked", "free", "blocked", "free", "blocked", "free", "blocked"]
+    assert "blocked" not in states[7:]
+    assert track.rod_changes <= 8
+
+
+@pytest.mark.parametrize(
+    ("slots", "cold", "reason"),
+    [
+        pytest.param(_day(PRICES), True, "Haus unter dem Komfortband – Wärmepumpe reicht nicht", id="house too cold"),
+        pytest.param([], False, "kein aktueller Plan – Wärmepumpe entscheidet", id="no plan"),
+    ],
+)
+def test_rod_free_when_cold_or_without_plan(slots: list[Slot], cold: bool, reason: str) -> None:
+    """Above the bivalence point the rod is still freed for a cold house or without a current plan."""
+    choice = wanted_rod(ROD_SETTINGS, slots, START, True, 5.0, 1500, cold)
+
+    assert (choice.state, choice.reason, choice.urgent) == ("free", reason, True)
+
+
+def test_edit_keeps_a_release_by_hand(tmp_path: Path) -> None:
+    """Saving the heat pump does not undo a release made on its own endpoint meanwhile."""
+    client = _client(tmp_path)
+    body = HEAT_PUMP | {"rod_entity": "switch.aux_off", "heat_pump": {"rod": {"method": "block_switch"}}}
+    device_id = client.post("/api/v1/config/devices/manual", json=body).json()["id"]
+    released = client.put(f"/api/v1/control/heat-pumps/{device_id}/rod", json={"hours": 24}).json()["released_until"]
+
+    client.put(f"/api/v1/config/devices/manual/{device_id}", json=body)
+
+    stored = client.get("/api/v1/config").json()["devices"][0]["heat_pump"]["rod"]["released_until"]
+    assert stored is not None
+    assert datetime.fromisoformat(stored) == datetime.fromisoformat(released)
+
+
+def test_naive_release_time_refused(tmp_path: Path) -> None:
+    """A release time without time zone would break every comparison: refused."""
+    body = HEAT_PUMP | {"rod_entity": "switch.aux_off", "heat_pump": {"rod": {"method": "block_switch", "released_until": "2026-11-17T08:00:00"}}}
+
+    assert _client(tmp_path).post("/api/v1/config/devices/manual", json=body).status_code == 422

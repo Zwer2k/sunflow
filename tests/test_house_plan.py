@@ -1,5 +1,6 @@
 """Stage 4: the heat pump planned with the house as a heat storage."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -12,11 +13,17 @@ from sunflow.config.models import (
     Room,
     SunflowConfig,
 )
-from sunflow.control.heat_pump import HeatPumpTrack, wanted_state
+from sunflow.control.heat_pump import HeatPumpTrack, HouseView, wanted_state
 from sunflow.devices.discovery import Snapshot
 from sunflow.planning.house_model import HouseModel
 from sunflow.planning.house_plan import thermal_loads
-from sunflow.planning.optimizer import BatterySpec, SlotInput, ThermalLoad, optimize
+from sunflow.planning.optimizer import (
+    BatterySpec,
+    FlexLoad,
+    SlotInput,
+    ThermalLoad,
+    optimize,
+)
 
 START = datetime(2026, 11, 16, tzinfo=UTC)
 SLOT = timedelta(minutes=15)
@@ -119,19 +126,45 @@ class _Slot:
         self.heat_w, self.heat_base_w = {"hp": heat}, {"hp": base}
 
 
+WARM = HouseView(model=MODEL, inside=21.5, outside=5.0, upper=22.0, lower=lambda _moment: 20.0)
+
+
 @pytest.mark.parametrize(
-    ("heat", "expected", "reason"),
+    ("heat", "house", "expected", "reason"),
     [
-        pytest.param(2500.0, "boost", "Vorheizen nach Plan", id="preheat"),
-        pytest.param(0.0, "block", "Pause nach Plan", id="pause"),
-        pytest.param(1100.0, "normal", "nach Plan: normal", id="as usual"),
+        pytest.param(2500.0, WARM, "boost", "Vorheizen nach Plan", id="preheat"),
+        pytest.param(0.0, WARM, "block", "Pause nach Plan", id="pause"),
+        pytest.param(0.0, None, "normal", "Pause geplant, aber keine Raumtemperatur", id="no pause without rooms"),
+        pytest.param(1100.0, WARM, "normal", "nach Plan: normal", id="as usual"),
     ],
 )
-def test_control_follows_the_heat_plan(heat: float, expected: str, reason: str) -> None:
-    """Planned power well above the usual draw is preheating, well below a pause."""
+def test_control_follows_the_heat_plan(heat: float, house: HouseView | None, expected: str, reason: str) -> None:
+    """Planned power well above the usual draw is preheating, well below a pause (only with room values)."""
     slots = [_Slot(START + i * SLOT, heat) for i in range(8)]
     choice = wanted_state(
-        HeatPumpSettings(method="sg_relays", use_block=True), slots, START, UTC, HeatPumpTrack(), None, name="hp"
+        HeatPumpSettings(method="sg_relays", use_block=True), slots, START, UTC, HeatPumpTrack(), None, house, name="hp"
     )
 
     assert (choice.state, choice.reason) == (expected, reason)
+
+
+def test_end_warmth_counts_only_up_to_the_band() -> None:
+    """Cheap hours at the end of the plan do not heat the house beyond the upper bound."""
+    prices = [0.30] * 6 + [0.10] * 2
+    inputs = _slots(8, prices)
+    house = replace(_house(len(inputs), outside=10.0), max_power_w=8000)
+
+    plan = optimize(inputs, BATTERY, thermal=[house])
+
+    assert max(s.room_c["hp"] for s in plan.slots) <= 22.0 + 1e-6
+
+
+def test_battery_may_serve_the_heat_pump() -> None:
+    """A load kept from the battery does not keep the heat pump from it: dear grid, full battery."""
+    inputs = _slots(4, [0.50] * 4, load=200.0)
+    battery = BatterySpec(capacity_wh=20000, soc_wh=15000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    car = FlexLoad(name="car", energy_wh=0.0, max_power_w=0.0, available=[False] * 16, uses_battery=False)
+
+    plan = optimize(inputs, battery, flex=[car], thermal=[_house(len(inputs))])
+
+    assert sum(s.import_w for s in plan.slots) < 1.0

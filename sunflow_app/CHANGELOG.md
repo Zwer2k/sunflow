@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.79.11
+
+- Eingebauter Heizstab sicherer: frei, wenn der Referenzraum unter dem Komfortband liegt (auch über dem Bivalenzpunkt, z. B. bei einer Störung der Wärmepumpe) und ohne aktuellen Plan; nach 6 Wechseln am Tag wird er nicht mehr neu gesperrt, damit Freigaben nie am Schreiblimit scheitern; beim Beenden der App wird die Wärmepumpe mit freiem Heizstab zurückgegeben.
+- Vorheizen planen: Wärme über der Obergrenze zählt am Planende nicht mehr (kein Überheizen), der Hausspeicher darf die Wärmepumpe versorgen, PV-Überschuss für „nur PV“ und Speicherladen berücksichtigt ihren Bedarf; keine geplante Pause ohne aktuelle Raumtemperatur.
+- Hausmodell: robust bei wochenlang null Wärme, neu gelernt nach geänderten Räumen; die Sperrprüfung rechnet ohne Wärmemessung vorsichtig.
+- Heizperiode nach Außentemperatur ohne eigenen Sensor nutzt den der Wärmepumpe oder die Lernquelle (blieb sonst immer aktiv).
+- Eine Freigabe von Hand bleibt beim Bearbeiten der Wärmepumpe erhalten; Nachtabsenkung muss unter der Untergrenze liegen.
+
 ## 0.79.10
 
 - Vorheizen planen (Test): Die Wärmepumpe wird im Optimierer zusammen mit Speicher und Verbrauchern geplant, das Haus ist dort ein Wärmespeicher. Sunflow heizt in sonnigen oder günstigen Stunden vor und lässt das Haus in teuren auskühlen, im Komfortband; die Steuerung folgt dem Plan („Vorheizen nach Plan“, „Pause nach Plan“). Einschaltbar an der Wärmepumpe, mit ihrer höchsten Leistung; nur in der Heizperiode mit zuverlässigem Hausmodell.

@@ -44,6 +44,17 @@ def daily_means(hourly: list[tuple[datetime, float]], today: date, tz: tzinfo) -
     return [fmean(values) for day, values in sorted(days.items()) if day < today and len(values) >= MIN_HOURS]
 
 
+def season_source(config: SunflowConfig) -> HeatingSeason:
+    """The season settings, by temperature without a sensor of their own: the heat pump's or the learning source's."""
+    season = config.heating_season
+    if season.source != "temperature" or season.temperature_entity:
+        return season
+    pump = next((d for d in config.devices if d.heat_pump is not None), None)
+    role = pump.role_overrides.get("outside_temperature") if pump else None
+    entity = role.entity_id if role and role.entity_id else config.learning_sources.outdoor_temperature
+    return season.model_copy(update={"temperature_entity": entity}) if entity else season
+
+
 def uses_seasons(config: SunflowConfig) -> bool:
     """Whether the season matters: a heat pump (its rules and built-in rod) or a linked rod with season modes."""
     if any(d.heat_pump is not None for d in config.devices):

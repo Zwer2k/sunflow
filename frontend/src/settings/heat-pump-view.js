@@ -981,7 +981,7 @@ class SunflowHeatPump extends LitElement {
             ${number("comfort_max", t("Nicht wärmer heizen als"))}
           </div>
           <label class="check"><input type="checkbox" .checked=${house.night_min != null}
-            @change=${(e) => set({ night_min: e.target.checked ? house.comfort_min - 2 : null })}> ${t("Nachtabsenkung")}</label>
+            @change=${(e) => set({ night_min: e.target.checked ? Math.max(house.comfort_min - 2, 5) : null })}> ${t("Nachtabsenkung")}</label>
           ${house.night_min != null
             ? html`<div class="fields">${number("night_min", t("Nachts nicht kälter als"))}${time("night_start", t("Von"))}${time("night_end", t("Bis"))}</div>`
             : nothing}
@@ -1137,7 +1137,8 @@ class SunflowHeatPump extends LitElement {
             ? html`
               <div class="field">
                 <span class="field-label">${t("Außentemperatur")}</span>
-                <sf-picker label=${t("Außentemperatur")} placeholder=${t("Name oder Entität suchen …")}
+                <sf-picker label=${t("Außentemperatur")} empty-label=${t("die der Wärmepumpe oder der Lernquelle")}
+                  placeholder=${t("Name oder Entität suchen …")}
                   .value=${season.temperature_entity ?? ""} .options=${options(candidates.temperature)}
                   @change=${(e) => save({ temperature_entity: e.detail.value || null })}></sf-picker>
               </div>

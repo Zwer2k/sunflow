@@ -5,7 +5,7 @@ boost switch. The heat pump's own control decides what that means.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, tzinfo
 import math
 from typing import Any
@@ -28,6 +28,9 @@ CAN_BLOCK = {"sg_relays", "sg_select", "setpoint"}
 CAN_FORCE = {"sg_relays", "sg_select"}
 # While boosting on surplus, more import than this means the surplus is not there
 IMPORT_TOLERANCE_W = 300.0
+# The flash guard allows 10 writes per entity and day: blocking stops at 6 changes, so releasing
+# the rod (cold, by hand, handing back) always has writes left
+MAX_ROD_CHANGES = 6
 SLOTS_PER_HOUR = 4
 
 
@@ -80,6 +83,9 @@ class HeatPumpTrack:
     last_tick: datetime | None = None
     rod: str = "free"
     rod_since: datetime | None = None
+    # Rod changes per day: its settings count against the daily flash write limit
+    rod_day: date | None = None
+    rod_changes: int = 0
 
     def advance(self, now: datetime, tz: tzinfo) -> None:
         """Count the time blocked since the last step; a new day starts from zero."""
@@ -113,9 +119,13 @@ class HouseView:
         """Without heat or sun for this long: the smallest distance to the lower bound and the bound there."""
         inside = self.inside
         row = HourRow(start=now, inside=inside, outside=self.outside, heat=0.0, sun=0.0)
+        model = self.model
+        if model.b is None and model.d > 0:
+            # Without a heat measurement the gains hold the usual heating too: none while blocked
+            model = replace(model, d=0.0)
         worst = (inside + self.offset - self.lower(now), self.lower(now))
         for hour in range(1, max(math.ceil(minutes / 60), 1) + 1):
-            inside = self.model.step(inside, row)
+            inside = model.step(inside, row)
             moment = now + timedelta(hours=hour)
             margin = inside + self.offset - self.lower(moment)
             if margin < worst[0]:
@@ -217,6 +227,9 @@ def wanted_state(
                 state="normal", reason=t("Haus warm genug ({temp} °C)", temp=f"{house.reference:.1f}"), surplus_w=surplus
             )
         return Choice(state="boost", reason=boost[1], surplus_w=surplus)
+    if pause and planned is not None and house is None:
+        # Planned with the house, but no room values now: no pause without the comfort check
+        return Choice(state="normal", reason=t("Pause geplant, aber keine Raumtemperatur"))
     if pause and settings.use_block and method in CAN_BLOCK:
         running = now - track.since if track.state == "block" and track.since else timedelta()
         if running >= timedelta(minutes=settings.block_max_min):
@@ -275,14 +288,23 @@ class RodChoice:
 
 
 def wanted_rod(
-    rod: BuiltinRod, slots: list[Any], now: datetime, season: bool, outside_c: float | None, min_surplus_w: float
+    rod: BuiltinRod, slots: list[Any], now: datetime, season: bool, outside_c: float | None, min_surplus_w: float,
+    cold: bool = False,
 ) -> RodChoice:
-    """Block the rod while the heat pump copes; release it when cold, cheap, sunny or by hand."""
+    """Block the rod while the heat pump copes; release it when cold, cheap, sunny or by hand.
+
+    cold: a room below the comfort band, the heat pump does not keep up (or is broken).
+    Without a current plan (no slots) the heat pump decides.
+    """
     if rod.released_until is not None and now < rod.released_until:
         return RodChoice(state="max", reason=t("von Hand freigegeben"), urgent=True)
     mode = rod.heating_mode if season else rod.summer_mode
     if mode == "auto":
         return RodChoice(state="free", reason=t("Wärmepumpe entscheidet"), urgent=True)
+    if cold:
+        return RodChoice(state="free", reason=t("Haus unter dem Komfortband – Wärmepumpe reicht nicht"), urgent=True)
+    if not slots:
+        return RodChoice(state="free", reason=t("kein aktueller Plan – Wärmepumpe entscheidet"), urgent=True)
     if outside_c is None:
         # Blocking blind could leave the house cold below the bivalence point
         return RodChoice(state="free", reason=t("keine Außentemperatur – Wärmepumpe entscheidet"), urgent=True)
@@ -299,15 +321,22 @@ def wanted_rod(
 
 def next_rod(
     rod: BuiltinRod, slots: list[Any], now: datetime, season: bool, outside_c: float | None, min_surplus_w: float,
-    track: HeatPumpTrack,
+    track: HeatPumpTrack, cold: bool = False,
 ) -> RodChoice:
     """The wanted rod state, changed at most every min_state_min (its settings sit in flash memory)."""
-    choice = wanted_rod(rod, slots, now, season, outside_c, min_surplus_w)
+    choice = wanted_rod(rod, slots, now, season, outside_c, min_surplus_w, cold)
+    today = now.date()
+    if track.rod_day != today:
+        track.rod_day, track.rod_changes = today, 0
     young = track.rod_since is not None and now - track.rod_since < timedelta(minutes=rod.min_state_min)
     if choice.state != track.rod and young and not choice.urgent:
         held: RodState = track.rod  # type: ignore[assignment]
         return RodChoice(state=held, reason=t("{state} bleibt noch (Mindestdauer)", state=rod_label(held)))
+    if choice.state == "blocked" != track.rod and track.rod_changes >= MAX_ROD_CHANGES:
+        choice = RodChoice(state="free", reason=t("genug Wechsel für heute – Wärmepumpe entscheidet"))
     if choice.state != track.rod or track.rod_since is None:
+        if track.rod_since is not None:
+            track.rod_changes += 1
         track.rod, track.rod_since = choice.state, now
     return choice
 

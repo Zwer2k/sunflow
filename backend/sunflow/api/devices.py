@@ -572,7 +572,11 @@ async def update_manual_device(request: Request, device_id: str, body: ManualDev
     device.parameters.update(parameters)
     device.kind = "heater" if body.kind == "heater" else None
     device.power_steps = steps
+    stored_rod = device.heat_pump.rod if device.heat_pump else None
     device.heat_pump = body.heat_pump if body.type == "heat_pump" else None
+    if device.heat_pump is not None and device.heat_pump.rod is not None:
+        # Released by hand on its own endpoint: an edit (maybe opened before) does not undo it
+        device.heat_pump.rod.released_until = stored_rod.released_until if stored_rod else None
     store.save(config)
     _replan(request)
     return device_with_relations(config, device)

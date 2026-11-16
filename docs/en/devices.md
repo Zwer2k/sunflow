@@ -174,12 +174,13 @@ up to the heat pump. Sunflow knows four forms:
 | Maximum power as a number | NIBE: "Max int add. power" in kW |
 
 Modes: in the heating season **only when needed** (default) – blocked unless it is colder than the
-set limit (about the bivalence point, default −5 °C), the price is negative or you release it
-("Release heating rod for 24 h") – or **heat pump decides**. In summer also **with PV surplus**
+set limit (about the bivalence point, default −5 °C), the reference room is below the comfort band
+(the heat pump is not enough or faulty), the price is negative or you release it ("Release heating
+rod for 24 h") – or **heat pump decides**. Without a current plan it stays free. In summer also **with PV surplus**
 (default). Without an outside temperature (from the heat pump or under learning sources) Sunflow
 never blocks it. The setting usually sits in the heat pump's flash memory: Sunflow changes it at
 most every 60 min (adjustable), writes only when it differs and counts the writes against the daily
-limit. When Sunflow hands control back, it restores the normal value.
+limit; after 6 changes a day it does not block again, so a release can always still be written. When Sunflow hands control back, it restores the normal value.
 
 **2. Own heating rod – added as a load.** A heating rod outside the heat pump, usually in the hot
 water or buffer tank, is first added as a custom load of type "Heat" (e.g. "Relay per phase (1–3)" or

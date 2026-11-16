@@ -11,6 +11,7 @@ from sunflow.config.models import (
     FlexSettings,
     HeatingSeason,
     HeatPumpSettings,
+    LearningSources,
     SunflowConfig,
 )
 from sunflow.control.controller import relay_states
@@ -20,6 +21,7 @@ from sunflow.planning.heating_season import (
     by_dates,
     by_temperature,
     daily_means,
+    season_source,
     uses_seasons,
     with_season,
 )
@@ -196,3 +198,18 @@ def test_manual_on_ends_against_the_season(tmp_path: Path) -> None:
     until = store.load().overrides["rod"].until
     assert until is not None
     assert timedelta(hours=23) < until - datetime.now(UTC) <= timedelta(hours=24)
+
+
+@pytest.mark.parametrize(
+    ("season", "sources", "entity"),
+    [
+        pytest.param(HeatingSeason(), LearningSources(outdoor_temperature="sensor.out"), "sensor.out", id="learning source"),
+        pytest.param(HeatingSeason(temperature_entity="sensor.own"), LearningSources(outdoor_temperature="sensor.out"), "sensor.own", id="own sensor"),
+        pytest.param(HeatingSeason(), LearningSources(), None, id="none known"),
+    ],
+)
+def test_season_temperature_without_own_sensor(season: HeatingSeason, sources: LearningSources, entity: str | None) -> None:
+    """By temperature without a sensor of its own: the outside temperature Sunflow knows anyway."""
+    config = SunflowConfig(devices=[ROD], heating_season=season, learning_sources=sources)
+
+    assert season_source(config).temperature_entity == entity

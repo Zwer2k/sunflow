@@ -120,6 +120,7 @@ def test_carnot_cop(outside: float, cop: float) -> None:
             {"rooms": [{"entity_id": "sensor.a", "reference": True}, {"entity_id": "sensor.b", "reference": True}]}, id="two references"
         ),
         pytest.param({"night_start": "25:00"}, id="no time"),
+        pytest.param({"comfort_min": 20, "night_min": 21}, id="setback above the band"),
     ],
 )
 def test_house_settings_refused(body: dict[str, object]) -> None:
@@ -139,3 +140,13 @@ def test_house_settings_api(tmp_path: Path) -> None:
     body = HouseSettings(rooms=[Room(entity_id="sensor.wohnzimmer", reference=True)], night_min=18).model_dump()
     assert client.put("/api/v1/config/house", json=body).json() == body
     assert client.get("/api/v1/config/house").json() == body
+
+
+def test_weeks_without_heat() -> None:
+    """A heat sensor that read zero for weeks (summer) still fits; the house then is not plausible."""
+    rows = [HourRow(start=r.start, inside=r.inside, outside=r.outside, heat=0.0, sun=r.sun) for r in _house(21, heat=False)]
+
+    model = fit(rows, NOW)
+
+    assert model is not None
+    assert not model.plausible

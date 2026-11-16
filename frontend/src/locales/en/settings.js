@@ -555,4 +555,5 @@ export default {
   "Raumtemperatur geplant": "Room temperature planned",
   "Geplante Raumtemperatur der nächsten 48 Stunden": "Planned room temperature of the next 48 hours",
   "Letzte 7 Tage": "Last 7 days",
+  "die der Wärmepumpe oder der Lernquelle": "the heat pump's or the learning source's",
 };

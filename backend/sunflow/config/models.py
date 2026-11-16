@@ -4,7 +4,14 @@ from datetime import datetime
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from sunflow.i18n import t
 
@@ -220,6 +227,8 @@ class HouseSettings(BaseModel):
     def _band(self) -> HouseSettings:
         if self.comfort_min >= self.comfort_max:
             raise ValueError("comfort_min must be below comfort_max")
+        if self.night_min is not None and self.night_min > self.comfort_min:
+            raise ValueError("night_min must not be above comfort_min")
         if sum(r.reference for r in self.rooms) > 1:
             raise ValueError("at most one reference room")
         return self
@@ -255,7 +264,7 @@ class BuiltinRod(BaseModel):
     bivalence_c: float = Field(default=-5, ge=-30, le=20)
     # Its settings are mostly kept in the heat pump's flash memory: changed rarely
     min_state_min: int = Field(default=60, ge=15, le=480)
-    released_until: datetime | None = None
+    released_until: AwareDatetime | None = None
 
 
 class HeatPumpSettings(BaseModel):

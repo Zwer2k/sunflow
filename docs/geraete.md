@@ -177,12 +177,15 @@ ob sie heizt, entscheidet die Wärmepumpe. Sunflow kennt vier Formen:
 | Höchstleistung als Zahl | NIBE: „Max int add. power“ in kW |
 
 Modi: In der Heizperiode **nur bei Bedarf** (Standard) – gesperrt, außer es ist kälter als die
-eingestellte Grenze (etwa der Bivalenzpunkt, Standard −5 °C), der Strompreis ist negativ oder du
-gibst ihn frei („Heizstab 24 h freigeben“) – oder **Wärmepumpe entscheidet**. Im Sommer zusätzlich
+eingestellte Grenze (etwa der Bivalenzpunkt, Standard −5 °C), der Referenzraum liegt unter dem
+Komfortband (die Wärmepumpe reicht nicht oder ist gestört), der Strompreis ist negativ oder du
+gibst ihn frei („Heizstab 24 h freigeben“) – oder **Wärmepumpe entscheidet**. Ohne aktuellen Plan
+bleibt er frei. Im Sommer zusätzlich
 **bei PV-Überschuss** (Standard). Ohne Außentemperatur (von der Wärmepumpe oder unter Lernquellen)
 sperrt Sunflow nie. Die Einstellung liegt meist im Flash-Speicher der Wärmepumpe: Sunflow ändert
 sie höchstens alle 60 min (einstellbar), schreibt nur bei Abweichung und zählt die Schreibvorgänge
-gegen das Tageslimit. Gibt Sunflow die Steuerung ab, stellt es den normalen Wert wieder her.
+gegen das Tageslimit; nach 6 Wechseln am Tag sperrt es nicht mehr neu, damit eine Freigabe immer
+noch geschrieben werden kann. Gibt Sunflow die Steuerung ab, stellt es den normalen Wert wieder her.
 
 **2. Eigener Heizstab – als Verbraucher angelegt.** Ein Heizstab außerhalb der Wärmepumpe, meist im
 Warmwasser- oder Pufferspeicher, wird zuerst als eigener Verbraucher mit Art „Wärme“ angelegt (z. B.

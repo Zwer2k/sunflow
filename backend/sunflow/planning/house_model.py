@@ -136,7 +136,8 @@ def _solve(pairs: list[tuple[HourRow, float]], heat: bool, sun: bool, now: datet
     xw = x * weights[:, None]
     gram = x.T @ xw
     # Relative to each column's own size, so sun (0-1) is not held back more than temperatures
-    penalty = RIDGE * np.diag(gram).copy()
+    # A tiny fixed part keeps a column of zeros (no heat for weeks) solvable; it then fits as 0
+    penalty = RIDGE * np.diag(gram) + 1e-9 * weights.sum()
     # The constant (internal gains) stays free
     penalty[-1] = 0.0
     return list(np.linalg.solve(gram + np.diag(penalty), xw.T @ y))

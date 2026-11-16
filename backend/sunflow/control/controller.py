@@ -1497,7 +1497,12 @@ class PlanController:
             return "free"
         outside = self._outside(config, device, snapshot)
         slots = plan.plan.slots if on_plan else []
-        choice = next_rod(settings.rod, slots, now, config.heating_season.active, outside, settings.min_surplus_w, track)
+        # Colder than the band: the rod helps, whatever the outside temperature (no model needed)
+        room = room_now(config.house, snapshot.states)
+        cold = room is not None and sum(room) < lower_bound(config.house, now, self.tz)
+        choice = next_rod(
+            settings.rod, slots, now, config.heating_season.active, outside, settings.min_surplus_w, track, cold
+        )
         self.heat_pump_rod[device.id] = choice
         return choice.state
 
@@ -1583,7 +1588,10 @@ class PlanController:
 
     async def _release_on_shutdown(self, device: DeviceConfig, status: DeviceControl) -> None:
         access = self._access_for(device)
-        if access.release is not None:
+        if access.release == HEAT_PUMP_RELEASE:
+            # Normal operation and the built-in rod free: the heat pump decides alone again
+            await apply(access, status, HEAT_PUMP_RELEASE, None, datetime.now(UTC), {}, reason=t(SHUTDOWN))
+        elif access.release is not None:
             await apply(access, status, "auto", None, datetime.now(UTC), dict(RELEASE_RUNTIME), reason=t(SHUTDOWN))
         # Without Sunflow nobody would lift the limit again
         if access.pv_limit:
