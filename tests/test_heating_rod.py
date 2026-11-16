@@ -10,6 +10,7 @@ from sunflow.config.models import (
     DeviceOverride,
     FlexSettings,
     HeatingSeason,
+    HeatPumpSettings,
     SunflowConfig,
 )
 from sunflow.control.controller import relay_states
@@ -25,7 +26,11 @@ from sunflow.planning.heating_season import (
 
 SNAPSHOT = Snapshot(entries=[], devices=[], entities=[], states={}, energy_prefs=None)
 NOW = datetime(2026, 11, 15, 12, tzinfo=UTC)
-ROD = DeviceConfig(id="rod", ha_device_id="manual:rod", profile="generic/relays", profile_version=1, name="Heizstab")
+ROD = DeviceConfig(id="rod", ha_device_id="manual:rod", profile="generic/relays", profile_version=1, name="Heizstab", kind="heater")
+HEAT_PUMP = DeviceConfig(
+    id="hp", ha_device_id="manual:hp", profile="generic/heat_pump", profile_version=1, name="WP",
+    heat_pump=HeatPumpSettings(rod_id="rod"),
+)
 
 
 @pytest.mark.parametrize(
@@ -118,9 +123,9 @@ def test_daily_means_skip_today_and_short_days() -> None:
     assert daily_means(hourly, date(2026, 11, 15), UTC) == [10.0]
 
 
-def _config(active: bool, override: DeviceOverride | None = None) -> SunflowConfig:
+def _config(active: bool, override: DeviceOverride | None = None, linked: bool = True) -> SunflowConfig:
     return SunflowConfig(
-        devices=[ROD],
+        devices=[ROD, HEAT_PUMP] if linked else [ROD],
         planning={"rod": FlexSettings(strategy="cost", heating_mode="off", summer_mode="pv_only")},
         heating_season=HeatingSeason(active=active),
         overrides={"rod": override} if override else {},
@@ -146,11 +151,19 @@ def test_season_modes(active: bool, override: DeviceOverride | None, strategy: s
 
 def test_without_season_modes() -> None:
     """A consumer without season modes keeps its strategy all year."""
-    config = SunflowConfig(devices=[ROD], heating_season=HeatingSeason(active=True))
+    config = SunflowConfig(devices=[ROD, HEAT_PUMP], heating_season=HeatingSeason(active=True))
 
     assert config.effective_flex(ROD, NOW) == (FlexSettings(), False)
     assert not uses_seasons(config)
     assert uses_seasons(_config(True))
+
+
+def test_season_modes_need_a_heat_pump() -> None:
+    """Season modes of a rod no heat pump links to are not used."""
+    config = _config(True, linked=False)
+
+    assert config.effective_flex(ROD, NOW) == (config.flex_of("rod"), False)
+    assert not uses_seasons(config)
 
 
 def test_season_change_is_stored() -> None:

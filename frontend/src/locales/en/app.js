@@ -484,8 +484,6 @@ export default {
   "Leistung je Relais": "Power per relay",
   "Sunflow schaltet so viele Relais ein, wie in die geplante Leistung passen, und wechselt täglich, welches zuerst kommt.": "Sunflow switches on as many relays as fit into the planned power and changes daily which one comes first.",
   "Automatisch (nach Kosten)": "Automatic (by cost)",
-  "Nach Jahreszeit (Heizstab neben einer Wärmepumpe)": "By season (heating rod next to a heat pump)",
-  "In der Heizperiode heizt die Wärmepumpe viel effizienter, der Heizstab bleibt dann meist aus. Reicht die Wärmepumpe nicht, unter Steuerung „Schnellstmöglich“ wählen – das gilt höchstens für die Stunden unten. Der Modus der Jahreszeit ersetzt die Strategie oben.": "In the heating season the heat pump heats much more efficiently, so the heating rod mostly stays off. If the heat pump is not enough, choose “As fast as possible” under Control – that applies for at most the hours below. The season's mode replaces the strategy above.",
   "Heizperiode": "Heating season",
   "Sommer": "Summer",
   "Von Hand an höchstens": "On by hand for at most",

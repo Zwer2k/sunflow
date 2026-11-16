@@ -100,7 +100,7 @@ this. Only effective while Sunflow controls the wallbox.
 ## Heat pump
 
 Heat pumps have their own area **Heat pump** in the settings (profile `generic/heat_pump`): measuring,
-control, the heating rods beside it and the heating season.
+control, the heat pump's heating rod and the heating season.
 
 **Measuring** (all optional; the electrical power, or heat and COP, is needed): electrical power in
 total, per phase (1–3 power or current sensors, current × voltage) or by a meter, plus heat output
@@ -156,21 +156,29 @@ weekends separately); shown under Analysis → Learning. It does not affect plan
 Sunflow switches on as many relays as fit into the planned power (with 3 × 2 kW: 2, 4 or 6 kW) and
 changes every day which relay comes first, so they wear evenly.
 
-### Heating rod next to a heat pump
+### Heating rod of a heat pump
 
-Under Settings → Heat pump each heating rod can be set **by season**:
+A heating rod in the hot water or buffer tank is first added as a custom load of type "Heat" (e.g.
+"Relay per phase (1–3)" or "Power levels"). Under Settings → Heat pump it is then assigned to the
+heat pump (group **Heating rod**). The heat pump's built-in heating rod (backup or emergency heater
+below the bivalence point) is controlled by the heat pump itself and does not belong here.
 
-| | Default | Optional |
+The heat pump turns 1 kWh of electricity into 3–4 kWh of heat, the heating rod into only 1 kWh. So the
+assigned heating rod runs **by season**:
+
+| | Recommended (default) | Optional |
 |---|---|---|
-| Heating season | Off – the heat pump heats more efficiently | Only PV surplus, Automatic |
-| Summer | Automatic (by cost) | Off, Only PV surplus |
+| Heating season | Off – the PV surplus goes to the heat pump (boost) | Only PV surplus, Automatic |
+| Summer | Only PV surplus – the heat pump keeps its setpoint, the rod heats beyond it with the remaining surplus (e.g. to 60–65 °C) | Off, Automatic (by cost) |
 
-The season's mode replaces the rod's strategy. If the heat pump is not enough in winter, choose
+Reaching high tank temperatures with the rod spares the heat pump, whose COP drops at high
+temperatures. The temperature the rod heats up to is set under Loads (target temperature). The
+season's mode replaces the rod's strategy; without being assigned to a heat pump it does not apply. If the heat pump is not enough in winter, choose
 "As fast as possible" under Control: it applies until the chosen time, but at most for the set
 hours (default 24 h), so the rod does not run for the rest of the winter. The action
 `sunflow_ems.set_consumer` does the same from an automation.
 
-The **heating season** applies to all heating rods and is detected
+The **heating season** is detected
 
 - by **outside temperature**: a sensor's daily mean below 15 °C on three days in a row starts it,
   three days above end it (threshold and days adjustable),

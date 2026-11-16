@@ -236,5 +236,7 @@
   "Sperrzeit für heute erreicht": "block time for today reached",
   "Bitte die Optionen für „normal“ und „verstärkt“ wählen": "Please choose the options for “normal” and “boosted”",
   "Bitte den normalen Sollwert angeben": "Please enter the normal setpoint",
-  "Bitte die Entität für die Ansteuerung wählen ({domains})": "Please choose the entity for the control ({domains})"
+  "Bitte die Entität für die Ansteuerung wählen ({domains})": "Please choose the entity for the control ({domains})",
+  "Der Heizstab muss ein Verbraucher mit Art „Wärme“ sein": "The heating rod must be a load of type “Heat”",
+  "Der Heizstab gehört schon zu einer anderen Wärmepumpe": "The heating rod already belongs to another heat pump"
 }

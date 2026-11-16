@@ -102,7 +102,7 @@ lädt dafür im Modus „Min+PV“. Wirkt nur, solange Sunflow die Wallbox steue
 ## Wärmepumpe
 
 Wärmepumpen haben unter Einstellungen einen eigenen Bereich **Wärmepumpe** (Profil
-`generic/heat_pump`). Dort stehen Messung, Ansteuerung, die Heizstäbe daneben und die Heizperiode.
+`generic/heat_pump`). Dort stehen Messung, Ansteuerung, der Heizstab der Wärmepumpe und die Heizperiode.
 
 **Messung** (alles optional, gebraucht wird der Stromverbrauch oder Wärme und COP): Strom gesamt,
 je Phase (1–3 Leistungs- oder Stromsensoren, Strom × Spannung) oder über einen Zähler, dazu
@@ -159,21 +159,31 @@ Leistung eines Elements. Sunflow schaltet so viele Relais ein, wie in die geplan
 passen (bei 3 × 2 kW also 2, 4 oder 6 kW), und wechselt jeden Tag, welches Relais zuerst kommt,
 damit sie gleichmäßig verschleißen.
 
-### Heizstab neben einer Wärmepumpe
+### Heizstab einer Wärmepumpe
 
-Unter Einstellungen → Wärmepumpe lässt sich bei jedem Heizstab **nach Jahreszeit** einschalten:
+Ein Heizstab im Warmwasser- oder Pufferspeicher wird zuerst als eigener Verbraucher mit Art
+„Wärme“ angelegt (z. B. „Relais je Phase (1–3)“ oder „Leistungsstufen“). Unter Einstellungen →
+Wärmepumpe wird er dann der Wärmepumpe zugeordnet (Gruppe **Heizstab**). Den eingebauten Heizstab
+der Wärmepumpe (Zusatz- oder Notheizung unter dem Bivalenzpunkt) regelt die Wärmepumpe selbst; er
+gehört nicht hierher.
 
-| | Standard | Wahlweise |
+Die Wärmepumpe macht aus 1 kWh Strom 3–4 kWh Wärme, der Heizstab nur 1 kWh. Deshalb läuft der
+zugeordnete Heizstab **nach Jahreszeit**:
+
+| | Empfohlen (Standard) | Wahlweise |
 |---|---|---|
-| Heizperiode | Aus – die Wärmepumpe heizt effizienter | Nur PV-Überschuss, Automatisch |
-| Sommer | Automatisch (nach Kosten) | Aus, Nur PV-Überschuss |
+| Heizperiode | Aus – der PV-Überschuss geht an die Wärmepumpe (Verstärken) | Nur PV-Überschuss, Automatisch |
+| Sommer | Nur PV-Überschuss – die Wärmepumpe hält ihren Sollwert, der Heizstab heizt mit dem restlichen Überschuss darüber hinaus (z. B. auf 60–65 °C) | Aus, Automatisch (nach Kosten) |
 
-Der Modus der Jahreszeit ersetzt die Strategie des Heizstabs. Reicht die Wärmepumpe im Winter
+Hohe Speichertemperaturen über den Heizstab zu erreichen schont die Wärmepumpe, deren COP bei
+hohen Temperaturen sinkt. Bis zu welcher Temperatur der Heizstab heizt, steht unter Verbraucher
+(Zieltemperatur). Der Modus der Jahreszeit ersetzt die Strategie des Heizstabs; ohne Zuordnung zu
+einer Wärmepumpe gilt er nicht. Reicht die Wärmepumpe im Winter
 nicht, unter Steuerung „Schnellstmöglich“ wählen: Das gilt bis zur gewählten Zeit, höchstens aber
 für die eingestellten Stunden (Standard 24 h), damit der Heizstab nicht den Rest des Winters
 läuft. Über die Aktion `sunflow_ems.set_consumer` geht das auch per Automation.
 
-Die **Heizperiode** gilt für alle Heizstäbe und wird erkannt
+Die **Heizperiode** wird erkannt
 
 - nach **Außentemperatur**: Liegt das Tagesmittel eines Sensors drei Tage in Folge unter 15 °C,
   beginnt sie; drei Tage darüber beenden sie (Schwelle und Tage einstellbar),

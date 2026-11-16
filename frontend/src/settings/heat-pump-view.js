@@ -47,11 +47,12 @@ const EMPTY = {
   method: "", sg_contact1_entity: "", sg_contact2_entity: "", contact1_inverted: false, contact2_inverted: false,
   sg_select_entity: "", options: {}, setpoint_entity: "", setpoint_normal: "", surplus_entity: "", boost_switch_entity: "",
   use_block: false, use_forced: false,
+  rod_id: "", rod_heating_mode: "off", rod_summer_mode: "pv_only", rod_manual_h: "24",
   rules: Object.fromEntries(Object.entries(RULE_DEFAULTS).map(([k, v]) => [k, String(v)])),
 };
 
-/** The form of a stored heat pump. */
-function formOf(device) {
+/** The form of a stored heat pump; planning holds its rod's season modes. */
+function formOf(device, planning) {
   const role = (name) => device.role_overrides[name]?.entity_id ?? "";
   const phases = (prefix) => PHASES.map((p) => role(`${prefix}_${p.toLowerCase()}`));
   const phasePower = phases("power");
@@ -88,7 +89,19 @@ function formOf(device) {
     boost_switch_entity: role("boost_switch"),
     use_block: Boolean(settings.use_block),
     use_forced: Boolean(settings.use_forced),
+    ...rodFormOf(settings.rod_id, planning),
     rules: Object.fromEntries(Object.keys(RULE_DEFAULTS).map((k) => [k, toDisplay(settings[k] ?? RULE_DEFAULTS[k], "")])),
+  };
+}
+
+/** The rod part of the form; a rod without season modes gets the usual ones. */
+function rodFormOf(rodId, planning) {
+  const flex = (rodId && planning?.[rodId]) || {};
+  return {
+    rod_id: rodId ?? "",
+    rod_heating_mode: flex.heating_mode ?? EMPTY.rod_heating_mode,
+    rod_summer_mode: flex.summer_mode ?? EMPTY.rod_summer_mode,
+    rod_manual_h: toDisplay(flex.manual_max_h ?? 24, ""),
   };
 }
 
@@ -111,7 +124,8 @@ function bodyOf(form) {
   const rules = Object.fromEntries(Object.keys(RULE_DEFAULTS).map((k) => [k, number(form.rules[k])]));
   const voltage = electric === "phase_current" ? number(form.voltage) : null;
   const setpoint = number(form.setpoint_normal);
-  if ([voltage, setpoint, ...Object.values(rules)].includes(undefined)) return undefined;
+  const rodHours = number(form.rod_manual_h);
+  if ([voltage, setpoint, rodHours, ...Object.values(rules)].includes(undefined)) return undefined;
   const method = form.method || null;
   return {
     name: form.name.trim(),
@@ -141,6 +155,7 @@ function bodyOf(form) {
       use_forced: Boolean(method && CAN_FORCE.has(method) && form.use_forced),
       options: Object.fromEntries(Object.entries(form.options).filter(([, option]) => option)),
       setpoint_normal: setpoint,
+      rod_id: form.rod_id || null,
       ...Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v ?? RULE_DEFAULTS[k]])),
     },
   };
@@ -179,7 +194,7 @@ function textToMmdd(text) {
   return `${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-/** The heat pump: measuring, steering, the heating rods beside it and the heating season (settings area "Wärmepumpe"). */
+/** The heat pump: measuring, steering, its heating rod and the heating season (settings area "Wärmepumpe"). */
 class SunflowHeatPump extends LitElement {
   static properties = {
     _config: { state: true },
@@ -188,7 +203,6 @@ class SunflowHeatPump extends LitElement {
     _season: { state: true },
     _form: { state: true },
     _editId: { state: true },
-    _rodEdits: { state: true },
     _error: { state: true },
     _busy: { state: true },
   };
@@ -201,7 +215,6 @@ class SunflowHeatPump extends LitElement {
     this._season = null;
     this._form = null;
     this._editId = null;
-    this._rodEdits = {};
     this._error = null;
     this._busy = false;
   }
@@ -250,6 +263,7 @@ class SunflowHeatPump extends LitElement {
     return (this._config?.devices ?? []).filter((d) => d.profile === PROFILE);
   }
 
+  /** Consumers that heat: the rods a heat pump can take. */
   get _rods() {
     return (this._config?.devices ?? []).filter((d) => d.kind === "heater");
   }
@@ -270,8 +284,7 @@ class SunflowHeatPump extends LitElement {
       ${pumps.map((d) => (this._editId === d.id ? this._renderEditor() : this._renderPump(d)))}
       ${this._form && this._editId === null ? this._renderEditor() : nothing}
       ${!this._form ? html`<div><button class="secondary" @click=${() => this._edit(null)}>${pumps.length ? t("Weitere Wärmepumpe hinzufügen …") : t("Wärmepumpe hinzufügen …")}</button></div>` : nothing}
-      ${this._renderRods()}
-      ${this._renderSeason()}
+      ${pumps.some((d) => d.heat_pump?.rod_id) ? this._renderSeason() : nothing}
     `;
   }
 
@@ -291,6 +304,7 @@ class SunflowHeatPump extends LitElement {
           <button class="secondary" @click=${() => this._edit(device)}>${t("Bearbeiten")}</button>
           <button class="secondary danger" @click=${() => this._remove(device)}>${t("Entfernen")}</button>
         </div>
+        ${this._renderRodLine(device)}
         <div class="small muted">${METHODS[method]?.[0] ?? method}${method
           ? html` · ${steered ? t("Sunflow steuert") : t("Schattenmodus – einschalten unter Steuerung")}`
           : nothing}</div>
@@ -314,10 +328,20 @@ class SunflowHeatPump extends LitElement {
     `;
   }
 
+  /** Which rod the heat pump has and how it runs now. */
+  _renderRodLine(device) {
+    const rod = this._config.devices.find((d) => d.id === device.heat_pump?.rod_id);
+    if (!rod) return nothing;
+    const flex = this._config.planning?.[rod.id] ?? {};
+    const active = this._season?.active;
+    const mode = active ? flex.heating_mode : flex.summer_mode;
+    return html`<div class="small">${t("Heizstab: {name}", { name: rod.name })} · ${active ? t("Heizperiode") : t("Sommer")}: ${MODES[mode] ?? "–"}</div>`;
+  }
+
   async _edit(device) {
     await this._loadCandidates();
     this._editId = device ? device.id : null;
-    this._form = device ? formOf(device) : { ...EMPTY, rules: { ...EMPTY.rules }, options: {} };
+    this._form = device ? formOf(device, this._config.planning) : { ...EMPTY, rules: { ...EMPTY.rules }, options: {} };
   }
 
   _set(changes) {
@@ -424,6 +448,7 @@ class SunflowHeatPump extends LitElement {
         </fieldset>
 
         ${this._renderControl(form, candidates, picker, check)}
+        ${this._renderRodGroup(form)}
 
         <div class="actions">
           <button class="primary" ?disabled=${!valid || this._busy} @click=${() => this._save()}>${this._editId ? t("Speichern") : t("Hinzufügen")}</button>
@@ -560,6 +585,7 @@ class SunflowHeatPump extends LitElement {
     try {
       if (this._editId) await api.updateManual(this._editId, body);
       else await api.addManual(body);
+      if (this._form.rod_id) await this._saveRodModes(this._form);
       this._form = null;
       this._editId = null;
       await this._load();
@@ -568,6 +594,18 @@ class SunflowHeatPump extends LitElement {
     } finally {
       this._busy = false;
     }
+  }
+
+  /** The rod's season modes live in its own planning settings. */
+  async _saveRodModes(form) {
+    const flex = {
+      strategy: "cost", target: null, target_max: null, ready_by: null, uses_battery: true, alternative_cost_ct: null,
+      ...(this._config.planning?.[form.rod_id] ?? {}),
+      heating_mode: form.rod_heating_mode,
+      summer_mode: form.rod_summer_mode,
+      manual_max_h: form.rod_manual_h === "" ? 24 : fromDisplay(form.rod_manual_h, ""),
+    };
+    await api.updateDevice(form.rod_id, { flex });
   }
 
   async _remove(device) {
@@ -580,78 +618,50 @@ class SunflowHeatPump extends LitElement {
     }
   }
 
-  /** Heating rods (heaters) by season: off in the heating season, automatic in summer by default. */
-  _renderRods() {
-    const rods = this._rods;
-    return html`
-      <section class="device">
-        <span class="device-title">${t("Heizstab")}</span>
-        <p class="small muted">${t("Die Wärmepumpe heizt in der Heizperiode viel effizienter als ein Heizstab. Je Heizstab lässt sich festlegen, wie er in Heizperiode und Sommer läuft; der Modus ersetzt dann seine Strategie. Reicht die Wärmepumpe nicht, unter Steuerung „Schnellstmöglich“ wählen – das gilt höchstens für die eingestellten Stunden.")}</p>
-        ${rods.length
-          ? rods.map((rod) => this._renderRod(rod))
-          : html`<p class="small muted">${t("Kein Heizstab eingerichtet. Anlegen unter Geräte → Eigene Verbraucher, z. B. „Relais je Phase (1–3)“ mit Art „Wärme“.")}</p>`}
-      </section>
-    `;
-  }
-
-  _renderRod(rod) {
-    const stored = this._config.planning?.[rod.id] ?? {};
-    const flex = { ...stored, ...(this._rodEdits[rod.id] ?? {}) };
-    const seasonal = flex.heating_mode != null || flex.summer_mode != null;
-    const set = (changes) => (this._rodEdits = { ...this._rodEdits, [rod.id]: { ...(this._rodEdits[rod.id] ?? {}), ...changes } });
-    const mode = (field, label) => html`<label class="field">
+  /** The heating rod: a consumer that heats, in the hot water tank or buffer; off while the heat pump heats. */
+  _renderRodGroup(form) {
+    const taken = new Set(this._heatPumps.filter((d) => d.id !== this._editId).map((d) => d.heat_pump?.rod_id).filter(Boolean));
+    const rods = this._rods.filter((d) => !taken.has(d.id));
+    const mode = (field, label, help) => html`<label class="field">
       <span class="field-label">${label}</span>
-      <select @change=${(e) => set({ [field]: e.target.value })}>
-        ${Object.entries(MODES).map(([value, text]) => html`<option value=${value} ?selected=${flex[field] === value}>${text}</option>`)}
+      <select @change=${(e) => this._set({ [field]: e.target.value })}>
+        ${Object.entries(MODES).map(([value, text]) => html`<option value=${value} ?selected=${form[field] === value}>${text}</option>`)}
       </select>
+      <span class="small muted">${help}</span>
     </label>`;
-    const hours = this._rodEdits[rod.id]?.manual_max_h_text ?? toDisplay(flex.manual_max_h ?? 24, "");
     return html`
-      <div class="rod">
-        <label class="check"><input type="checkbox" .checked=${seasonal}
-          @change=${(e) => set(e.target.checked ? { heating_mode: "off", summer_mode: "cost" } : { heating_mode: null, summer_mode: null })}>
-          <strong>${rod.name}</strong>&nbsp;${t("nach Jahreszeit")}</label>
-        ${seasonal
-          ? html`<div class="fields">
-              ${mode("heating_mode", t("Heizperiode"))}
-              ${mode("summer_mode", t("Sommer"))}
+      <fieldset class="group">
+        <legend>${t("Heizstab (optional)")}</legend>
+        <p class="small muted">${t("Gemeint ist ein Heizstab, den Sunflow schaltet – meist im Warmwasser- oder Pufferspeicher. Den eingebauten Heizstab der Wärmepumpe (Zusatz- oder Notheizung) regelt die Wärmepumpe selbst; er gehört nicht hierher.")}</p>
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">${t("Heizstab")}</span>
+            <select @change=${(e) => this._set(rodFormOf(e.target.value || null, this._config.planning))}>
+              <option value="" ?selected=${!form.rod_id}>${t("kein Heizstab")}</option>
+              ${rods.map((rod) => html`<option value=${rod.id} ?selected=${form.rod_id === rod.id}>${rod.name}</option>`)}
+            </select>
+            ${rods.length
+              ? nothing
+              : html`<span class="small muted">${t("Einen Heizstab legst du unter Geräte → Eigene Verbraucher an, mit Art „Wärme“ (z. B. „Relais je Phase (1–3)“ oder „Leistungsstufen (Auswahl)“). Danach erscheint er hier.")}</span>`}
+          </label>
+        </div>
+        ${form.rod_id
+          ? html`
+            <p class="small muted">${t("Die Wärmepumpe macht aus 1 kWh Strom 3–4 kWh Wärme, der Heizstab nur 1 kWh. In der Heizperiode bekommt die Wärmepumpe deshalb den PV-Überschuss (Verstärken), der Heizstab bleibt aus. Im Sommer genügt der Überschuss meist für beide: Die Wärmepumpe hält das Warmwasser auf ihrem Sollwert, der Heizstab heizt mit dem restlichen Überschuss darüber hinaus, z. B. auf 60–65 °C. Das spart der Wärmepumpe Starts und hohe Temperaturen, bei denen ihr COP sinkt.")}</p>
+            <div class="fields">
+              ${mode("rod_heating_mode", t("In der Heizperiode"), t("empfohlen: Aus"))}
+              ${mode("rod_summer_mode", t("Im Sommer"), t("empfohlen: Nur PV-Überschuss"))}
               <label class="field">
                 <span class="field-label">${t("Von Hand an höchstens")}</span>
-                <span class="input-unit"><input inputmode="decimal" .value=${hours}
-                  @input=${(e) => set({ manual_max_h_text: e.target.value })}><span class="muted">h</span></span>
+                <span class="input-unit"><input inputmode="decimal" .value=${form.rod_manual_h}
+                  @input=${(e) => this._set({ rod_manual_h: e.target.value })}><span class="muted">h</span></span>
+                <span class="small muted">${t("Reicht die Wärmepumpe nicht, den Heizstab unter Steuerung auf „Schnellstmöglich“ stellen; das endet nach dieser Zeit.")}</span>
               </label>
-            </div>`
+            </div>
+            <p class="small muted">${t("Bis zu welcher Temperatur der Heizstab heizt, stellst du unter Verbraucher ein (Zieltemperatur).")}</p>`
           : nothing}
-        ${this._rodEdits[rod.id]
-          ? html`<div class="actions"><button class="primary" ?disabled=${this._busy} @click=${() => this._saveRod(rod)}>${t("Speichern")}</button></div>`
-          : nothing}
-      </div>
+      </fieldset>
     `;
-  }
-
-  async _saveRod(rod) {
-    const { manual_max_h_text: text, ...edits } = this._rodEdits[rod.id] ?? {};
-    const hours = text === undefined ? undefined : text === "" ? 24 : fromDisplay(text, "");
-    if (hours === undefined && text !== undefined) {
-      this._error = t("Bitte gültige Zahlen eingeben.");
-      return;
-    }
-    const flex = {
-      strategy: "cost", target: null, target_max: null, ready_by: null, uses_battery: true, alternative_cost_ct: null,
-      ...(this._config.planning?.[rod.id] ?? {}),
-      ...edits,
-      ...(hours !== undefined ? { manual_max_h: hours } : {}),
-    };
-    this._busy = true;
-    try {
-      await api.updateDevice(rod.id, { flex });
-      this._rodEdits = { ...this._rodEdits, [rod.id]: undefined };
-      await this._load();
-    } catch (err) {
-      this._error = t("Heizstab konnte nicht gespeichert werden: {error}", { error: err.message });
-    } finally {
-      this._busy = false;
-    }
   }
 
   /** How the heating season is told; saved on change. */
@@ -673,7 +683,7 @@ class SunflowHeatPump extends LitElement {
     return html`
       <section class="device">
         <span class="device-title">${t("Heizperiode")}</span>
-        <p class="small muted">${since ? t("{state} seit {date}", { state: now, date: since }) : now} · ${t("Gilt für alle Heizstäbe nach Jahreszeit.")}</p>
+        <p class="small muted">${since ? t("{state} seit {date}", { state: now, date: since }) : now} · ${t("Bestimmt, ob für den Heizstab der Modus der Heizperiode oder des Sommers gilt.")}</p>
         <div class="fields">
           <label class="field">
             <span class="field-label">${t("Erkennen nach")}</span>
@@ -759,7 +769,6 @@ class SunflowHeatPump extends LitElement {
     .group { border: 1px solid var(--sf-border); border-radius: 8px; padding: 12px 14px; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
     .group legend { font-weight: 600; font-size: 14px; padding: 0 4px; }
     .check { display: flex; gap: 8px; align-items: center; font-size: 14px; min-height: 36px; }
-    .rod { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--sf-border); }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     .spacer { flex: 1; }
     .primary, .secondary { min-height: 44px; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }

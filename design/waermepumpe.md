@@ -91,7 +91,10 @@ auffällt.
 
 **Jahreszeit:** Heizperiode nach Außentemperatur (Tagesmittel unter z. B. 15 °C, Wechsel erst
 nach 2–3 Tagen), nach Datum oder aus einer Entität (Sommer-/Winterbetrieb der Wärmepumpe).
-Standard je Jahreszeit: Heizperiode **Aus**, Sommer **Automatisch**.
+Standard je Jahreszeit: Heizperiode **Aus**, Sommer **Nur Überschuss** (aus dem Netz heizt die
+Wärmepumpe mit COP 3–4 billiger). Modi und Jahreszeit gelten nur für den Heizstab, den eine
+Wärmepumpe zugeordnet hat (`HeatPumpSettings.rod_id`); angelegt wird er als Verbraucher mit Art
+„Wärme“, zugeordnet in der Gruppe „Heizstab“ der Wärmepumpe.
 
 **Automatisch** vergleicht die Kosten einer kWh Wärme: Wärmepumpe = Preis ÷ COP, Heizstab =
 Preis ÷ 1, Überschuss kostet die entgangene Einspeisevergütung. Der Heizstab kommt zum Zug,
@@ -104,6 +107,28 @@ Aktion `sunflow_ems.set_consumer`; bis Uhrzeit, für eine Dauer, bis Zieltempera
 zur Rücknahme, spätestens nach einer einstellbaren Zeit (z. B. 24 h). Steigt die
 Speichertemperatur trotz laufender Wärmepumpe nicht, meldet Sunflow das (Hinweis und Ereignis
 `sunflow_ems_heat_pump_insufficient`); zugeschaltet wird nur von Hand.
+
+## Hintergrund aus der Praxis
+
+- **Bivalenzpunkt:** Unterhalb (meist −5 bis −8 °C) reicht eine Luft-Wasser-Wärmepumpe allein nicht;
+  dann heizt ihr eingebauter Heizstab mit, im Mittel nur etwa 2 % der Jahresheizarbeit. Den regelt
+  die Wärmepumpe selbst – Sunflow schaltet nur einen externen Heizstab.
+- **Warmwasser:** Die Wärmepumpe arbeitet bis etwa 50–55 °C effizient, darüber sinkt der COP und
+  der Verdichter leidet. Höhere Temperaturen (Legionellenschutz 60 °C) übernimmt besser der
+  Heizstab, am besten mit PV-Überschuss oder zu einer günstigen Stunde.
+- **Überschuss in die Heizung:** Statt Warmwasser höher zu heizen, den Vorlauf bzw. die Heizkurve um
+  1–4 K anheben; Estrich und Räume speichern die Wärme. Ein Sollwert für die Methode „Sollwert“
+  kann deshalb auch ein Vorlauf- oder Raumsollwert sein.
+- **Schalten mit Ruhe:** evcc gibt Boost frei, wenn der Überschuss 5 min anliegt, und nimmt ihn
+  nach 20 min ohne zurück; Fachleute mitteln das PV-Signal über etwa 20 min. Sunflow plant
+  Viertelstunden und hält jeden Zustand mindestens 20 min.
+- **§ 14a EnWG:** Dimmen bzw. Sperren durch den Netzbetreiber hat Vorrang; Sunflow darf diesen
+  Kontakt nicht schalten.
+
+Quellen: [Umweltbundesamt, Trinkwarmwasserkonzepte](https://www.umweltbundesamt.de/sites/default/files/medien/11850/publikationen/factsheet_trinkwarmwasserkonzepte.pdf),
+[evcc – Wärmeerzeuger](https://docs.evcc.io/de/heating),
+[Verbraucherzentrale RLP – Wärmepumpen](https://www.verbraucherzentrale-rlp.de/sites/default/files/2026-02/250428_bhp_vz_waermepumpen_26.pdf),
+[1KOMMA5° – Heizstab](https://1komma5.com/de/waermepumpe/heizstab/).
 
 ## Was der COP bringt
 

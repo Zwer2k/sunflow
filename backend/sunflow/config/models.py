@@ -228,6 +228,8 @@ class HeatPumpSettings(BaseModel):
     min_state_min: int = Field(default=20, ge=5, le=120)
     block_max_min: int = Field(default=120, ge=15, le=240)
     block_day_max_min: int = Field(default=240, ge=15, le=720)
+    # The heating rod beside it (a consumer of kind heater); its season modes count only while linked
+    rod_id: str | None = None
 
 
 class ChargerSettings(BaseModel):
@@ -720,7 +722,7 @@ class SunflowConfig(BaseModel):
         A heating rod's season mode replaces its strategy ("off" pauses it); a strategy set by hand wins.
         """
         settings = base or self.flex_of(device.id)
-        mode = self.season_mode(settings)
+        mode = self.season_mode(settings) if device.id in self.heat_pump_rods() else None
         season_off = mode == "off"
         if mode in ("pv_only", "cost"):
             settings = settings.model_copy(update={"strategy": mode})
@@ -729,6 +731,10 @@ class SunflowConfig(BaseModel):
             return settings, season_off
         changes = {k: v for k, v in (("strategy", override.strategy), ("target", override.target)) if v is not None}
         return settings.model_copy(update=changes), override.paused or (season_off and override.strategy is None)
+
+    def heat_pump_rods(self) -> set[str]:
+        """Ids of the heating rods linked to a heat pump."""
+        return {d.heat_pump.rod_id for d in self.devices if d.heat_pump is not None and d.heat_pump.rod_id}
 
     def season_mode(self, settings: FlexSettings) -> HeaterMode | None:
         """The mode of a heating rod in the current season; None without season modes."""

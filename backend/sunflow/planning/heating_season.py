@@ -45,8 +45,9 @@ def daily_means(hourly: list[tuple[datetime, float]], today: date, tz: tzinfo) -
 
 
 def uses_seasons(config: SunflowConfig) -> bool:
-    """Whether any consumer has a mode per season."""
-    return any(f.heating_mode is not None or f.summer_mode is not None for f in config.planning.values())
+    """Whether a heating rod linked to a heat pump has a mode per season."""
+    flex = [config.planning.get(rod_id) for rod_id in config.heat_pump_rods()]
+    return any(f is not None and (f.heating_mode is not None or f.summer_mode is not None) for f in flex)
 
 
 async def current_season(

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.79.6
+
+- Heizstab gehört jetzt zur Wärmepumpe: In der Konfiguration der Wärmepumpe wird ein Verbraucher mit Art „Wärme“ als Heizstab zugeordnet, mit seinem Modus je Jahreszeit. Der eingebaute Heizstab der Wärmepumpe ist ausdrücklich ausgenommen.
+- Modi je Jahreszeit gelten nur noch für einen zugeordneten Heizstab; im Sommer ist „Nur PV-Überschuss“ empfohlen.
+- Entwurf Wärmepumpe: Hintergrund aus der Praxis (Bivalenzpunkt, Warmwasser und Legionellen, Heizkurve anheben, § 14a).
+
 ## 0.79.5
 
 - Control tab: a heat pump is labelled "Heat pump" (it showed as "Battery") and its states read "Heat pump boosted", "blocked" etc. in the status and the control log; the confirmation names what Sunflow switches on a heat pump.

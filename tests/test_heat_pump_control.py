@@ -2,9 +2,13 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 import pytest
+from sunflow.api import create_app
 from sunflow.api.devices import ManualDevice, _manual_setup
 from sunflow.config.models import HeatPumpSettings
 from sunflow.control.heat_pump import HeatPumpTrack, next_state, runtime, wanted_state
@@ -187,6 +191,54 @@ def test_control_setup_refuses(settings: HeatPumpSettings) -> None:
 
     with pytest.raises(HTTPException):
         _manual_setup(body, SNAPSHOT)
+
+
+def _client(tmp_path: Path) -> TestClient:
+    from sunflow.config.store import ConfigStore
+    from sunflow.devices.profiles import load_profiles, load_schema
+
+    repo = Path(__file__).resolve().parents[1]
+    app = create_app()
+    app.state.store = ConfigStore(tmp_path)
+    app.state.profiles = load_profiles(repo / "profiles", load_schema(repo / "schema"))
+
+    async def snapshot(fresh: bool = False) -> Snapshot:
+        return SNAPSHOT
+
+    app.state.snapshots = SimpleNamespace(get=snapshot)
+    return TestClient(app)
+
+
+ROD = {"name": "Heizstab", "type": "relays", "kind": "heater", "relay_entities": ["switch.rod"], "relay_power_w": 2000,
+       "temperature_entity": "sensor.tank", "tank_l": 300}
+HEAT_PUMP = {"name": "WP", "type": "heat_pump", "power_entity": "sensor.p"}
+
+
+@pytest.mark.parametrize(
+    ("rod", "status"),
+    [
+        pytest.param(ROD, 200, id="heating consumer"),
+        pytest.param(ROD | {"kind": "load"}, 422, id="not a heating consumer"),
+    ],
+)
+def test_rod_link(tmp_path: Path, rod: dict[str, object], status: int) -> None:
+    """A heat pump links a consumer that heats as its rod, and only one heat pump does."""
+    client = _client(tmp_path)
+    rod_id = client.post("/api/v1/config/devices/manual", json=rod).json()["id"]
+    body = HEAT_PUMP | {"heat_pump": {"rod_id": rod_id}}
+
+    assert client.post("/api/v1/config/devices/manual", json=body).status_code == status
+
+
+def test_rod_of_one_heat_pump(tmp_path: Path) -> None:
+    """A second heat pump cannot take the same rod."""
+    client = _client(tmp_path)
+    rod_id = client.post("/api/v1/config/devices/manual", json=ROD).json()["id"]
+    body = HEAT_PUMP | {"heat_pump": {"rod_id": rod_id}}
+    first = client.post("/api/v1/config/devices/manual", json=body).json()["id"]
+
+    assert client.put(f"/api/v1/config/devices/manual/{first}", json=body).status_code == 200
+    assert client.post("/api/v1/config/devices/manual", json=body).status_code == 422
 
 
 @pytest.mark.parametrize(

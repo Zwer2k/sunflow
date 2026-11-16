@@ -77,7 +77,7 @@ Je Wallbox:
 
 Messung und Ansteuerung der Wärmepumpe (SG-Ready über zwei Relais, nur Kontakt 2 oder eine
 Auswahl, Sollwert, gemeldeter PV-Überschuss, Boost-Schalter) mit den Regeln, wann sie verstärkt
-oder gesperrt wird; dazu die Heizstäbe nach Jahreszeit und die Erkennung der Heizperiode.
+oder gesperrt wird; dazu der Heizstab der Wärmepumpe mit seinem Modus je Jahreszeit und die Erkennung der Heizperiode.
 Live-Werte zeigen Strom, Wärme, COP und den Zustand, den Sunflow setzt oder (im Schattenmodus)
 setzen würde. Einzelheiten unter [Unterstützte Geräte](geraete.md#wärmepumpe).
 

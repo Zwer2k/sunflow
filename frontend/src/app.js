@@ -2585,8 +2585,8 @@ class SunflowApp extends LitElement {
               ? t("Aus: der Speicher versorgt nur das Haus; geheizt wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")
               : t("Aus: der Speicher versorgt nur das Haus; geladen wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")}</span>
           </label>
-          ${kind === "heater" && (flex.heating_mode != null || flex.summer_mode != null)
-            ? html`<p class="small muted help wide-help">${t("Läuft nach Jahreszeit – der Modus von Heizperiode oder Sommer ersetzt die Strategie oben. Einstellen unter Wärmepumpe.")}</p>`
+          ${kind === "heater" && this._activeDevices.some((d) => d.heat_pump?.rod_id === device.id)
+            ? html`<p class="small muted help wide-help">${t("Heizstab der Wärmepumpe: läuft nach Jahreszeit, der Modus von Heizperiode oder Sommer ersetzt die Strategie oben. Einstellen unter Wärmepumpe.")}</p>`
             : nothing}
         </div>
       </fieldset>

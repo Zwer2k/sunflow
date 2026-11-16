@@ -314,6 +314,18 @@ def _heat_pump_setup(body: ManualDevice) -> tuple[dict[str, RoleOverride], dict[
     return overrides, parameters, None
 
 
+def _check_rod(config: SunflowConfig, body: ManualDevice, device_id: str | None) -> None:
+    """A heat pump's rod is a consumer that heats and belongs to no other heat pump."""
+    rod_id = body.heat_pump.rod_id if body.type == "heat_pump" and body.heat_pump else None
+    if rod_id is None:
+        return
+    rod = config.device(rod_id)
+    if rod is None or rod.kind != "heater":
+        raise HTTPException(status_code=422, detail=t("Der Heizstab muss ein Verbraucher mit Art „Wärme“ sein"))
+    if any(d.id != device_id and d.heat_pump and d.heat_pump.rod_id == rod_id for d in config.devices):
+        raise HTTPException(status_code=422, detail=t("Der Heizstab gehört schon zu einer anderen Wärmepumpe"))
+
+
 def _heat_pump_control(body: ManualDevice) -> dict[str, RoleOverride]:
     """The entities the chosen method writes; those of other methods are not bound (the steps skip them)."""
     settings = body.heat_pump
@@ -497,6 +509,7 @@ async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, A
     overrides, parameters, steps = _manual_setup(body, await _snapshot(request))
     store: ConfigStore = request.app.state.store
     config = store.load()
+    _check_rod(config, body, None)
     device = DeviceConfig(
         ha_device_id=f"manual:{uuid.uuid4().hex}",
         profile=profile_id,
@@ -523,6 +536,7 @@ async def update_manual_device(request: Request, device_id: str, body: ManualDev
     config = store.load()
     if (device := config.device(device_id)) is None or device.profile not in MANUAL_PROFILES.values():
         raise HTTPException(status_code=404, detail="Manual device not configured")
+    _check_rod(config, body, device_id)
     device.profile = MANUAL_PROFILES[body.type]
     device.profile_version = library.profiles[device.profile]["version"]
     device.name = body.name.strip() or device.name
