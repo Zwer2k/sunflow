@@ -77,8 +77,15 @@ auffällt.
 - **Extern** im Puffer-/Warmwasserspeicher mit 1–3 Relais (je Phase), einem `select` mit
   Stufen oder einem Relais. Bei 3 × 2 kW: 0 / 2 / 4 / 6 kW. Einphasig wechselt die Phase reihum;
   die Grenze von 4,6 kVA je Phase (VDE-AR-N 4100) gilt für Wärmepumpe und Heizstab zusammen.
-- **In der Wärmepumpe eingebaut:** steuerbar nur, wenn die Integration eine Stufen-Entität hat;
-  sonst nur gemessen bzw. aus der Leistung geschätzt.
+- **In der Wärmepumpe eingebaut:** nur sperren, freigeben oder begrenzen, die Wärmepumpe
+  entscheidet (`HeatPumpSettings.rod`, Rollen `rod_allow`, `rod_block`, `rod_select`, `rod_limit`;
+  Zustände frei / gesperrt / freigegeben). Belegt: EMS-ESP `auxheateroff` (Sperr-Schalter) und
+  `maxheat…` (kW-Stufen), NIBE 47370/40181 (Freigabe) und 47212/40103 (max. kW), HeishaMon
+  `SetDHWHeaterState`/`SetRoomHeaterState` (blocked/free). Nur indirekt (Zwangsmodi, die WP
+  entscheidet): Luxtronik ZWE, Stiebel „Notbetrieb“, Daikin/Panasonic „Powerful“, Viessmann
+  Einmalladung, Vaillant Boost. Fast alles sind Flash-Parameter: Wechsel höchstens alle 60 min,
+  EEPROM-Wächter. Eine Freigabe schaltet nicht ein.
+- Zweite Variante: ein Verbraucher mit Art „Wärme“ als Heizstab (`HeatPumpSettings.rod_id`).
 
 ### Modi
 

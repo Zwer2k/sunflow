@@ -161,18 +161,39 @@ damit sie gleichmäßig verschleißen.
 
 ### Heizstab einer Wärmepumpe
 
-Ein Heizstab im Warmwasser- oder Pufferspeicher wird zuerst als eigener Verbraucher mit Art
-„Wärme“ angelegt (z. B. „Relais je Phase (1–3)“ oder „Leistungsstufen“). Unter Einstellungen →
-Wärmepumpe wird er dann der Wärmepumpe zugeordnet (Gruppe **Heizstab**). Den eingebauten Heizstab
-der Wärmepumpe (Zusatz- oder Notheizung unter dem Bivalenzpunkt) regelt die Wärmepumpe selbst; er
-gehört nicht hierher.
+Der Heizstab wird mit der Wärmepumpe eingerichtet (Einstellungen → Wärmepumpe, Gruppe
+**Heizstab**). Die Wärmepumpe macht aus 1 kWh Strom 3–4 kWh Wärme, der Heizstab nur 1 kWh; er soll
+deshalb nur laufen, wenn es sich lohnt oder die Wärmepumpe nicht reicht. Zwei Varianten:
+
+**1. Eingebaut – über die Integration der Wärmepumpe.** Die Zusatz- oder Notheizung in der
+Wärmepumpe lässt sich bei vielen Herstellern nur sperren, freigeben oder in der Leistung begrenzen;
+ob sie heizt, entscheidet die Wärmepumpe. Sunflow kennt vier Formen:
+
+| Die Integration bietet | Beispiele |
+|---|---|
+| Sperr-Schalter (an = gesperrt) | Bosch, Buderus, Junkers über EMS-ESP: „Zusatzheizer deaktivieren“ (`auxheateroff`) |
+| Freigabe-Schalter (an = darf heizen) | NIBE (`nibe_heatpump`): „Allow additive heating“ / „Permit additional heat“ |
+| Auswahl (frei/gesperrt oder kW-Stufen) | Panasonic über HeishaMon: „DHW/Room Heater State“; EMS-ESP: `maxheat…` in kW-Stufen |
+| Höchstleistung als Zahl | NIBE: „Max int add. power“ in kW |
+
+Modi: In der Heizperiode **nur bei Bedarf** (Standard) – gesperrt, außer es ist kälter als die
+eingestellte Grenze (etwa der Bivalenzpunkt, Standard −5 °C), der Strompreis ist negativ oder du
+gibst ihn frei („Heizstab 24 h freigeben“) – oder **Wärmepumpe entscheidet**. Im Sommer zusätzlich
+**bei PV-Überschuss** (Standard). Ohne Außentemperatur (von der Wärmepumpe oder unter Lernquellen)
+sperrt Sunflow nie. Die Einstellung liegt meist im Flash-Speicher der Wärmepumpe: Sunflow ändert
+sie höchstens alle 60 min (einstellbar), schreibt nur bei Abweichung und zählt die Schreibvorgänge
+gegen das Tageslimit. Gibt Sunflow die Steuerung ab, stellt es den normalen Wert wieder her.
+
+**2. Eigener Heizstab – als Verbraucher angelegt.** Ein Heizstab außerhalb der Wärmepumpe, meist im
+Warmwasser- oder Pufferspeicher, wird zuerst als eigener Verbraucher mit Art „Wärme“ angelegt (z. B.
+„Relais je Phase (1–3)“ oder „Leistungsstufen“) und dann in der Gruppe Heizstab gewählt.
 
 Die Wärmepumpe macht aus 1 kWh Strom 3–4 kWh Wärme, der Heizstab nur 1 kWh. Deshalb läuft der
 zugeordnete Heizstab **nach Jahreszeit**:
 
 | | Empfohlen (Standard) | Wahlweise |
 |---|---|---|
-| Heizperiode | Aus – der PV-Überschuss geht an die Wärmepumpe (Verstärken) | Nur PV-Überschuss, Automatisch |
+| Heizperiode (eigener Heizstab) | Aus – der PV-Überschuss geht an die Wärmepumpe (Verstärken) | Nur PV-Überschuss, Automatisch |
 | Sommer | Nur PV-Überschuss – die Wärmepumpe hält ihren Sollwert, der Heizstab heizt mit dem restlichen Überschuss darüber hinaus (z. B. auf 60–65 °C) | Aus, Automatisch (nach Kosten) |
 
 Hohe Speichertemperaturen über den Heizstab zu erreichen schont die Wärmepumpe, deren COP bei

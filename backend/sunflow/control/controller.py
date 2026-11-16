@@ -41,6 +41,8 @@ from sunflow.control.heat_pump import (
     RELEASE as HEAT_PUMP_RELEASE,
     Choice as HeatPumpChoice,
     HeatPumpTrack,
+    RodChoice,
+    next_rod,
     next_state as next_heat_pump_state,
     runtime as heat_pump_runtime,
     state_label as heat_pump_state_label,
@@ -515,6 +517,15 @@ def relay_states(count: int, bound: list[str], day: int) -> dict[str, str]:
 HEAT_PUMP_REFRESH = timedelta(minutes=10)
 
 
+def temperature(states: dict[str, dict[str, Any]], entity_id: str | None) -> float | None:
+    """A sensor's temperature; None when it is unknown."""
+    try:
+        value = float(states[entity_id]["state"]) if entity_id else None
+    except KeyError, TypeError, ValueError:
+        return None
+    return value if value is not None and math.isfinite(value) else None
+
+
 def off_step(steps: dict[str, float]) -> str | None:
     """The option that switches a stepped consumer off."""
     return next((option for option, watts in steps.items() if watts <= 0), None)
@@ -746,7 +757,9 @@ def device_access(
         if action.startswith(HEAT_PUMP_PREFIX):
             # The state's values for the chosen method; only its roles are bound
             settings = device.heat_pump or HeatPumpSettings()
-            variables = heat_pump_runtime(action.removeprefix(HEAT_PUMP_PREFIX), settings, runtime.get("surplus_w", 0.0))
+            variables = heat_pump_runtime(
+                action.removeprefix(HEAT_PUMP_PREFIX), settings, runtime.get("surplus_w", 0.0), str(runtime.get("rod", "free"))
+            )
             bound = {k: o.entity_id for k, o in device.role_overrides.items() if o.entity_id}
             return plan_steps(profile["heat_pump_control"], variables, entities, "ram", bound), snapshot.states
         if action.startswith(PHASES_PREFIX):
@@ -896,6 +909,8 @@ class PlanController:
         self.tz: tzinfo = UTC
         # What it would recommend to heat pumps it does not steer yet (shadow mode)
         self.heat_pump_shadow: dict[str, HeatPumpChoice] = {}
+        # The built-in heating rod's state per heat pump, set or (shadow mode) recommended
+        self.heat_pump_rod: dict[str, RodChoice] = {}
 
     def controllable(self, device: DeviceConfig) -> bool:
         """A battery with a control primitive, a loadpoint with charge control or a PV limit."""
@@ -906,7 +921,8 @@ class PlanController:
         """Why a device cannot be controlled, None if it can."""
         profile = self._profiles()[device.profile]
         if "heat_pump_control" in profile:
-            return None if device.heat_pump is not None and device.heat_pump.method else t("keine Ansteuerung gewählt")
+            steered = device.heat_pump is not None and (device.heat_pump.method or device.heat_pump.rod)
+            return None if steered else t("keine Ansteuerung gewählt")
         if "charge_control" in profile or ("pv_limit" in profile and not controls_battery(profile)):
             return None
         if not controls_battery(profile):
@@ -948,7 +964,7 @@ class PlanController:
         order = config.priority_order()
         for device in sorted(config.devices, key=lambda d: order.index(d.id)):
             if not self.wanted(config, device):
-                self._heat_pump_shadow(config, device, plan, plan_at, now, live)
+                self._heat_pump_shadow(config, device, plan, plan_at, now, live, snapshot)
                 continue
             profile = self._profiles()[device.profile]
             if self.journal is not None:
@@ -956,7 +972,7 @@ class PlanController:
                 roles = [r.entity_id for r in preview(profile, snapshot, device.ha_device_id, overrides) if r.entity_id]
                 await self.journal.observe(device.id, device.name, roles, snapshot.states, now)
             if "heat_pump_control" in profile:
-                await self._safely(device.id, device, lambda d, s: self._heat_pump(d, s, plan, plan_at, now, live))
+                await self._safely(device.id, device, lambda d, s: self._heat_pump(d, s, plan, plan_at, now, live, snapshot))
             elif "charge_control" in profile:
                 await self._safely(device.id, device, lambda d, s: self._charge(d, s, plan, plan_at, now, live, snapshot))
             elif not controls_battery(profile):
@@ -1441,8 +1457,26 @@ class PlanController:
             status.current_a, status.last_current_write = current, now
         status.active, status.action, status.power_w, status.reason = True, "charge", power, reason
 
+    def _rod(
+        self, config: SunflowConfig, device: DeviceConfig, plan: Any, on_plan: bool, now: datetime, snapshot: Snapshot,
+        track: HeatPumpTrack,
+    ) -> str:
+        """The built-in rod's state; free without a rod or a current plan."""
+        settings = device.heat_pump or HeatPumpSettings()
+        if settings.rod is None:
+            self.heat_pump_rod.pop(device.id, None)
+            return "free"
+        role = device.role_overrides.get("outside_temperature")
+        source = role.entity_id if role and role.entity_id else config.learning_sources.outdoor_temperature
+        outside = temperature(snapshot.states, source)
+        slots = plan.plan.slots if on_plan else []
+        choice = next_rod(settings.rod, slots, now, config.heating_season.active, outside, settings.min_surplus_w, track)
+        self.heat_pump_rod[device.id] = choice
+        return choice.state
+
     def _heat_pump_shadow(
-        self, config: SunflowConfig, device: DeviceConfig, plan: Any, plan_at: datetime | None, now: datetime, live: Any
+        self, config: SunflowConfig, device: DeviceConfig, plan: Any, plan_at: datetime | None, now: datetime, live: Any,
+        snapshot: Snapshot,
     ) -> None:
         """What Sunflow would recommend to a heat pump it does not steer (yet): shown, not written."""
         if device.profile not in self._profiles() or "heat_pump_control" not in self._profiles()[device.profile]:
@@ -1451,15 +1485,17 @@ class PlanController:
             self.heat_pump_shadow.pop(device.id, None)
             return
         _, _, reason = desired_action(plan, plan_at, now)
+        track = self._heat_pumps.setdefault(device.id, HeatPumpTrack())
+        self._rod(config, device, plan, reason == t(ON_PLAN), now, snapshot, track)
         if reason != t(ON_PLAN):
             self.heat_pump_shadow[device.id] = HeatPumpChoice(state="normal", reason=reason)
             return
-        track = self._heat_pumps.setdefault(device.id, HeatPumpTrack())
         settings = device.heat_pump or HeatPumpSettings()
         self.heat_pump_shadow[device.id] = next_heat_pump_state(settings, plan.plan.slots, now, self.tz, track, getattr(live, "grid_w", None))
 
     async def _heat_pump(
-        self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime, live: Any
+        self, device: DeviceConfig, status: DeviceControl, plan: Any, plan_at: datetime | None, now: datetime, live: Any,
+        snapshot: Snapshot,
     ) -> None:
         """Recommend a state to the heat pump: boost on surplus or cheap hours, block in dear ones."""
         access = self._access_for(device)
@@ -1473,10 +1509,11 @@ class PlanController:
             # Without a current plan: normal operation
             track.state, track.since = "normal", now
             choice = HeatPumpChoice(state="normal", reason=reason)
+        rod = self._rod(self._config, device, plan, reason == t(ON_PLAN), now, snapshot, track)
         text = t("{state}: {reason}", state=heat_pump_state_label(choice.state), reason=choice.reason)
         # Relays and setpoints are read back; the surplus is a number the heat pump may forget: refreshed
         await apply(
-            access, status, f"{HEAT_PUMP_PREFIX}{choice.state}", None, now, {"surplus_w": choice.surplus_w},
+            access, status, f"{HEAT_PUMP_PREFIX}{choice.state}", None, now, {"surplus_w": choice.surplus_w, "rod": rod},
             refresh=HEAT_PUMP_REFRESH, reason=text,
         )
         # The state is the action; the reason says why

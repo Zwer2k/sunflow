@@ -148,6 +148,7 @@ export const api = {
   setDisplay: (body) => request("PUT", "/config/display", body),
   heatingSeason: () => request("GET", "/config/heating-season"),
   setHeatingSeason: (body) => request("PUT", "/config/heating-season", body),
+  releaseHeatPumpRod: (id, hours) => request("PUT", `/control/heat-pumps/${encodeURIComponent(id)}/rod`, { hours }),
   setIntegrationSettings: (body) => request("PUT", "/config/integration", body),
   directStatus: () => request("GET", "/direct/status"),
   addDirect: (body) => request("POST", "/config/devices/direct", body),

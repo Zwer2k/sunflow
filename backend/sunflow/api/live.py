@@ -202,10 +202,12 @@ def heat_pump_control(runner: Any, device_id: str) -> dict[str, Any] | None:
     if controller is None:
         return None
     status = controller.statuses.get(device_id)
+    rod = controller.heat_pump_rod.get(device_id)
+    extra = {"rod": {"state": rod.state, "reason": rod.reason}} if rod is not None else {}
     if status is not None and status.active and status.action:
-        return {"state": status.action, "reason": status.reason, "steering": True}
+        return {"state": status.action, "reason": status.reason, "steering": True} | extra
     if (shadow := controller.heat_pump_shadow.get(device_id)) is not None:
-        return {"state": shadow.state, "reason": shadow.reason, "steering": False}
+        return {"state": shadow.state, "reason": shadow.reason, "steering": False} | extra
     return None
 
 

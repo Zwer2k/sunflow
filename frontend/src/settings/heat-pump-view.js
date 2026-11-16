@@ -33,6 +33,16 @@ const METHODS = {
 const CAN_BLOCK = new Set(["sg_relays", "sg_select", "setpoint"]);
 const CAN_FORCE = new Set(["sg_relays", "sg_select"]);
 const STATES = { normal: t("normal"), boost: t("verstärkt"), block: t("gesperrt"), forced: t("Anlaufbefehl") };
+// Built-in heating rod: how its integration lets it be released, and Sunflow's modes per season
+const ROD_METHODS = {
+  block_switch: [t("Sperr-Schalter (an = gesperrt)"), t("z. B. Bosch, Buderus, Junkers über EMS-ESP: „Zusatzheizer deaktivieren“ (auxheateroff)")],
+  allow_switch: [t("Freigabe-Schalter (an = darf heizen)"), t("z. B. NIBE: „Allow additive heating“ bzw. „Zusatzheizung zulassen“")],
+  select: [t("Auswahl (frei/gesperrt oder Leistungsstufen)"), t("z. B. Panasonic über HeishaMon: „DHW/Room Heater State“; EMS-ESP: „maxheat…“ in kW-Stufen")],
+  limit: [t("Höchstleistung als Zahl"), t("z. B. NIBE: „Max int add. power“ in kW")],
+};
+const ROD_STATES = { free: t("frei (normal)"), blocked: t("gesperrt"), max: t("freigegeben (maximal)") };
+const ROD_HEATING = { need: t("Nur bei Bedarf"), auto: t("Wärmepumpe entscheidet") };
+const ROD_SUMMER = { pv: t("Bei PV-Überschuss"), need: t("Nur bei Bedarf"), auto: t("Wärmepumpe entscheidet") };
 const MODES = { off: t("Aus"), pv_only: t("Nur PV-Überschuss"), cost: t("Automatisch (nach Kosten)") };
 const RULE_DEFAULTS = {
   min_surplus_w: 1500, cheap_hours: 0, expensive_hours: 0, min_state_min: 20, block_max_min: 120, block_day_max_min: 240,
@@ -47,7 +57,9 @@ const EMPTY = {
   method: "", sg_contact1_entity: "", sg_contact2_entity: "", contact1_inverted: false, contact2_inverted: false,
   sg_select_entity: "", options: {}, setpoint_entity: "", setpoint_normal: "", surplus_entity: "", boost_switch_entity: "",
   use_block: false, use_forced: false,
-  rod_id: "", rod_heating_mode: "off", rod_summer_mode: "pv_only", rod_manual_h: "24",
+  rod_kind: "", rod_id: "", rod_heating_mode: "off", rod_summer_mode: "pv_only", rod_manual_h: "24",
+  rod_method: "block_switch", rod_entity: "", rod_options: {}, rod_limit_normal: "", rod_limit_max: "", rod_limit_blocked: "0",
+  rod_heating: "need", rod_summer: "pv", rod_bivalence: "-5", rod_min_state: "60", rod_released_until: null,
   rules: Object.fromEntries(Object.entries(RULE_DEFAULTS).map(([k, v]) => [k, String(v)])),
 };
 
@@ -90,6 +102,7 @@ function formOf(device, planning) {
     use_block: Boolean(settings.use_block),
     use_forced: Boolean(settings.use_forced),
     ...rodFormOf(settings.rod_id, planning),
+    ...builtinFormOf(settings.rod, role(ROD_ROLES[settings.rod?.method] ?? "")),
     rules: Object.fromEntries(Object.keys(RULE_DEFAULTS).map((k) => [k, toDisplay(settings[k] ?? RULE_DEFAULTS[k], "")])),
   };
 }
@@ -98,10 +111,33 @@ function formOf(device, planning) {
 function rodFormOf(rodId, planning) {
   const flex = (rodId && planning?.[rodId]) || {};
   return {
+    rod_kind: rodId ? "consumer" : "",
     rod_id: rodId ?? "",
     rod_heating_mode: flex.heating_mode ?? EMPTY.rod_heating_mode,
     rod_summer_mode: flex.summer_mode ?? EMPTY.rod_summer_mode,
     rod_manual_h: toDisplay(flex.manual_max_h ?? 24, ""),
+  };
+}
+
+const ROD_ROLES = { allow_switch: "rod_allow", block_switch: "rod_block", select: "rod_select", limit: "rod_limit" };
+
+/** The built-in rod part of the form. */
+function builtinFormOf(rod, entity) {
+  if (!rod) return {};
+  const number = (value) => (value != null ? toDisplay(value, "") : "");
+  return {
+    rod_kind: "builtin",
+    rod_method: rod.method,
+    rod_entity: entity,
+    rod_options: { ...(rod.options ?? {}) },
+    rod_limit_normal: number(rod.limit_normal),
+    rod_limit_max: number(rod.limit_max),
+    rod_limit_blocked: number(rod.limit_blocked ?? 0),
+    rod_heating: rod.heating_mode,
+    rod_summer: rod.summer_mode,
+    rod_bivalence: number(rod.bivalence_c),
+    rod_min_state: String(rod.min_state_min),
+    rod_released_until: rod.released_until ?? null,
   };
 }
 
@@ -125,7 +161,27 @@ function bodyOf(form) {
   const voltage = electric === "phase_current" ? number(form.voltage) : null;
   const setpoint = number(form.setpoint_normal);
   const rodHours = number(form.rod_manual_h);
-  if ([voltage, setpoint, rodHours, ...Object.values(rules)].includes(undefined)) return undefined;
+  const builtin = form.rod_kind === "builtin";
+  const rodNumbers = builtin
+    ? [number(form.rod_limit_normal), number(form.rod_limit_max), number(form.rod_limit_blocked), number(form.rod_bivalence)]
+    : [];
+  const rodMinutes = builtin ? Number.parseInt(form.rod_min_state, 10) : 60;
+  if ([voltage, setpoint, rodHours, ...rodNumbers, ...Object.values(rules)].includes(undefined) || !(rodMinutes > 0)) return undefined;
+  const [limitNormal, limitMax, limitBlocked, bivalence] = rodNumbers;
+  const rod = builtin
+    ? {
+      method: form.rod_method,
+      options: form.rod_method === "select" ? Object.fromEntries(Object.entries(form.rod_options).filter(([, option]) => option)) : {},
+      limit_normal: form.rod_method === "limit" ? limitNormal : null,
+      limit_max: form.rod_method === "limit" ? limitMax : null,
+      limit_blocked: form.rod_method === "limit" ? limitBlocked ?? 0 : 0,
+      heating_mode: form.rod_heating,
+      summer_mode: form.rod_summer,
+      bivalence_c: bivalence ?? -5,
+      min_state_min: rodMinutes,
+      released_until: form.rod_released_until,
+    }
+    : null;
   const method = form.method || null;
   return {
     name: form.name.trim(),
@@ -147,6 +203,7 @@ function bodyOf(form) {
     setpoint_entity: form.setpoint_entity || null,
     surplus_entity: form.surplus_entity || null,
     boost_switch_entity: form.boost_switch_entity || null,
+    rod_entity: builtin ? form.rod_entity || null : null,
     heat_pump: {
       method,
       contact1_inverted: form.contact1_inverted,
@@ -155,7 +212,8 @@ function bodyOf(form) {
       use_forced: Boolean(method && CAN_FORCE.has(method) && form.use_forced),
       options: Object.fromEntries(Object.entries(form.options).filter(([, option]) => option)),
       setpoint_normal: setpoint,
-      rod_id: form.rod_id || null,
+      rod: rod,
+      rod_id: form.rod_kind === "consumer" ? form.rod_id || null : null,
       ...Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v ?? RULE_DEFAULTS[k]])),
     },
   };
@@ -179,6 +237,19 @@ function guessOptions(choices, current) {
 }
 
 /** "10-01" -> "01.10" */
+/** Map a select's options to the rod states by their names (blocked/free, kW steps). */
+function guessRodOptions(choices) {
+  const kw = (o) => { const m = /([\d.,]+)\s*kw/i.exec(o); return m ? Number.parseFloat(m[1].replace(",", ".")) : null; };
+  const powers = choices.map(kw);
+  if (powers.some((p) => p !== null)) {
+    const known = choices.filter((_, i) => powers[i] !== null);
+    const sorted = [...known].sort((a, b) => kw(a) - kw(b));
+    return { blocked: sorted[0], max: sorted.at(-1) };
+  }
+  const find = (re) => choices.find((o) => re.test(o)) ?? "";
+  return { free: find(/free|frei|allow|on\b|an\b/i), blocked: find(/block|sperr|off\b|aus\b/i) };
+}
+
 function mmddToText(mmdd) {
   const [month, day] = (mmdd ?? "").split("-");
   return month && day ? `${day}.${month}` : "";
@@ -284,7 +355,7 @@ class SunflowHeatPump extends LitElement {
       ${pumps.map((d) => (this._editId === d.id ? this._renderEditor() : this._renderPump(d)))}
       ${this._form && this._editId === null ? this._renderEditor() : nothing}
       ${!this._form ? html`<div><button class="secondary" @click=${() => this._edit(null)}>${pumps.length ? t("Weitere Wärmepumpe hinzufügen …") : t("Wärmepumpe hinzufügen …")}</button></div>` : nothing}
-      ${pumps.some((d) => d.heat_pump?.rod_id) ? this._renderSeason() : nothing}
+      ${pumps.some((d) => d.heat_pump?.rod_id || d.heat_pump?.rod) ? this._renderSeason() : nothing}
     `;
   }
 
@@ -330,12 +401,42 @@ class SunflowHeatPump extends LitElement {
 
   /** Which rod the heat pump has and how it runs now. */
   _renderRodLine(device) {
+    const builtin = device.heat_pump?.rod;
+    if (builtin) return this._renderBuiltinLine(device, builtin);
     const rod = this._config.devices.find((d) => d.id === device.heat_pump?.rod_id);
     if (!rod) return nothing;
     const flex = this._config.planning?.[rod.id] ?? {};
     const active = this._season?.active;
     const mode = active ? flex.heating_mode : flex.summer_mode;
     return html`<div class="small">${t("Heizstab: {name}", { name: rod.name })} · ${active ? t("Heizperiode") : t("Sommer")}: ${MODES[mode] ?? "–"}</div>`;
+  }
+
+  _renderBuiltinLine(device, rod) {
+    const steering = this._live?.consumers?.find((c) => c.device_id === device.id)?.heat_pump?.control;
+    const control = steering?.rod;
+    const until = rod.released_until ? new Date(rod.released_until) : null;
+    const released = until && until > new Date();
+    const time = released ? until.toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    return html`<div class="title-row small">
+      <span>${t("Eingebauter Heizstab")}${control ? html`: ${steering.steering ? nothing : t("Sunflow würde setzen")} <strong>${ROD_STATES[control.state] ?? control.state}</strong> – ${control.reason}` : nothing}</span>
+      <span class="spacer"></span>
+      ${released
+        ? html`<span class="muted">${t("freigegeben bis {time}", { time })}</span>
+          <button class="secondary" ?disabled=${this._busy} @click=${() => this._releaseRod(device, 0)}>${t("Freigabe beenden")}</button>`
+        : html`<button class="secondary" ?disabled=${this._busy} @click=${() => this._releaseRod(device, 24)}>${t("Heizstab 24 h freigeben")}</button>`}
+    </div>`;
+  }
+
+  async _releaseRod(device, hours) {
+    this._busy = true;
+    try {
+      await api.releaseHeatPumpRod(device.id, hours);
+      await this._load();
+    } catch (err) {
+      this._error = t("Heizstab konnte nicht freigegeben werden: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+    }
   }
 
   async _edit(device) {
@@ -448,7 +549,7 @@ class SunflowHeatPump extends LitElement {
         </fieldset>
 
         ${this._renderControl(form, candidates, picker, check)}
-        ${this._renderRodGroup(form)}
+        ${this._renderRodGroup(form, candidates)}
 
         <div class="actions">
           <button class="primary" ?disabled=${!valid || this._busy} @click=${() => this._save()}>${this._editId ? t("Speichern") : t("Hinzufügen")}</button>
@@ -573,6 +674,21 @@ class SunflowHeatPump extends LitElement {
       heat_on: form.heat_on || Boolean(heatPower || heatEnergy),
       cop_on: form.cop_on || Boolean(cop),
     };
+    if (!form.rod_kind) this._form = { ...this._form, ...this._suggestRod(of, text, candidates) };
+  }
+
+  /** The built-in rod's entity among the device's, by the names integrations use (EMS-ESP, NIBE, HeishaMon). */
+  _suggestRod(of, text, candidates) {
+    const found = [
+      ["block_switch", of(candidates.switches, (c) => /auxheateroff|zusatzheiz\w*\s*(deaktiv|aus)|disable.*(aux|add)/i.test(text(c)))],
+      ["allow_switch", of(candidates.switches, (c) => /(allow|permit).*add|additive|zusatzheiz\w*\s*(zulass|erlaub)/i.test(text(c)))],
+      ["select", of(candidates.selects, (c) => /heater.?state|room.?heater|dhw.?heater/i.test(text(c)))],
+      ["limit", of(candidates.numbers, (c) => /max\w*\s*(int|internal)\w*\s*add|max.*zusatzheiz/i.test(text(c)))],
+    ].find(([, entity]) => entity);
+    if (!found) return {};
+    const [method, entity] = found;
+    const chosen = (candidates.selects ?? []).find((c) => c.entity_id === entity);
+    return { rod_kind: "builtin", rod_method: method, rod_entity: entity, rod_options: method === "select" ? guessRodOptions(chosen?.options ?? []) : {} };
   }
 
   async _save() {
@@ -585,7 +701,7 @@ class SunflowHeatPump extends LitElement {
     try {
       if (this._editId) await api.updateManual(this._editId, body);
       else await api.addManual(body);
-      if (this._form.rod_id) await this._saveRodModes(this._form);
+      if (this._form.rod_kind === "consumer" && this._form.rod_id) await this._saveRodModes(this._form);
       this._form = null;
       this._editId = null;
       await this._load();
@@ -618,8 +734,103 @@ class SunflowHeatPump extends LitElement {
     }
   }
 
-  /** The heating rod: a consumer that heats, in the hot water tank or buffer; off while the heat pump heats. */
-  _renderRodGroup(form) {
+  /** The heating rod: the heat pump's own (released through its integration) or, as the alternative, a consumer. */
+  _renderRodGroup(form, candidates) {
+    const kinds = {
+      "": t("kein Heizstab"),
+      builtin: t("Eingebaut – über die Integration der Wärmepumpe"),
+      consumer: t("Eigener Heizstab – als Verbraucher angelegt"),
+    };
+    return html`
+      <fieldset class="group">
+        <legend>${t("Heizstab (optional)")}</legend>
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">${t("Heizstab")}</span>
+            <select @change=${(e) => this._set({ rod_kind: e.target.value })}>
+              ${Object.entries(kinds).map(([value, label]) => html`<option value=${value} ?selected=${form.rod_kind === value}>${label}</option>`)}
+            </select>
+          </label>
+        </div>
+        ${form.rod_kind === "builtin" ? this._renderBuiltinRod(form, candidates) : nothing}
+        ${form.rod_kind === "consumer" ? this._renderRodConsumer(form) : nothing}
+      </fieldset>
+    `;
+  }
+
+  _renderBuiltinRod(form, candidates) {
+    const method = form.rod_method;
+    const lists = { allow_switch: candidates.switches, block_switch: candidates.switches, select: candidates.selects, limit: candidates.numbers };
+    const selected = (candidates.selects ?? []).find((c) => c.entity_id === form.rod_entity);
+    const unit = (candidates.numbers ?? []).find((c) => c.entity_id === form.rod_entity)?.unit ?? "";
+    const value = (field, label, help = null) => html`<label class="field">
+      <span class="field-label">${label}</span>
+      <span class="input-unit"><input inputmode="decimal" .value=${form[field]}
+        @input=${(e) => this._set({ [field]: e.target.value })}><span class="muted">${unit}</span></span>
+      ${help ? html`<span class="small muted">${help}</span>` : nothing}
+    </label>`;
+    const mode = (field, label, modes, help) => html`<label class="field">
+      <span class="field-label">${label}</span>
+      <select @change=${(e) => this._set({ [field]: e.target.value })}>
+        ${Object.entries(modes).map(([key, text]) => html`<option value=${key} ?selected=${form[field] === key}>${text}</option>`)}
+      </select>
+      <span class="small muted">${help}</span>
+    </label>`;
+    return html`
+      <p class="small muted">${t("Die Zusatz- oder Notheizung in der Wärmepumpe. Sunflow kann sie nur sperren, freigeben oder ihre Leistung begrenzen – ob sie heizt, entscheidet die Wärmepumpe. Gesperrt wird sie, solange die Wärmepumpe allein reicht, denn sie macht aus 1 kWh Strom nur 1 kWh Wärme statt 3–4.")}</p>
+      <div class="fields">
+        <label class="field">
+          <span class="field-label">${t("Die Integration bietet")}</span>
+          <select @change=${(e) => this._set({ rod_method: e.target.value, rod_entity: "", rod_options: {} })}>
+            ${Object.entries(ROD_METHODS).map(([key, [label]]) => html`<option value=${key} ?selected=${method === key}>${label}</option>`)}
+          </select>
+          <span class="small muted">${ROD_METHODS[method][1]}</span>
+        </label>
+        <div class="field">
+          <span class="field-label">${t("Entität")}</span>
+          <sf-picker label=${t("Entität")} placeholder=${t("Name oder Entität suchen …")}
+            .value=${form.rod_entity} .options=${(lists[method] ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} ${c.unit ?? ""}` }))}
+            @change=${(e) => {
+              const chosen = (candidates.selects ?? []).find((c) => c.entity_id === e.detail.value);
+              this._set({ rod_entity: e.detail.value, ...(method === "select" ? { rod_options: guessRodOptions(chosen?.options ?? []) } : {}) });
+            }}></sf-picker>
+        </div>
+        ${method === "select" && selected
+          ? Object.entries(ROD_STATES).map(([state, label]) => html`<label class="field">
+              <span class="field-label">${t("Option für „{state}“", { state: label })}</span>
+              <select @change=${(e) => this._set({ rod_options: { ...this._form.rod_options, [state]: e.target.value } })}>
+                <option value="">${state === "max" ? t("wie „frei“") : t("– wählen –")}</option>
+                ${selected.options.map((o) => html`<option value=${o} ?selected=${form.rod_options[state] === o}>${o}</option>`)}
+              </select>
+            </label>`)
+          : nothing}
+        ${method === "limit"
+          ? html`${value("rod_limit_normal", t("Normaler Wert"), t("wie vom Installateur eingestellt"))}
+            ${value("rod_limit_max", t("Wert bei Freigabe (optional)"), t("leer: wie normal"))}
+            ${value("rod_limit_blocked", t("Wert für gesperrt"))}`
+          : nothing}
+      </div>
+      <div class="fields">
+        ${mode("rod_heating", t("In der Heizperiode"), ROD_HEATING, t("Nur bei Bedarf: gesperrt, außer es ist kälter als die Grenze unten, der Strom kostet weniger als nichts oder du gibst ihn frei."))}
+        ${mode("rod_summer", t("Im Sommer"), ROD_SUMMER, t("Bei PV-Überschuss: zusätzlich freigegeben, solange Überschuss eingeplant ist."))}
+        <label class="field">
+          <span class="field-label">${t("Frei unter Außentemperatur")}</span>
+          <span class="input-unit"><input inputmode="decimal" .value=${form.rod_bivalence}
+            @input=${(e) => this._set({ rod_bivalence: e.target.value })}><span class="muted">°C</span></span>
+          <span class="small muted">${t("etwa der Bivalenzpunkt der Wärmepumpe; ohne Außentemperatur bleibt er frei")}</span>
+        </label>
+        <label class="field">
+          <span class="field-label">${t("Höchstens ein Wechsel alle")}</span>
+          <span class="input-unit"><input inputmode="numeric" .value=${form.rod_min_state}
+            @input=${(e) => this._set({ rod_min_state: e.target.value })}><span class="muted">min</span></span>
+          <span class="small muted">${t("Die Einstellung liegt meist im Flash-Speicher der Wärmepumpe – selten schreiben.")}</span>
+        </label>
+      </div>
+      <p class="small muted">${t("Reicht die Wärmepumpe nicht, gibst du den Heizstab auf dieser Seite für 24 h frei. Wird die Wärmepumpe nicht mehr von Sunflow gesteuert, stellt Sunflow den normalen Wert wieder her.")}</p>
+    `;
+  }
+
+  _renderRodConsumer(form) {
     const taken = new Set(this._heatPumps.filter((d) => d.id !== this._editId).map((d) => d.heat_pump?.rod_id).filter(Boolean));
     const rods = this._rods.filter((d) => !taken.has(d.id));
     const mode = (field, label, help) => html`<label class="field">
@@ -630,37 +841,34 @@ class SunflowHeatPump extends LitElement {
       <span class="small muted">${help}</span>
     </label>`;
     return html`
-      <fieldset class="group">
-        <legend>${t("Heizstab (optional)")}</legend>
-        <p class="small muted">${t("Gemeint ist ein Heizstab, den Sunflow schaltet – meist im Warmwasser- oder Pufferspeicher. Den eingebauten Heizstab der Wärmepumpe (Zusatz- oder Notheizung) regelt die Wärmepumpe selbst; er gehört nicht hierher.")}</p>
-        <div class="fields">
-          <label class="field">
-            <span class="field-label">${t("Heizstab")}</span>
-            <select @change=${(e) => this._set(rodFormOf(e.target.value || null, this._config.planning))}>
-              <option value="" ?selected=${!form.rod_id}>${t("kein Heizstab")}</option>
-              ${rods.map((rod) => html`<option value=${rod.id} ?selected=${form.rod_id === rod.id}>${rod.name}</option>`)}
-            </select>
-            ${rods.length
-              ? nothing
-              : html`<span class="small muted">${t("Einen Heizstab legst du unter Geräte → Eigene Verbraucher an, mit Art „Wärme“ (z. B. „Relais je Phase (1–3)“ oder „Leistungsstufen (Auswahl)“). Danach erscheint er hier.")}</span>`}
-          </label>
-        </div>
-        ${form.rod_id
-          ? html`
-            <p class="small muted">${t("Die Wärmepumpe macht aus 1 kWh Strom 3–4 kWh Wärme, der Heizstab nur 1 kWh. In der Heizperiode bekommt die Wärmepumpe deshalb den PV-Überschuss (Verstärken), der Heizstab bleibt aus. Im Sommer genügt der Überschuss meist für beide: Die Wärmepumpe hält das Warmwasser auf ihrem Sollwert, der Heizstab heizt mit dem restlichen Überschuss darüber hinaus, z. B. auf 60–65 °C. Das spart der Wärmepumpe Starts und hohe Temperaturen, bei denen ihr COP sinkt.")}</p>
-            <div class="fields">
-              ${mode("rod_heating_mode", t("In der Heizperiode"), t("empfohlen: Aus"))}
-              ${mode("rod_summer_mode", t("Im Sommer"), t("empfohlen: Nur PV-Überschuss"))}
-              <label class="field">
-                <span class="field-label">${t("Von Hand an höchstens")}</span>
-                <span class="input-unit"><input inputmode="decimal" .value=${form.rod_manual_h}
-                  @input=${(e) => this._set({ rod_manual_h: e.target.value })}><span class="muted">h</span></span>
-                <span class="small muted">${t("Reicht die Wärmepumpe nicht, den Heizstab unter Steuerung auf „Schnellstmöglich“ stellen; das endet nach dieser Zeit.")}</span>
-              </label>
-            </div>
-            <p class="small muted">${t("Bis zu welcher Temperatur der Heizstab heizt, stellst du unter Verbraucher ein (Zieltemperatur).")}</p>`
-          : nothing}
-      </fieldset>
+      <p class="small muted">${t("Ein Heizstab außerhalb der Wärmepumpe, den Sunflow selbst schaltet – meist im Warmwasser- oder Pufferspeicher.")}</p>
+      <div class="fields">
+        <label class="field">
+          <span class="field-label">${t("Verbraucher")}</span>
+          <select @change=${(e) => this._set({ ...rodFormOf(e.target.value || null, this._config.planning), rod_kind: "consumer" })}>
+            <option value="" ?selected=${!form.rod_id}>${t("– wählen –")}</option>
+            ${rods.map((rod) => html`<option value=${rod.id} ?selected=${form.rod_id === rod.id}>${rod.name}</option>`)}
+          </select>
+          ${rods.length
+            ? nothing
+            : html`<span class="small muted">${t("Einen Heizstab legst du unter Geräte → Eigene Verbraucher an, mit Art „Wärme“ (z. B. „Relais je Phase (1–3)“ oder „Leistungsstufen (Auswahl)“). Danach erscheint er hier.")}</span>`}
+        </label>
+      </div>
+      ${form.rod_id
+        ? html`
+          <p class="small muted">${t("Die Wärmepumpe macht aus 1 kWh Strom 3–4 kWh Wärme, der Heizstab nur 1 kWh. In der Heizperiode bekommt die Wärmepumpe deshalb den PV-Überschuss (Verstärken), der Heizstab bleibt aus. Im Sommer genügt der Überschuss meist für beide: Die Wärmepumpe hält das Warmwasser auf ihrem Sollwert, der Heizstab heizt mit dem restlichen Überschuss darüber hinaus, z. B. auf 60–65 °C. Das spart der Wärmepumpe Starts und hohe Temperaturen, bei denen ihr COP sinkt.")}</p>
+          <div class="fields">
+            ${mode("rod_heating_mode", t("In der Heizperiode"), t("empfohlen: Aus"))}
+            ${mode("rod_summer_mode", t("Im Sommer"), t("empfohlen: Nur PV-Überschuss"))}
+            <label class="field">
+              <span class="field-label">${t("Von Hand an höchstens")}</span>
+              <span class="input-unit"><input inputmode="decimal" .value=${form.rod_manual_h}
+                @input=${(e) => this._set({ rod_manual_h: e.target.value })}><span class="muted">h</span></span>
+              <span class="small muted">${t("Reicht die Wärmepumpe nicht, den Heizstab unter Steuerung auf „Schnellstmöglich“ stellen; das endet nach dieser Zeit.")}</span>
+            </label>
+          </div>
+          <p class="small muted">${t("Bis zu welcher Temperatur der Heizstab heizt, stellst du unter Verbraucher ein (Zieltemperatur).")}</p>`
+        : nothing}
     `;
   }
 

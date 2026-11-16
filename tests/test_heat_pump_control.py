@@ -10,8 +10,15 @@ from fastapi.testclient import TestClient
 import pytest
 from sunflow.api import create_app
 from sunflow.api.devices import ManualDevice, _manual_setup
-from sunflow.config.models import HeatPumpSettings
-from sunflow.control.heat_pump import HeatPumpTrack, next_state, runtime, wanted_state
+from sunflow.config.models import BuiltinRod, HeatPumpSettings
+from sunflow.control.heat_pump import (
+    HeatPumpTrack,
+    next_rod,
+    next_state,
+    runtime,
+    wanted_rod,
+    wanted_state,
+)
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.executor import plan_steps
 from sunflow.devices.profiles import ProfileLibrary
@@ -254,3 +261,87 @@ def test_control_kind(library: ProfileLibrary, profile: str, kind: str) -> None:
     from sunflow.api.control import control_kind
 
     assert control_kind(library.profiles[profile]) == kind
+
+
+ROD_SETTINGS = BuiltinRod(method="select", options={"free": "free", "blocked": "blocked"})
+
+
+@pytest.mark.parametrize(
+    ("rod", "hour", "season", "outside", "expected"),
+    [
+        pytest.param(ROD_SETTINGS, 0, True, 5.0, "blocked", id="heat pump copes"),
+        pytest.param(ROD_SETTINGS, 0, True, -8.0, "free", id="colder than the bivalence point"),
+        pytest.param(ROD_SETTINGS, 0, True, None, "free", id="no outside temperature"),
+        pytest.param(ROD_SETTINGS, 5, True, 5.0, "max", id="negative price"),
+        pytest.param(ROD_SETTINGS, 0, False, 20.0, "max", id="summer surplus"),
+        pytest.param(ROD_SETTINGS.model_copy(update={"summer_mode": "need"}), 0, False, 20.0, "blocked", id="summer only on need"),
+        pytest.param(ROD_SETTINGS.model_copy(update={"heating_mode": "auto"}), 0, True, 5.0, "free", id="heat pump decides"),
+        pytest.param(
+            ROD_SETTINGS.model_copy(update={"released_until": START + timedelta(hours=2)}), 0, True, 5.0, "max", id="released by hand"
+        ),
+    ],
+)
+def test_wanted_rod(rod: BuiltinRod, hour: int, season: bool, outside: float | None, expected: str) -> None:
+    """The built-in rod is blocked while the heat pump copes and released when cold, cheap, sunny or by hand."""
+    slots = _day(PRICES, 2000)
+    now = START + timedelta(hours=hour, minutes=5)
+
+    assert wanted_rod(rod, slots, now, season, outside, 1500).state == expected
+
+
+def test_rod_changes_rarely() -> None:
+    """The rod's state is held for min_state_min; releasing it for the cold is never held back."""
+    rod = ROD_SETTINGS.model_copy(update={"min_state_min": 60})
+    track = HeatPumpTrack()
+    slots = _day(PRICES)
+
+    assert next_rod(rod, slots, START, True, 5.0, 1500, track).state == "blocked"
+    assert next_rod(rod, _day(PRICES, 2000), START + timedelta(minutes=30), False, 20.0, 1500, track).state == "blocked"
+    assert next_rod(rod, slots, START + timedelta(minutes=40), True, -10.0, 1500, track).state == "free"
+
+
+@pytest.mark.parametrize(
+    ("rod", "state", "expected"),
+    [
+        pytest.param(BuiltinRod(method="allow_switch"), "blocked", {"rod_allow": "off"}, id="allow switch blocked"),
+        pytest.param(BuiltinRod(method="block_switch"), "blocked", {"rod_block": "on"}, id="block switch blocked"),
+        pytest.param(BuiltinRod(method="block_switch"), "max", {"rod_block": "off"}, id="block switch released"),
+        pytest.param(
+            BuiltinRod(method="select", options={"free": "3 kW", "blocked": "0 kW", "max": "9 kW"}), "max", {"rod_option": "9 kW"},
+            id="select max",
+        ),
+        pytest.param(BuiltinRod(method="select", options={"free": "free", "blocked": "blocked"}), "max", {"rod_option": "free"}, id="select without max"),
+        pytest.param(BuiltinRod(method="limit", limit_normal=3, limit_max=9), "max", {"rod_limit": 9}, id="limit max"),
+        pytest.param(BuiltinRod(method="limit", limit_normal=3), "blocked", {"rod_limit": 0}, id="limit blocked"),
+    ],
+)
+def test_rod_runtime(rod: BuiltinRod, state: str, expected: dict[str, object]) -> None:
+    """What each method of the built-in rod writes for a state."""
+    values = runtime("normal", HeatPumpSettings(rod=rod), 0.0, state)
+
+    assert {k: values[k] for k in expected} == expected
+
+
+def test_rod_steps_go_to_flash(library: ProfileLibrary) -> None:
+    """The rod's settings are written only when they differ, counted as flash writes."""
+    profile = library.profiles["generic/heat_pump"]
+    settings = HeatPumpSettings(rod=BuiltinRod(method="block_switch"))
+
+    calls = plan_steps(profile["heat_pump_control"], runtime("normal", settings, 0.0, "blocked"), [], "ram", {"rod_block": "switch.aux_off"})
+
+    assert [(c.entity_id, c.service, c.storage, c.write) for c in calls] == [("switch.aux_off", "turn_on", "eeprom", "if_differs")]
+
+
+@pytest.mark.parametrize(
+    ("settings", "status"),
+    [
+        pytest.param({"rod": {"method": "block_switch"}}, 200, id="block switch"),
+        pytest.param({"rod": {"method": "limit"}}, 422, id="limit without normal value"),
+        pytest.param({"rod": {"method": "block_switch"}, "rod_id": "x"}, 422, id="not both rods"),
+    ],
+)
+def test_builtin_rod_setup(tmp_path: Path, settings: dict[str, object], status: int) -> None:
+    """The built-in rod needs its entity and values, and excludes a rod consumer."""
+    body = HEAT_PUMP | {"rod_entity": "switch.aux_off", "heat_pump": settings}
+
+    assert _client(tmp_path).post("/api/v1/config/devices/manual", json=body).status_code == status

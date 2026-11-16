@@ -238,5 +238,16 @@
   "Bitte den normalen Sollwert angeben": "Please enter the normal setpoint",
   "Bitte die Entität für die Ansteuerung wählen ({domains})": "Please choose the entity for the control ({domains})",
   "Der Heizstab muss ein Verbraucher mit Art „Wärme“ sein": "The heating rod must be a load of type “Heat”",
-  "Der Heizstab gehört schon zu einer anderen Wärmepumpe": "The heating rod already belongs to another heat pump"
+  "Der Heizstab gehört schon zu einer anderen Wärmepumpe": "The heating rod already belongs to another heat pump",
+  "Bitte die Entität für den Heizstab wählen ({domains})": "Please choose the entity for the heating rod ({domains})",
+  "Bitte die Optionen für „frei“ und „gesperrt“ wählen": "Please choose the options for “free” and “blocked”",
+  "Bitte den normalen Wert der Heizstab-Leistung angeben": "Please enter the normal value of the heating rod's power",
+  "Heizstab frei": "heating rod free",
+  "Heizstab gesperrt": "heating rod blocked",
+  "Heizstab freigegeben": "heating rod released",
+  "Wärmepumpe reicht": "heat pump copes",
+  "von Hand freigegeben": "released by hand",
+  "Wärmepumpe entscheidet": "heat pump decides",
+  "keine Außentemperatur – Wärmepumpe entscheidet": "no outside temperature – heat pump decides",
+  "kälter als {limit} °C": "colder than {limit} °C"
 }

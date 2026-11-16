@@ -190,6 +190,39 @@ class Connection(BaseModel):
 HeatPumpState = Literal["block", "normal", "boost", "forced"]
 
 
+RodState = Literal["free", "blocked", "max"]
+
+
+class BuiltinRod(BaseModel):
+    """The heat pump's own heating rod (backup heater), as far as its integration lets Sunflow release it.
+
+    Sunflow never switches it on itself: it blocks it, leaves it free (the heat pump's normal setting)
+    or raises its limit; the heat pump's control decides when it runs. Methods:
+    - allow_switch: a switch that permits the rod (e.g. NIBE "allow additive heating")
+    - block_switch: a switch that blocks it (e.g. EMS-ESP "auxheateroff")
+    - select: a select with an option per state (e.g. HeishaMon blocked/free, EMS-ESP kW steps)
+    - limit: a number with the rod's maximum power (e.g. NIBE "max int add. power" in kW)
+    """
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    method: Literal["allow_switch", "block_switch", "select", "limit"]
+    # select: state -> option
+    options: dict[RodState, str] = Field(default_factory=dict)
+    # limit: the number's value for free (the installer's setting), max and blocked
+    limit_normal: float | None = Field(default=None, ge=0, le=100_000)
+    limit_max: float | None = Field(default=None, ge=0, le=100_000)
+    limit_blocked: float = Field(default=0, ge=0, le=100_000)
+    # need: blocked unless it is colder than bivalence_c, prices are negative or released by hand;
+    # pv: like need, and released with PV surplus; auto: the heat pump decides alone
+    heating_mode: Literal["auto", "need"] = "need"
+    summer_mode: Literal["auto", "need", "pv"] = "pv"
+    bivalence_c: float = Field(default=-5, ge=-30, le=20)
+    # Its settings are mostly kept in the heat pump's flash memory: changed rarely
+    min_state_min: int = Field(default=60, ge=15, le=480)
+    released_until: datetime | None = None
+
+
 class HeatPumpSettings(BaseModel):
     """How Sunflow steers a heat pump and when.
 
@@ -228,8 +261,16 @@ class HeatPumpSettings(BaseModel):
     min_state_min: int = Field(default=20, ge=5, le=120)
     block_max_min: int = Field(default=120, ge=15, le=240)
     block_day_max_min: int = Field(default=240, ge=15, le=720)
-    # The heating rod beside it (a consumer of kind heater); its season modes count only while linked
+    # The heat pump's own heating rod, or (the alternative) a consumer of kind heater beside it;
+    # the consumer's season modes count only while linked
+    rod: BuiltinRod | None = None
     rod_id: str | None = None
+
+    @model_validator(mode="after")
+    def _one_rod(self) -> HeatPumpSettings:
+        if self.rod is not None and self.rod_id is not None:
+            raise ValueError("either the built-in heating rod or a consumer, not both")
+        return self
 
 
 class ChargerSettings(BaseModel):

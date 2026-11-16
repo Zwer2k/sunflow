@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any
 
-from sunflow.config.models import HeatPumpSettings, HeatPumpState
+from sunflow.config.models import BuiltinRod, HeatPumpSettings, HeatPumpState, RodState
 from sunflow.i18n import N_, t
 
 PREFIX = "hp:"
@@ -32,7 +32,22 @@ def _switch(on: bool, inverted: bool = False) -> str:
     return "on" if on != inverted else "off"
 
 
-def runtime(state: str, settings: HeatPumpSettings, surplus_w: float = 0.0) -> dict[str, Any]:
+def rod_runtime(state: str, rod: BuiltinRod | None) -> dict[str, Any]:
+    """Variables of the built-in rod's steps; a state its entity cannot show falls back to free."""
+    if rod is None:
+        return {}
+    options = rod.options
+    normal = rod.limit_normal or 0.0
+    limit = {"blocked": rod.limit_blocked, "max": rod.limit_max if rod.limit_max is not None else normal}
+    return {
+        "rod_allow": _switch(state != "blocked"),
+        "rod_block": _switch(state == "blocked"),
+        "rod_option": options.get(state) or options.get("free", ""),  # type: ignore[call-overload]
+        "rod_limit": limit.get(state, normal),
+    }
+
+
+def runtime(state: str, settings: HeatPumpSettings, surplus_w: float = 0.0, rod: str = "free") -> dict[str, Any]:
     """Variables of the profile's steps for a state; only the method's own roles are bound."""
     contact1, contact2 = CONTACTS[state]
     if settings.method == "sg_relay":
@@ -48,7 +63,7 @@ def runtime(state: str, settings: HeatPumpSettings, surplus_w: float = 0.0) -> d
         "setpoint": setpoint.get(state, normal),
         "surplus_w": round(surplus_w) if state in ("boost", "forced") else 0,
         "boost_switch": _switch(state in ("boost", "forced")),
-    }
+    } | rod_runtime(rod, settings.rod)
 
 
 @dataclass(kw_only=True)
@@ -60,6 +75,8 @@ class HeatPumpTrack:
     block_day: date | None = None
     blocked: timedelta = field(default_factory=timedelta)
     last_tick: datetime | None = None
+    rod: str = "free"
+    rod_since: datetime | None = None
 
     def advance(self, now: datetime, tz: tzinfo) -> None:
         """Count the time blocked since the last step; a new day starts from zero."""
@@ -140,6 +157,62 @@ def next_state(
     elif track.since is None:
         track.since = now
     return choice
+
+
+@dataclass(frozen=True, kw_only=True)
+class RodChoice:
+    """What the built-in rod may do now, and why."""
+
+    state: RodState
+    reason: str
+    # Released for safety or by hand: not held back by the minimum time
+    urgent: bool = False
+
+
+def wanted_rod(
+    rod: BuiltinRod, slots: list[Any], now: datetime, season: bool, outside_c: float | None, min_surplus_w: float
+) -> RodChoice:
+    """Block the rod while the heat pump copes; release it when cold, cheap, sunny or by hand."""
+    if rod.released_until is not None and now < rod.released_until:
+        return RodChoice(state="max", reason=t("von Hand freigegeben"), urgent=True)
+    mode = rod.heating_mode if season else rod.summer_mode
+    if mode == "auto":
+        return RodChoice(state="free", reason=t("Wärmepumpe entscheidet"), urgent=True)
+    if outside_c is None:
+        # Blocking blind could leave the house cold below the bivalence point
+        return RodChoice(state="free", reason=t("keine Außentemperatur – Wärmepumpe entscheidet"), urgent=True)
+    if outside_c < rod.bivalence_c:
+        return RodChoice(state="free", reason=t("kälter als {limit} °C", limit=f"{rod.bivalence_c:g}"), urgent=True)
+    slot = next((s for s in slots if s.start <= now < s.end), None)
+    if slot is not None and slot.price < 0:
+        return RodChoice(state="max", reason=t("negativer Strompreis"))
+    surplus = max(slot.export_w, 0.0) + max(getattr(slot, "curtail_w", 0.0), 0.0) if slot is not None else 0.0
+    if mode == "pv" and surplus >= min_surplus_w:
+        return RodChoice(state="max", reason=t("PV-Überschuss"))
+    return RodChoice(state="blocked", reason=t("Wärmepumpe reicht"))
+
+
+def next_rod(
+    rod: BuiltinRod, slots: list[Any], now: datetime, season: bool, outside_c: float | None, min_surplus_w: float,
+    track: HeatPumpTrack,
+) -> RodChoice:
+    """The wanted rod state, changed at most every min_state_min (its settings sit in flash memory)."""
+    choice = wanted_rod(rod, slots, now, season, outside_c, min_surplus_w)
+    young = track.rod_since is not None and now - track.rod_since < timedelta(minutes=rod.min_state_min)
+    if choice.state != track.rod and young and not choice.urgent:
+        held: RodState = track.rod  # type: ignore[assignment]
+        return RodChoice(state=held, reason=t("{state} bleibt noch (Mindestdauer)", state=rod_label(held)))
+    if choice.state != track.rod or track.rod_since is None:
+        track.rod, track.rod_since = choice.state, now
+    return choice
+
+
+ROD_LABELS = {"free": N_("Heizstab frei"), "blocked": N_("Heizstab gesperrt"), "max": N_("Heizstab freigegeben")}
+
+
+def rod_label(state: str) -> str:
+    """The rod's state for people."""
+    return t(ROD_LABELS.get(state, state))
 
 
 STATE_LABELS = {"block": N_("gesperrt"), "normal": N_("normal"), "boost": N_("verstärkt"), "forced": N_("Anlaufbefehl")}

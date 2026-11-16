@@ -1,6 +1,7 @@
 # A heat pump added by hand. Every measurement is optional; from two of electrical power,
 # heat output and COP Sunflow computes the third. Optionally steered: SG-Ready (two relays,
-# contact 2 only or a select), a raised setpoint, the PV surplus as a number or a boost switch.
+# contact 2 only or a select), a raised setpoint, the PV surplus as a number or a boost switch;
+# its built-in heating rod blocked, left free or released through the heat pump's integration.
 # Only the roles of the chosen method are bound; the others are left out of the steps.
 profile: generic/heat_pump
 version: 1
@@ -29,6 +30,10 @@ roles:
   setpoint: {key: manual_setpoint, unit: "°C", optional: true}
   surplus_power: {key: manual_surplus_power, unit: W, optional: true}
   boost_switch: {key: manual_boost_switch, optional: true}
+  rod_allow: {key: manual_rod_allow, optional: true}
+  rod_block: {key: manual_rod_block, optional: true}
+  rod_select: {key: manual_rod_select, optional: true}
+  rod_limit: {key: manual_rod_limit, optional: true}
 
 parameters:
   voltage: {unit: V, default: 230, min: 100, max: 260}
@@ -41,3 +46,8 @@ heat_pump_control:
   - number: {role: setpoint, value: "{{ setpoint }}", optional: true, write: if_differs}
   - number: {role: surplus_power, value: "{{ surplus_w }}", optional: true, write: if_differs, tolerance: 100}
   - switch: {role: boost_switch, state: "{{ boost_switch }}", optional: true, write: if_differs}
+  # The rod's settings are kept in the heat pump's flash memory: counted against the daily write limit
+  - switch: {role: rod_allow, state: "{{ rod_allow }}", optional: true, write: if_differs, storage: eeprom}
+  - switch: {role: rod_block, state: "{{ rod_block }}", optional: true, write: if_differs, storage: eeprom}
+  - select: {role: rod_select, option: "{{ rod_option }}", optional: true, write: if_differs, storage: eeprom}
+  - number: {role: rod_limit, value: "{{ rod_limit }}", optional: true, write: if_differs, storage: eeprom}

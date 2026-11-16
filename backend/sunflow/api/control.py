@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from sunflow.config.models import (
     BATTERY_PRIORITY_ID,
@@ -268,6 +268,27 @@ async def set_heating_season(request: Request, body: HeatingSeason) -> dict[str,
     # Checked again before the plan
     _replan(request)
     return config.heating_season.model_dump(mode="json")
+
+
+class RodRelease(BaseModel):
+    """Release a heat pump's built-in heating rod by hand; 0 hours ends it."""
+
+    hours: float = Field(ge=0, le=72, allow_inf_nan=False)
+
+
+@router.put("/control/heat-pumps/{device_id}/rod")
+async def release_rod(request: Request, device_id: str, body: RodRelease) -> dict[str, Any]:
+    """The heat pump may use its heating rod for some hours, e.g. when it does not keep up alone."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    device = config.device(device_id)
+    if device is None or device.heat_pump is None or device.heat_pump.rod is None:
+        raise HTTPException(status_code=404, detail="No built-in heating rod configured")
+    until = datetime.now(UTC) + timedelta(hours=body.hours) if body.hours else None
+    device.heat_pump.rod.released_until = until
+    store.save(config)
+    _replan(request)
+    return {"released_until": until.isoformat() if until else None}
 
 
 class LiveControl(BaseModel):

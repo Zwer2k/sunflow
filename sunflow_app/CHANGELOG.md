@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.79.7
+
+- Eingebauter Heizstab der Wärmepumpe: wird mit der Wärmepumpe konfiguriert und über ihre Integration gesperrt, freigegeben oder begrenzt (Sperr-Schalter wie EMS-ESP „auxheateroff“, Freigabe-Schalter wie NIBE, Auswahl wie HeishaMon oder kW-Stufen, Höchstleistung als Zahl). In der Heizperiode nur bei Bedarf (unter dem Bivalenzpunkt, negativer Preis, von Hand 24 h), im Sommer auch bei PV-Überschuss. Höchstens ein Wechsel pro Stunde, weil die Einstellung meist im Flash liegt.
+- Ein eigener Heizstab als Verbraucher bleibt als zweite Variante.
+
 ## 0.79.6
 
 - Heizstab gehört jetzt zur Wärmepumpe: In der Konfiguration der Wärmepumpe wird ein Verbraucher mit Art „Wärme“ als Heizstab zugeordnet, mit seinem Modus je Jahreszeit. Der eingebaute Heizstab der Wärmepumpe ist ausdrücklich ausgenommen.

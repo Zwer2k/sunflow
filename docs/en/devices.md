@@ -158,17 +158,39 @@ changes every day which relay comes first, so they wear evenly.
 
 ### Heating rod of a heat pump
 
-A heating rod in the hot water or buffer tank is first added as a custom load of type "Heat" (e.g.
-"Relay per phase (1–3)" or "Power levels"). Under Settings → Heat pump it is then assigned to the
-heat pump (group **Heating rod**). The heat pump's built-in heating rod (backup or emergency heater
-below the bivalence point) is controlled by the heat pump itself and does not belong here.
+The heating rod is set up with the heat pump (Settings → Heat pump, group **Heating rod**). The heat
+pump turns 1 kWh of electricity into 3–4 kWh of heat, the rod into only 1 kWh; so it should only run
+when it pays off or the heat pump is not enough. Two variants:
+
+**1. Built-in – through the heat pump's integration.** With many makes the backup or emergency
+heater inside the heat pump can only be blocked, released or limited in power; whether it heats is
+up to the heat pump. Sunflow knows four forms:
+
+| The integration offers | Examples |
+|---|---|
+| Block switch (on = blocked) | Bosch, Buderus, Junkers via EMS-ESP: "disable aux heater" (`auxheateroff`) |
+| Release switch (on = may heat) | NIBE (`nibe_heatpump`): "Allow additive heating" / "Permit additional heat" |
+| Select (free/blocked or kW steps) | Panasonic via HeishaMon: "DHW/Room Heater State"; EMS-ESP: `maxheat…` in kW steps |
+| Maximum power as a number | NIBE: "Max int add. power" in kW |
+
+Modes: in the heating season **only when needed** (default) – blocked unless it is colder than the
+set limit (about the bivalence point, default −5 °C), the price is negative or you release it
+("Release heating rod for 24 h") – or **heat pump decides**. In summer also **with PV surplus**
+(default). Without an outside temperature (from the heat pump or under learning sources) Sunflow
+never blocks it. The setting usually sits in the heat pump's flash memory: Sunflow changes it at
+most every 60 min (adjustable), writes only when it differs and counts the writes against the daily
+limit. When Sunflow hands control back, it restores the normal value.
+
+**2. Own heating rod – added as a load.** A heating rod outside the heat pump, usually in the hot
+water or buffer tank, is first added as a custom load of type "Heat" (e.g. "Relay per phase (1–3)" or
+"Power levels") and then chosen in the heating rod group.
 
 The heat pump turns 1 kWh of electricity into 3–4 kWh of heat, the heating rod into only 1 kWh. So the
 assigned heating rod runs **by season**:
 
 | | Recommended (default) | Optional |
 |---|---|---|
-| Heating season | Off – the PV surplus goes to the heat pump (boost) | Only PV surplus, Automatic |
+| Heating season (own rod) | Off – the PV surplus goes to the heat pump (boost) | Only PV surplus, Automatic |
 | Summer | Only PV surplus – the heat pump keeps its setpoint, the rod heats beyond it with the remaining surplus (e.g. to 60–65 °C) | Off, Automatic (by cost) |
 
 Reaching high tank temperatures with the rod spares the heat pump, whose COP drops at high

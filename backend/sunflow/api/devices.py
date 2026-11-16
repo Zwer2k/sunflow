@@ -249,6 +249,8 @@ class ManualDevice(BaseModel):
     setpoint_entity: str | None = None
     surplus_entity: str | None = None
     boost_switch_entity: str | None = None
+    # The heat pump's built-in heating rod: the entity of its method (heat_pump.rod)
+    rod_entity: str | None = None
     heat_pump: HeatPumpSettings | None = None
     # Relays: one switch per phase (index 0 is L1; None for a phase without relay) and the power of one
     relay_entities: list[str | None] = Field(default_factory=list, max_length=3)
@@ -309,7 +311,7 @@ def _heat_pump_setup(body: ManualDevice) -> tuple[dict[str, RoleOverride], dict[
         raise HTTPException(
             status_code=422, detail=t("Bitte den Stromverbrauch der Wärmepumpe angeben (oder Wärmeleistung und COP)")
         )
-    overrides |= _heat_pump_control(body)
+    overrides |= _heat_pump_control(body) | _rod_control(body)
     parameters = {"voltage": body.voltage} if body.voltage else {}
     return overrides, parameters, None
 
@@ -354,6 +356,29 @@ def _heat_pump_control(body: ManualDevice) -> dict[str, RoleOverride]:
     if settings.method == "setpoint" and settings.setpoint_normal is None:
         raise HTTPException(status_code=422, detail=t("Bitte den normalen Sollwert angeben"))
     return overrides
+
+
+ROD_ROLES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "allow_switch": ("rod_allow", SWITCH_DOMAINS),
+    "block_switch": ("rod_block", SWITCH_DOMAINS),
+    "select": ("rod_select", SELECT_DOMAINS),
+    "limit": ("rod_limit", NUMBER_DOMAINS),
+}
+
+
+def _rod_control(body: ManualDevice) -> dict[str, RoleOverride]:
+    """The built-in rod's entity; a select needs its free and blocked options, a limit its normal value."""
+    rod = body.heat_pump.rod if body.heat_pump else None
+    if rod is None:
+        return {}
+    role, domains = ROD_ROLES[rod.method]
+    if not body.rod_entity or not body.rod_entity.startswith(domains):
+        raise HTTPException(status_code=422, detail=t("Bitte die Entität für den Heizstab wählen ({domains})", domains=", ".join(d.rstrip(".") for d in domains)))
+    if rod.method == "select" and not {"free", "blocked"} <= rod.options.keys():
+        raise HTTPException(status_code=422, detail=t("Bitte die Optionen für „frei“ und „gesperrt“ wählen"))
+    if rod.method == "limit" and rod.limit_normal is None:
+        raise HTTPException(status_code=422, detail=t("Bitte den normalen Wert der Heizstab-Leistung angeben"))
+    return {role: RoleOverride(entity_id=body.rod_entity)}
 
 
 def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, RoleOverride], dict[str, float], dict[str, float] | None]:
