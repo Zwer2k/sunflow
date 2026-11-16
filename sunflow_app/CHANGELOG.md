@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.79.8
+
+- Haus: Raumtemperaturen (gewichtet, mit Referenzraum), optional ein Wärmemengenzähler und ein Komfortband mit Nachtabsenkung im Bereich Wärmepumpe.
+- Sunflow lernt daraus ein Wärmemodell des Hauses (1R1C): Zeitkonstante, Abkühlung, Wärmeverlust, Wärmespeicher und Sonne. Gezeigt mit Güte und einem Diagramm der letzten Woche (gemessen und erwartet); unruhige Sensoren werden genannt. Noch nicht in der Planung.
+- Entwurf Wärmepumpe: Vergleich mit EMHASS, hplib und anderen Wärmepumpen-Steuerungen.
+
 ## 0.79.7
 
 - Eingebauter Heizstab der Wärmepumpe: wird mit der Wärmepumpe konfiguriert und über ihre Integration gesperrt, freigegeben oder begrenzt (Sperr-Schalter wie EMS-ESP „auxheateroff“, Freigabe-Schalter wie NIBE, Auswahl wie HeishaMon oder kW-Stufen, Höchstleistung als Zahl). In der Heizperiode nur bei Bedarf (unter dem Bivalenzpunkt, negativer Preis, von Hand 24 h), im Sommer auch bei PV-Überschuss. Höchstens ein Wechsel pro Stunde, weil die Einstellung meist im Flash liegt.

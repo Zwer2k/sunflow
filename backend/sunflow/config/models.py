@@ -190,6 +190,41 @@ class Connection(BaseModel):
 HeatPumpState = Literal["block", "normal", "boost", "forced"]
 
 
+class Room(BaseModel):
+    """A room temperature sensor and how much the room counts (e.g. by its area)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    entity_id: str
+    weight: float = Field(default=1.0, gt=0, le=1000)
+    # The comfort band applies to this room
+    reference: bool = False
+
+
+class HouseSettings(BaseModel):
+    """The rooms Sunflow learns the house from, and the temperature band to keep."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    rooms: list[Room] = Field(default_factory=list, max_length=30)
+    # Heat into the house in W (e.g. a heat meter); without it the heat pump's heat counts
+    heat_entity: str | None = None
+    comfort_min: float = Field(default=20.0, ge=5, le=30)
+    comfort_max: float = Field(default=22.0, ge=5, le=30)
+    # A lower bound at night (setback); None keeps comfort_min all day
+    night_min: float | None = Field(default=None, ge=5, le=30)
+    night_start: str = Field(default="22:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    night_end: str = Field(default="06:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+    @model_validator(mode="after")
+    def _band(self) -> HouseSettings:
+        if self.comfort_min >= self.comfort_max:
+            raise ValueError("comfort_min must be below comfort_max")
+        if sum(r.reference for r in self.rooms) > 1:
+            raise ValueError("at most one reference room")
+        return self
+
+
 RodState = Literal["free", "blocked", "max"]
 
 
@@ -693,6 +728,7 @@ class SunflowConfig(BaseModel):
     # Wallbox id -> vehicle chosen in the control tab (until the car is unplugged)
     selected_vehicles: dict[str, str] = Field(default_factory=dict)
     heating_season: HeatingSeason = Field(default_factory=HeatingSeason)
+    house: HouseSettings = Field(default_factory=HouseSettings)
 
     def flex_of(self, device_id: str) -> FlexSettings:
         """How a consumer is planned (defaults when nothing was set)."""

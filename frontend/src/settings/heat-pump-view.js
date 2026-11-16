@@ -7,6 +7,7 @@ import { poll } from "../lib/poll.js";
 import "../components/picker.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { toggleSheet } from "../lib/display-toggles.js";
+import { lineChart, SERIES_COLORS } from "../components/charts.js";
 
 const PROFILE = "generic/heat_pump";
 const REFRESH_MS = 10000;
@@ -272,6 +273,9 @@ class SunflowHeatPump extends LitElement {
     _candidates: { state: true },
     _live: { state: true },
     _season: { state: true },
+    _house: { state: true },
+    _houseEdit: { state: true },
+    _houseModel: { state: true },
     _form: { state: true },
     _editId: { state: true },
     _error: { state: true },
@@ -284,6 +288,9 @@ class SunflowHeatPump extends LitElement {
     this._candidates = null;
     this._live = null;
     this._season = null;
+    this._house = null;
+    this._houseEdit = null;
+    this._houseModel = null;
     this._form = null;
     this._editId = null;
     this._error = null;
@@ -303,14 +310,24 @@ class SunflowHeatPump extends LitElement {
 
   async _load() {
     try {
-      const [config, season] = await Promise.all([api.config(), api.heatingSeason()]);
+      const [config, season, house] = await Promise.all([api.config(), api.heatingSeason(), api.house()]);
       this._config = config;
       this._season = season;
+      this._house = house;
       this._error = null;
     } catch (err) {
       this._error = t("Einstellungen nicht verfügbar: {error}", { error: err.message });
     }
     this._loadLive();
+    this._loadHouseModel();
+  }
+
+  async _loadHouseModel() {
+    try {
+      this._houseModel = await api.houseModel();
+    } catch (err) {
+      this._houseModel = { state: "error", error: err.message };
+    }
   }
 
   async _loadLive() {
@@ -355,6 +372,7 @@ class SunflowHeatPump extends LitElement {
       ${pumps.map((d) => (this._editId === d.id ? this._renderEditor() : this._renderPump(d)))}
       ${this._form && this._editId === null ? this._renderEditor() : nothing}
       ${!this._form ? html`<div><button class="secondary" @click=${() => this._edit(null)}>${pumps.length ? t("Weitere Wärmepumpe hinzufügen …") : t("Wärmepumpe hinzufügen …")}</button></div>` : nothing}
+      ${this._renderHouse()}
       ${pumps.some((d) => d.heat_pump?.rod_id || d.heat_pump?.rod) ? this._renderSeason() : nothing}
     `;
   }
@@ -872,6 +890,158 @@ class SunflowHeatPump extends LitElement {
     `;
   }
 
+  /** The house: rooms, heat into it and the comfort band; below what Sunflow learned from them. */
+  _renderHouse() {
+    if (!this._house) return nothing;
+    if (this._candidates === null) this._loadCandidates();
+    const house = this._houseEdit ?? this._house;
+    const candidates = this._candidates ?? {};
+    const options = (list) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} ${c.unit ?? ""}` }));
+    const set = (changes) => (this._houseEdit = { ...house, ...changes });
+    const setRoom = (i, changes) => set({ rooms: house.rooms.map((r, k) => (k === i ? { ...r, ...changes } : r)) });
+    const number = (field, label, unit = "°C") => html`<label class="field">
+      <span class="field-label">${label}</span>
+      <span class="input-unit"><input inputmode="decimal" .value=${toDisplay(house[field], "")}
+        @change=${(e) => { const v = fromDisplay(e.target.value, ""); if (v != null) set({ [field]: v }); }}><span class="muted">${unit}</span></span>
+    </label>`;
+    const time = (field, label) => html`<label class="field">
+      <span class="field-label">${label}</span>
+      <span class="input-unit"><input type="time" .value=${house[field]} @change=${(e) => e.target.value && set({ [field]: e.target.value })}></span>
+    </label>`;
+    return html`
+      <section class="device">
+        <span class="device-title">${t("Haus")}</span>
+        <p class="small muted">${t("Aus den Raumtemperaturen lernt Sunflow, wie schnell das Haus auskühlt und wie stark Heizung und Sonne es erwärmen. Damit lässt sich später planen, wie lange die Wärmepumpe pausieren darf und wann Vorheizen lohnt. Sunflow regelt keine einzelnen Räume.")}</p>
+        <fieldset class="group">
+          <legend>${t("Räume")}</legend>
+          ${house.rooms.map((room, i) => html`<div class="room">
+            <div class="field grow">
+              <span class="field-label">${t("Temperatur")}</span>
+              <sf-picker label=${t("Temperatur")} placeholder=${t("Name oder Entität suchen …")}
+                .value=${room.entity_id} .options=${options(candidates.temperature)}
+                @change=${(e) => e.detail.value && setRoom(i, { entity_id: e.detail.value })}></sf-picker>
+            </div>
+            <label class="field narrow">
+              <span class="field-label">${t("Gewicht")}</span>
+              <span class="input-unit"><input inputmode="decimal" .value=${toDisplay(room.weight, "")}
+                @change=${(e) => { const v = fromDisplay(e.target.value, ""); if (v > 0) setRoom(i, { weight: v }); }}></span>
+            </label>
+            <label class="check"><input type="radio" name="reference" .checked=${room.reference}
+              @change=${() => set({ rooms: house.rooms.map((r, k) => ({ ...r, reference: k === i })) })}> ${t("Referenzraum")}</label>
+            <button class="secondary" @click=${() => set({ rooms: house.rooms.filter((_, k) => k !== i) })}>${t("Entfernen")}</button>
+          </div>`)}
+          <div><button class="secondary" @click=${() => set({ rooms: [...house.rooms, { entity_id: "", weight: 1, reference: !house.rooms.length }] })}>${t("Raum hinzufügen")}</button></div>
+          <p class="small muted">${t("Gewicht z. B. nach Fläche; ohne Angabe zählen alle Räume gleich. Für den Referenzraum gilt das Komfortband, etwa das Wohnzimmer.")}</p>
+          <div class="fields">
+            <div class="field">
+              <span class="field-label">${t("Wärme ins Haus (optional)")}</span>
+              <sf-picker label=${t("Wärme ins Haus (optional)")} empty-label=${t("aus der Wärmepumpe")} placeholder=${t("Name oder Entität suchen …")}
+                .value=${house.heat_entity ?? ""} .options=${options(candidates.power)}
+                @change=${(e) => set({ heat_entity: e.detail.value || null })}></sf-picker>
+              <span class="small muted">${t("Wärmeleistung in W, z. B. vom Wärmemengenzähler der Heizung. Ohne Angabe nimmt Sunflow die Wärme der Wärmepumpe.")}</span>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset class="group">
+          <legend>${t("Komfortband")}</legend>
+          <div class="fields">
+            ${number("comfort_min", t("Nicht kälter als"))}
+            ${number("comfort_max", t("Nicht wärmer heizen als"))}
+          </div>
+          <label class="check"><input type="checkbox" .checked=${house.night_min != null}
+            @change=${(e) => set({ night_min: e.target.checked ? house.comfort_min - 2 : null })}> ${t("Nachtabsenkung")}</label>
+          ${house.night_min != null
+            ? html`<div class="fields">${number("night_min", t("Nachts nicht kälter als"))}${time("night_start", t("Von"))}${time("night_end", t("Bis"))}</div>`
+            : nothing}
+        </fieldset>
+        ${this._houseEdit
+          ? html`<div class="actions">
+              <button class="primary" ?disabled=${this._busy || house.rooms.some((r) => !r.entity_id)} @click=${() => this._saveHouse()}>${t("Speichern")}</button>
+              <button class="secondary" @click=${() => (this._houseEdit = null)}>${t("Abbrechen")}</button>
+            </div>`
+          : nothing}
+        ${this._renderHouseModel(house)}
+      </section>
+    `;
+  }
+
+  async _saveHouse() {
+    this._busy = true;
+    try {
+      this._house = await api.setHouse(this._houseEdit);
+      this._houseEdit = null;
+      this._houseModel = null;
+      this._loadHouseModel();
+    } catch (err) {
+      this._error = t("Haus konnte nicht gespeichert werden: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  /** What Sunflow learned about the house, in words, with the last week measured and expected. */
+  _renderHouseModel(house) {
+    const result = this._houseModel;
+    if (!result || result.state === "no_rooms") return nothing;
+    const one = (v) => decimal(v.toFixed(1));
+    const messages = {
+      no_outside: t("Es fehlt eine Außentemperatur: an der Wärmepumpe oder unter Lernquellen."),
+      error: t("Nicht verfügbar: {error}", { error: result.error ?? "" }),
+      learning: t("Lernt noch: {days} von {min} Tagen mit Raum- und Außentemperatur.", { days: result.days ?? 0, min: result.min_days ?? 7 }),
+    };
+    if (messages[result.state]) return html`<p class="small muted">${messages[result.state]}</p>`;
+    const m = result.model;
+    const heat = {
+      meter: t("Wärme vom gewählten Sensor"),
+      measured: t("Wärme der Wärmepumpe gemessen"),
+      cop: t("Wärme aus Strom × COP der Wärmepumpe"),
+      estimated: t("Wärme aus dem Strom der Wärmepumpe geschätzt (COP aus der Außentemperatur)"),
+    }[result.heat_source] ?? t("ohne Wärmemessung – Heizung und innere Wärme lassen sich nicht trennen");
+    const tile = (label, value, help = null) => html`<div class="tile"><div class="small muted">${label}</div><div class="value">${value}</div>${help ? html`<div class="small muted">${help}</div>` : nothing}</div>`;
+    const name = (entityId) => (this._candidates?.temperature ?? []).find((c) => c.entity_id === entityId)?.name ?? entityId;
+    const points = result.chart ?? [];
+    return html`
+      <div class="learned">
+        <span class="field-label">${t("Gelernt")}</span>
+        <p class="small ${result.state === "ready" ? "muted" : "warn-text"}">${result.state === "ready"
+          ? t("Aus {days} Tagen · {heat}", { days: result.days, heat })
+          : m.plausible
+            ? t("Noch unsicher: Die Vorhersage ist nicht besser als „die Temperatur bleibt“. Sunflow nutzt das Modell noch nicht. ({heat})", { heat })
+            : t("Noch nicht plausibel – vielleicht heizt etwas, das nicht gemessen wird, oder ein Sensor hängt in der Sonne. ({heat})", { heat })}</p>
+        <div class="tiles">
+          ${m.tau_h != null ? tile(t("Zeitkonstante"), `${Math.round(m.tau_h)} h`, t("bis zwei Drittel des Unterschieds nach außen weg sind")) : nothing}
+          ${tile(t("Abkühlung bei 0 °C außen"), `${one(m.cooling_k_per_h_at_0)} K/h`, t("ohne Heizung und Sonne, bei {temp} °C innen", { temp: decimal(String(house.comfort_min)) }))}
+          ${m.loss_w_per_k != null ? tile(t("Wärmeverlust"), `${Math.round(m.loss_w_per_k)} W/K`, t("bei −10 °C außen etwa {kw} kW Heizleistung", { kw: one(m.loss_w_per_k * (house.comfort_min + 10) / 1000) })) : nothing}
+          ${m.capacity_kwh_per_k != null ? tile(t("Wärmespeicher"), `${Math.round(m.capacity_kwh_per_k)} kWh/K`, t("Wärme für 1 K wärmer im ganzen Haus")) : nothing}
+          ${m.sun_k_per_h != null ? tile(t("Sonne"), `${m.sun_k_per_h >= 0 ? "+" : ""}${one(m.sun_k_per_h)} K/h`, t("bei voller Sonne")) : nothing}
+          ${m.error_k != null ? tile(t("Vorhersage über 24 h"), `± ${one(m.error_k)} K`, t("„bleibt gleich“ läge bei ± {k} K", { k: one(m.baseline_k) })) : nothing}
+        </div>
+        ${result.restless?.length
+          ? html`<p class="small warn-text">${t("Auffällig unruhig – vielleicht Sonne, Heizkörper oder Fenster am Sensor: {rooms}. Ein geringeres Gewicht oder ein anderer Sensor hilft.", { rooms: result.restless.map(name).join(", ") })}</p>`
+          : nothing}
+        ${points.length
+          ? html`<div class="legend small">
+              <span class="legend-item"><span class="swatch" style="background: ${SERIES_COLORS[0]}"></span>${t("gemessen")}</span>
+              <span class="legend-item"><span class="swatch" style="background: ${SERIES_COLORS[1]}"></span>${t("Modell (startet jeden Tag neu)")}</span>
+            </div>
+            ${lineChart(
+              [
+                { name: t("gemessen"), color: SERIES_COLORS[0], points: points.map((p) => ({ start: p.start, end: p.end, value: p.measured })) },
+                { name: t("Modell"), color: SERIES_COLORS[1], dashed: true, points: points.map((p) => ({ start: p.start, end: p.end, value: p.model })) },
+              ],
+              {
+                label: t("Raumtemperatur der letzten 7 Tage, gemessen und vom Modell erwartet"),
+                formatY: (v) => `${decimal(v.toFixed(1))} °C`,
+                yMin: Math.floor(Math.min(house.comfort_min - 1, ...points.map((p) => p.measured))),
+                yMax: Math.ceil(Math.max(house.comfort_max + 1, ...points.map((p) => p.measured))),
+                limits: [{ value: house.comfort_min, label: t("Komfort min") }, { value: house.comfort_max, label: t("Komfort max") }],
+              },
+            )}`
+          : nothing}
+      </div>
+    `;
+  }
+
   /** How the heating season is told; saved on change. */
   _renderSeason() {
     const season = this._season;
@@ -984,6 +1154,20 @@ class SunflowHeatPump extends LitElement {
     .secondary { border: 1px solid var(--sf-border-strong); background: var(--sf-surface); font-weight: 500; }
     .danger { color: var(--sf-error-text); }
     .warn-text { color: var(--sf-warn-text); }
+    .room { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+    .room .grow { flex: 1 1 260px; }
+    .room .narrow { flex: 0 0 90px; }
+    .learned { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--sf-border); padding-top: 12px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+    .chart { width: 100%; height: auto; display: block; }
+    .chart .grid { stroke: var(--sf-border); stroke-width: 1; }
+    .chart .axis { fill: var(--sf-muted); font-size: 11px; }
+    .chart .hit { fill: transparent; }
+    .chart .hit:hover { fill: var(--sf-text); fill-opacity: 0.06; }
+    .chart .limit { stroke: var(--sf-muted); stroke-width: 1; stroke-dasharray: 6 4; }
+    .chart .limit-label { paint-order: stroke; stroke: var(--sf-surface); stroke-width: 3px; }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }
     .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }

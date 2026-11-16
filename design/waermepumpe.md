@@ -145,6 +145,33 @@ Quellen: [Umweltbundesamt, Trinkwarmwasserkonzepte](https://www.umweltbundesamt.
 - Prognose des Wärmebedarfs statt des Stroms (stabiler, weil der COP schwankt).
 - Statistik: Wärme, Strom, COP und PV-Anteil pro Monat.
 
+## Haus als Wärmespeicher
+
+**Modell (1R1C, umgesetzt in `planning/house_model.py`):** je Stunde
+`ΔT = a·(T_außen − T) + b·Q + c·S + d` mit gewichteter Ridge-Regression (Halbwertszeit 14 Tage,
+Strafe relativ zur Spaltengröße). τ = 1/a, Wärmekapazität 1/b, Wärmeverlust a/b, Sonne c (S von 0
+bis 1 aus der Helligkeit), innere Gewinne d. Wärme Q: eigener Sensor (Wärmemengenzähler), sonst
+Wärmepumpe gemessen, Strom × COP-Sensor oder Strom × Carnot-COP (40 %, Vorlauf 35 °C). Bewertung
+auf den letzten 2 Tagen, freie Simulation über 24 h gegen „bleibt gleich“; plausibel bei τ 5–500 h
+und b > 0. Typische Einfamilienhäuser: 80–400 W/K, 10–40 kWh/K, τ 30–150 h.
+
+**Vorbilder und was wir übernehmen** (Recherche November 2026):
+
+| Projekt | Was es macht | Für Sunflow |
+|---|---|---|
+| EMHASS (MIT) | Wärmemodelle im LP: `thermal_config` (Raum, Aufheizrate, Abkühlkonstante), `thermal_battery` (Speicher, COP nach Carnot vorab je Schritt), `heat_topology` (Verlust UA·(T − T_außen)); harte Grenzen plus Malus unter Wunschtemperatur. Lernt nichts, Parameter von Hand; viele frische Fehler (u. a. mehr Wärme geplant, als Heizkörper abgeben). | Formulierung für Stufe 4: Raumtemperatur als Zustand, COP vorab je Viertelstunde, Komfortband hart, Malus darunter; zusätzlich Grenze der Wärmeleistung. |
+| hplib (FZ Jülich, MIT/CC BY) | COP und Strom aus Außen- und Vorlauftemperatur, Parameter aus Keymark, generisch je Bauart | Formel und generische Parameter als Startwert für den COP, bis er gelernt ist |
+| Heat Pump Cost Optimizer (tvofi, MIT) | Zwei Zonen, Estrich, Puffer, Warmwasser mit gemeinsamem Verdichter; lernt Verluste, COP, Sonne | Ideen (gemeinsamer Verdichter, Warmwasser-Fenster); Code zu groß und automatisch erzeugt |
+| Predheat | Zwei Massen (Raum und Heizwasser), Kalibrierung aus Abkühl- und Heizphase; nur Simulation | Idee |
+| Heating Curve Optimizer (GPL) | Heizkurven-Offset ±4 K über 24 h als Stellgröße | Weitere Ansteuerung „Heizkurve verschieben“ |
+| OpenEMS, evcc | Feste Regeln für SG-Ready (Schwellen, Sperre max. 2 h, Mindestzeiten) | bestätigt unsere Regeln; SG-Ready verlangt mind. 10 min je Signal |
+| adaptive_flow_control | Lernt den Vorlauf-Sollwert (Ridge, verzögerte Bewertung) | Kann neben Sunflow laufen: Sunflow verschiebt dessen Raum-Sollwert |
+
+**Nächste Schritte:** (2) Regeln aus Stufe 3 mit dem Modell absichern: Sperre nur, solange die
+vorhergesagte Raumtemperatur über dem Band bleibt, Verstärken bis zur Obergrenze; (3) Stufe 4.
+Beim Lernen beachten: Sobald Sunflow die Wärmepumpe verschiebt, verzerrt die Rückkopplung das
+Modell; deshalb erst im Schattenbetrieb vergleichen.
+
 ## Stufen
 
 1. **Gerät „Wärmepumpe“ mit Messung** (alle Varianten), Live-Werte mit Herkunft und

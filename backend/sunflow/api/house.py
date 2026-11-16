@@ -1,0 +1,84 @@
+"""The house: the rooms Sunflow learns it from, the comfort band and what it learned."""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Request
+
+from sunflow.config.models import HouseSettings
+from sunflow.config.store import ConfigStore
+from sunflow.ha import HAError
+from sunflow.planning.house_model import (
+    MIN_DAYS,
+    chart,
+    fit,
+    house_data,
+    restless_rooms,
+)
+
+from .common import _replan
+
+router = APIRouter()
+# Learning reads four weeks of hourly statistics: kept for a while
+CACHE_FOR = timedelta(minutes=30)
+
+
+@router.get("/config/house")
+async def get_house(request: Request) -> dict[str, Any]:
+    """Rooms and comfort band."""
+    return request.app.state.store.load().house.model_dump()
+
+
+@router.put("/config/house")
+async def set_house(request: Request, body: HouseSettings) -> dict[str, Any]:
+    """Choose the rooms and the comfort band."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    config.house = body
+    store.save(config)
+    request.app.state.house_model = None
+    _replan(request)
+    return config.house.model_dump()
+
+
+@router.get("/house/model")
+async def house_model(request: Request) -> dict[str, Any]:
+    """How the house cools and warms, learned from the rooms; with the last week measured and expected."""
+    config = request.app.state.store.load()
+    if not config.house.rooms:
+        return {"state": "no_rooms"}
+    now = datetime.now(UTC)
+    key = config.house.model_dump_json() + str(config.learning_sources.outdoor_temperature)
+    cached = getattr(request.app.state, "house_model", None)
+    if cached and cached[0] == key and now - cached[1] < CACHE_FOR:
+        return cached[2]
+    try:
+        data = await house_data(request.app.state.ha, config, now)
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    if data.outside_entity is None:
+        result: dict[str, Any] = {"state": "no_outside"}
+    else:
+        model = fit(data.rows, now)
+        result = {
+            "state": "learning" if model is None else "ready" if model.useful else "unsure",
+            "days": model.days if model else len({r.start.date() for r in data.rows}),
+            "min_days": MIN_DAYS,
+            "heat_source": data.heat_source,
+            "sun": data.sun_entity is not None,
+            "restless": restless_rooms(data.per_room, data.inside),
+            "model": None if model is None else {
+                "tau_h": model.tau_h,
+                "capacity_kwh_per_k": model.capacity_kwh_per_k,
+                "loss_w_per_k": model.loss_w_per_k,
+                "sun_k_per_h": model.c,
+                "gains_k_per_h": model.d,
+                "cooling_k_per_h_at_0": model.cooling_k_per_h(config.house.comfort_min, 0.0),
+                "error_k": model.error_k,
+                "baseline_k": model.baseline_k,
+                "plausible": model.plausible,
+            },
+            "chart": chart(model, data.rows),
+        }
+    request.app.state.house_model = (key, now, result)
+    return result

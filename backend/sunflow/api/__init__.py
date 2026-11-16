@@ -7,6 +7,7 @@ from . import (
     device_test,
     devices,
     direct,
+    house,
     integration,
     live,
     optimizers,
@@ -22,6 +23,7 @@ from .common import router
 for _area in (
     system, integration, direct, devices, device_test, setup, sources, plan, vehicles, control, analysis, consumer_stats, live,
     optimizers,
+    house,
 ):
     router.include_router(_area.router)
 

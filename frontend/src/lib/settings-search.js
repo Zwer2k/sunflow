@@ -30,6 +30,7 @@ const ENTRIES = [
   ["heat_pump", "Wärmepumpe", "wärmepumpe heat pump wp messung cop wärmeleistung strom phase"],
   ["heat_pump", "Ansteuerung", "sg-ready sg ready sgready relais kontakt sperre evu §14a sollwert boost überschuss steuern"],
   ["heat_pump", "Heizstab", "heizstab heating rod jahreszeit winter sommer aus zuschalten"],
+  ["heat_pump", "Haus", "haus house raum räume raumtemperatur komfort komfortband abkühlung auskühlen wärmemodell nachtabsenkung"],
   ["heat_pump", "Heizperiode", "heizperiode heating season winter sommer außentemperatur datum"],
   ["charging", "Karte an der Wallbox", "rfid karte chip fahrzeug erkennen"],
   ["charging", "Ziel-Ladestand", "soc ziel prozent ladeziel target"],

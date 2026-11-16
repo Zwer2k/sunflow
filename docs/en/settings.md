@@ -81,6 +81,25 @@ the heat pump's heating rod with its mode per season and how the heating season 
 COP and the state Sunflow sets or (in shadow mode) would set. Details under
 [Supported devices](devices.md#heat-pump).
 
+**House:** room temperatures (one or more sensors, optionally weighted, e.g. by area, one as the
+reference room), optionally the heat into the house (e.g. the heating's heat meter, otherwise the
+heat pump's heat) and the comfort band with an optional night setback. From the hourly values of
+the last four weeks Sunflow learns a simple thermal model of the house:
+
+| Learned | Meaning |
+|---|---|
+| Time constant | hours until two thirds of the difference to outside are gone |
+| Cooling at 0 °C outside | kelvin per hour lost without heating and sun |
+| Heat loss | heating power per kelvin of difference (only with heat measurement) |
+| Heat storage | heat for 1 K warmer in the whole house (only with heat measurement) |
+| Sun | warming in full sun (with brightness under learning sources) |
+
+Sunflow holds back the last two days and computes them anew from the measurement each day; the
+model is used only when it beats "the temperature stays the same" there and its values are
+plausible (from 7 days). A chart shows the last week measured and expected by the model. Rooms whose
+temperature jumps far more than the others' (sun, radiator, window at the sensor) are named. For now
+the model is only shown; planning the heat pump with it follows.
+
 ## Loads
 
 ![Loads](../images/en/settings-consumers.png)

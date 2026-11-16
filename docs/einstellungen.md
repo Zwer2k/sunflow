@@ -81,6 +81,25 @@ oder gesperrt wird; dazu der Heizstab der Wärmepumpe mit seinem Modus je Jahres
 Live-Werte zeigen Strom, Wärme, COP und den Zustand, den Sunflow setzt oder (im Schattenmodus)
 setzen würde. Einzelheiten unter [Unterstützte Geräte](geraete.md#wärmepumpe).
 
+**Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche,
+einer als Referenzraum), optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung,
+sonst die Wärme der Wärmepumpe) und das Komfortband mit optionaler Nachtabsenkung. Sunflow lernt
+daraus ein einfaches Wärmemodell des Hauses aus den Stundenwerten der letzten vier Wochen:
+
+| Gelernt | Bedeutung |
+|---|---|
+| Zeitkonstante | Stunden, bis zwei Drittel des Unterschieds nach außen weg sind |
+| Abkühlung bei 0 °C außen | wie viel Kelvin pro Stunde es ohne Heizung und Sonne verliert |
+| Wärmeverlust | Heizleistung je Kelvin Unterschied (nur mit Wärmemessung) |
+| Wärmespeicher | Wärme für 1 K wärmer im ganzen Haus (nur mit Wärmemessung) |
+| Sonne | Erwärmung bei voller Sonne (mit Helligkeit unter Lernquellen) |
+
+Die letzten zwei Tage hält Sunflow zurück und rechnet sie jeden Tag neu vom Messwert aus; genutzt
+wird das Modell erst, wenn es dabei besser ist als „die Temperatur bleibt gleich“ und die Werte
+plausibel sind (ab 7 Tagen). Ein Diagramm zeigt die letzte Woche gemessen und vom Modell erwartet.
+Räume, deren Temperatur viel stärker springt als die der anderen (Sonne, Heizkörper, Fenster am
+Sensor), werden genannt. Noch wird das Modell nur angezeigt; die Planung der Wärmepumpe folgt.
+
 ## Verbraucher
 
 ![Verbraucher](images/settings-consumers.png)
