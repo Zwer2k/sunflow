@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.79.12
+
+- Auto ein- oder ausgesteckt oder Karte gescannt: Sunflow plant sofort neu statt erst zur nächsten Viertelstunde. Bisher zeigte es ein gerade angestecktes Auto bis dahin noch als „unterwegs, erwartet“ und plante es nicht ein.
+
 ## 0.79.11
 
 - Eingebauter Heizstab sicherer: frei, wenn der Referenzraum unter dem Komfortband liegt (auch über dem Bivalenzpunkt, z. B. bei einer Störung der Wärmepumpe) und ohne aktuellen Plan; nach 6 Wechseln am Tag wird er nicht mehr neu gesperrt, damit Freigaben nie am Schreiblimit scheitern; beim Beenden der App wird die Wärmepumpe mit freiem Heizstab zurückgegeben.

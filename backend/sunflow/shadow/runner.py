@@ -18,7 +18,7 @@ from sunflow.control.charger import ChargerWatch
 from sunflow.control.controller import PlanController
 from sunflow.devices.discovery import Snapshot, SnapshotCache, fetch_snapshot
 from sunflow.devices.profiles import ProfileLibrary, controls_battery, planned_battery
-from sunflow.devices.resolver import preview
+from sunflow.devices.resolver import UNAVAILABLE_STATES, preview
 from sunflow.devices.site import (
     device_parameters,
     measurement_device,
@@ -117,6 +117,36 @@ RECENT_ACTION_MIN_SAMPLES = 3
 NOWCAST_MIN_SAMPLES = 2
 # How the day went so far: measured against raw forecast PV over this time
 PV_RECENT = timedelta(hours=3)
+
+
+PLUG_ROLES = ("connected", "transaction")
+
+
+def plug_states(
+    config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot
+) -> dict[str, tuple[str | None, str | None]]:
+    """Per wallbox: the raw state of its connection and of its transaction (scanned card)."""
+    result = {}
+    for device in config.devices:
+        profile = profiles.get(device.profile, {})
+        if not any(role in profile.get("roles", {}) for role in PLUG_ROLES):
+            continue
+        overrides = {k: o.model_dump() for k, o in device.role_overrides.items()}
+        roles = {r.role: r.raw_state for r in preview(profile, snapshot, device.ha_device_id, overrides)}
+        result[device.id] = (roles.get("connected"), roles.get("transaction"))
+    return result
+
+
+def plugs_differ(previous: dict[str, tuple[str | None, str | None]], current: dict[str, tuple[str | None, str | None]]) -> bool:
+    """A wallbox known before shows another connection or card; unavailable states are no change."""
+    for device_id, states in current.items():
+        before = previous.get(device_id)
+        if before is None:
+            continue
+        for old, new in zip(before, states, strict=True):
+            if old != new and old not in UNAVAILABLE_STATES and new not in UNAVAILABLE_STATES:
+                return True
+    return False
 
 
 async def current_plan(
@@ -360,6 +390,8 @@ class ShadowRunner:
         self._location: tuple[float, float] | None = None
         self.sun_learned_at: datetime | None = None
         self.house_model: HouseModel | None = None
+        # Per wallbox: plugged in and the running transaction (card), to replan when they change
+        self._plugs: dict[str, tuple[str | None, str | None]] | None = None
         self._house_at: datetime | None = None
         self._house_task: asyncio.Task[None] | None = None
         self._sun_level_at: datetime | None = None
@@ -441,6 +473,10 @@ class ShadowRunner:
             try:
                 snapshot = await self.snapshots.get()
                 self._end_vehicle_choices(snapshot)
+                if self._plugs_changed(snapshot):
+                    # Plugged in, unplugged or a card scanned: the car is planned now, not at the next quarter hour
+                    _LOGGER.info("Replanning early: wallbox plugged, unplugged or card changed")
+                    self.request_replan()
                 if self.controller is not None:
                     # Old live values (samples failing) would steer by what was, not what is
                     fresh = self.last_sample_at is not None and now - self.last_sample_at <= SAMPLE_MAX_AGE
@@ -453,6 +489,12 @@ class ShadowRunner:
                         self.request_replan()
             except Exception as err:
                 _LOGGER.warning("Control step failed: %s", err, exc_info=not isinstance(err, HAError))
+
+    def _plugs_changed(self, snapshot: Snapshot) -> bool:
+        """Whether a wallbox was plugged in or unplugged or its card changed since the last step."""
+        current = plug_states(self._store.load(), self._library.profiles, snapshot)
+        previous, self._plugs = self._plugs, current
+        return previous is not None and plugs_differ(previous, current)
 
     def _end_vehicle_choices(self, snapshot: Snapshot) -> None:
         """A vehicle chosen in the control tab counts until it is unplugged."""
