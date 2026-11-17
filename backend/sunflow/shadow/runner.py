@@ -852,7 +852,7 @@ class ShadowRunner:
         try:
             data = await house_data(self._client, self._store.load(), now)
             model = fit_house(data.rows, now)
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             # Tried again with the next refresh, not with every plan
             _LOGGER.warning("Learning the house failed: %s", err, exc_info=not isinstance(err, HAError))
             model = None
