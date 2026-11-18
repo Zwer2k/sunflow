@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.79.14
+
+Hausbilder einstellbar: Unter Einstellungen → Anzeige lässt sich wählen, auf welcher Dachfläche ein String liegt, welche Anlage auf welchem Wechselrichterplatz hängt und als welche Figur ein Verbraucher erscheint. Standard bleibt die automatische Zuordnung.
+
 ## 0.79.13
 
 Neue Netzzähler: Stromzähler mit IR-Lesekopf (EDL21/SML), HomeWizard P1, powerfox poweropti und inexogy (Discovergy) werden erkannt und als Netz-Messquelle angeboten.

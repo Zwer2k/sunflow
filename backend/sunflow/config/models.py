@@ -669,6 +669,23 @@ class OptimizerSettings(BaseModel):
     entries: list[str] | None = None
 
 
+# Places in the live view's house pictures; "hidden": not drawn
+RoofFace = Literal["south", "annex", "carport", "north", "hidden"]
+# "house": only part of the house load
+SceneFigure = Literal["heatpump", "tank", "bike", "washer", "dryer", "stove", "vehicle", "house"]
+
+
+class SceneSettings(BaseModel):
+    """What goes where in the house pictures; whatever is not named is placed automatically."""
+
+    # Per string ("<device id>:<index>") or plant without strings ("<device id>")
+    roofs: dict[str, RoofFace] = Field(default_factory=dict)
+    # Plants on the inverter places, the one next to the house first
+    inverters: list[str] = Field(default_factory=list, max_length=2)
+    # Per consumer or appliance device id
+    consumers: dict[str, SceneFigure] = Field(default_factory=dict)
+
+
 class DisplaySettings(BaseModel):
     """What the App's pages show; phones and wider screens apart."""
 
@@ -678,6 +695,7 @@ class DisplaySettings(BaseModel):
     language: Literal["auto", "de", "en"] = "auto"
     # Consumers with quick controls in the live view, in this order
     live_controls: list[str] = Field(default_factory=list)
+    scene: SceneSettings = Field(default_factory=SceneSettings)
 
 
 class ControlSettings(BaseModel):

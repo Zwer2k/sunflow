@@ -206,6 +206,12 @@ Assistant.
 - **Language**: "Same as Home Assistant" (default: German if Home Assistant is set to German, English
   otherwise), "Deutsch" or "English". Applies to the interface and to messages such as plan notices
   and recommendations. The page reloads afterwards.
+- **House pictures in the live view**: where the "House" and "3D" views show strings, inverters and
+  consumers. The default everywhere is "Automatic": strings go to the roof faces by the names of
+  their forecast planes ("North", "Carport" …), consumers are recognized by kind and name (heat
+  pump, hot water, washing machine …). You can choose instead the roof face per string (or "do not
+  show"), which plant hangs on which of the two inverter places and the figure per consumer (or
+  "only in the home consumption").
 
 ## Summary
 

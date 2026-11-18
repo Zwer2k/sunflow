@@ -798,7 +798,10 @@ async def test_display_settings_are_stored(tmp_path: Path) -> None:
 
     store = ConfigStore(tmp_path)
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(store=store)))
-    assert await api.get_display(request) == {"weather_mobile": True, "weather_desktop": True, "language": "auto", "live_controls": []}
+    assert await api.get_display(request) == {
+        "weather_mobile": True, "weather_desktop": True, "language": "auto", "live_controls": [],
+        "scene": {"roofs": {}, "inverters": [], "consumers": {}},
+    }
     config = store.load()
     config.display.live_controls = ["ev"]
     store.save(config)

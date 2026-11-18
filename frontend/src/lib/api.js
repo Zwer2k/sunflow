@@ -146,6 +146,7 @@ export const api = {
   setOptimizers: (body) => request("PUT", "/config/optimizers", body),
   useOptimizers: (entryId, used) => request("PUT", `/config/optimizers/entries/${encodeURIComponent(entryId)}`, { used }),
   setDisplay: (body) => request("PUT", "/config/display", body),
+  setScene: (body) => request("PUT", "/config/display/scene", body),
   heatingSeason: () => request("GET", "/config/heating-season"),
   setHeatingSeason: (body) => request("PUT", "/config/heating-season", body),
   house: () => request("GET", "/config/house"),

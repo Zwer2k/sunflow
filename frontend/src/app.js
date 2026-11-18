@@ -16,6 +16,7 @@ import "./settings/heat-pump-view.js";
 import "./settings/charging-view.js";
 import "./settings/batteries-view.js";
 import "./settings/optimizers-view.js";
+import "./settings/scene-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./components/charts.js";
 import {
   CATEGORIES,
@@ -1387,12 +1388,15 @@ class SunflowApp extends LitElement {
         </select>
         <p class="small muted help">${t("Gilt für die Oberfläche und für Meldungen wie Planhinweise und Empfehlungen. Die Seite lädt danach neu.")}</p>
       </section>
+      <sf-scene-settings></sf-scene-settings>
     `;
   }
 
   async _setDisplay(changes) {
     try {
-      this._display = await api.setDisplay({ ...this._display, ...changes });
+      // The scene has its own card and endpoint; a stale copy here must not undo it
+      const { scene: _scene, ...display } = { ...this._display, ...changes };
+      this._display = await api.setDisplay(display);
       return true;
     } catch (err) {
       this._error = t("Einstellung nicht gespeichert: {error}", { error: err.message });

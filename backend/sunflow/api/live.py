@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from sunflow import i18n
-from sunflow.config.models import DisplaySettings, SunflowConfig
+from sunflow.config.models import DisplaySettings, SceneSettings, SunflowConfig
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.heat_pump import DEFAULT_VOLTAGE, reading as heat_pump_reading
 from sunflow.devices.optimizers import optimizers as optimizer_list
@@ -226,6 +226,9 @@ async def set_display(request: Request, body: DisplaySettings) -> dict[str, Any]
     # Pinned in the control tab; the display settings page does not send them
     if "live_controls" not in body.model_fields_set:
         body.live_controls = config.display.live_controls
+    # Set on its own card (PUT /config/display/scene)
+    if "scene" not in body.model_fields_set:
+        body.scene = config.display.scene
     config.display = body
     store.save(config)
     if language_changed:
@@ -233,6 +236,16 @@ async def set_display(request: Request, body: DisplaySettings) -> dict[str, Any]
         # Plan notices are written in the language of their plan
         if (runner := getattr(request.app.state, "runner", None)) is not None:
             runner.request_replan()
+    return body.model_dump()
+
+
+@router.put("/config/display/scene")
+async def set_scene(request: Request, body: SceneSettings) -> dict[str, Any]:
+    """Place strings, inverters and consumers in the house pictures."""
+    store = request.app.state.store
+    config = store.load()
+    config.display.scene = body
+    store.save(config)
     return body.model_dump()
 
 

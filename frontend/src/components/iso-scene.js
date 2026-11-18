@@ -3,6 +3,7 @@ import { formatPower } from "../lib/format.js";
 import { t } from "../lib/i18n.js";
 import { MOTION, animate } from "../lib/motion.js";
 import { toggleSheet } from "../lib/display-toggles.js";
+import { figureOf, placedPlants, placeRoofs } from "../lib/scene.js";
 
 const ACTIVE_W = 20;
 const COLOR = {
@@ -38,9 +39,6 @@ const ROOFS = {
   annex: [[9.3, 8, ANNEX.front], [13.7, 8, ANNEX.front], [13.7, 3, ANNEX.back], [9.3, 3, ANNEX.back]],
   carport: [[15.8, 8, CARPORT.front + 0.12], [20.7, 8, CARPORT.front + 0.12], [20.7, 2, CARPORT.back + 0.12], [15.8, 2, CARPORT.back + 0.12]],
 };
-// Free faces in this order; names of the forecast plane pick north and carport first
-const ROOF_ORDER = ["south", "annex", "carport", "north"];
-const ROOF_HINTS = [[/nord|north/i, "north"], [/carport|garage|vordach|port/i, "carport"]];
 // Inverters on the annex front wall, their batteries below them
 const INVERTERS = [10.0, 12.0];
 // Appliances seen through the shop window, from the left (metres along the house front)
@@ -59,19 +57,6 @@ const METER = [0.8, 8, 1.6];
 // The house's distribution box at the right of the front: inverters feed the house here
 const HUB = [8.8, 8.05, 1.5];
 
-/** Which known load a consumer is, from its kind and name; null: only part of the house load. */
-function role(consumer) {
-  const name = consumer.name ?? "";
-  if (consumer.kind === "vehicle") return "vehicle";
-  if (/wärmepumpe|waermepumpe|heat ?pump|\bwp\b/i.test(name)) return "heatpump";
-  if (consumer.kind === "heater" || /warmwasser|boiler|heizstab|hot water/i.test(name)) return "tank";
-  if (/e-?bike|fahrrad|pedelec|\bbike\b/i.test(name)) return "bike";
-  if (/wasch|washer|washing/i.test(name)) return "washer";
-  if (/trockner|dryer/i.test(name)) return "dryer";
-  if (/herd|kochfeld|backofen|\bofen\b|stove|oven|cooktop/i.test(name)) return "stove";
-  return null;
-}
-
 /** The site as an isometric house: up to four roof faces, two inverters with two batteries each and the measured loads. */
 class SunflowIsoScene extends LitElement {
   static properties = { live: { attribute: false }, data: { attribute: false } };
@@ -83,9 +68,11 @@ class SunflowIsoScene extends LitElement {
     const pv = Math.max(live.pv_w ?? 0, 0);
     const hour = new Date(live.time).getHours();
     const day = pv > ACTIVE_W || (hour >= 7 && hour < 18);
-    const roofs = this._roofs(live);
-    const inverters = this._inverters(live);
-    if (inverters.length === 2 && roofs.carport?.inverter === 0) {
+    const scene = live.display?.scene;
+    const plants = placedPlants(live, scene);
+    const roofs = placeRoofs(plants, scene);
+    const inverters = this._inverters(live, plants);
+    if (!scene?.inverters?.length && inverters.length === 2 && roofs.carport?.inverter === 0) {
       // The inverter of the carport roof hangs on the carport side, the other one nearer the house
       inverters.reverse();
       for (const roof of Object.values(roofs)) roof.inverter = 1 - roof.inverter;
@@ -94,10 +81,10 @@ class SunflowIsoScene extends LitElement {
     const loads = {};
     // Measured only appliances (washing machine, stove …) come apart from the planned loads
     for (const consumer of [...live.consumers, ...(live.appliances ?? [])]) {
-      const which = role(consumer);
+      const which = figureOf(consumer, scene);
       if (which && !loads[which] && consumer.power_w !== null && consumer.power_w !== undefined) loads[which] = consumer;
     }
-    const vehicles = live.consumers.filter((c) => role(c) === "vehicle" && c.power_w !== null && c.power_w !== undefined).slice(0, 2);
+    const vehicles = live.consumers.filter((c) => figureOf(c, scene) === "vehicle" && c.power_w !== null && c.power_w !== undefined).slice(0, 2);
     const { displays, homeBase, hasGrid } = data;
     const imported = Math.max(live.grid_w ?? 0, 0);
     const exported = Math.max(-(live.grid_w ?? 0), 0);
@@ -163,33 +150,12 @@ class SunflowIsoScene extends LitElement {
     </svg>`;
   }
 
-  /** Measured strings (or whole plants) on the roof faces, with the inverter they belong to. */
-  _roofs(live) {
-    const parts = live.pv.slice(0, 2).flatMap((plant, inverter) =>
-      plant.strings?.length
-        ? plant.strings.map((s) => ({ name: s.plane ?? `${plant.name} ${s.name}`, power: s.power_w ?? 0, inverter, display: s.display }))
-        : [{ name: plant.name, power: plant.power_w ?? 0, inverter, display: plant.display }],
-    );
-    const roofs = {};
-    for (const part of parts) {
-      const hinted = ROOF_HINTS.find(([pattern]) => pattern.test(part.name))?.[1];
-      const face = [hinted, ...ROOF_ORDER].find((f) => f && !roofs[f]) ?? ROOF_ORDER.findLast((f) => roofs[f]);
-      if (roofs[face]) {
-        roofs[face].power += part.power;
-        roofs[face].names.push(part.name);
-      } else {
-        roofs[face] = { power: part.power, names: [part.name], inverter: part.inverter, display: part.display };
-      }
-    }
-    return roofs;
-  }
-
   /** Up to two inverters with up to two batteries each; a battery of the inverter's own device first. */
-  _inverters(live) {
-    const inverters = live.pv.slice(0, 2).map((plant) => ({ name: plant.name, power: plant.power_w ?? 0, display: plant.display, batteries: [] }));
+  _inverters(live, plants) {
+    const inverters = plants.map((plant) => ({ name: plant.name, power: plant.power_w ?? 0, display: plant.display, batteries: [] }));
     if (!inverters.length && live.batteries?.length) inverters.push({ name: t("Wechselrichter"), power: 0, batteries: [] });
     for (const battery of live.batteries ?? []) {
-      const own = live.pv.slice(0, 2).findIndex((plant) => plant.device_id === battery.device_id);
+      const own = plants.findIndex((plant) => plant.device_id === battery.device_id);
       const target = own >= 0 && inverters[own].batteries.length < 2 ? own : inverters.findIndex((i) => i.batteries.length < 2);
       if (target >= 0) inverters[target].batteries.push(battery);
     }

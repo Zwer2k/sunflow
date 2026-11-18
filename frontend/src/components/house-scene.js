@@ -3,6 +3,7 @@ import { formatPower } from "../lib/format.js";
 import { t } from "../lib/i18n.js";
 import { MOTION, animate } from "../lib/motion.js";
 import { toggleSheet } from "../lib/display-toggles.js";
+import { figureOf } from "../lib/scene.js";
 
 const ACTIVE_W = 20;
 const COLOR = {
@@ -31,8 +32,9 @@ class SunflowHouseScene extends LitElement {
     const hour = new Date(live.time).getHours();
     const day = pv > ACTIVE_W || (hour >= 7 && hour < 18);
     const cloud = live.weather?.cloud ?? null;
-    const vehicle = live.consumers.find((c) => c.kind === "vehicle");
-    const heater = live.consumers.find((c) => c.kind === "heater");
+    const scene = live.display?.scene;
+    const vehicle = live.consumers.find((c) => figureOf(c, scene) === "vehicle");
+    const heater = live.consumers.find((c) => figureOf(c, scene) === "tank");
     const imported = Math.max(live.grid_w ?? 0, 0);
     const exported = Math.max(-(live.grid_w ?? 0), 0);
     const charge = Math.max(battery?.power_w ?? 0, 0);

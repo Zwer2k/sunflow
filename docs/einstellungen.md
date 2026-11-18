@@ -208,6 +208,12 @@ plausible Anteil; unter 80 % ist er hervorgehoben. In Home Assistant ändert sic
 - **Sprache**: „Wie Home Assistant“ (Standard: Deutsch, wenn Home Assistant auf Deutsch steht, sonst
   Englisch), „Deutsch“ oder „English“. Gilt für die Oberfläche und für Meldungen wie Planhinweise
   und Empfehlungen. Die Seite lädt danach neu.
+- **Hausbilder in der Live-Ansicht**: wo die Ansichten „Haus“ und „3D“ Strings, Wechselrichter und
+  Verbraucher zeigen. Standard ist überall „Automatisch“: Strings verteilen sich nach den Namen
+  ihrer Prognose-Flächen („Nord“, „Carport“ …) auf die Dachflächen, Verbraucher werden nach Art und
+  Namen erkannt (Wärmepumpe, Warmwasser, Waschmaschine …). Abweichend wählbar sind je String die
+  Dachfläche (oder „nicht zeigen“), welche Anlage auf welchem der beiden Wechselrichterplätze hängt
+  und je Verbraucher die Figur (oder „nur im Hausverbrauch“).
 
 ## Übersicht
 

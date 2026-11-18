@@ -64,6 +64,7 @@ const ENTRIES = [
   ["standards", "Modultemperatur je Dachfläche", "modultemperatur pv temperatur optimierer"],
   ["display", "Wetter in der Live-Ansicht", "wetter live handy anzeige"],
   ["display", "Sprache", "sprache language deutsch englisch english"],
+  ["display", "Hausbilder in der Live-Ansicht", "haus 3d bild dach dachfläche string wechselrichter verbraucher zuordnung figur carport anbau"],
 ];
 
 /** Lowercase without accents, ß and punctuation: "Verschleiß-Kosten" → "verschleiss kosten". */
