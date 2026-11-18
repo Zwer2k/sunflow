@@ -1,0 +1,16 @@
+# Smart meter read through inexogy (formerly Discovergy), core discovergy integration (cloud).
+# The utility meter is the reference for grid import and export.
+profile: discovergy/meter
+version: 1
+match:
+  integration: discovergy
+  # Gas meters of the same account have no power
+  requires: [power, energy]
+
+capabilities: [grid_meter]
+
+roles:
+  # + = import, - = export (two-way meters)
+  grid_power: {key: power, unit: W, sign: import_positive}
+  grid_import_energy: {key: energy, unit: kWh, optional: true}
+  grid_export_energy: {key: energyOut, unit: kWh, optional: true}

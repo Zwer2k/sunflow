@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.79.13
+
+Neue Netzzähler: Stromzähler mit IR-Lesekopf (EDL21/SML), HomeWizard P1, powerfox poweropti und inexogy (Discovergy) werden erkannt und als Netz-Messquelle angeboten.
+
 ## 0.79.12
 
 - Auto ein- oder ausgesteckt oder Karte gescannt: Sunflow plant sofort neu statt erst zur nächsten Viertelstunde. Bisher zeigte es ein gerade angestecktes Auto bis dahin noch als „unterwegs, erwartet“ und plante es nicht ein.

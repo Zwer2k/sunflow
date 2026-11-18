@@ -1,0 +1,16 @@
+# HomeWizard P1 meter (core homewizard integration) on the smart meter's P1 port.
+# The utility meter is the reference for grid import and export.
+profile: homewizard/p1
+version: 1
+match:
+  integration: homewizard
+  # The kWh meters have the same keys; the P1 meter's unique_ids start with its product type
+  requires: ["HWE-P1_*_active_power_w"]
+
+capabilities: [grid_meter]
+
+roles:
+  # + = import, - = export
+  grid_power: {key: active_power_w, unit: W, sign: import_positive}
+  grid_import_energy: {key: total_power_import_kwh, unit: kWh, optional: true}
+  grid_export_energy: {key: total_power_export_kwh, unit: kWh, optional: true}

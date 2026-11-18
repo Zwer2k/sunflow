@@ -1,0 +1,18 @@
+# Electricity meter read by an infrared reading head (SML) through the core edl21 integration.
+# The utility meter is the reference for grid import and export, preferred over the inverter's
+# own grid measurement. Many meters send the power only after the PIN from the grid operator.
+profile: edl21/meter
+version: 1
+match:
+  integration: edl21
+  # unique_id "<meter id>_1-0:16.7.0*255"; "[*]" is a literal star, not a wildcard
+  requires: ["1-0:16.7.0[*]255"]
+
+capabilities: [grid_meter]
+
+roles:
+  # OBIS 16.7.0: sum of active power, + = import, - = export
+  grid_power: {key: "1-0:16.7.0[*]255", unit: W, sign: import_positive}
+  # OBIS 1.8.0 / 2.8.0 meter readings; the meter sends its unit (usually Wh)
+  grid_import_energy: {key: "1-0:1.8.0[*]255", unit: Wh, optional: true}
+  grid_export_energy: {key: "1-0:2.8.0[*]255", unit: Wh, optional: true}

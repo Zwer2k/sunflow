@@ -62,6 +62,10 @@ Notes:
 | Device | Connection | Profile | Measures | Measuring tested |
 |---|---|---|---|---|
 | Tibber Pulse (local) | tibber_local | `tibber_local/pulse` | grid import and export at the electricity meter, meter readings | ✅ |
+| Electricity meter with IR reading head (EDL21/SML) | edl21 | `edl21/meter` | grid import and export at the electricity meter, meter readings; many meters send the power only after entering the PIN from the grid operator | 🧪 |
+| HomeWizard P1 Meter | homewizard | `homewizard/p1` | grid import and export at the meter's P1 port, meter readings | 🧪 |
+| powerfox poweropti | powerfox (cloud) | `powerfox/poweropti` | grid import and export at the electricity meter (about every minute), meter readings | 🧪 |
+| inexogy (Discovergy) | discovergy (cloud) | `discovergy/meter` | grid import and export at the electricity meter, meter readings | 🧪 |
 
 ## Wallboxes and loadpoints
 

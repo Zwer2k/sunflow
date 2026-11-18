@@ -64,6 +64,10 @@ Hinweise:
 | Gerät | Anbindung | Profil | Messen | Messen geprüft |
 |---|---|---|---|---|
 | Tibber Pulse (lokal) | tibber_local | `tibber_local/pulse` | Netzbezug und Einspeisung am Stromzähler, Zählerstände | ✅ |
+| Stromzähler mit IR-Lesekopf (EDL21/SML) | edl21 | `edl21/meter` | Netzbezug und Einspeisung am Stromzähler, Zählerstände; viele Zähler senden die Leistung erst nach Eingabe der PIN vom Netzbetreiber | 🧪 |
+| HomeWizard P1 Meter | homewizard | `homewizard/p1` | Netzbezug und Einspeisung am P1-Port des Zählers, Zählerstände | 🧪 |
+| powerfox poweropti | powerfox (Cloud) | `powerfox/poweropti` | Netzbezug und Einspeisung am Stromzähler (etwa minütlich), Zählerstände | 🧪 |
+| inexogy (Discovergy) | discovergy (Cloud) | `discovergy/meter` | Netzbezug und Einspeisung am Stromzähler, Zählerstände | 🧪 |
 
 ## Wallboxen und Ladepunkte
 

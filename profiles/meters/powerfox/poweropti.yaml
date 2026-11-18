@@ -1,0 +1,16 @@
+# powerfox poweropti on the electricity meter's optical interface (core powerfox integration, cloud).
+# The utility meter is the reference for grid import and export; values arrive about every minute.
+profile: powerfox/poweropti
+version: 1
+match:
+  integration: powerfox
+  # Water and heat meters of the same account are devices without these keys
+  requires: [power, energy_usage]
+
+capabilities: [grid_meter]
+
+roles:
+  # + = import, - = export
+  grid_power: {key: power, unit: W, sign: import_positive}
+  grid_import_energy: {key: energy_usage, unit: kWh, optional: true}
+  grid_export_energy: {key: energy_return, unit: kWh, optional: true}
