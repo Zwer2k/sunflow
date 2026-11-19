@@ -1,55 +1,73 @@
 # Changelog
 
+## 0.80.0
+
+### Highlights since 0.79.1
+
+- **Heat pump:** its own settings area. Measured electrically (total, per phase or by meter) with heat output, COP and temperatures. Controlled by SG-Ready (two relays or contact 2 only), a select, a raised setpoint, the reported PV surplus or a boost switch: boosted on PV surplus and cheap hours, blocked in dear ones, with minimum run times and daily limits.
+- **The house as a heat store (test):** from the room temperatures (weighted, with a reference room), optionally a heat meter, and a comfort band with night setback, Sunflow learns how the house cools and warms (1R1C model, shown with its quality and the last week). Blocks then only last as long as the reference room stays in the band. "Plan preheating" puts the heat pump into the optimizer with the house as a store: it preheats in sunny or cheap hours and coasts through dear ones.
+- **Heating rods by season:** the heat pump's built-in rod is blocked, released or limited through its integration (EMS-ESP, NIBE, HeishaMon …), in the heating season only when needed, in summer also on PV surplus. An own heating rod as a load (also with one relay per phase) can belong to the heat pump.
+- **More meters and inverters:** electricity meters with an IR reading head (EDL21/SML), HomeWizard P1, powerfox poweropti, inexogy (Discovergy), and a **grid meter from any sensors**: one signed power, or import and export apart (Tibber cloud, DSMR, Shelly 3EM …). Growatt SPH/MOD (solax_modbus) and Deye micro inverters (Solarman), contributed by odin8822.
+- **House pictures adjustable:** which roof face a string sits on, which plant hangs on which inverter place and which figure a load is. Automatic remains the default.
+- **Planning:** a car plugged in or a card scanned is planned at once instead of at the next quarter hour.
+- **Documentation** reviewed for the release: heat pump, house and built-in rod in settings and devices, the new meters and inverters in the device tables and the README.
+
+### All changes
+
 ## 0.79.15
 
-Growatt SPH/MOD (solax_modbus) und Deye-Mikrowechselrichter (Solarman) werden erkannt – Profile von odin8822, danke! Netzzähler von Hand: beliebige Sensoren als Netzmessung, mit Vorzeichen oder Bezug und Einspeisung getrennt (Tibber Cloud, DSMR, Shelly 3EM …). Profile können einen Wert aus zwei Sensoren bilden (Bezug minus Einspeisung). Ein Hybrid-Wechselrichter, dessen Akku-Sensor 0 % meldet, gilt als Wechselrichter ohne Speicher. Gleich lange PV-Prognosen ergeben eine gemeinsame Warnung; die Großverbraucher-Grenze nennt den Stundenmittelwert.
+- Growatt SPH/MOD (solax_modbus) and Deye micro inverters (Solarman) are recognised – profiles by odin8822, thank you!
+- Grid meter by hand: any sensors as the grid measurement, signed or import and export apart (Tibber cloud, DSMR, Shelly 3EM …).
+- Profiles can form a value from two sensors (import minus export), live and in the history.
+- A hybrid inverter whose battery sensor reads 0 % counts as an inverter without a battery.
+- Forecast planes ending at the same time share one warning; the large-load threshold says it is an hourly average.
 
 ## 0.79.14
 
-Hausbilder einstellbar: Unter Einstellungen → Anzeige lässt sich wählen, auf welcher Dachfläche ein String liegt, welche Anlage auf welchem Wechselrichterplatz hängt und als welche Figur ein Verbraucher erscheint. Standard bleibt die automatische Zuordnung.
+- House pictures adjustable: Settings → Display chooses which roof face a string sits on, which plant hangs on which inverter place and which figure a load is. Automatic remains the default.
 
 ## 0.79.13
 
-Neue Netzzähler: Stromzähler mit IR-Lesekopf (EDL21/SML), HomeWizard P1, powerfox poweropti und inexogy (Discovergy) werden erkannt und als Netz-Messquelle angeboten.
+- New grid meters: electricity meters with an IR reading head (EDL21/SML), HomeWizard P1, powerfox poweropti and inexogy (Discovergy) are recognised and offered as the grid measurement.
 
 ## 0.79.12
 
-- Auto ein- oder ausgesteckt oder Karte gescannt: Sunflow plant sofort neu statt erst zur nächsten Viertelstunde. Bisher zeigte es ein gerade angestecktes Auto bis dahin noch als „unterwegs, erwartet“ und plante es nicht ein.
+- Car plugged in or unplugged or card scanned: Sunflow replans at once instead of at the next quarter hour. Until then a car just plugged in still showed as "away, expected" and was not planned.
 
 ## 0.79.11
 
-- Eingebauter Heizstab sicherer: frei, wenn der Referenzraum unter dem Komfortband liegt (auch über dem Bivalenzpunkt, z. B. bei einer Störung der Wärmepumpe) und ohne aktuellen Plan; nach 6 Wechseln am Tag wird er nicht mehr neu gesperrt, damit Freigaben nie am Schreiblimit scheitern; beim Beenden der App wird die Wärmepumpe mit freiem Heizstab zurückgegeben.
-- Vorheizen planen: Wärme über der Obergrenze zählt am Planende nicht mehr (kein Überheizen), der Hausspeicher darf die Wärmepumpe versorgen, PV-Überschuss für „nur PV“ und Speicherladen berücksichtigt ihren Bedarf; keine geplante Pause ohne aktuelle Raumtemperatur.
-- Hausmodell: robust bei wochenlang null Wärme, neu gelernt nach geänderten Räumen; die Sperrprüfung rechnet ohne Wärmemessung vorsichtig.
-- Heizperiode nach Außentemperatur ohne eigenen Sensor nutzt den der Wärmepumpe oder die Lernquelle (blieb sonst immer aktiv).
-- Eine Freigabe von Hand bleibt beim Bearbeiten der Wärmepumpe erhalten; Nachtabsenkung muss unter der Untergrenze liegen.
+- Built-in heating rod safer: released when the reference room is below the comfort band (also above the bivalence point, e.g. on a heat pump fault) and without a current plan; after 6 changes a day it is not blocked again, so releases never fail on the write limit; on shutdown the heat pump is handed back with the rod released.
+- Plan preheating: warmth above the upper bound no longer counts at the end of the plan (no overheating), the home battery may supply the heat pump, PV surplus for "PV only" and battery charging takes its demand into account; no planned pause without a current room temperature.
+- House model: robust against weeks of zero heat, relearned after changed rooms; the block check is cautious without a heat measurement.
+- Heating season by outside temperature without its own sensor uses the heat pump's or the learning source's (it otherwise stayed active).
+- A release by hand survives editing the heat pump; the night setback must lie below the lower bound.
 
 ## 0.79.10
 
-- Vorheizen planen (Test): Die Wärmepumpe wird im Optimierer zusammen mit Speicher und Verbrauchern geplant, das Haus ist dort ein Wärmespeicher. Sunflow heizt in sonnigen oder günstigen Stunden vor und lässt das Haus in teuren auskühlen, im Komfortband; die Steuerung folgt dem Plan („Vorheizen nach Plan“, „Pause nach Plan“). Einschaltbar an der Wärmepumpe, mit ihrer höchsten Leistung; nur in der Heizperiode mit zuverlässigem Hausmodell.
-- Der Abschnitt „Haus“ zeigt die geplante Raumtemperatur der nächsten 48 Stunden.
+- Plan preheating (test): the heat pump is planned in the optimizer together with batteries and loads, the house is a heat store there. Sunflow preheats in sunny or cheap hours and lets the house cool in dear ones, within the comfort band; control follows the plan ("Preheating by plan", "Pause by plan"). Switched on at the heat pump, with its maximum power; only in the heating season with a reliable house model.
+- The "House" section shows the planned room temperature of the next 48 hours.
 
 ## 0.79.9
 
-- Wärmepumpe mit Hausmodell: In der Heizperiode sperrt Sunflow die Wärmepumpe nur, solange der Referenzraum ohne Heizen bis zum Ende der Sperre im Komfortband bleibt (nachts mit Absenkung); kühlt das Haus schneller, endet die Sperre sofort. Verstärken endet an der Obergrenze. Genutzt nur, solange das Modell besser vorhersagt als „bleibt gleich“.
-- Die Heizperiode wird jetzt auch für Wärmepumpen und ihren eingebauten Heizstab erkannt, nicht nur für Heizstäbe als Verbraucher.
+- Heat pump with the house model: in the heating season Sunflow blocks the heat pump only as long as the reference room stays in the comfort band without heating until the block ends (with the night setback); if the house cools faster, the block ends at once. Boosting ends at the upper bound. Used only while the model predicts better than "stays as it is".
+- The heating season now also applies to heat pumps and their built-in rod, not only to heating rods as loads.
 
 ## 0.79.8
 
-- Haus: Raumtemperaturen (gewichtet, mit Referenzraum), optional ein Wärmemengenzähler und ein Komfortband mit Nachtabsenkung im Bereich Wärmepumpe.
-- Sunflow lernt daraus ein Wärmemodell des Hauses (1R1C): Zeitkonstante, Abkühlung, Wärmeverlust, Wärmespeicher und Sonne. Gezeigt mit Güte und einem Diagramm der letzten Woche (gemessen und erwartet); unruhige Sensoren werden genannt. Noch nicht in der Planung.
-- Entwurf Wärmepumpe: Vergleich mit EMHASS, hplib und anderen Wärmepumpen-Steuerungen.
+- House: room temperatures (weighted, with a reference room), optionally a heat meter and a comfort band with night setback in the heat pump area.
+- From these Sunflow learns a thermal model of the house (1R1C): time constant, cooling, heat loss, heat capacity and sun. Shown with its quality and a chart of the last week (measured and expected); restless sensors are named. Not yet used in planning.
+- Heat pump design: comparison with EMHASS, hplib and other heat pump controls.
 
 ## 0.79.7
 
-- Eingebauter Heizstab der Wärmepumpe: wird mit der Wärmepumpe konfiguriert und über ihre Integration gesperrt, freigegeben oder begrenzt (Sperr-Schalter wie EMS-ESP „auxheateroff“, Freigabe-Schalter wie NIBE, Auswahl wie HeishaMon oder kW-Stufen, Höchstleistung als Zahl). In der Heizperiode nur bei Bedarf (unter dem Bivalenzpunkt, negativer Preis, von Hand 24 h), im Sommer auch bei PV-Überschuss. Höchstens ein Wechsel pro Stunde, weil die Einstellung meist im Flash liegt.
-- Ein eigener Heizstab als Verbraucher bleibt als zweite Variante.
+- Built-in heating rod of the heat pump: configured with the heat pump and blocked, released or limited through its integration (block switch like EMS-ESP "auxheateroff", release switch like NIBE, select like HeishaMon or kW steps, maximum power as a number). In the heating season only when needed (below the bivalence point, negative price, 24 h by hand), in summer also on PV surplus. At most one change per hour, as the setting usually lives in flash.
+- An own heating rod as a load remains as the second option.
 
 ## 0.79.6
 
-- Heizstab gehört jetzt zur Wärmepumpe: In der Konfiguration der Wärmepumpe wird ein Verbraucher mit Art „Wärme“ als Heizstab zugeordnet, mit seinem Modus je Jahreszeit. Der eingebaute Heizstab der Wärmepumpe ist ausdrücklich ausgenommen.
-- Modi je Jahreszeit gelten nur noch für einen zugeordneten Heizstab; im Sommer ist „Nur PV-Überschuss“ empfohlen.
-- Entwurf Wärmepumpe: Hintergrund aus der Praxis (Bivalenzpunkt, Warmwasser und Legionellen, Heizkurve anheben, § 14a).
+- The heating rod now belongs to the heat pump: in the heat pump's configuration a load of kind "Heat" is assigned as its heating rod, with its mode per season. The heat pump's built-in rod is explicitly excluded.
+- Modes per season apply only to an assigned heating rod; in summer "PV surplus only" is recommended.
+- Heat pump design: background from practice (bivalence point, hot water and legionella, raising the heating curve, § 14a).
 
 ## 0.79.5
 
