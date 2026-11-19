@@ -200,5 +200,5 @@ Inside the App it uses the Supervisor proxy and `SUPERVISOR_TOKEN` instead.
 
 ## License
 
-Copyright 2026 Jurij Retzlaff. Licensed under the [Apache License 2.0](LICENSE).
+Copyright 2026 Zwer2k. Licensed under the [Apache License 2.0](LICENSE).
 The bundled Lit library (`frontend/vendor/`) is © Google LLC under the BSD-3-Clause license.
