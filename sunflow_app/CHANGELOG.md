@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.79.15
+
+Growatt SPH/MOD (solax_modbus) und Deye-Mikrowechselrichter (Solarman) werden erkannt – Profile von odin8822, danke! Netzzähler von Hand: beliebige Sensoren als Netzmessung, mit Vorzeichen oder Bezug und Einspeisung getrennt (Tibber Cloud, DSMR, Shelly 3EM …). Profile können einen Wert aus zwei Sensoren bilden (Bezug minus Einspeisung). Ein Hybrid-Wechselrichter, dessen Akku-Sensor 0 % meldet, gilt als Wechselrichter ohne Speicher. Gleich lange PV-Prognosen ergeben eine gemeinsame Warnung; die Großverbraucher-Grenze nennt den Stundenmittelwert.
+
 ## 0.79.14
 
 Hausbilder einstellbar: Unter Einstellungen → Anzeige lässt sich wählen, auf welcher Dachfläche ein String liegt, welche Anlage auf welchem Wechselrichterplatz hängt und als welche Figur ein Verbraucher erscheint. Standard bleibt die automatische Zuordnung.

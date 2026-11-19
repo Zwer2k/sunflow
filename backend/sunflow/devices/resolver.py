@@ -1,6 +1,6 @@
 """Resolve profile roles to entities and normalize their values."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .discovery import Snapshot, entity_has_key
@@ -39,6 +39,8 @@ class RoleValue:
     profile_sign: str | None = None
     # Decimals Home Assistant shows for the entity (user setting, else the integration's)
     precision: int | None = None
+    # The role subtracted from this one (e.g. export from import), when it applies
+    minus_role: str | None = None
 
     @property
     def display(self) -> dict[str, Any]:
@@ -227,4 +229,25 @@ def preview(
                 precision=precision,
             )
         )
+    return _subtract(profile, result, overrides)
+
+
+def _subtract(profile: dict[str, Any], values: list[RoleValue], overrides: dict[str, dict[str, Any]]) -> list[RoleValue]:
+    """Roles measured by two sensors (e.g. grid import and export): this one minus the other.
+
+    A sensor chosen for the role alone is taken as already signed: nothing is subtracted.
+    """
+    by_role = {v.role: v for v in values}
+    result = []
+    for value in values:
+        minus = profile["roles"][value.role].get("minus")
+        other = by_role.get(minus) if minus else None
+        chosen = overrides.get(value.role, {}).get("entity_id") is not None
+        if other is None or other.entity_id is None or (chosen and overrides.get(minus, {}).get("entity_id") is None):
+            result.append(value)
+            continue
+        difference = None
+        if value.value is not None and other.value is not None and other.unit == value.unit:
+            difference = value.value - other.value
+        result.append(replace(value, value=difference, minus_role=minus))
     return result

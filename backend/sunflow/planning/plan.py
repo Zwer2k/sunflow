@@ -1281,13 +1281,33 @@ LARGE_LOAD_NOTICE_HOURS = 5
 LARGE_LOAD_NOTICE_SHARE = 0.02
 
 
+def short_forecasts(planes: list[Any], ends: list[datetime], published_end: datetime, tz: tzinfo) -> list[str]:
+    """One warning per end time for forecasts ending well before the prices (a free plan ends all planes alike)."""
+    short: dict[str, list[str]] = {}
+    for plane, last in zip(planes, ends, strict=False):
+        if last < published_end - timedelta(hours=12):
+            short.setdefault(german_time(last.astimezone(tz)), []).append(plane.display_name)
+    return [
+        t(
+            "PV-Prognose „{plane}“ reicht nur bis {time} – danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig).",
+            plane=names[0], time=time,
+        )
+        if len(names) == 1
+        else t(
+            "PV-Prognosen von {count} Flächen ({planes}) reichen nur bis {time} – danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig).",
+            count=len(names), planes=", ".join(names), time=time,
+        )
+        for time, names in short.items()
+    ]
+
+
 def large_load_notice(load: LoadForecast, threshold_w: float | None) -> str | None:
     """A notice when many hours were left out of the load forecast as large loads."""
     # A few rare peaks (oven, sauna) are what the exclusion is for; many hint at an unknown large consumer
     if threshold_w is None or load.excluded_hours <= max(LARGE_LOAD_NOTICE_HOURS, LARGE_LOAD_NOTICE_SHARE * load.history_hours):
         return None
     return t(
-        "{hours} h Hausverbrauch über {threshold} kW (ohne Wallbox, Heizstab und andere Verbraucher in Sunflow) zählen nicht zur Lastprognose. Steckt ein regelmäßiger Großverbraucher dahinter, lege ihn als Verbraucher an, damit Sunflow ihn einplant.",
+        "{hours} h mit Hausverbrauch über {threshold} kW im Stundenmittel (ohne Wallbox, Heizstab und andere Verbraucher in Sunflow) zählen nicht zur Lastprognose. Steckt ein regelmäßiger Großverbraucher dahinter, lege ihn als Verbraucher an oder setze die Grenze unter Planung höher.",
         hours=load.excluded_hours, threshold=number(threshold_w / 1000),
     )
 
@@ -1704,14 +1724,7 @@ async def compute_plan(
     pv_ends = [max((p.end for p in points), default=start) for points in series]
     if pv_ends:
         prices = [p for p in prices if not p.estimated or p.end <= min(pv_ends)]
-    for plane, last in zip(used_planes, pv_ends, strict=False):
-        if last < published_end - timedelta(hours=12):
-            warnings.append(
-                t(
-                    "PV-Prognose „{plane}“ reicht nur bis {time} – danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig).",
-                    plane=plane.display_name, time=german_time(last.astimezone(tz)),
-                )
-            )
+    warnings.extend(short_forecasts(used_planes, pv_ends, published_end, tz))
     pv = sum_forecasts(series) if series else []
 
     # Load forecast from the history of the battery inverter's load sensor

@@ -1,0 +1,15 @@
+# A grid meter added by hand from any sensors (Tibber cloud, DSMR, Shelly 3EM, template …):
+# one signed power, or import and export as two sensors.
+profile: generic/grid_meter
+version: 1
+match:
+  integration: manual
+
+capabilities: [grid_meter]
+
+roles:
+  # + = import, - = export; with an export sensor: the import only, the export is subtracted
+  grid_power: {key: manual_grid_power, unit: W, sign: import_positive, minus: grid_export_power}
+  grid_export_power: {key: manual_grid_export_power, unit: W, optional: true}
+  grid_import_energy: {key: manual_grid_import_energy, unit: kWh, optional: true}
+  grid_export_energy: {key: manual_grid_export_energy, unit: kWh, optional: true}

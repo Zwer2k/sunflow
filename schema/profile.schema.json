@@ -264,6 +264,10 @@
         "unit": {"type": "string"},
         "sign": {"enum": ["charge_positive", "discharge_positive", "import_positive", "export_positive"]},
         "optional": {"type": "boolean", "default": false},
+        "minus": {
+          "description": "Another role of the profile subtracted from this one, for values measured by two sensors (e.g. grid_power as import minus grid_export_power).",
+          "type": "string"
+        },
         "on_states": {
           "description": "States of a text sensor that mean on (e.g. a car status \"charging\" for connected); others are off.",
           "type": "array",

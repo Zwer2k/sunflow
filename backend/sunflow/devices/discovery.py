@@ -224,6 +224,16 @@ def energy_entity_ids(prefs: dict[str, Any] | None) -> set[str]:
     return found
 
 
+def _is_battery(state: dict[str, Any]) -> bool:
+    """A battery level sensor; one reading exactly 0 % belongs to a hybrid inverter without a battery."""
+    if state.get("attributes", {}).get("device_class") != "battery":
+        return False
+    try:
+        return float(state["state"]) != 0
+    except KeyError, TypeError, ValueError:
+        return True
+
+
 def entity_has_key(entity: dict[str, Any], key: str) -> bool:
     """Return True if the entity's unique_id ends with the given key.
 
@@ -326,13 +336,7 @@ def discover(
         if not supported and not in_energy:
             continue
 
-        entry_has_battery = any(
-            snapshot.states.get(e["entity_id"], {}).get("attributes", {}).get(
-                "device_class"
-            )
-            == "battery"
-            for e in entry_entities
-        )
+        entry_has_battery = any(_is_battery(snapshot.states.get(e["entity_id"], {})) for e in entry_entities)
         integration = DiscoveredIntegration(
             entry_id=entry_id,
             domain=domain,

@@ -353,7 +353,7 @@ class SunflowStandards extends LitElement {
                 @change=${() => this._saveNumbers(this._settings)}>
               <span class="muted">kW</span>
             </span>
-            <span class="small muted help">${t("Stunden mit mehr Hausverbrauch (z. B. Backofen, Sauna) zählen nicht zur Lastprognose, damit seltene Spitzen den Alltag nicht verzerren. Wallbox, Heizstab und andere Verbraucher in Sunflow rechnet es ohnehin heraus. Leer = nichts ausklammern.")}</span>
+            <span class="small muted help">${t("Gilt für den Durchschnitt einer Stunde: Stunden, in denen der Hausverbrauch im Mittel darüber liegt (z. B. Backofen, Sauna), zählen nicht zur Lastprognose, damit seltene Spitzen den Alltag nicht verzerren. Läuft so etwas täglich (z. B. Durchlauferhitzer), setze die Grenze höher oder lass das Feld leer. Wallbox, Heizstab und andere Verbraucher in Sunflow rechnet es ohnehin heraus. Leer = nichts ausklammern.")}</span>
           </label>
           <div class="field wide">
             <span class="field-label">${t("Verschleißkosten Speicher")}</span>

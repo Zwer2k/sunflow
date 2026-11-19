@@ -220,7 +220,7 @@ class ManualDevice(BaseModel):
     """A consumer added by hand: switched (Shelly …), in power steps (select), by current (number) or only measured."""
 
     name: str
-    type: Literal["switch", "stepped", "current", "meter", "heat_pump", "relays"] = "switch"
+    type: Literal["switch", "stepped", "current", "meter", "heat_pump", "relays", "grid_meter"] = "switch"
     switch_entity: str | None = None
     level_entity: str | None = None
     current_entity: str | None = None
@@ -255,6 +255,11 @@ class ManualDevice(BaseModel):
     # Relays: one switch per phase (index 0 is L1; None for a phase without relay) and the power of one
     relay_entities: list[str | None] = Field(default_factory=list, max_length=3)
     relay_power_w: FiniteFloat | None = Field(default=None, gt=0, le=10_000)
+    # Grid meter: power_entity is the grid power (signed, or the import when export_power_entity is set)
+    export_power_entity: str | None = None
+    export_positive: bool = False
+    import_energy_entity: str | None = None
+    export_energy_entity: str | None = None
 
 
 MANUAL_PROFILES = {
@@ -264,6 +269,7 @@ MANUAL_PROFILES = {
     "meter": "generic/meter",
     "heat_pump": "generic/heat_pump",
     "relays": "generic/relays",
+    "grid_meter": "generic/grid_meter",
 }
 MANUAL_PROFILE = MANUAL_PROFILES["switch"]
 SWITCH_DOMAINS = ("switch.", "input_boolean.")
@@ -381,10 +387,30 @@ def _rod_control(body: ManualDevice) -> dict[str, RoleOverride]:
     return {role: RoleOverride(entity_id=body.rod_entity)}
 
 
+def _grid_meter_setup(body: ManualDevice) -> dict[str, RoleOverride]:
+    """A grid meter from any sensors: one signed power, or import and export apart."""
+    if not body.power_entity or not body.power_entity.startswith("sensor."):
+        raise HTTPException(status_code=422, detail=t("Bitte die Netzleistung wählen"))
+    if body.export_power_entity and body.export_positive:
+        raise HTTPException(status_code=422, detail=t("Mit eigenem Einspeisesensor misst der erste Sensor nur den Bezug"))
+    sign = "export_positive" if body.export_positive else None
+    overrides = {"grid_power": RoleOverride(entity_id=body.power_entity, sign=sign)}
+    for role, entity in (
+        ("grid_export_power", body.export_power_entity),
+        ("grid_import_energy", body.import_energy_entity),
+        ("grid_export_energy", body.export_energy_entity),
+    ):
+        if entity:
+            overrides[role] = RoleOverride(entity_id=entity)
+    return overrides
+
+
 def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, RoleOverride], dict[str, float], dict[str, float] | None]:
     """Role bindings, parameters and power steps of a consumer added by hand; 422 on missing or wrong entities."""
     if body.type == "heat_pump":
         return _heat_pump_setup(body)
+    if body.type == "grid_meter":
+        return _grid_meter_setup(body), {}, None
     if body.type == "meter":
         # Not switched: the power measurement is what it is about
         if not body.power_entity or not body.power_entity.startswith("sensor."):

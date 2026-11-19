@@ -55,6 +55,10 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
                 return
             sign = -1.0 if value.sign is not None and value.sign not in CANONICAL_SIGNS else 1.0
             series.append(Series(key=key, statistic_id=value.entity_id, factor=factor * sign, device_id=device_id))
+            # Measured by two sensors: the means of both summed, the other one negated
+            if value.minus_role and (other := roles[value.minus_role]).entity_id:
+                other_sign = -1.0 if other.sign is not None and other.sign not in CANONICAL_SIGNS else 1.0
+                series.append(Series(key=key, statistic_id=other.entity_id, factor=-factor * other_sign, device_id=device_id))
 
         if controls_battery(profile):
             params = {
