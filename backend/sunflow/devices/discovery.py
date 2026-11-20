@@ -277,7 +277,7 @@ def match_profile(
 
 
 # Profile sections whose steps write entities
-WRITING_SECTIONS = ("primitive", "battery_control", "setup", "pv_limit", "charge_control", "phase_switch", "control_mode")
+WRITING_SECTIONS = ("primitive", "battery_control", "pv_limit", "charge_control", "phase_switch", "control_mode")
 
 
 def needed_keys(profile: dict[str, Any]) -> set[str]:

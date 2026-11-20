@@ -81,10 +81,5 @@ actions:
   limit_discharge: {bat_min: -P, bat_max: max_charge, grid_target: grid_offset}
   absorb: {bat_min: 0, bat_max: max_charge, grid_target: 0}
 
-setup:
-  - select: {key: passive_mode_timeout, option: "Disabled"}
-  - press: {key: passive_mode_update_timeout, storage: eeprom, write: if_differs, readback: passive_mode_timeout}
-  - select: {key: charger_use_mode, option: "Passive Mode", storage: eeprom, write: if_differs}
-
 eeprom_guard:
   max_writes_per_day: 10

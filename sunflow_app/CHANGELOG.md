@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.2
+
+- Removed the profile `setup` steps, which were never executed: the Sofar passive mode is set as control mode, the passive timeout is not used.
+
 ## 0.80.1
 
 - Device test: profiles taking the power in percent (Growatt VPP, Fronius) no longer stop with "Missing value for P_pct"; a forced power is judged against the starting point, so a command that is ignored while the battery discharges no longer shows as "control works, sign wrong". Reported by odin8822.

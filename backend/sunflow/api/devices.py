@@ -33,7 +33,6 @@ from sunflow.devices.executor import (
     ActionResult,
     ExecutorError,
     plan_action,
-    plan_setup,
 )
 from sunflow.devices.heat_pump import PHASES
 from sunflow.devices.resolver import (
@@ -1037,16 +1036,3 @@ async def run_action(
     except ExecutorError as err:
         raise HTTPException(status_code=422, detail=str(err)) from err
     return asdict(ActionResult(action=action, params=resolved, dry_run=True, calls=calls))
-
-
-@router.post("/config/devices/{device_id}/setup")
-async def run_setup(request: Request, device_id: str) -> dict[str, Any]:
-    """Plan the profile's setup steps and show the service calls (never executed)."""
-    device = _configured_device(request, device_id)
-    profile = _library(request).profiles[device.profile]
-    snapshot = await _snapshot(request)
-    try:
-        calls = plan_setup(profile, device_entities(snapshot, device.ha_device_id))
-    except ExecutorError as err:
-        raise HTTPException(status_code=422, detail=str(err)) from err
-    return asdict(ActionResult(action="setup", params={}, dry_run=True, calls=calls))
