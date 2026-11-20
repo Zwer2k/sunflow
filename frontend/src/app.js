@@ -17,6 +17,7 @@ import "./settings/charging-view.js";
 import "./settings/batteries-view.js";
 import "./settings/optimizers-view.js";
 import "./settings/scene-view.js";
+import "./settings/grid-meter-view.js";
 import { forecastChart, priceChart, SERIES_COLORS, UNASSIGNED_COLOR } from "./components/charts.js";
 import {
   CATEGORIES,
@@ -1653,14 +1654,28 @@ class SunflowApp extends LitElement {
         const extra =
           key === "battery" && hasBattery ? html`<sf-batteries></sf-batteries>`
           : key === "load" ? this._renderManualDevices()
+          : key === "meter" ? this._renderGridMeters()
           : key === "inverter" && optimizerSources.length ? optimizerSources.map((i) => this._renderOptimizerSource(i))
           : nothing;
-        if (!members.length && key !== "load" && !(key === "battery" && hasBattery) && !(key === "inverter" && optimizerSources.length)) {
+        if (!members.length && key !== "load" && key !== "meter" && !(key === "battery" && hasBattery) && !(key === "inverter" && optimizerSources.length)) {
           return nothing;
         }
         return html`<h2 class="category">${title}</h2>${members.map((d) => this._renderDevice(d))}${extra}`;
       })}
     `;
+  }
+
+  /** Grid meters from any sensors: added, changed and removed on their own card. */
+  _renderGridMeters() {
+    const meters = Object.values(this._configDevices).filter((d) => d.profile === "generic/grid_meter");
+    const changed = ({ detail }) => {
+      const devices = { ...this._configDevices };
+      if (detail.removed) delete devices[detail.removed.ha_device_id];
+      else devices[detail.device.ha_device_id] = detail.device;
+      this._configDevices = devices;
+      this._loadCategories();
+    };
+    return html`<sf-grid-meters .devices=${meters} @changed=${changed}></sf-grid-meters>`;
   }
 
   /** The optimizers of a chosen integration: taken over as a whole, placed under "Optimierer". */
@@ -1693,8 +1708,10 @@ class SunflowApp extends LitElement {
   }
 
   _renderManualDevices() {
-    // Heat pumps have their own settings area
-    const manual = Object.values(this._configDevices).filter((d) => d.profile.startsWith(MANUAL_PREFIX));
+    // Grid meters have their own settings area
+    const manual = Object.values(this._configDevices).filter(
+      (d) => d.profile.startsWith(MANUAL_PREFIX) && d.profile !== "generic/grid_meter",
+    );
     const form = this._manual;
     const set = (field, value) => (this._manual = { ...this._manual, [field]: value });
     const candidates = this._candidates;

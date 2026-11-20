@@ -55,6 +55,44 @@ DUMMIES: dict[str, dict[str, Any]] = {
             "number": ["active_power_fixed_value_derating"],
         },
     },
+    "solax_modbus/growatt_hybrid": {
+        "integration": "solax_modbus",
+        "prefix": "growatt",
+        "keys": {
+            "sensor": [
+                "battery_soc", "battery_combined_power", "pv_power_total", "pv_power_1", "pv_power_2", "ac_power_to_user_total",
+                "ac_power_to_grid_total", "total_house_load", "total_solar_energy", "total_load", "total_grid_import",
+                "total_grid_export", "total_battery_input_energy", "total_battery_output_energy",
+            ],
+            "select": ["vpp_status", "vpp_remote_control", "vpp_allow_ac_charging"],
+            "number": ["vpp_power", "vpp_time"],
+        },
+    },
+    "solax_modbus/growatt_pv": {
+        "integration": "solax_modbus",
+        "prefix": "growatt",
+        "has_battery": False,
+        "keys": {
+            # An SPH without battery: its VPP entities and a battery_soc sensor exist as well
+            "sensor": [
+                "output_power", "pv_power_total", "ipm_inverter_temperature", "today_s_power_generation", "pv_power_1",
+                "total_power_generation", "total_solar_energy", "battery_soc",
+            ],
+            "select": ["vpp_status", "vpp_remote_control"],
+            "number": ["vpp_power", "vpp_time"],
+        },
+    },
+    "solarman/deye_micro": {
+        "integration": "solarman",
+        "prefix": "2345678901",
+        "has_battery": False,
+        "keys": {
+            "sensor": [
+                "power_sensor", "pv_power_sensor", "pv1_power_sensor", "pv2_power_sensor", "today_production_sensor",
+                "total_production_sensor",
+            ],
+        },
+    },
     "solaredge_modbus/storedge": {
         "integration": "solaredge_modbus",
         "prefix": "7E123456",
@@ -275,3 +313,22 @@ def test_percent_variables() -> None:
     assert percent_variables("limit_discharge", variables)["P_pct"] == 50
     assert percent_variables("pv_set", variables)["limit_pct"] == 25
     assert "P_pct" not in percent_variables("auto", {"max_charge": 6000})
+
+
+def test_growatt_grid_is_import_minus_export(library: ProfileLibrary) -> None:
+    """solax_modbus has no signed grid power for Growatt: import minus export, + = import."""
+    entities = dummy_entities("solax_modbus/growatt_hybrid")
+    states = {e["entity_id"]: {"state": "0", "attributes": {"unit_of_measurement": "W"}} for e in entities}
+    states["sensor.growatt_ac_power_to_grid_total"]["state"] = "1500"
+    snapshot = Snapshot(entries=[], devices=[{"id": "dev"}], entities=entities, states=states, energy_prefs=None)
+
+    values = {v.role: v.value for v in preview(library.profiles["solax_modbus/growatt_hybrid"], snapshot, "dev")}
+
+    assert values["grid_power"] == -1500.0
+
+
+def test_deye_micro_reads_the_ac_output(library: ProfileLibrary) -> None:
+    """"power_sensor" also ends the DC keys; the shortest unique_id is the AC output."""
+    entities = dummy_entities("solarman/deye_micro")
+
+    assert bind_roles(library.profiles["solarman/deye_micro"], entities)["ac_power"] == "sensor.2345678901_power_sensor"

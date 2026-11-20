@@ -116,6 +116,9 @@ def load_profiles(profiles_dir: Path, schema: dict[str, Any]) -> ProfileLibrary:
             )
             library.errors.append(ProfileError(path=path, message=message))
             continue
+        if wrong := sorted(r for r, spec in data["roles"].items() if spec.get("minus") not in (None, *data["roles"]) or spec.get("minus") == r):
+            library.errors.append(ProfileError(path=path, message=f"minus names no other role: {', '.join(wrong)}"))
+            continue
         if data["profile"] in library.profiles:
             library.errors.append(
                 ProfileError(path=path, message=f"Duplicate profile {data['profile']}")

@@ -36,6 +36,9 @@ Laden aus dem Netz.
 |---|---|---|---|---|---|---|---|---|
 | Sofar HYD-KTL (2. Gen.) | solax_modbus (Sofar-Plugin) | `solax_modbus/sofar` | PV je String, PV extern, Speicher, Netz, Verbrauch, Zähler | alle, leistungsgenau (Passivmodus-Fenster) | – | Passivmodus (wird beim Übernehmen gesetzt) | ✅ | ✅ |
 | SolaX X1/X3 Hybrid Gen4/Gen5 | solax_modbus (SolaX-Plugin) | `solax_modbus/solax_gen4_5` | PV, Speicher, Netz, Verbrauch, Zähler | Automatik, Halten, Laden, Entladen | – | Remote Control Mode 1 der Integration | 🧪 | 🧪 |
+| Growatt SPH mit Akku (z. B. SPH 4000–10000TL3 BH-UP) | solax_modbus (Growatt-Plugin) | `solax_modbus/growatt_hybrid` | PV, PV je String, Speicher, Netz (Bezug minus Einspeisung), Verbrauch, Zähler | Automatik, Laden, Entladen (VPP-Fernsteuerung) | – | VPP-Funktion (setzt Sunflow beim Übernehmen und im Gerätetest) | ✅ | ✅ (Laden, Automatik) |
+| Growatt MOD/MIN und SPH ohne Akku | solax_modbus (Growatt-Plugin) | `solax_modbus/growatt_pv` | PV, PV je String, Zähler | – | – | – | ✅ | – |
+| Deye-Mikrowechselrichter (z. B. SUN-M80G3) | solarman (HACS, davidrapan) | `solarman/deye_micro` | PV (AC), PV je Eingang, Zähler | – | – | – | ✅ | – |
 | Huawei SUN2000 mit LUNA2000 | huawei_solar | `huawei_solar/sun2000_luna2000` | PV je String, Speicher, Netz (mit Smart Meter), Zähler | Automatik, Halten, Laden, Entladen | ja | Installateur-Zugang in der Integration | 🧪 | 🧪 |
 | Huawei SUN2000 ohne Speicher | huawei_solar | `huawei_solar/pv_only` | PV, PV je String, Zähler | – | ja | Abregeln: Installateur-Zugang | ✅ | 🧪 (Abregeln) |
 | SolarEdge StorEdge / Home Hub | solaredge_modbus (Core) | `solaredge_modbus/storedge` | PV, Speicher, Netz (mit Zähler), Zähler | alle | – | Speicher-Fernsteuerung (wird beim Übernehmen gesetzt) | 🧪 | 🧪 |
@@ -68,6 +71,13 @@ Hinweise:
 | HomeWizard P1 Meter | homewizard | `homewizard/p1` | Netzbezug und Einspeisung am P1-Port des Zählers, Zählerstände | 🧪 |
 | powerfox poweropti | powerfox (Cloud) | `powerfox/poweropti` | Netzbezug und Einspeisung am Stromzähler (etwa minütlich), Zählerstände | 🧪 |
 | inexogy (Discovergy) | discovergy (Cloud) | `discovergy/meter` | Netzbezug und Einspeisung am Stromzähler, Zählerstände | 🧪 |
+| Netzzähler von Hand | beliebige Sensoren | `generic/grid_meter` | Netzleistung mit Vorzeichen oder Bezug und Einspeisung getrennt, Zählerstände | 🧪 |
+
+Erkennt Sunflow deinen Zähler nicht (z. B. Tibber über die Cloud, DSMR, P1 Monitor, Shelly 3EM
+oder ein Template-Sensor), legst du ihn unter „Geräte → Zähler → Netzzähler von Hand“ an: entweder
+eine Netzleistung mit Vorzeichen (Bezug positiv; wahlweise Einspeisung positiv) oder Bezug und
+Einspeisung als zwei Sensoren, dann rechnet Sunflow Bezug minus Einspeisung. Ein Zähler hat
+Vorrang vor der Netzmessung des Wechselrichters; unter „Bilanzprüfung“ lässt sich die Quelle ändern.
 
 ## Wallboxen und Ladepunkte
 

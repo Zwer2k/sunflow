@@ -10,7 +10,7 @@ from sunflow.devices.executor import (
     PlannedCall,
     execute,
     plan_action,
-    plan_setup,
+    plan_steps,
     render,
 )
 from sunflow.devices.profiles import ProfileLibrary
@@ -108,10 +108,17 @@ async def test_execute_dry_run_sends_nothing(sofar: dict[str, Any], tmp_path: Pa
     assert {c.status for c in calls} == {"dry_run"}
 
 
-async def test_execute_setup(sofar: dict[str, Any], tmp_path: Path) -> None:
-    """Setup skips the mode switch when already set and counts EEPROM writes."""
+EEPROM_STEPS = [
+    {"select": {"key": "passive_mode_timeout", "option": "Disabled"}},
+    {"press": {"key": "passive_mode_update_timeout", "storage": "eeprom", "write": "if_differs", "readback": "passive_mode_timeout"}},
+    {"select": {"key": "charger_use_mode", "option": "Passive Mode", "storage": "eeprom", "write": "if_differs"}},
+]
+
+
+async def test_execute_eeprom_steps(tmp_path: Path) -> None:
+    """EEPROM steps skip a value already set and count the writes."""
     client = FakeClient()
-    calls = plan_setup(sofar, ENTITIES)
+    calls = plan_steps(EEPROM_STEPS, {}, ENTITIES, "eeprom")
     states = {"select.sofar_charger_use_mode": {"state": "Passive Mode"}}
     guard = EepromGuard(tmp_path, 10)
 

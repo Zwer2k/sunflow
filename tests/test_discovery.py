@@ -300,3 +300,32 @@ async def test_snapshot_cache_follows_state_changes() -> None:
     await cache.get()
     assert fetches == [1, 2]
     assert len(callbacks) == 2
+
+
+GROWATT_KEYS = [
+    "vpp_remote_control", "vpp_power", "vpp_time", "battery_soc", "output_power", "pv_power_total", "ipm_inverter_temperature",
+    "today_s_power_generation",
+]
+
+
+@pytest.mark.parametrize(
+    ("soc", "profile"),
+    [
+        pytest.param("55", "solax_modbus/growatt_hybrid", id="with battery"),
+        pytest.param("unavailable", "solax_modbus/growatt_hybrid", id="battery not readable"),
+        pytest.param("0", "solax_modbus/growatt_pv", id="SPH without battery"),
+    ],
+)
+def test_battery_reading_zero_is_no_battery(library: ProfileLibrary, soc: str, profile: str) -> None:
+    """A hybrid inverter without battery still has a battery level sensor, always at 0 %."""
+    snapshot = Snapshot(
+        entries=[{"entry_id": "e", "domain": "solax_modbus", "title": "SPH", "state": "loaded"}],
+        devices=[{"id": "d", "config_entries": ["e"], "name": "Growatt SPH", "manufacturer": "Growatt", "model": "SPH"}],
+        entities=[_entity(f"sensor.sph_{k}", f"sph_{k}", "d", "e") for k in GROWATT_KEYS],
+        states={"sensor.sph_battery_soc": {"state": soc, "attributes": {"device_class": "battery"}}},
+        energy_prefs=None,
+    )
+
+    (integration,) = discover(snapshot, library)
+
+    assert integration.devices[0].profile == profile

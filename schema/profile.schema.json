@@ -106,11 +106,6 @@
         }
       }
     },
-    "setup": {
-      "description": "Steps executed once when the device is activated.",
-      "type": "array",
-      "items": {"$ref": "#/$defs/step"}
-    },
     "battery_control": {
       "description": "Battery control by action, for devices without a power window: steps per action (auto, hold, force_charge, force_discharge, limit_charge, limit_discharge; runtime P in W). Actions left out are not supported; the plan avoids them or falls back to a related one. release: steps when Sunflow hands the battery back (default: auto). refresh: send the action again after this time although nothing changed (devices that fall back without new commands).",
       "type": "object",
@@ -260,6 +255,10 @@
         "unit": {"type": "string"},
         "sign": {"enum": ["charge_positive", "discharge_positive", "import_positive", "export_positive"]},
         "optional": {"type": "boolean", "default": false},
+        "minus": {
+          "description": "Another role of the profile subtracted from this one, for values measured by two sensors (e.g. grid_power as import minus grid_export_power).",
+          "type": "string"
+        },
         "on_states": {
           "description": "States of a text sensor that mean on (e.g. a car status \"charging\" for connected); others are off.",
           "type": "array",

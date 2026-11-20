@@ -29,6 +29,7 @@ const ROLE_LABELS = {
   load_energy: t("Hausverbrauch (Zähler)"),
   grid_import_energy: t("Netzbezug (Zähler)"),
   grid_export_energy: t("Einspeisung (Zähler)"),
+  grid_export_power: t("Einspeisung"),
   battery_charge_energy: t("Speicher geladen (Zähler)"),
   battery_discharge_energy: t("Speicher entladen (Zähler)"),
   switch: t("Schalter"),

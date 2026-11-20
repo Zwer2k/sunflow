@@ -5,6 +5,8 @@
 #   The inverter clamps battery power to [bat_min, bat_max] and regulates the grid to grid_target.
 #   Passive values live in inverter RAM (reset to 0/0/0 on inverter reboot -> battery idle).
 #   Mode and other settings are stored in EEPROM.
+#   Passive timeout (0x1184/0x1185) has no effect: no mode change after 5 min without passive
+#   writes, nor without any Modbus traffic (tested 2026-11-20); hence watchdog none.
 profile: solax_modbus/sofar
 version: 1
 match:
@@ -80,11 +82,6 @@ actions:
   limit_charge: {bat_min: -max_discharge, bat_max: P, grid_target: grid_offset}
   limit_discharge: {bat_min: -P, bat_max: max_charge, grid_target: grid_offset}
   absorb: {bat_min: 0, bat_max: max_charge, grid_target: 0}
-
-setup:
-  - select: {key: passive_mode_timeout, option: "Disabled"}
-  - press: {key: passive_mode_update_timeout, storage: eeprom, write: if_differs, readback: passive_mode_timeout}
-  - select: {key: charger_use_mode, option: "Passive Mode", storage: eeprom, write: if_differs}
 
 eeprom_guard:
   max_writes_per_day: 10

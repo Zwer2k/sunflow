@@ -280,13 +280,6 @@ def plan_charge(
     return plan_steps(control[action], {**defaults, **parameters, **runtime}, entities, "volatile", roles)
 
 
-def plan_setup(
-    profile: dict[str, Any], entities: list[dict[str, Any]]
-) -> list[PlannedCall]:
-    """Plan the one-time setup steps of a profile."""
-    return plan_steps(profile.get("setup", []), {}, entities, "eeprom")
-
-
 class EepromGuard:
     """Count EEPROM writes per entity and day, persisted in the data directory."""
 

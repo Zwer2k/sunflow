@@ -1,0 +1,22 @@
+# Growatt PV inverters without battery (e.g. MOD 3-15KTL3-X) via the solax_modbus custom
+# integration (Growatt plugin). Measured only; the output is not limited.
+# The inverter switches off at night, its entities are unavailable until sunrise.
+# Contributed by odin8822 (issue #2); checked in shadow mode, not by us on hardware.
+profile: solax_modbus/growatt_pv
+version: 1
+match:
+  integration: solax_modbus
+  requires: [output_power, pv_power_total, ipm_inverter_temperature, today_s_power_generation]
+
+capabilities: [pv]
+
+roles:
+  ac_power: {key: output_power, unit: W}
+  pv_power: {key: pv_power_total, unit: W}
+  daily_yield: {key: today_s_power_generation, unit: kWh}
+  # Per MPPT string (DC), shown in the Live diagram
+  pv1_power: {key: pv_power_1, unit: W, optional: true}
+  pv2_power: {key: pv_power_2, unit: W, optional: true}
+  # AC and DC counters: exact yield and inverter efficiency
+  pv_energy: {key: total_power_generation, unit: kWh, optional: true}
+  pv_dc_energy: {key: total_solar_energy, unit: kWh, optional: true}

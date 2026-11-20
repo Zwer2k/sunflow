@@ -36,6 +36,8 @@ den Plan auf Wunsch selbst um.* → [Dokumentation auf Deutsch](docs/README.md)
   vehicle with their own targets.
 - **Statistics of the loads** like evcc's (charged energy, solar share, price, cost per month,
   load and vehicle), with a one-time import of evcc's sessions.
+- **House**: learns how the house cools and warms from the room temperatures. A new
+  flow temperature control for heat pumps is being built.
 - **Hot water and own loads**: heating rods, switches, power levels and target
   currents; learned hot water demand; one-off loads such as a washing machine at the
   cheapest time.
@@ -77,12 +79,13 @@ The user interface is available in German and English and follows the language o
 
 ## Supported devices (overview)
 
-Inverters and batteries: Sofar HYD-KTL, SolaX Gen4/5, Huawei SUN2000 (with and
-without LUNA2000), SolarEdge StorEdge, Fronius GEN24 Plus, GoodWe ET/EH/BT, Kostal
-Plenticore, Victron ESS (Modbus TCP). Plug-in and home storage: Indevolt, Homevolt,
-Marstek Venus, Zendure. Meters: Tibber Pulse. Wallboxes: evcc
-loadpoints, go-e Charger (API v1 and v2). Optimizers: Huawei, Tigo. Plus generic
-switches, power levels and target currents. Test status per device in
+Inverters and batteries: Sofar HYD-KTL, SolaX Gen4/5, Growatt SPH/MOD, Huawei SUN2000
+(with and without LUNA2000), SolarEdge StorEdge, Fronius GEN24 Plus, GoodWe ET/EH/BT, Kostal
+Plenticore, Victron ESS (Modbus TCP), Deye micro inverters. Plug-in and home storage: Indevolt,
+Homevolt, Marstek Venus, Zendure. Meters: Tibber Pulse, IR reading heads (EDL21/SML),
+HomeWizard P1, powerfox, inexogy, or any sensors. Wallboxes: evcc loadpoints, go-e Charger
+(API v1 and v2). Optimizers: Huawei,
+Tigo. Plus generic switches, power levels and target currents. Test status per device in
 [Supported devices](docs/en/devices.md).
 
 ## Installation as Home Assistant App

@@ -1,0 +1,23 @@
+# Deye micro inverters (e.g. SUN-M80G3) via the solarman custom integration
+# (davidrapan/ha-solarman). Measured only; the output is not limited.
+# The inverters switch off at night, their entities are unavailable until sunrise.
+# Contributed by odin8822 (issue #2); checked in shadow mode, not by us on hardware.
+profile: solarman/deye_micro
+version: 1
+match:
+  integration: solarman
+  has_battery: false
+  requires: [pv_power_sensor, pv1_power_sensor, today_production_sensor, total_production_sensor]
+
+capabilities: [pv]
+
+roles:
+  # "power_sensor" also ends "pv_power_sensor"; Sunflow binds the shortest unique_id,
+  # which is the AC output
+  ac_power: {key: power_sensor, unit: W}
+  pv_power: {key: pv_power_sensor, unit: W}
+  daily_yield: {key: today_production_sensor, unit: kWh}
+  # Per MPPT input (DC), shown in the Live diagram
+  pv1_power: {key: pv1_power_sensor, unit: W, optional: true}
+  pv2_power: {key: pv2_power_sensor, unit: W, optional: true}
+  pv_energy: {key: total_production_sensor, unit: kWh, optional: true}

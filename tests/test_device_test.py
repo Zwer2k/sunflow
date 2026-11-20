@@ -217,6 +217,32 @@ def test_choose_and_evaluate() -> None:
     assert evaluate("force_charge", 500, []) == (False, False)
 
 
+@pytest.mark.parametrize(
+    ("action", "settled", "baseline", "expected"),
+    [
+        pytest.param("force_charge", [480, 470], -520, (True, True), id="charges as commanded"),
+        pytest.param("force_charge", [-590, -585], -590, (False, False), id="command ignored while discharging"),
+        pytest.param("force_charge", [-480, -470], -50, (True, False), id="sensor with the wrong sign"),
+        pytest.param("force_discharge", [-490, -500], 100, (True, True), id="discharges as commanded"),
+        pytest.param("force_discharge", [480, 470], 0, (True, False), id="discharge with the wrong sign"),
+    ],
+)
+def test_forced_power_against_the_baseline(action: str, settled: list[float], baseline: float, expected: tuple[bool, bool]) -> None:
+    """A wrong sign needs a reading that moved; a battery discharging on as before is an ignored command."""
+    assert evaluate(action, 500, settled, baseline) == expected
+
+
+async def test_ignored_charge_while_discharging() -> None:
+    """Without limit_discharge or hold the test forces charging; ignored, it fails control, not the sign."""
+    inverter = FakeInverter(-590, follows=False)
+    state = DeviceTestState(device_id="growatt")
+
+    await run_device_test(state, inverter.read, inverter.run_action, FAST, supported={"force_charge", "force_discharge"})
+
+    assert state.test_action == "force_charge"
+    assert state.control_works is False
+
+
 async def test_marker_set_while_device_changed(tmp_path: Path) -> None:
     """The marker exists from the first write until the restore succeeded."""
     marker = RestoreMarker(tmp_path)

@@ -1,0 +1,79 @@
+# Growatt SPH hybrid inverters (e.g. SPH 4000-10000TL3 BH-UP) via the solax_modbus custom
+# integration (Growatt plugin).
+# Battery control through the VPP remote control registers (30407-30410): VPP Power is a
+# signed percentage of the rated power (+ = charge, - = discharge), VPP Time the minutes
+# the command stays valid. When Sunflow stops refreshing it, the inverter returns to its
+# own mode (Load First) after that time.
+# "Hold" and the limits are left out: with VPP Power 0 the battery idles, so PV would not
+# charge it either. Sunflow falls back to self-consumption for them.
+# Signs (integration): battery_combined_power + = charge. The integration has no signed
+# grid power: the grid is the import (ac_power_to_user_total) minus the export
+# (ac_power_to_grid_total).
+# Contributed by odin8822 (issue #2). Tested on an SPH 8000TL3 BH-UP (firmware YA1.0, control
+# ZDAA-0014) with ARK HV (HVC 60050-A1, 9 x ARK 2.5H-A1), CHINT DTSU666, Modbus RTU: force_charge
+# reaches the commanded power within seconds, auto returns to Load First at once, the sign fits.
+# Open: return after VPP Time without refresh, writes per day in regular operation.
+profile: solax_modbus/growatt_hybrid
+version: 1
+match:
+  integration: solax_modbus
+  # An SPH without battery also has a battery_soc sensor, reading 0 %: it is a growatt_pv
+  has_battery: true
+  requires: [vpp_remote_control, vpp_power, vpp_time, battery_soc]
+
+capabilities: [pv, battery, grid_meter, battery_control]
+watchdog: command
+fallback: auto
+
+roles:
+  battery_soc: {key: battery_soc, unit: "%"}
+  battery_power: {key: battery_combined_power, unit: W, sign: charge_positive}
+  pv_power: {key: pv_power_total, unit: W}
+  # Per MPPT string (DC), shown in the Live diagram
+  pv1_power: {key: pv_power_1, unit: W, optional: true}
+  pv2_power: {key: pv_power_2, unit: W, optional: true}
+  grid_power: {key: ac_power_to_user_total, unit: W, sign: import_positive, minus: grid_export_power}
+  grid_export_power: {key: ac_power_to_grid_total, unit: W, optional: true}
+  load_power: {key: total_house_load, unit: W}
+  # Energy counters: exact balance, autarky and battery efficiency
+  pv_energy: {key: total_solar_energy, unit: kWh, optional: true}
+  load_energy: {key: total_load, unit: kWh, optional: true}
+  grid_import_energy: {key: total_grid_import, unit: kWh, optional: true}
+  grid_export_energy: {key: total_grid_export, unit: kWh, optional: true}
+  battery_charge_energy: {key: total_battery_input_energy, unit: kWh, optional: true}
+  battery_discharge_energy: {key: total_battery_output_energy, unit: kWh, optional: true}
+
+parameters:
+  # Usable capacity of all battery modules (the integration reports no capacity)
+  capacity_wh: {unit: Wh, min: 1000}
+  min_soc: {unit: "%", default: 10, min: 10, max: 100}
+  # Rated power of the inverter: VPP Power is a percentage of it, so both must match it
+  max_charge: {unit: W, default: 8000, min: 0}
+  max_discharge: {unit: W, default: 8000, min: 0}
+  efficiency_pct: {unit: "%", default: 93, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 96.5, min: 80, max: 100}
+  # Minutes the inverter keeps a command without a new one from Sunflow
+  vpp_time_min: {unit: min, default: 60, min: 30, max: 1440, advanced: true}
+
+# VPP function of the inverter; without it the remote control registers have no effect.
+# Switched on when Sunflow takes over or tests, the previous state comes back on hand-back.
+control_mode: {key: vpp_status, option: "Enabled"}
+
+battery_control:
+  auto:
+    - select: {key: vpp_remote_control, option: "Disabled", write: if_differs}
+  force_charge:
+    - select: {key: vpp_allow_ac_charging, option: "Enabled", write: if_differs}
+    - number: {key: vpp_power, value: "{{ P_pct }}", min: 0, max: 100, tolerance: 2, write: if_differs}
+    # Written with every refresh so the time starts again
+    - number: {key: vpp_time, value: "{{ vpp_time_min }}"}
+    - select: {key: vpp_remote_control, option: "Enabled", write: if_differs}
+  force_discharge:
+    - number: {key: vpp_power, value: "{{ -P_pct }}", min: -100, max: 0, tolerance: 2, write: if_differs}
+    - number: {key: vpp_time, value: "{{ vpp_time_min }}"}
+    - select: {key: vpp_remote_control, option: "Enabled", write: if_differs}
+  # Well within the VPP time, so the command never runs out while wanted
+  refresh: 20min
+
+eeprom_guard:
+  max_writes_per_day: 10
