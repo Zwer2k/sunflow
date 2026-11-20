@@ -90,8 +90,7 @@ def test_manual_device_and_flex_settings(tmp_path: Path) -> None:
         json={"flex": {"strategy": "pv_only", "ready_by": "18:00", "uses_battery": False}},
     )
     assert update.json()["flex"] == {
-        "strategy": "pv_only", "target": None, "target_max": None, "ready_by": "18:00", "uses_battery": False, "alternative_cost_ct": None, "heating_mode": None,
-        "summer_mode": None, "manual_max_h": 24
+        "strategy": "pv_only", "target": None, "target_max": None, "ready_by": "18:00", "uses_battery": False, "alternative_cost_ct": None,
     }
     assert client.patch(f"/api/v1/config/devices/{device['id']}", json={"flex": {"ready_by": "25:00"}}).status_code == 422
 

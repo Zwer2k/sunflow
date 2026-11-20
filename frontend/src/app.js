@@ -161,7 +161,7 @@ const MANUAL_TYPES = {
 };
 const PHASE_NAMES = ["L1", "L2", "L3"];
 
-const MANUAL_CAPABILITIES = { meter: ["appliance"], heat_pump: ["appliance", "heat_pump"] };
+const MANUAL_CAPABILITIES = { meter: ["appliance"] };
 const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
 
 const EMPTY_MANUAL = {
@@ -908,7 +908,7 @@ class SunflowApp extends LitElement {
     if (this._nameEdits[device.id] !== undefined) changes.name = this._nameEdits[device.id];
     if (this._flexEdits[device.id] !== undefined) {
       const flex = { ...device.flex, ...this._flexEdits[device.id] };
-      if (flex.target === undefined || flex.target_max === undefined || flex.alternative_cost_ct === undefined || flex.manual_max_h === undefined) {
+      if (flex.target === undefined || flex.target_max === undefined || flex.alternative_cost_ct === undefined) {
         this._error = t("Bitte gültige Zahlen bei der Planung eingeben.");
         return false;
       }
@@ -1694,7 +1694,7 @@ class SunflowApp extends LitElement {
 
   _renderManualDevices() {
     // Heat pumps have their own settings area
-    const manual = Object.values(this._configDevices).filter((d) => d.profile.startsWith(MANUAL_PREFIX) && d.profile !== "generic/heat_pump");
+    const manual = Object.values(this._configDevices).filter((d) => d.profile.startsWith(MANUAL_PREFIX));
     const form = this._manual;
     const set = (field, value) => (this._manual = { ...this._manual, [field]: value });
     const candidates = this._candidates;
@@ -1711,7 +1711,7 @@ class SunflowApp extends LitElement {
     return html`
       <section class="device">
         <div class="device-title">${t("Eigene Verbraucher")}</div>
-        <p class="small muted help">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant. Nicht steuerbare Geräte mit eigener Leistungsmessung (Herd, Waschmaschine …) lassen sich zum Lernen „nur messen“. Wärmepumpen haben einen eigenen Bereich (Wärmepumpe).")}</p>
+        <p class="small muted help">${t("Geräte, die Sunflow nicht automatisch erkennt: ein- und ausschaltbar (Shelly, Steckdose), in Leistungsstufen (z. B. ESPHome-Heizstab mit Auswahl) oder mit Ziel-Stromstärke – jeweils mit oder ohne Leistungs- und Verbrauchsmessung. Ein Heizstab im Speicher wird als „Wärme“ mit Temperatur geplant. Nicht steuerbare Geräte mit eigener Leistungsmessung (Herd, Waschmaschine …) lassen sich zum Lernen „nur messen“.")}</p>
         ${manual.length
           ? html`<ul class="summary-list">${manual.map(
               (d) => html`<li class="manual-item"><div><strong>${d.name}</strong>
@@ -1726,7 +1726,7 @@ class SunflowApp extends LitElement {
                   <button class="secondary" ?disabled=${this._manualEditId === d.id} @click=${() => this._editManual(d)}>${t("Bearbeiten")}</button>
                   <button class="secondary danger" @click=${() => this._removeDevice(d)}>${t("Entfernen")}</button>
                 </span>
-                ${d.kind === "heater" || d.disabled || ["generic/meter", "generic/heat_pump"].includes(d.profile) ? nothing : this._renderCharger(d)}</li>`,
+                ${d.kind === "heater" || d.disabled || d.profile === "generic/meter" ? nothing : this._renderCharger(d)}</li>`,
             )}</ul>`
           : nothing}
         ${candidates === null
@@ -2589,9 +2589,6 @@ class SunflowApp extends LitElement {
               ? t("Aus: der Speicher versorgt nur das Haus; geheizt wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")
               : t("Aus: der Speicher versorgt nur das Haus; geladen wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.")}</span>
           </label>
-          ${kind === "heater" && this._activeDevices.some((d) => d.heat_pump?.rod_id === device.id)
-            ? html`<p class="small muted help wide-help">${t("Heizstab der Wärmepumpe: läuft nach Jahreszeit, der Modus von Heizperiode oder Sommer ersetzt die Strategie oben. Einstellen unter Wärmepumpe.")}</p>`
-            : nothing}
         </div>
       </fieldset>
     `;
@@ -3371,7 +3368,6 @@ class SunflowApp extends LitElement {
     }
     .vehicle-soc { margin: 10px 0; max-width: 520px; }
     .field.wide { max-width: 520px; }
-    .fields > .help.wide-help { grid-column: 1 / -1; }
     .field-label { font-weight: 500; }
     .field select { min-height: 44px; font-size: 14px; }
     .input-unit { display: flex; align-items: center; gap: 8px; }

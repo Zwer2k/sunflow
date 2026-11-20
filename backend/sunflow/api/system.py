@@ -201,7 +201,7 @@ async def import_data(request: Request, file: UploadFile, config: bool = False) 
             raise HTTPException(status_code=422, detail=t("Keine gültige Export-Datei")) from err
         if config:
             # Migrated like a stored configuration, so older exports work too
-            imported = ConfigStore(Path(tmp)).load()
+            imported = ConfigStore(Path(tmp), request.app.state.store.known_profiles).load()
         try:
             count = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
         except sqlite3.Error as err:

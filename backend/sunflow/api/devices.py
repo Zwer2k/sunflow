@@ -21,7 +21,6 @@ from sunflow.config.models import (
     DeviceConfig,
     FeedIn,
     FlexSettings,
-    HeatPumpSettings,
     MeasuredBy,
     RoleOverride,
     SunflowConfig,
@@ -35,7 +34,6 @@ from sunflow.devices.executor import (
     plan_action,
     plan_setup,
 )
-from sunflow.devices.heat_pump import PHASES
 from sunflow.devices.resolver import (
     CANONICAL_SIGNS,
     check_balance,
@@ -220,7 +218,7 @@ class ManualDevice(BaseModel):
     """A consumer added by hand: switched (Shelly …), in power steps (select), by current (number) or only measured."""
 
     name: str
-    type: Literal["switch", "stepped", "current", "meter", "heat_pump", "relays"] = "switch"
+    type: Literal["switch", "stepped", "current", "meter", "relays"] = "switch"
     switch_entity: str | None = None
     level_entity: str | None = None
     current_entity: str | None = None
@@ -234,24 +232,6 @@ class ManualDevice(BaseModel):
     daily_energy_wh: FiniteFloat | None = Field(default=None, ge=0)
     # Stepped: option -> watts; None reads them from the option names ("0,7kW")
     power_steps: dict[str, FiniteFloat] | None = None
-    # Heat pump: power or current per phase (index 0 is L1; None for a phase without sensor)
-    phase_power_entities: list[str | None] = Field(default_factory=list, max_length=3)
-    phase_current_entities: list[str | None] = Field(default_factory=list, max_length=3)
-    voltage: FiniteFloat | None = Field(default=None, ge=100, le=260)
-    heat_power_entity: str | None = None
-    heat_energy_entity: str | None = None
-    cop_entity: str | None = None
-    outside_temperature_entity: str | None = None
-    # Heat pump control: the entities of the chosen method and how Sunflow steers
-    sg_contact1_entity: str | None = None
-    sg_contact2_entity: str | None = None
-    sg_select_entity: str | None = None
-    setpoint_entity: str | None = None
-    surplus_entity: str | None = None
-    boost_switch_entity: str | None = None
-    # The heat pump's built-in heating rod: the entity of its method (heat_pump.rod)
-    rod_entity: str | None = None
-    heat_pump: HeatPumpSettings | None = None
     # Relays: one switch per phase (index 0 is L1; None for a phase without relay) and the power of one
     relay_entities: list[str | None] = Field(default_factory=list, max_length=3)
     relay_power_w: FiniteFloat | None = Field(default=None, gt=0, le=10_000)
@@ -262,7 +242,6 @@ MANUAL_PROFILES = {
     "stepped": "generic/stepped",
     "current": "generic/current",
     "meter": "generic/meter",
-    "heat_pump": "generic/heat_pump",
     "relays": "generic/relays",
 }
 MANUAL_PROFILE = MANUAL_PROFILES["switch"]
@@ -274,6 +253,8 @@ TRIGGER_DOMAINS = (
 )
 STEP_POWER = re.compile(r"(\d+(?:[.,]\d+)?)\s*(kw|w)\b", re.IGNORECASE)
 OFF_OPTIONS = {"off", "aus", "0", "none", "stop"}
+# Relays: one per phase, index 0 is L1
+PHASES = ("l1", "l2", "l3")
 
 
 def power_steps_from_options(options: list[str]) -> dict[str, float]:
@@ -288,103 +269,8 @@ def power_steps_from_options(options: list[str]) -> dict[str, float]:
     return steps
 
 
-def _heat_pump_setup(body: ManualDevice) -> tuple[dict[str, RoleOverride], dict[str, float], None]:
-    """Role bindings and parameters of a heat pump; every measurement is optional, but one is needed."""
-    bindings: dict[str, str | None] = {
-        "power": body.power_entity,
-        "energy": body.energy_entity,
-        "heat_power": body.heat_power_entity,
-        "heat_energy": body.heat_energy_entity,
-        "cop": body.cop_entity,
-        "temperature": body.temperature_entity,
-        "outside_temperature": body.outside_temperature_entity,
-    }
-    for phase, entity in zip(PHASES, body.phase_power_entities, strict=False):
-        bindings[f"power_{phase}"] = entity
-    for phase, entity in zip(PHASES, body.phase_current_entities, strict=False):
-        bindings[f"current_{phase}"] = entity
-    overrides = {role: RoleOverride(entity_id=entity) for role, entity in bindings.items() if entity}
-    if any(not entity.startswith("sensor.") for entity in (o.entity_id for o in overrides.values()) if entity):
-        raise HTTPException(status_code=422, detail=t("Messungen müssen Sensoren sein"))
-    electric = {"power", "energy", "power_l1", "power_l2", "power_l3", "current_l1", "current_l2", "current_l3"}
-    if not electric & overrides.keys() and not {"heat_power", "cop"} <= overrides.keys():
-        raise HTTPException(
-            status_code=422, detail=t("Bitte den Stromverbrauch der Wärmepumpe angeben (oder Wärmeleistung und COP)")
-        )
-    overrides |= _heat_pump_control(body) | _rod_control(body)
-    parameters = {"voltage": body.voltage} if body.voltage else {}
-    return overrides, parameters, None
-
-
-def _check_rod(config: SunflowConfig, body: ManualDevice, device_id: str | None) -> None:
-    """A heat pump's rod is a consumer that heats and belongs to no other heat pump."""
-    rod_id = body.heat_pump.rod_id if body.type == "heat_pump" and body.heat_pump else None
-    if rod_id is None:
-        return
-    rod = config.device(rod_id)
-    if rod is None or rod.kind != "heater":
-        raise HTTPException(status_code=422, detail=t("Der Heizstab muss ein Verbraucher mit Art „Wärme“ sein"))
-    if any(d.id != device_id and d.heat_pump and d.heat_pump.rod_id == rod_id for d in config.devices):
-        raise HTTPException(status_code=422, detail=t("Der Heizstab gehört schon zu einer anderen Wärmepumpe"))
-
-
-def _heat_pump_control(body: ManualDevice) -> dict[str, RoleOverride]:
-    """The entities the chosen method writes; those of other methods are not bound (the steps skip them)."""
-    settings = body.heat_pump
-    if settings is None or settings.method is None:
-        return {}
-    contact1 = settings.use_block or settings.use_forced
-    needed: dict[str, list[tuple[str, str | None, tuple[str, ...]]]] = {
-        "sg_relays": [("sg_contact2", body.sg_contact2_entity, SWITCH_DOMAINS)]
-        + ([("sg_contact1", body.sg_contact1_entity, SWITCH_DOMAINS)] if contact1 else []),
-        "sg_relay": [("sg_contact2", body.sg_contact2_entity, SWITCH_DOMAINS)],
-        "sg_select": [("sg_select", body.sg_select_entity, SELECT_DOMAINS)],
-        "setpoint": [("setpoint", body.setpoint_entity, NUMBER_DOMAINS)],
-        "surplus": [("surplus_power", body.surplus_entity, NUMBER_DOMAINS)],
-        "boost_switch": [("boost_switch", body.boost_switch_entity, SWITCH_DOMAINS)],
-    }
-    overrides = {}
-    for role, entity, domains in needed[settings.method]:
-        if not entity or not entity.startswith(domains):
-            raise HTTPException(status_code=422, detail=t("Bitte die Entität für die Ansteuerung wählen ({domains})", domains=", ".join(d.rstrip(".") for d in domains)))
-        overrides[role] = RoleOverride(entity_id=entity)
-    if settings.method == "sg_relays" and not contact1 and body.sg_contact1_entity:
-        # Contact 1 stays bound so a handed back heat pump has it off as well
-        overrides["sg_contact1"] = RoleOverride(entity_id=body.sg_contact1_entity)
-    if settings.method == "sg_select" and not {"normal", "boost"} <= settings.options.keys():
-        raise HTTPException(status_code=422, detail=t("Bitte die Optionen für „normal“ und „verstärkt“ wählen"))
-    if settings.method == "setpoint" and settings.setpoint_normal is None:
-        raise HTTPException(status_code=422, detail=t("Bitte den normalen Sollwert angeben"))
-    return overrides
-
-
-ROD_ROLES: dict[str, tuple[str, tuple[str, ...]]] = {
-    "allow_switch": ("rod_allow", SWITCH_DOMAINS),
-    "block_switch": ("rod_block", SWITCH_DOMAINS),
-    "select": ("rod_select", SELECT_DOMAINS),
-    "limit": ("rod_limit", NUMBER_DOMAINS),
-}
-
-
-def _rod_control(body: ManualDevice) -> dict[str, RoleOverride]:
-    """The built-in rod's entity; a select needs its free and blocked options, a limit its normal value."""
-    rod = body.heat_pump.rod if body.heat_pump else None
-    if rod is None:
-        return {}
-    role, domains = ROD_ROLES[rod.method]
-    if not body.rod_entity or not body.rod_entity.startswith(domains):
-        raise HTTPException(status_code=422, detail=t("Bitte die Entität für den Heizstab wählen ({domains})", domains=", ".join(d.rstrip(".") for d in domains)))
-    if rod.method == "select" and not {"free", "blocked"} <= rod.options.keys():
-        raise HTTPException(status_code=422, detail=t("Bitte die Optionen für „frei“ und „gesperrt“ wählen"))
-    if rod.method == "limit" and rod.limit_normal is None:
-        raise HTTPException(status_code=422, detail=t("Bitte den normalen Wert der Heizstab-Leistung angeben"))
-    return {role: RoleOverride(entity_id=body.rod_entity)}
-
-
 def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, RoleOverride], dict[str, float], dict[str, float] | None]:
     """Role bindings, parameters and power steps of a consumer added by hand; 422 on missing or wrong entities."""
-    if body.type == "heat_pump":
-        return _heat_pump_setup(body)
     if body.type == "meter":
         # Not switched: the power measurement is what it is about
         if not body.power_entity or not body.power_entity.startswith("sensor."):
@@ -451,22 +337,12 @@ def _control_override(body: ManualDevice) -> dict[str, RoleOverride]:
     return overrides
 
 
-def _numeric(state: dict[str, Any]) -> bool:
-    try:
-        float(state.get("state"))
-    except TypeError, ValueError:
-        return False
-    return True
-
-
 @router.get("/entities/candidates")
 async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]:
     """Entities that can switch a consumer, power sensors to measure it and % sensors (vehicle SoC)."""
     snapshot = await _snapshot(request)
     switches, power, percent, presence, voltage = [], [], [], [], []
     selects, numbers, temperature, energy, triggers = [], [], [], [], []
-    # Heat pumps: current per phase and plain numbers (COP)
-    currents, ratios = [], []
     # The device's name is the natural name of a consumer or car (the entity's adds "Switch" etc.)
     devices = {d["id"]: d.get("name_by_user") or d.get("name") for d in snapshot.devices}
     device_of = {e["entity_id"]: devices.get(e.get("device_id")) for e in snapshot.entities}
@@ -504,13 +380,7 @@ async def entity_candidates(request: Request) -> dict[str, list[dict[str, Any]]]
             temperature.append(item)
         elif entity_id.startswith("sensor.") and attributes.get("device_class") == "energy":
             energy.append(item)
-        elif entity_id.startswith("sensor.") and attributes.get("unit_of_measurement") == "A":
-            currents.append(item)
-        elif entity_id.startswith("sensor.") and attributes.get("unit_of_measurement") in (None, "", "COP") and _numeric(state):
-            ratios.append(item)
     return {
-        "currents": currents,
-        "ratios": ratios,
         "switches": switches,
         "power": power,
         "percent": percent,
@@ -534,7 +404,6 @@ async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, A
     overrides, parameters, steps = _manual_setup(body, await _snapshot(request))
     store: ConfigStore = request.app.state.store
     config = store.load()
-    _check_rod(config, body, None)
     device = DeviceConfig(
         ha_device_id=f"manual:{uuid.uuid4().hex}",
         profile=profile_id,
@@ -544,7 +413,6 @@ async def add_manual_device(request: Request, body: ManualDevice) -> dict[str, A
         role_overrides=overrides,
         kind="heater" if body.kind == "heater" else None,
         power_steps=steps,
-        heat_pump=body.heat_pump if body.type == "heat_pump" else None,
     )
     config.devices.append(device)
     store.save(config)
@@ -561,22 +429,16 @@ async def update_manual_device(request: Request, device_id: str, body: ManualDev
     config = store.load()
     if (device := config.device(device_id)) is None or device.profile not in MANUAL_PROFILES.values():
         raise HTTPException(status_code=404, detail="Manual device not configured")
-    _check_rod(config, body, device_id)
     device.profile = MANUAL_PROFILES[body.type]
     device.profile_version = library.profiles[device.profile]["version"]
     device.name = body.name.strip() or device.name
     device.role_overrides = overrides
     # Learned or entered values of the device stay, the setup values are replaced
-    for name in ("max_power", "daily_energy_wh", "tank_l", "voltage"):
+    for name in ("max_power", "daily_energy_wh", "tank_l"):
         device.parameters.pop(name, None)
     device.parameters.update(parameters)
     device.kind = "heater" if body.kind == "heater" else None
     device.power_steps = steps
-    stored_rod = device.heat_pump.rod if device.heat_pump else None
-    device.heat_pump = body.heat_pump if body.type == "heat_pump" else None
-    if device.heat_pump is not None and device.heat_pump.rod is not None:
-        # Released by hand on its own endpoint: an edit (maybe opened before) does not undo it
-        device.heat_pump.rod.released_until = stored_rod.released_until if stored_rod else None
     store.save(config)
     _replan(request)
     return device_with_relations(config, device)

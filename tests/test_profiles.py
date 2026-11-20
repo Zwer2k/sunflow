@@ -17,7 +17,7 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
         "edl21/meter", "homewizard/p1", "powerfox/poweropti", "discovergy/meter", "goecharger_mqtt/charger", "goecharger/charger",
         "generic/stepped", "generic/current", "solax_modbus/solax_gen4_5", "huawei_solar/sun2000_luna2000", "modbus/victron_gx",
         "solaredge_modbus/storedge", "fronius/gen24", "goodwe/hybrid", "kostal_plenticore/plenticore", "indevolt/indevolt",
-        "homevolt/homevolt", "marstek_modbus/venus", "zendure_ha/manager", "generic/heat_pump", "generic/relays",
+        "homevolt/homevolt", "marstek_modbus/venus", "zendure_ha/manager", "generic/relays",
     }
     assert library.integrations == {
         "solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "edl21", "homewizard", "powerfox", "discovergy",

@@ -137,7 +137,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = settings
         app.state.integration_token = integration_token(settings.data_dir)
         app.state.mcp_key = McpKey(settings.data_dir)
-        app.state.store = ConfigStore(settings.data_dir)
+        app.state.store = ConfigStore(settings.data_dir, lambda: app.state.profiles.profiles)
         estimator.load(settings.data_dir)
         app.state.profiles = load_profiles(
             settings.profiles_dir, load_schema(settings.schema_dir)

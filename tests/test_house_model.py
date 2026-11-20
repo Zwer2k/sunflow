@@ -1,6 +1,7 @@
 """Learning how the house cools and warms from its room temperatures."""
 
 from datetime import UTC, datetime, timedelta
+import json
 import math
 from pathlib import Path
 
@@ -9,13 +10,14 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 import pytest
 from sunflow.api.house import router
-from sunflow.config.models import HouseSettings, Room
+from sunflow.config.models import CONFIG_VERSION, DeviceConfig, HouseSettings, Room, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.planning.house_model import (
     HourRow,
     carnot_cop,
     chart,
     fit,
+    heat_pump_device,
     restless_rooms,
     simulate,
     weighted_inside,
@@ -115,31 +117,60 @@ def test_carnot_cop(outside: float, cop: float) -> None:
 @pytest.mark.parametrize(
     "body",
     [
-        pytest.param({"comfort_min": 22, "comfort_max": 21}, id="band upside down"),
-        pytest.param(
-            {"rooms": [{"entity_id": "sensor.a", "reference": True}, {"entity_id": "sensor.b", "reference": True}]}, id="two references"
-        ),
-        pytest.param({"night_start": "25:00"}, id="no time"),
-        pytest.param({"comfort_min": 20, "night_min": 21}, id="setback above the band"),
+        pytest.param({"rooms": [{"entity_id": "sensor.a", "weight": 0}]}, id="weight zero"),
+        pytest.param({"rooms": [{"weight": 1}]}, id="no sensor"),
     ],
 )
 def test_house_settings_refused(body: dict[str, object]) -> None:
-    """A band upside down, two reference rooms or a wrong time are refused."""
+    """A room without a sensor or weight is refused."""
     with pytest.raises(ValidationError):
         HouseSettings.model_validate(body)
 
 
 def test_house_settings_api(tmp_path: Path) -> None:
-    """Rooms and band are stored; without rooms there is nothing to learn."""
+    """Rooms are stored; without rooms there is nothing to learn."""
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.state.store = ConfigStore(tmp_path / "config.json")
     client = TestClient(app)
 
     assert client.get("/api/v1/house/model").json() == {"state": "no_rooms"}
-    body = HouseSettings(rooms=[Room(entity_id="sensor.wohnzimmer", reference=True)], night_min=18).model_dump()
+    body = HouseSettings(rooms=[Room(entity_id="sensor.wohnzimmer", weight=20)], heat_entity="sensor.heat").model_dump()
     assert client.put("/api/v1/config/house", json=body).json() == body
     assert client.get("/api/v1/config/house").json() == body
+
+
+def test_old_house_fields_survive(tmp_path: Path) -> None:
+    """Comfort band, night setback and reference room of the former control stay in the file; rooms are kept."""
+    old_house = {
+        "rooms": [{"entity_id": "sensor.a", "weight": 2.0, "reference": True}, {"entity_id": "sensor.b", "weight": 1.0}],
+        "heat_entity": None,
+        "comfort_min": 20.5, "comfort_max": 22.0, "night_min": 18.0, "night_start": "22:00", "night_end": "06:00",
+    }
+    store = ConfigStore(tmp_path)
+    (tmp_path / "config.json").write_text(json.dumps({"version": CONFIG_VERSION, "house": old_house}))
+
+    config = store.load()
+    store.save(config)
+
+    assert [(r.entity_id, r.weight) for r in config.house.rooms] == [("sensor.a", 2.0), ("sensor.b", 1.0)]
+    assert json.loads((tmp_path / "config.json").read_text())["house"] == old_house
+
+
+@pytest.mark.parametrize(
+    ("profile", "found"),
+    [
+        pytest.param("x/hp", True, id="capability heat_pump"),
+        pytest.param("x/meter", False, id="other device"),
+        pytest.param("x/gone", False, id="unknown profile"),
+    ],
+)
+def test_heat_pump_device(profile: str, found: bool) -> None:
+    """The heat source of the house is the first device whose profile has the capability heat_pump."""
+    profiles = {"x/hp": {"capabilities": ["heat_pump"]}, "x/meter": {"capabilities": ["appliance"]}}
+    device = DeviceConfig(id="d", ha_device_id="d", profile=profile, profile_version=1, name="D")
+
+    assert (heat_pump_device(SunflowConfig(devices=[device]), profiles) is device) is found
 
 
 def test_weeks_without_heat() -> None:

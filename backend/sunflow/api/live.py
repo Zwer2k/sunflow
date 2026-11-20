@@ -9,7 +9,6 @@ from fastapi import APIRouter, Request
 from sunflow import i18n
 from sunflow.config.models import DisplaySettings, SceneSettings, SunflowConfig
 from sunflow.devices.discovery import Snapshot
-from sunflow.devices.heat_pump import DEFAULT_VOLTAGE, reading as heat_pump_reading
 from sunflow.devices.optimizers import optimizers as optimizer_list
 from sunflow.devices.site import (
     PV_OUTPUT_ROLES,
@@ -108,28 +107,7 @@ async def get_live(request: Request) -> dict[str, Any]:
         if load_device is not None and device.id == load_device.id:
             load_w = value("load_power")
             displays["load"] = display("load_power")
-        if "heat_pump" in capabilities:
-            measured = heat_pump_reading(
-                {role: value(role) for role in roles}, device.parameters.get("voltage", DEFAULT_VOLTAGE)
-            )
-            consumers.append(
-                {
-                    "device_id": device.id,
-                    "name": device.name,
-                    "kind": "heat_pump",
-                    "power_w": measured.electric_w,
-                    "display": display("power"),
-                    "level": value("temperature"),
-                    "level_estimated": False,
-                    "vehicle": None,
-                    "level_unit": "°C",
-                    "charging": None,
-                    "connected": None,
-                    "heat_pump": measured.as_dict()
-                    | {"outside_temperature": value("outside_temperature"), "control": heat_pump_control(runner, device.id)},
-                }
-            )
-        elif "appliance" in capabilities:
+        if "appliance" in capabilities:
             # Only measured (washing machine, stove …): for pictures of the site, not planned
             appliances.append(
                 {"device_id": device.id, "name": device.name, "power_w": value("power"), "display": display("power")}
@@ -194,21 +172,6 @@ def optimizer_counts(config: SunflowConfig, profiles: dict[str, Any], snapshot: 
         if optimizer.string:
             counts[optimizer.string] = counts.get(optimizer.string, 0) + 1
     return counts
-
-
-def heat_pump_control(runner: Any, device_id: str) -> dict[str, Any] | None:
-    """The state Sunflow sets (steering) or would set (shadow mode) for a heat pump."""
-    controller = getattr(runner, "controller", None)
-    if controller is None:
-        return None
-    status = controller.statuses.get(device_id)
-    rod = controller.heat_pump_rod.get(device_id)
-    extra = {"rod": {"state": rod.state, "reason": rod.reason}} if rod is not None else {}
-    if status is not None and status.active and status.action:
-        return {"state": status.action, "reason": status.reason, "steering": True} | extra
-    if (shadow := controller.heat_pump_shadow.get(device_id)) is not None:
-        return {"state": shadow.state, "reason": shadow.reason, "steering": False} | extra
-    return None
 
 
 @router.get("/config/display")

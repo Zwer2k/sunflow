@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.79.15
+
+Die bisherige Wärmepumpen-Steuerung ist entfernt, weil eine neue Regelung des Vorlaufs sie ersetzt. Entfallen sind das Gerät „Wärmepumpe“ (Messung, SG-Ready, Sollwert, PV-Überschuss, Boost-Schalter, eingebauter Heizstab), Komfortband, Nachtabsenkung, Referenzraum, „Vorheizen planen“, die Heizperiode und die Jahreszeit-Modi von Heizstäben. Eine eingerichtete Wärmepumpe wird beim Update samt ihren Verweisen aus der Konfiguration entfernt und muss später neu hinzugefügt werden; die vorige Konfiguration bleibt als `config.v4.json` erhalten. Die Räume und das gelernte Hausmodell bleiben unter Einstellungen → Wärmepumpe. Heizstäbe mit Relais je Phase laufen als normale Verbraucher weiter. Geräte mit einem Profil, das diese Version nicht kennt (z. B. nach einem Wechsel auf eine ältere Version), werden übersprungen und bleiben in der Konfiguration erhalten.
+
 ## 0.79.14
 
 Hausbilder einstellbar: Unter Einstellungen → Anzeige lässt sich wählen, auf welcher Dachfläche ein String liegt, welche Anlage auf welchem Wechselrichterplatz hängt und als welche Figur ein Verbraucher erscheint. Standard bleibt die automatische Zuordnung.

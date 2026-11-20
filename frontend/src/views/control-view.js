@@ -28,15 +28,6 @@ const ACTION_LABELS = {
   follow: t("Lädt mit PV-Überschuss"),
   stop: t("Laden gesperrt"),
   release: t("Gerät regelt selbst"),
-  // Heat pump states (status) and their writes (log)
-  normal: t("Wärmepumpe normal"),
-  boost: t("Wärmepumpe verstärkt"),
-  block: t("Wärmepumpe gesperrt"),
-  forced: t("Wärmepumpe Anlaufbefehl"),
-  "hp:normal": t("Wärmepumpe normal"),
-  "hp:boost": t("Wärmepumpe verstärkt"),
-  "hp:block": t("Wärmepumpe gesperrt"),
-  "hp:forced": t("Wärmepumpe Anlaufbefehl"),
 };
 // Writes of the log that are no battery or charge action
 const LOG_ACTIONS = {
@@ -313,7 +304,7 @@ class SunflowControl extends LitElement {
                 <input type="checkbox" .checked=${d.enabled} ?disabled=${this._busy || Boolean(d.blocked)}
                   @change=${(e) => this._switchTakeover({ device_id: d.device_id, device_enabled: e.target.checked }, e.target)}>
                 <strong>${d.name}</strong>
-                <span class="small muted">${d.kind === "battery" ? t("Speicher") : d.kind === "heat_pump" ? t("Wärmepumpe") : CATEGORY_LABELS[d.category] ?? ""}</span>
+                <span class="small muted">${d.kind === "battery" ? t("Speicher") : CATEGORY_LABELS[d.category] ?? ""}</span>
               </label>
               <span class="small status">${d.blocked
                 ? t("nicht möglich: {reason}", { reason: d.blocked })
@@ -349,7 +340,7 @@ class SunflowControl extends LitElement {
     if (willControl && !(await confirmDialog({
       title: t("Sunflow steuern lassen?"),
       text: (body.enabled && !takeover.enabled && body.device_id ? `${t("Der Hauptschalter „Sunflow steuert“ wird mit eingeschaltet.")}\n\n` : "") +
-        `${t("Sunflow schaltet dann laufend an den Geräten: am Wechselrichter Passiv-Modus mit Lade- und Entladefenster (der Betriebsmodus wird einmalig umgestellt), an Ladepunkten Laden starten und sperren, an der Wärmepumpe SG-Ready-Kontakte, Sollwert oder Boost.")}\n\n${t("Ausschalten gibt alles zurück.")}`,
+        `${t("Sunflow schaltet dann laufend an den Geräten: am Wechselrichter Passiv-Modus mit Lade- und Entladefenster (der Betriebsmodus wird einmalig umgestellt), an Ladepunkten Laden starten und sperren.")}\n\n${t("Ausschalten gibt alles zurück.")}`,
       confirm: t("Einschalten"),
     }))) {
       input.checked = !input.checked;

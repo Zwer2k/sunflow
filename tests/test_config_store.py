@@ -259,3 +259,99 @@ def test_relations_move_out_of_devices_and_vehicles(tmp_path: Path) -> None:
     # Version 4: the card became one of a list, with the settings it charged with until then
     ((card,),) = [profile.cards]
     assert (profile.vehicle_id, profile.wallbox_id, card.number, card.flex.target, profile.flex.target) == ("fiat", "wb", 1, 80, 80)
+
+
+def _device(device_id: str, profile: str, **extra: object) -> dict:
+    return {"id": device_id, "ha_device_id": f"h_{device_id}", "profile": profile, "profile_version": 1, "name": device_id} | extra
+
+
+def test_old_heat_pump_removed_with_its_references(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Version 4 knew the former heat pump; version 5 removes it and everything that refers to it."""
+    import json
+
+    hp = "hp"
+    other = _device("rod", "generic/relays", kind="heater")
+    pv = _device("pv", "huawei_solar/pv_only")
+    stored = {
+        "version": 4,
+        "devices": [_device(hp, "generic/heat_pump", heat_pump={"method": "sg_relay", "rod_id": "rod"}), other, pv],
+        "disabled_devices": [_device("hp2", "generic/heat_pump")],
+        "planning": {hp: {"strategy": "cost"}, "rod": {"strategy": "pv_only"}},
+        "overrides": {hp: {"paused": True}},
+        "priorities": [hp, "battery", "rod"],
+        "priority_conditions": {hp: [{"device_id": "battery", "min_pct": 50}], "rod": [{"device_id": hp, "min_pct": 1}]},
+        "measured_by": {hp: {"device_id": "pv", "role": "x"}, "pv": {"device_id": hp, "role": "y"}},
+        "measurement_sources": {"load": hp, "grid": "pv"},
+        "control": {"enabled": True, "devices": {hp: True, "rod": True}},
+        "display": {"live_controls": [hp, "rod"], "scene": {"consumers": {hp: "heatpump", "rod": "tank"}}},
+        "feed_in": {hp: {}},
+    }
+    (tmp_path / "config.json").write_text(json.dumps(stored))
+
+    config = ConfigStore(tmp_path).load()
+
+    assert [d.id for d in config.devices] == ["rod", "pv"]
+    assert config.disabled_devices == []
+    assert config.devices[0].model_dump(mode="json", exclude={"kind"}) == DeviceConfig.model_validate(other).model_dump(
+        mode="json", exclude={"kind"}
+    )
+    assert list(config.planning) == ["rod"]
+    assert config.overrides == {}
+    assert config.priorities == ["battery", "rod"]
+    assert {k: [c.device_id for c in v] for k, v in config.priority_conditions.items()} == {"rod": []}
+    assert config.measured_by == {}
+    assert config.measurement_sources == {"grid": "pv"}
+    assert config.control.devices == {"rod": True}
+    assert config.display.live_controls == ["rod"]
+    assert config.display.scene.consumers == {"rod": "tank"}
+    assert config.feed_in == {}
+    assert "hp" not in (tmp_path / "config.json").read_text()
+    assert json.loads((tmp_path / "config.v4.json").read_text()) == stored
+    assert "Heat pump 'hp' removed" in caplog.text
+
+
+def test_device_with_unknown_profile_set_aside(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A profile of a newer version (e.g. after a downgrade): the device is skipped, but saved again unchanged."""
+    import json
+
+    from sunflow.config.models import CONFIG_VERSION
+
+    future = _device("new", "rotex/hpsu_can", future_field=1)
+    stored = {"version": CONFIG_VERSION, "devices": [_device("pv", "huawei_solar/pv_only"), future], "disabled_devices": [future]}
+    (tmp_path / "config.json").write_text(json.dumps(stored))
+    store = ConfigStore(tmp_path, lambda: {"huawei_solar/pv_only"})
+
+    config = store.load()
+    config.devices[0].name = "PV"
+    store.save(config)
+
+    assert [d.id for d in config.devices] == ["pv"]
+    assert config.disabled_devices == []
+    assert "rotex/hpsu_can is not known" in caplog.text
+    saved = json.loads((tmp_path / "config.json").read_text())
+    assert [d["name"] for d in saved["devices"]] == ["PV", "new"]
+    assert saved["devices"][1]["future_field"] == 1
+    assert saved["disabled_devices"] == [DeviceConfig.model_validate(future).model_dump(mode="json")]
+    # Without the profile list (tests, tools) nothing is set aside
+    assert [d.id for d in ConfigStore(tmp_path).load().devices] == ["pv", "new"]
+
+
+def test_old_heat_pump_fields_survive(tmp_path: Path) -> None:
+    """Fields of the former heat pump control are not used any more, but stay in the file for older versions."""
+    import json
+
+    from sunflow.config.models import CONFIG_VERSION
+
+    season = {"source": "dates", "active": False}
+    flex = {"strategy": "cost", "heating_mode": "off", "summer_mode": "pv_only", "manual_max_h": 12}
+    stored = {"version": CONFIG_VERSION, "heating_season": season, "planning": {"rod": flex}}
+    (tmp_path / "config.json").write_text(json.dumps(stored))
+    store = ConfigStore(tmp_path)
+
+    config = store.load()
+    store.save(config)
+
+    assert config.flex_of("rod").strategy == "cost"
+    saved = json.loads((tmp_path / "config.json").read_text())
+    assert saved["heating_season"] == season
+    assert {k: saved["planning"]["rod"][k] for k in flex} == flex

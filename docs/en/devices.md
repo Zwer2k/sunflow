@@ -101,41 +101,6 @@ Below the configured limit (default 12.2 V) the wallbox charges for the configur
 charging according to plan anyway, that continues. An evcc loadpoint charges in "Min+PV" mode for
 this. Only effective while Sunflow controls the wallbox.
 
-## Heat pump
-
-Heat pumps have their own area **Heat pump** in the settings (profile `generic/heat_pump`): measuring,
-control, the heat pump's heating rod and the heating season.
-
-**Measuring** (all optional; the electrical power, or heat and COP, is needed): electrical power in
-total, per phase (1–3 power or current sensors, current × voltage) or by a meter, plus heat output
-and COP. From two of power, heat and COP Sunflow computes the third and shows whether a value is
-measured or computed; if the COP does not fit (below 1 or above 7, or measured and computed COP
-differ a lot), it says so. "Suggestions from device" fills the fields from the heat pump's entities.
-The heat pump stays part of the household load, whose forecast already takes the outside
-temperature into account.
-
-**Control** – Sunflow recommends a state (normal, boosted, blocked, forced on); the heat pump's own
-control decides what to make of it:
-
-| Method | Entities | States |
-|---|---|---|
-| SG-Ready with two relays | contact 1 (block), contact 2 (boost), each optionally normally closed | all |
-| SG-Ready contact 2 only | contact 2 – when contact 1 is the grid operator's lock (§14a EnWG) | normal, boosted |
-| SG-Ready with a select | select or input_select; options are matched by their names | all that have an option |
-| Raise a setpoint | number (e.g. hot water setpoint), normal value, ± kelvin | normal, boosted, blocked |
-| Report the PV surplus | number in W the heat pump uses itself | normal, boosted |
-| Boost switch | switch of the integration (e.g. one-time hot water charge) | normal, boosted |
-
-When: **boosted** from a planned surplus (feed-in or curtailed PV, default 1.5 kW) and optionally in
-the N cheapest hours of the day; **blocked** only when switched on, in the N most expensive hours, at
-most 2 h in one go and 4 h a day; **forced on** optionally at negative prices. Each state lasts at
-least 20 min (protects the compressor); if the house imports while boosting on surplus, it returns
-to normal. Without a current plan, when control is handed back and through the integration's
-watchdog the state is "normal".
-
-Sunflow only steers once the heat pump is switched on under Control; until then the Heat pump area
-shows what it would set.
-
 ## Own loads
 
 Devices Sunflow does not detect by itself are added in the settings under "Devices → Custom
@@ -159,58 +124,6 @@ weekends separately); shown under Analysis → Learning. It does not affect plan
 (Shelly, contactor). Enter the relays for L1–L3 (one is enough) and the power of one element.
 Sunflow switches on as many relays as fit into the planned power (with 3 × 2 kW: 2, 4 or 6 kW) and
 changes every day which relay comes first, so they wear evenly.
-
-### Heating rod of a heat pump
-
-The heating rod is set up with the heat pump (Settings → Heat pump, group **Heating rod**). The heat
-pump turns 1 kWh of electricity into 3–4 kWh of heat, the rod into only 1 kWh; so it should only run
-when it pays off or the heat pump is not enough. Two variants:
-
-**1. Built-in – through the heat pump's integration.** With many makes the backup or emergency
-heater inside the heat pump can only be blocked, released or limited in power; whether it heats is
-up to the heat pump. Sunflow knows four forms:
-
-| The integration offers | Examples |
-|---|---|
-| Block switch (on = blocked) | Bosch, Buderus, Junkers via EMS-ESP: "disable aux heater" (`auxheateroff`) |
-| Release switch (on = may heat) | NIBE (`nibe_heatpump`): "Allow additive heating" / "Permit additional heat" |
-| Select (free/blocked or kW steps) | Panasonic via HeishaMon: "DHW/Room Heater State"; EMS-ESP: `maxheat…` in kW steps |
-| Maximum power as a number | NIBE: "Max int add. power" in kW |
-
-Modes: in the heating season **only when needed** (default) – blocked unless it is colder than the
-set limit (about the bivalence point, default −5 °C), the reference room is below the comfort band
-(the heat pump is not enough or faulty), the price is negative or you release it ("Release heating
-rod for 24 h") – or **heat pump decides**. Without a current plan it stays free. In summer also **with PV surplus**
-(default). Without an outside temperature (from the heat pump or under learning sources) Sunflow
-never blocks it. The setting usually sits in the heat pump's flash memory: Sunflow changes it at
-most every 60 min (adjustable), writes only when it differs and counts the writes against the daily
-limit; after 6 changes a day it does not block again, so a release can always still be written. When Sunflow hands control back, it restores the normal value.
-
-**2. Own heating rod – added as a load.** A heating rod outside the heat pump, usually in the hot
-water or buffer tank, is first added as a custom load of type "Heat" (e.g. "Relay per phase (1–3)" or
-"Power levels") and then chosen in the heating rod group.
-
-The heat pump turns 1 kWh of electricity into 3–4 kWh of heat, the heating rod into only 1 kWh. So the
-assigned heating rod runs **by season**:
-
-| | Recommended (default) | Optional |
-|---|---|---|
-| Heating season (own rod) | Off – the PV surplus goes to the heat pump (boost) | Only PV surplus, Automatic |
-| Summer | Only PV surplus – the heat pump keeps its setpoint, the rod heats beyond it with the remaining surplus (e.g. to 60–65 °C) | Off, Automatic (by cost) |
-
-Reaching high tank temperatures with the rod spares the heat pump, whose COP drops at high
-temperatures. The temperature the rod heats up to is set under Loads (target temperature). The
-season's mode replaces the rod's strategy; without being assigned to a heat pump it does not apply. If the heat pump is not enough in winter, choose
-"As fast as possible" under Control: it applies until the chosen time, but at most for the set
-hours (default 24 h), so the rod does not run for the rest of the winter. The action
-`sunflow_ems.set_consumer` does the same from an automation.
-
-The **heating season** is detected
-
-- by **outside temperature**: a sensor's daily mean below 15 °C on three days in a row starts it,
-  three days above end it (threshold and days adjustable),
-- by **date** (e.g. 01.10. to 30.04.) or
-- from an **entity**, such as the heat pump's summer/winter mode.
 
 ### Charge battery (e-bike, tool batteries)
 
