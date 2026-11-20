@@ -1,7 +1,7 @@
 # Datenhaltung und Migrationen
 
-Stand: 20.11.2026 · Status: Regeln; Regel 7 und Import aller Tabellen spezifiziert, nicht umgesetzt
-(erster Schritt der Wärmepumpen-Umsetzung, `heat_pump.md` Abschnitt 16)
+Stand: 20.11.2026 · Status: Regeln; Regel 7 und Import aller Tabellen umgesetzt (0.80.4,
+`heat_pump.md` Abschnitt 16, Schritt 2b)
 
 Wie Sunflow gespeicherte Daten bei Updates weiterentwickelt, ohne Nutzerdaten zu verlieren und ohne den
 Rückweg auf eine ältere Version (z. B. Wechsel zwischen Sunflow und Sunflow Edge) zu verbauen.
@@ -11,7 +11,7 @@ Rückweg auf eine ältere Version (z. B. Wechsel zwischen Sunflow und Sunflow Ed
 | Datei | Format | Version | Migration |
 |---|---|---|---|
 | `config.json` | JSON (pydantic) | Feld `version`, `CONFIG_VERSION` | `config/store.py`: `MIGRATIONS` je Schritt, Original bleibt als `config.v<n>.json`; neuere Konfiguration: unbekannte/ungültige Felder auf Standard (`_repaired`); atomar mit `fsync` |
-| `shadow.db` | SQLite | `PRAGMA user_version`, `SCHEMA_VERSION` | `shadow/store.py`: `SCHEMA_STEPS` je Version, `migrate()` beim Start; neuere Datenbank bleibt unberührt |
+| `shadow.db` | SQLite | `PRAGMA user_version`, `SCHEMA_VERSION` | `shadow/store.py`: `SCHEMA_STEPS` je Version, `migrate()` beim Start, vorher Kopie `shadow.v<n>.db` (Regel 7); neuere Datenbank bleibt unberührt |
 | `eeprom_writes.json` | JSON | – | nur Tageszähler, verwerfbar |
 | `heat_pump_state.json` (geplant, `heat_pump.md`) | JSON | – | Laufzeit-Zustand, verwerfbar |
 
@@ -19,17 +19,18 @@ Export/Import (`api/system.py`): ein Export einer älteren Version wird beim Imp
 neueren Version werden weggelassen. Die Export-Datei wird in ein temporäres Verzeichnis entpackt und dort
 migriert; das Original bleibt unverändert.
 
-Heute führt `ShadowStore.merge_from` nur die Tabelle `slots` zusammen; `plan_ahead`, `soiling_ahead` und
-`imported_sessions` gehen beim Import verloren, ebenso künftig `heat_pump_samples`. Soll:
-- Eine feste Liste in `shadow/store.py` legt je Tabelle fest, ob sie beim Import übernommen wird
-  (Standard: ja; ausnehmen nur, was verwerfbar ist).
+`ShadowStore.merge_from` führt alle Tabellen zusammen (umgesetzt, Tests in `tests/test_shadow_data.py`):
+- `IMPORT_TABLES` in `shadow/store.py` legt je Tabelle fest, ob sie beim Import übernommen wird
+  (Standard: ja; ausnehmen nur, was verwerfbar ist). Eine neue Tabelle muss dort eingetragen werden
+  (ein Test vergleicht die Liste mit dem Schema); fehlt sie trotzdem, wird sie übernommen.
 - Je Tabelle werden die Spalten übernommen, die beide Versionen kennen; Zeilen mit gleichem
-  Primärschlüssel werden ersetzt (`INSERT OR REPLACE`).
+  Primärschlüssel werden ersetzt (`INSERT OR REPLACE … SELECT` über die per `ATTACH` angehängte
+  Export-Datei, ohne die Zeilen in den Speicher zu laden).
 - Eine Tabelle, die nur die Export-Datei kennt (neuere Version), wird übersprungen; eine, die nur die
   eigene Datenbank kennt, bleibt unverändert.
 - Alles in einer Transaktion: Ein Fehler lässt die eigene Datenbank wie vorher.
-- Rückgabe: Anzahl je Tabelle (für die Meldung im UI).
-- Tests: Import älterer und neuerer Export mit mehreren Tabellen; Fehler mitten im Import ändert nichts.
+- Rückgabe: Anzahl je Tabelle; `POST /import` liefert sie als `imported` (dazu weiterhin
+  `imported_slots` für die Meldung im UI).
 
 Grundsatz zur Ablage: Rohmessungen, die HA ohnehin hat, aus HA lesen (History/Statistiken) statt kopieren.
 Was HA nicht oder nicht lange genug hat (Pläne, Entscheidungen, Journal, gefilterte Messwerte mit
@@ -60,8 +61,11 @@ Deshalb sind Änderungen am Schema **additiv**.
 7. **Backup vor der Migration.** Vor dem ersten Schritt eine Kopie `<name>.v<n>.db` über die
    SQLite-Backup-API, wie `config.v<n>.json`. Nur wenn tatsächlich migriert wird (`user_version` <
    `SCHEMA_VERSION`), nicht bei jedem Start; eine vorhandene Kopie gleichen Namens wird nicht
-   überschrieben. Schlägt das Backup fehl (z. B. Platte voll), wird nicht migriert und der Fehler
-   gemeldet. *(Offen: in `shadow/store.py` noch nicht umgesetzt.)*
+   überschrieben; eine neue, leere Datenbank wird nicht kopiert. Schlägt das Backup fehl (z. B. Platte
+   voll), wird nicht migriert und der Fehler gemeldet (`ShadowBackupError`, die App startet nicht).
+   Die Kopie entsteht unter `<name>.v<n>.db.tmp` und wird erst vollständig umbenannt. Umgesetzt in
+   `shadow/store.py` (`backup_before_migration`); Export-Dateien beim Import brauchen keine Kopie, sie
+   werden ohnehin in einem temporären Verzeichnis migriert.
 8. **Unvermeidbarer Umbau** (z. B. Primärschlüssel): neue Tabelle unter neuem Namen anlegen und befüllen;
    die alte bleibt für ältere Versionen bestehen.
 9. **Große Datenmengen** (Jahre an 5-min-Werten): Daten-Migrationen blockweise oder im Hintergrund, nicht

@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.80.3
+## 0.80.4
+
+- Importing an export now merges the whole recording: besides the time slots also the plan's expectations (state of charge, PV, load six hours ahead), the soiling expectations and the charging sessions imported from evcc. The import runs in one transaction: if it fails, the recording stays as it was.
+- Before an update changes the structure of the recording, Sunflow keeps a copy `shadow.v<n>.db` (like `config.v<n>.json`) for going back. If the copy cannot be written (e.g. disk full), the recording is not changed and the App does not start.
+
 
 - The former heat pump control is removed; a new flow temperature control replaces it. Gone are the device "heat pump" (measuring, SG-Ready, setpoint, PV surplus, boost switch, built-in heating rod), comfort band, night setback, reference room, "Plan preheating", the heating season and the season modes of heating rods.
 - A configured heat pump is removed from the configuration on update, with everything referring to it, and has to be added again later; the previous configuration stays as `config.v4.json`.

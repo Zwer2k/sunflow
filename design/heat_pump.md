@@ -647,8 +647,8 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
   Flags als JSON (`flags`: Lüften, Nachlauf, Sperre, gültig).
 - Aufräumen: Zeilen älter als 1 Jahr löschen (im Runner, blockweise).
 - Lernen zurücksetzen: Zeilen des Geräts löschen und `heat_pump_state.json`-Eintrag verwerfen.
-- Export/Import: `heat_pump_samples` wird beim Import übernommen; heute führt der Import nur `slots`
-  zusammen – Soll-Verhalten für alle Tabellen in `datenhaltung.md` („Export/Import“).
+- Export/Import: `heat_pump_samples` wird beim Import übernommen (in `IMPORT_TABLES` eintragen); der
+  Import führt alle Tabellen zusammen, siehe `datenhaltung.md` („Export/Import“).
 - `heat_pump_state.json` (klein, verwerfbar) zusätzlich in den Export aufnehmen.
 
 ---
@@ -815,8 +815,8 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       Bestandsaufnahme: was hängt sonst daran (Heizstab, Batterieplanung `planning/plan.py`,
       Hausbilder)? Geteilte Teile nicht ohne Rückfrage löschen. Alte Felder in `config.json` müssen beim
       Laden weiter funktionieren (ignorieren, nicht abbrechen; `datenhaltung.md`).
-   b. Datenhaltung vorbereiten (Backup vor Migration, Import aller Tabellen; `datenhaltung.md`,
-      Regel 7 und „Export/Import“).
+   b. **Datenhaltung vorbereiten** (umgesetzt, 0.80.4): Backup vor Migration, Import aller Tabellen
+      (`datenhaltung.md`, Regel 7 und „Export/Import“).
    c. Manifest-Auflösung und Kompatibilitätsprüfung, Profil `rotex_hpsu_can` (Schema-Erweiterung),
       Zustände, Datensammlung (`heat_pump_samples` in `shadow.db`), climate-Entity, Schattenbetrieb mit
       einfacher Regelung (Korrektur ohne Kennlinie).

@@ -203,7 +203,7 @@ async def import_data(request: Request, file: UploadFile, config: bool = False) 
             # Migrated like a stored configuration, so older exports work too
             imported = ConfigStore(Path(tmp), request.app.state.store.known_profiles).load()
         try:
-            count = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
+            counts = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
         except sqlite3.Error as err:
             raise HTTPException(status_code=422, detail=t("Export-Datei nicht lesbar: {error}", error=err)) from err
         if config:
@@ -214,7 +214,8 @@ async def import_data(request: Request, file: UploadFile, config: bool = False) 
             if eeprom.exists():
                 shutil.copyfile(eeprom, request.app.state.settings.data_dir / "eeprom_writes.json")
             runner.request_replan()
-    return {"imported_slots": count, "config": config}
+    # imported: rows per table; imported_slots stays for the UI of older versions
+    return {"imported_slots": counts.get("slots", 0), "imported": counts, "config": config}
 
 
 @router.get("/shadow")
