@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.1
+
+- Device test: profiles taking the power in percent (Growatt VPP, Fronius) no longer stop with "Missing value for P_pct"; a forced power is judged against the starting point, so a command that is ignored while the battery discharges no longer shows as "control works, sign wrong". Reported by odin8822.
+- Growatt SPH: Sunflow switches the VPP function on when it takes over or tests and restores it on hand-back (it was only shown before). Charging and Auto tested on an SPH 8000TL3 BH-UP with ARK HV by odin8822.
+
 ## 0.80.0
 
 ### Highlights since 0.79.1

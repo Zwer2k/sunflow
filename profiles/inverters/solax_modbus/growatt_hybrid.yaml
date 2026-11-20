@@ -9,7 +9,10 @@
 # Signs (integration): battery_combined_power + = charge. The integration has no signed
 # grid power: the grid is the import (ac_power_to_user_total) minus the export
 # (ac_power_to_grid_total).
-# Contributed by odin8822 (issue #2); measuring checked in shadow mode, control not yet on hardware.
+# Contributed by odin8822 (issue #2). Tested on an SPH 8000TL3 BH-UP (firmware YA1.0, control
+# ZDAA-0014) with ARK HV (HVC 60050-A1, 9 x ARK 2.5H-A1), CHINT DTSU666, Modbus RTU: force_charge
+# reaches the commanded power within seconds, auto returns to Load First at once, the sign fits.
+# Open: return after VPP Time without refresh, writes per day in regular operation.
 profile: solax_modbus/growatt_hybrid
 version: 1
 match:
@@ -52,9 +55,9 @@ parameters:
   # Minutes the inverter keeps a command without a new one from Sunflow
   vpp_time_min: {unit: min, default: 60, min: 30, max: 1440, advanced: true}
 
-setup:
-  # VPP function of the inverter; without it the remote control registers have no effect
-  - select: {key: vpp_status, option: "Enabled", storage: eeprom, write: if_differs}
+# VPP function of the inverter; without it the remote control registers have no effect.
+# Switched on when Sunflow takes over or tests, the previous state comes back on hand-back.
+control_mode: {key: vpp_status, option: "Enabled"}
 
 battery_control:
   auto:

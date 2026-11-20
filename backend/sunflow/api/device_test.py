@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from sunflow.config.models import DeviceConfig
 from sunflow.config.store import ConfigStore
-from sunflow.control.controller import device_variables
+from sunflow.control.controller import device_variables, percent_variables
 from sunflow.devices.device_test import (
     DeviceTestState,
     ModeControl,
@@ -55,7 +55,8 @@ def _device_control(
 
     async def apply_action(action: str, runtime: dict[str, float]) -> list[PlannedCall]:
         snapshot = await fetch_snapshot(client, request.app.state.direct)
-        variables = device_variables(profile, device, snapshot) | runtime
+        # As in control: profiles taking percent (Growatt VPP, Fronius) need P_pct
+        variables = percent_variables(action, device_variables(profile, device, snapshot) | runtime)
         planned = plan_battery(profile, action, device.parameters, variables, device_entities(snapshot, device.ha_device_id))
         direct = request.app.state.direct.by_ha_device(device.ha_device_id)
         await execute(client, planned, snapshot.states, guard, dry_run=False, direct=direct)

@@ -35,9 +35,9 @@ If a device cannot perform an action, Sunflow does not plan it or uses the close
 |---|---|---|---|---|---|---|---|---|
 | Sofar HYD-KTL (2nd gen.) | solax_modbus (Sofar plugin) | `solax_modbus/sofar` | PV per string, external PV, battery, grid, consumption, meters | all, power-exact (passive mode window) | – | Passive mode (set on takeover) | ✅ | ✅ |
 | SolaX X1/X3 Hybrid Gen4/Gen5 | solax_modbus (SolaX plugin) | `solax_modbus/solax_gen4_5` | PV, battery, grid, consumption, meters | Auto, Hold, Charge, Discharge | – | Remote Control Mode 1 of the integration | 🧪 | 🧪 |
-| Growatt SPH with battery (e.g. SPH 4000–10000TL3 BH-UP) | solax_modbus (Growatt plugin) | `solax_modbus/growatt_hybrid` | PV, PV per string, battery, grid (import minus export), consumption, meters | Auto, Charge, Discharge (VPP remote control) | – | VPP function (set when applying) | 🧪 | 🧪 |
-| Growatt MOD/MIN and SPH without battery | solax_modbus (Growatt plugin) | `solax_modbus/growatt_pv` | PV, PV per string, meters | – | – | – | 🧪 | – |
-| Deye micro inverters (e.g. SUN-M80G3) | solarman (HACS, davidrapan) | `solarman/deye_micro` | PV (AC), PV per input, meters | – | – | – | 🧪 | – |
+| Growatt SPH with battery (e.g. SPH 4000–10000TL3 BH-UP) | solax_modbus (Growatt plugin) | `solax_modbus/growatt_hybrid` | PV, PV per string, battery, grid (import minus export), consumption, meters | Auto, Charge, Discharge (VPP remote control) | – | VPP function (set by Sunflow on takeover and in the device test) | ✅ | ✅ (charge, auto) |
+| Growatt MOD/MIN and SPH without battery | solax_modbus (Growatt plugin) | `solax_modbus/growatt_pv` | PV, PV per string, meters | – | – | – | ✅ | – |
+| Deye micro inverters (e.g. SUN-M80G3) | solarman (HACS, davidrapan) | `solarman/deye_micro` | PV (AC), PV per input, meters | – | – | – | ✅ | – |
 | Huawei SUN2000 with LUNA2000 | huawei_solar | `huawei_solar/sun2000_luna2000` | PV per string, battery, grid (with smart meter), meters | Auto, Hold, Charge, Discharge | yes | Installer login in the integration | 🧪 | 🧪 |
 | Huawei SUN2000 without battery | huawei_solar | `huawei_solar/pv_only` | PV, PV per string, meters | – | yes | Curtailment: installer login | ✅ | 🧪 (curtailment) |
 | SolarEdge StorEdge / Home Hub | solaredge_modbus (Core) | `solaredge_modbus/storedge` | PV, battery, grid (with meter), meters | all | – | Battery remote control (set on takeover) | 🧪 | 🧪 |

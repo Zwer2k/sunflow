@@ -104,8 +104,13 @@ def choose_test(baseline_power: float, supported: frozenset[str] | set[str] = AL
     raise ExecutorError(t("Das Gerät kann keine prüfbare Aktion – Test nicht möglich"))
 
 
-def evaluate(action: str, power: float, settled: list[float]) -> tuple[bool, bool]:
-    """Return (control works, sign correct) from readings after settling."""
+def evaluate(action: str, power: float, settled: list[float], baseline: float = 0.0) -> tuple[bool, bool]:
+    """Return (control works, sign correct) from readings after settling.
+
+    A forced power reached with the right sign proves both. With the wrong sign the reading
+    must have moved away from the baseline: a battery discharging on as before (command
+    ignored) is not taken for a sensor with the wrong sign.
+    """
     if not settled:
         return False, False
     level = median(settled)
@@ -119,12 +124,12 @@ def evaluate(action: str, power: float, settled: list[float]) -> tuple[bool, boo
             # Chosen while discharging: stopping proves control and the sign alike
             stopped = level >= -tolerance
             return stopped, stopped
-        case "force_discharge":
-            return abs(level) >= power - tolerance, level < 0
         case _:
             # force_charge: charging means positive with the configured sign
-            works = abs(level) >= power - tolerance
-            return works, level > 0
+            direction = -1 if action == "force_discharge" else 1
+            reached = level * direction >= power - tolerance
+            moved = abs(level - baseline) >= max(power * 0.5, 150) and abs(level) >= power - tolerance
+            return reached or moved, level * direction > 0
 
 
 ReadFn = Callable[[], Awaitable[tuple[float | None, float | None]]]
@@ -209,7 +214,7 @@ async def run_device_test(
         state.calls += await run_action(action, {"P": power})
         await sample_for("command", timings.settle)
         settled = await sample_for("command", timings.hold - timings.settle)
-        state.control_works, state.sign_correct = evaluate(action, power, settled)
+        state.control_works, state.sign_correct = evaluate(action, power, settled, median(baseline))
 
         await restore()
         commanded = False

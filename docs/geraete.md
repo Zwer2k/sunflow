@@ -36,9 +36,9 @@ Laden aus dem Netz.
 |---|---|---|---|---|---|---|---|---|
 | Sofar HYD-KTL (2. Gen.) | solax_modbus (Sofar-Plugin) | `solax_modbus/sofar` | PV je String, PV extern, Speicher, Netz, Verbrauch, Zähler | alle, leistungsgenau (Passivmodus-Fenster) | – | Passivmodus (wird beim Übernehmen gesetzt) | ✅ | ✅ |
 | SolaX X1/X3 Hybrid Gen4/Gen5 | solax_modbus (SolaX-Plugin) | `solax_modbus/solax_gen4_5` | PV, Speicher, Netz, Verbrauch, Zähler | Automatik, Halten, Laden, Entladen | – | Remote Control Mode 1 der Integration | 🧪 | 🧪 |
-| Growatt SPH mit Akku (z. B. SPH 4000–10000TL3 BH-UP) | solax_modbus (Growatt-Plugin) | `solax_modbus/growatt_hybrid` | PV, PV je String, Speicher, Netz (Bezug minus Einspeisung), Verbrauch, Zähler | Automatik, Laden, Entladen (VPP-Fernsteuerung) | – | VPP-Funktion (wird beim Übernehmen gesetzt) | 🧪 | 🧪 |
-| Growatt MOD/MIN und SPH ohne Akku | solax_modbus (Growatt-Plugin) | `solax_modbus/growatt_pv` | PV, PV je String, Zähler | – | – | – | 🧪 | – |
-| Deye-Mikrowechselrichter (z. B. SUN-M80G3) | solarman (HACS, davidrapan) | `solarman/deye_micro` | PV (AC), PV je Eingang, Zähler | – | – | – | 🧪 | – |
+| Growatt SPH mit Akku (z. B. SPH 4000–10000TL3 BH-UP) | solax_modbus (Growatt-Plugin) | `solax_modbus/growatt_hybrid` | PV, PV je String, Speicher, Netz (Bezug minus Einspeisung), Verbrauch, Zähler | Automatik, Laden, Entladen (VPP-Fernsteuerung) | – | VPP-Funktion (setzt Sunflow beim Übernehmen und im Gerätetest) | ✅ | ✅ (Laden, Automatik) |
+| Growatt MOD/MIN und SPH ohne Akku | solax_modbus (Growatt-Plugin) | `solax_modbus/growatt_pv` | PV, PV je String, Zähler | – | – | – | ✅ | – |
+| Deye-Mikrowechselrichter (z. B. SUN-M80G3) | solarman (HACS, davidrapan) | `solarman/deye_micro` | PV (AC), PV je Eingang, Zähler | – | – | – | ✅ | – |
 | Huawei SUN2000 mit LUNA2000 | huawei_solar | `huawei_solar/sun2000_luna2000` | PV je String, Speicher, Netz (mit Smart Meter), Zähler | Automatik, Halten, Laden, Entladen | ja | Installateur-Zugang in der Integration | 🧪 | 🧪 |
 | Huawei SUN2000 ohne Speicher | huawei_solar | `huawei_solar/pv_only` | PV, PV je String, Zähler | – | ja | Abregeln: Installateur-Zugang | ✅ | 🧪 (Abregeln) |
 | SolarEdge StorEdge / Home Hub | solaredge_modbus (Core) | `solaredge_modbus/storedge` | PV, Speicher, Netz (mit Zähler), Zähler | alle | – | Speicher-Fernsteuerung (wird beim Übernehmen gesetzt) | 🧪 | 🧪 |
