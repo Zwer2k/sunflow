@@ -5,9 +5,11 @@ finished slot is stored with its averages and the plan is recomputed. The
 first slot of a fresh plan is what Sunflow would command right now.
 """
 
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 import json
+import logging
 from pathlib import Path
 import sqlite3
 from statistics import fmean
@@ -15,6 +17,8 @@ import threading
 from typing import Any
 
 from sunflow.planning.optimizer import Settings
+
+_LOGGER = logging.getLogger(__name__)
 
 SLOT = timedelta(minutes=15)
 
@@ -45,7 +49,7 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
@@ -70,7 +74,35 @@ SCHEMA_STEPS: dict[int, list[str]] = {
     ],
     # evcc's CSV export also has the vehicle's state of charge before and after
     8: ["ALTER TABLE imported_sessions ADD COLUMN soc_start REAL", "ALTER TABLE imported_sessions ADD COLUMN soc_end REAL"],
+    # 5 minute means of a heat pump with its states (design/heat_pump.md, sections 9.1 and 10); kept a year
+    9: [
+        "CREATE TABLE heat_pump_samples (device_id TEXT, start TEXT, samples INTEGER,"
+        " tv_c REAL, tr_c REAL, tvbh_c REAL, tv_max_c REAL, heat_w REAL, heat_source TEXT, outside_c REAL,"
+        " bypass_pct REAL, setpoint_c REAL, max_setpoint_c REAL, written_c REAL, compressor REAL,"
+        " program TEXT, activity TEXT, strategy TEXT, error TEXT, rooms TEXT, events TEXT, flags TEXT,"
+        " PRIMARY KEY (device_id, start))",
+        # Clearing out rows older than a year goes by start over all devices
+        "CREATE INDEX heat_pump_samples_start ON heat_pump_samples (start)",
+    ],
 }
+# Per table whether an import takes it over; a table missing here is taken over too.
+# Only what can be thrown away may be left out.
+IMPORT_TABLES: dict[str, bool] = {
+    "slots": True,
+    "plan_ahead": True,
+    "soiling_ahead": True,
+    "imported_sessions": True,
+    "heat_pump_samples": True,
+}
+HEAT_PUMP_COLUMNS = (
+    "device_id", "start", "samples", "tv_c", "tr_c", "tvbh_c", "tv_max_c", "heat_w", "heat_source", "outside_c",
+    "bypass_pct", "setpoint_c", "max_setpoint_c", "written_c", "compressor", "program", "activity", "strategy",
+    "error", "rooms", "events", "flags",
+)  # fmt: skip
+HEAT_PUMP_JSON = ("rooms", "events", "flags")
+# Heat pump samples are kept this long; older ones are deleted in blocks of this many rows
+HEAT_PUMP_KEEP = timedelta(days=365)
+PRUNE_BLOCK = 5000
 # Stored as JSON objects (key -> W)
 JSON_COLUMNS = (
     "plane_forecasts", "actual_strings", "actual_consumers", "actual_levels", "planned_batteries", "actual_batteries",
@@ -186,6 +218,39 @@ def actual_action(grid: float | None, battery: float | None) -> str | None:
     return "auto"
 
 
+class ShadowBackupError(Exception):
+    """The copy before a migration could not be written; the database was not migrated."""
+
+
+def backup_before_migration(db: sqlite3.Connection, path: Path) -> Path | None:
+    """Keep a copy <name>.v<n>.db of a database about to be migrated, for going back to that release.
+
+    Nothing is copied for a database at (or above) SCHEMA_VERSION or a fresh, empty one; an
+    existing copy of the same name stays as it is. Raises ShadowBackupError if the copy fails.
+    """
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version >= SCHEMA_VERSION or db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'").fetchone() is None:
+        return None
+    kept = path.with_name(f"{path.stem}.v{version}.db")
+    if kept.exists():
+        return kept
+    # Written under a temporary name: a copy cut short (disk full) must not pass for a complete one
+    partial = kept.with_name(f"{kept.name}.tmp")
+    try:
+        target = sqlite3.connect(partial)
+        try:
+            db.backup(target)
+        finally:
+            target.close()
+        partial.replace(kept)
+    except (sqlite3.Error, OSError) as err:
+        with suppress(OSError):
+            partial.unlink(missing_ok=True)
+        raise ShadowBackupError(f"Could not back up {path.name} to {kept.name} before migrating it: {err}") from err
+    _LOGGER.info("Shadow database backed up to %s before migrating it from version %s", kept.name, version)
+    return kept
+
+
 def migrate(db: sqlite3.Connection) -> None:
     """Bring a shadow database to SCHEMA_VERSION; one of a newer Sunflow is left as it is."""
     version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -211,17 +276,39 @@ def migrate(db: sqlite3.Connection) -> None:
         db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
+def _tables(db: sqlite3.Connection, schema: str) -> list[str]:
+    """Names of the tables in an attached database (main, export), SQLite's own left out."""
+    return [
+        row[0]
+        for row in db.execute(
+            f"SELECT name FROM {schema}.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"  # noqa: S608
+        )
+    ]
+
+
+def _columns(db: sqlite3.Connection, schema: str, table: str) -> list[str]:
+    """Column names of a table in an attached database."""
+    return [row[0] for row in db.execute("SELECT name FROM pragma_table_info(?, ?)", (table, schema))]
+
+
 class ShadowStore:
     """SQLite storage of planned and actual slot values."""
 
     def __init__(self, data_dir: Path) -> None:
         """Open (and create) the database."""
         data_dir.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(data_dir / "shadow.db", check_same_thread=False)
+        path = data_dir / "shadow.db"
+        self._db = sqlite3.connect(path, check_same_thread=False)
         # The connection is shared by worker threads (runner, export, import); sqlite3
         # leaves serializing writes to the caller
         self._lock = threading.Lock()
-        migrate(self._db)
+        try:
+            # Without a copy the database stays unmigrated: better not to start than to lose the way back
+            backup_before_migration(self._db, path)
+            migrate(self._db)
+        except BaseException:
+            self._db.close()
+            raise
 
     def close(self) -> None:
         """Close the database."""
@@ -324,6 +411,79 @@ class ShadowStore:
             self._db.commit()
             return removed
 
+    def store_heat_pump_samples(self, rows: list[dict[str, Any]]) -> None:
+        """Keep 5 minute rows of heat pumps; a row of the same device and start is replaced."""
+        if not rows:
+            return
+        values = []
+        for row in rows:
+            record = {c: row.get(c) for c in HEAT_PUMP_COLUMNS}
+            record["start"] = row["start"].astimezone(UTC).isoformat() if isinstance(row["start"], datetime) else row["start"]
+            for column in HEAT_PUMP_JSON:
+                if record[column] is not None:
+                    record[column] = json.dumps(record[column], ensure_ascii=False)
+            values.append(tuple(record[c] for c in HEAT_PUMP_COLUMNS))
+        with self._lock:
+            self._db.executemany(
+                f"INSERT OR REPLACE INTO heat_pump_samples ({', '.join(HEAT_PUMP_COLUMNS)})"  # noqa: S608
+                f" VALUES ({', '.join('?' for _ in HEAT_PUMP_COLUMNS)})",
+                values,
+            )
+            self._db.commit()
+
+    def heat_pump_samples(self, device_id: str, since: datetime) -> list[dict[str, Any]]:
+        """The 5 minute rows of a heat pump from since on, oldest first; JSON columns decoded."""
+        with self._lock:
+            cursor = self._db.execute(
+                "SELECT * FROM heat_pump_samples WHERE device_id = ? AND start >= ? ORDER BY start",
+                (device_id, since.astimezone(UTC).isoformat()),
+            )
+            names = [c[0] for c in cursor.description]
+            rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+        for row in rows:
+            for column in HEAT_PUMP_JSON:
+                # A row written by another version may hold something else: then empty
+                try:
+                    row[column] = json.loads(row[column]) if row.get(column) else None
+                except ValueError:
+                    row[column] = None
+        return rows
+
+    def heat_pump_valid_days(self, device_id: str, min_seconds: float) -> int:
+        """Days (UTC) of the whole table with at least min_seconds of valid heating without ventilation.
+
+        Valid heating is flags.valid of a row (every minute valid, design/heat_pump.md section 4); a row
+        counts with its minutes. Rows whose flags are not readable JSON do not count.
+        """
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT substr(start, 1, 10), SUM(samples) FROM heat_pump_samples"
+                " WHERE device_id = ? AND CASE WHEN json_valid(flags) THEN"
+                " json_extract(flags, '$.valid') = 1"
+                " AND COALESCE(json_array_length(json_extract(flags, '$.ventilation')), 0) = 0"
+                " ELSE 0 END"
+                " GROUP BY substr(start, 1, 10)",
+                (device_id,),
+            ).fetchall()
+        return sum(1 for _, minutes in rows if (minutes or 0) * 60 >= min_seconds)
+
+    def prune_heat_pump_samples(self, before: datetime, block: int = PRUNE_BLOCK) -> int:
+        """Delete heat pump rows starting before before, a block at a time; returns how many."""
+        removed = 0
+        cutoff = before.astimezone(UTC).isoformat()
+        while True:
+            # The lock is released between the blocks: recording and reading go on meanwhile
+            with self._lock:
+                count = self._db.execute(
+                    "DELETE FROM heat_pump_samples WHERE rowid IN"
+                    " (SELECT rowid FROM heat_pump_samples WHERE start < ? LIMIT ?)",
+                    (cutoff, block),
+                ).rowcount
+                self._db.commit()
+            removed += count
+            if count < block:
+                return removed
+
     def store_actual(self, start: datetime, actual: dict[str, Any]) -> None:
         """Store the measured averages of a finished slot."""
         with self._lock:
@@ -345,25 +505,37 @@ class ShadowStore:
             finally:
                 target.close()
 
-    def merge_from(self, path: Path) -> int:
-        """Merge slots of another shadow database; existing slots are replaced. Returns the count."""
+    def merge_from(self, path: Path) -> dict[str, int]:
+        """Merge the tables of another shadow database (an unpacked export); rows with the same key are replaced.
+
+        An export of an older version is migrated first (path must be a copy); tables and columns
+        only a newer version knows are left out, tables only this database has stay as they are.
+        All tables are merged in one transaction. Returns the number of rows taken per table.
+        """
+        other = sqlite3.connect(path)
+        try:
+            migrate(other)
+        finally:
+            other.close()
         with self._lock:
-            other = sqlite3.connect(path)
+            self._db.execute("ATTACH DATABASE ? AS export", (str(path),))
             try:
-                # An export of an older version is migrated first; columns of a newer one are left out
-                migrate(other)
-                own = {row[1] for row in self._db.execute("PRAGMA table_info(slots)")}
-                theirs = [row[1] for row in other.execute("PRAGMA table_info(slots)")]
-                names = [name for name in theirs if name in own]
-                rows = other.execute(f"SELECT {', '.join(names)} FROM slots").fetchall()  # noqa: S608
+                theirs = set(_tables(self._db, "export"))
+                counts: dict[str, int] = {}
+                # Commits all tables or, on an error, none
+                with self._db:
+                    for table in _tables(self._db, "main"):
+                        if table not in theirs or not IMPORT_TABLES.get(table, True):
+                            continue
+                        known = set(_columns(self._db, "export", table))
+                        # Only names of the own schema reach the SQL
+                        names = ", ".join(f'"{c}"' for c in _columns(self._db, "main", table) if c in known)
+                        counts[table] = self._db.execute(
+                            f'INSERT OR REPLACE INTO main."{table}" ({names}) SELECT {names} FROM export."{table}"'  # noqa: S608
+                        ).rowcount
             finally:
-                other.close()
-            placeholders = ", ".join("?" for _ in names)
-            self._db.executemany(
-                f"INSERT OR REPLACE INTO slots ({', '.join(names)}) VALUES ({placeholders})", rows  # noqa: S608
-            )
-            self._db.commit()
-            return len(rows)
+                self._db.execute("DETACH DATABASE export")
+            return counts
 
     def rows(self, since: datetime) -> list[dict[str, Any]]:
         """Return all slots starting at or after since, oldest first."""

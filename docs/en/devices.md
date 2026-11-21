@@ -111,40 +111,48 @@ Below the configured limit (default 12.2 V) the wallbox charges for the configur
 charging according to plan anyway, that continues. An evcc loadpoint charges in "Min+PV" mode for
 this. Only effective while Sunflow controls the wallbox.
 
-## Heat pump
+## Heat pumps
 
-Heat pumps have their own area **Heat pump** in the settings (profile `generic/heat_pump`): measuring,
-control, the heat pump's heating rod and the heating season.
+| Device | Connection | Profile | Measures | Control | Requirements | Measuring tested |
+|---|---|---|---|---|---|---|
+| Rotex/Daikin HPSU | ESPHome with the component `daikin_rotex_can` (CAN bus) | `esphome/rotex_hpsu_can` | Flow, flow peak, return, effective flow setpoint, heat output, outside temperature, operating mode, mode of operation, bypass valve, compressor, error code | shadow operation: flow target computed, nothing written | Firmware with manifest and `tv_max` | 🧪 |
 
-**Measuring** (all optional; the electrical power, or heat and COP, is needed): electrical power in
-total, per phase (1–3 power or current sensors, current × voltage) or by a meter, plus heat output
-and COP. From two of power, heat and COP Sunflow computes the third and shows whether a value is
-measured or computed; if the COP does not fit (below 1 or above 7, or measured and computed COP
-differ a lot), it says so. "Suggestions from device" fills the fields from the heat pump's entities.
-The heat pump stays part of the household load, whose forecast already takes the outside
-temperature into account.
+Sunflow does not recognize the HPSU by entity names – they are free and translated in ESPHome –
+but by the **manifest** the component delivers as an ESPHome action (`…_rotex_can_manifest`).
+Other ESPHome devices therefore do not show up among the recognized devices. When adding the device,
+Sunflow stores the Home Assistant device, its MAC address and the component (CAN).
 
-**Control** – Sunflow recommends a state (normal, boosted, blocked, forced on); the heat pump's own
-control decides what to make of it:
+- **Assignment:** Sunflow finds the node through the manifest's entities. If several ESPHome devices have
+  them all, the device name decides: `HPSU.CAN` fits the action `hpsu_can_rotex_can_manifest`. If no
+  device or more than one fits, Sunflow assigns none and reports this in the summary.
+- **Compatibility:** On every load Sunflow checks each role of the profile: key present, matching
+  type (e.g. select), unit, every option it reacts to, and for Max T-Vorlauf that the range covers the
+  limits and the step is at most 0.5 K (older firmware with whole degrees: update the component). If a required role is missing or does not fit, the device is **not compatible**:
+  Sunflow does not use it and names the reason in the summary and the log (e.g. "key
+  max_target_flow_temp missing"). A missing optional role only disables that function.
+- **Reload:** after flashing (new firmware version), when the node is reachable again after an
+  outage, and hourly otherwise. A changed manifest is noted once in the log, as is every change of
+  the compatibility.
+- **Integration added again:** If Sunflow no longer finds the Home Assistant device, it looks for one
+  with the same MAC address and assigns it anew (log entry).
+- **Profile version:** If the profile is newer than when the device was added, the summary says so.
+  Version 2 adds the outside sensor of the outdoor unit (TA2, optional).
+- **States and recording:** Every minute Sunflow reads operating mode, mode of operation, HK function,
+  bypass valve, room thermostat and error code and stores the means with the states every 5 minutes
+  (table `heat_pump_samples`, kept for a year; part of the export). Only this counts as **valid
+  heating**: mode heating/setback/automatic, mode of operation heating, bypass valve at 0 % for
+  10 minutes, no after-run (10 minutes after hot water or defrosting), no room thermostat block, no
+  fault (error code starting with E; warnings with W do not count), the HPSU does not limit the flow
+  itself (with "fixed": flow setpoint more than 0.5 K below Max T-Vorlauf for longer than 5 minutes,
+  e.g. T-Vorlauf Nacht) and the device is reachable and compatible. Only then will Sunflow control and
+  learn later. The log names unknown states, the start and end of a fault, the block on and off and
+  the start of the HPSU limiting the flow; `GET /api/v1/heat_pump/status` shows the current state.
+  Sunflow writes nothing; Settings → Heat pump shows the state as well.
+- **Shadow operation:** From the room setpoint (thermostat "Haus") and the room temperature Sunflow
+  computes a flow target (effective flow setpoint + correction) and shows it (Settings → Heat pump,
+  attributes of the thermostat); nothing is written to the heat pump yet.
 
-| Method | Entities | States |
-|---|---|---|
-| SG-Ready with two relays | contact 1 (block), contact 2 (boost), each optionally normally closed | all |
-| SG-Ready contact 2 only | contact 2 – when contact 1 is the grid operator's lock (§14a EnWG) | normal, boosted |
-| SG-Ready with a select | select or input_select; options are matched by their names | all that have an option |
-| Raise a setpoint | number (e.g. hot water setpoint), normal value, ± kelvin | normal, boosted, blocked |
-| Report the PV surplus | number in W the heat pump uses itself | normal, boosted |
-| Boost switch | switch of the integration (e.g. one-time hot water charge) | normal, boosted |
-
-When: **boosted** from a planned surplus (feed-in or curtailed PV, default 1.5 kW) and optionally in
-the N cheapest hours of the day; **blocked** only when switched on, in the N most expensive hours, at
-most 2 h in one go and 4 h a day; **forced on** optionally at negative prices. Each state lasts at
-least 20 min (protects the compressor); if the house imports while boosting on surplus, it returns
-to normal. Without a current plan, when control is handed back and through the integration's
-watchdog the state is "normal".
-
-Sunflow only steers once the heat pump is switched on under Control; until then the Heat pump area
-shows what it would set.
+The UART node (`daikin_rotex_uart`) as a companion and the flow control follow in a later step.
 
 ## Own loads
 
@@ -169,58 +177,6 @@ weekends separately); shown under Analysis → Learning. It does not affect plan
 (Shelly, contactor). Enter the relays for L1–L3 (one is enough) and the power of one element.
 Sunflow switches on as many relays as fit into the planned power (with 3 × 2 kW: 2, 4 or 6 kW) and
 changes every day which relay comes first, so they wear evenly.
-
-### Heating rod of a heat pump
-
-The heating rod is set up with the heat pump (Settings → Heat pump, group **Heating rod**). The heat
-pump turns 1 kWh of electricity into 3–4 kWh of heat, the rod into only 1 kWh; so it should only run
-when it pays off or the heat pump is not enough. Two variants:
-
-**1. Built-in – through the heat pump's integration.** With many makes the backup or emergency
-heater inside the heat pump can only be blocked, released or limited in power; whether it heats is
-up to the heat pump. Sunflow knows four forms:
-
-| The integration offers | Examples |
-|---|---|
-| Block switch (on = blocked) | Bosch, Buderus, Junkers via EMS-ESP: "disable aux heater" (`auxheateroff`) |
-| Release switch (on = may heat) | NIBE (`nibe_heatpump`): "Allow additive heating" / "Permit additional heat" |
-| Select (free/blocked or kW steps) | Panasonic via HeishaMon: "DHW/Room Heater State"; EMS-ESP: `maxheat…` in kW steps |
-| Maximum power as a number | NIBE: "Max int add. power" in kW |
-
-Modes: in the heating season **only when needed** (default) – blocked unless it is colder than the
-set limit (about the bivalence point, default −5 °C), the reference room is below the comfort band
-(the heat pump is not enough or faulty), the price is negative or you release it ("Release heating
-rod for 24 h") – or **heat pump decides**. Without a current plan it stays free. In summer also **with PV surplus**
-(default). Without an outside temperature (from the heat pump or under learning sources) Sunflow
-never blocks it. The setting usually sits in the heat pump's flash memory: Sunflow changes it at
-most every 60 min (adjustable), writes only when it differs and counts the writes against the daily
-limit; after 6 changes a day it does not block again, so a release can always still be written. When Sunflow hands control back, it restores the normal value.
-
-**2. Own heating rod – added as a load.** A heating rod outside the heat pump, usually in the hot
-water or buffer tank, is first added as a custom load of type "Heat" (e.g. "Relay per phase (1–3)" or
-"Power levels") and then chosen in the heating rod group.
-
-The heat pump turns 1 kWh of electricity into 3–4 kWh of heat, the heating rod into only 1 kWh. So the
-assigned heating rod runs **by season**:
-
-| | Recommended (default) | Optional |
-|---|---|---|
-| Heating season (own rod) | Off – the PV surplus goes to the heat pump (boost) | Only PV surplus, Automatic |
-| Summer | Only PV surplus – the heat pump keeps its setpoint, the rod heats beyond it with the remaining surplus (e.g. to 60–65 °C) | Off, Automatic (by cost) |
-
-Reaching high tank temperatures with the rod spares the heat pump, whose COP drops at high
-temperatures. The temperature the rod heats up to is set under Loads (target temperature). The
-season's mode replaces the rod's strategy; without being assigned to a heat pump it does not apply. If the heat pump is not enough in winter, choose
-"As fast as possible" under Control: it applies until the chosen time, but at most for the set
-hours (default 24 h), so the rod does not run for the rest of the winter. The action
-`sunflow_ems.set_consumer` does the same from an automation.
-
-The **heating season** is detected
-
-- by **outside temperature**: a sensor's daily mean below 15 °C on three days in a row starts it,
-  three days above end it (threshold and days adjustable),
-- by **date** (e.g. 01.10. to 30.04.) or
-- from an **entity**, such as the heat pump's summer/winter mode.
 
 ### Charge battery (e-bike, tool batteries)
 

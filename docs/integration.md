@@ -79,6 +79,12 @@ Je Prognose gibt es zusätzlich die Sensoren „Prognose heute“, „Prognose R
 | Strategie | Ausgewogen, PV aufnehmen, Autarkie, Speichernutzung |
 | Neu planen | Taste |
 | Plan (Kalender) | Lade-, Heiz-, Netzlade- und Abregelfenster, einmalige Lasten |
+| Haus (Thermostat) | Raum-Soll (18–27 °C, Schritt 0,5 °C; über `climate.set_temperature` auf 0,1 °C genau), Raum-Ist und Modus Heizen/Aus; nur mit Räumen oder Wärmepumpe. Attribute: Planziel, Vorlauf-Ziel, Basis und Korrektur (Schattenbetrieb: berechnet, nicht geschrieben) |
+
+Raum-Soll und Modus speichert Sunflow; schnelle Folgeänderungen (z. B. aus einer Automation) werden
+zusammengefasst, gespeichert wird der letzte Wert. Werte außerhalb von 18–27 °C lehnt Home Assistant
+mit einer Fehlermeldung ab. Nachtabsenkung o. Ä. über Zeitpläne oder Automationen auf diese Entität;
+wer nicht heizen will, stellt den Modus auf Aus statt einen niedrigen Soll.
 
 ## Aktionen
 

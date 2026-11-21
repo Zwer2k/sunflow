@@ -77,6 +77,12 @@ sensors "Prognose heute" (today), "Prognose Rest heute" (rest of today), "Progno
 | Strategie (strategy) | Balanced, Absorb PV, Self-sufficiency, Battery use |
 | Neu planen (replan) | button |
 | Plan (calendar) | charging, heating, grid charging and curtailment windows, one-off loads |
+| Haus (house, thermostat) | room setpoint (18–27 °C, step 0.5 °C; via `climate.set_temperature` to 0.1 °C), room temperature and mode heat/off; only with rooms or a heat pump. Attributes: plan target, flow target, base and correction (shadow operation: computed, not written) |
+
+Sunflow stores setpoint and mode; changes in quick succession (e.g. from an automation) are combined
+and the last value is stored. Values outside 18–27 °C are refused by Home Assistant with an error.
+Use schedules or automations on this entity for a night setback; to not heat, set the mode to off
+rather than a low setpoint.
 
 ## Actions
 

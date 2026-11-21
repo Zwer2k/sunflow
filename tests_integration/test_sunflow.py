@@ -198,3 +198,55 @@ async def test_plug_in_suggestion_fires_once(hass: HomeAssistant, aioclient_mock
     assert [e.data for e in events] == [
         {"vehicle": "Fiat 500e", "wallbox": "Wallbox", "start": hint["start"], "energy_kwh": 8.2, "pv_kwh": 6.1}
     ]
+
+
+HOUSE = {
+    "setpoint_c": 21.0, "mode": "heat", "min_c": 18.0, "max_c": 27.0, "step_c": 0.5, "room_c": 20.6,
+    "rooms_used": ["sensor.wohnzimmer"], "rooms_missing": [], "rooms_stale": [], "plan_target_c": 21.0,
+    "settling": None, "shadow": True,
+    "heat_pumps": [{"id": "hp", "name": "HPSU", "activity": "heating", "compressor": True,
+                    "flow": {"shadow": True, "strategy": "fixed", "base_c": 31.0, "correction_k": 0.4, "target_c": 31.4,
+                             "frozen": [], "reason": None}}],
+}
+
+
+async def test_climate_house(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    """The climate entity mirrors the App; quick changes are sent once with the last value; out of range is refused."""
+    from datetime import timedelta
+
+    from homeassistant.exceptions import ServiceValidationError
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant.common import async_fire_time_changed
+
+    aioclient_mock.put(f"{URL}/api/v1/house/climate", json={"setpoint_c": 21.3, "mode": "off"})
+    await _setup(hass, aioclient_mock, {**STATE, "house": HOUSE})
+
+    state = hass.states.get("climate.sunflow_house")
+    assert state.state == "heat"
+    assert state.attributes["current_temperature"] == 20.6
+    assert state.attributes["temperature"] == 21.0
+    assert (state.attributes["min_temp"], state.attributes["max_temp"], state.attributes["target_temp_step"]) == (18.0, 27.0, 0.5)
+    assert state.attributes["hvac_action"] == "heating"
+    assert (state.attributes["flow_target_temperature"], state.attributes["flow_correction"], state.attributes["shadow"]) == (31.4, 0.4, True)
+
+    for value in (22.0, 21.5, 21.3):
+        await hass.services.async_call("climate", "set_temperature", {"entity_id": "climate.sunflow_house", "temperature": value}, blocking=True)
+    await hass.services.async_call("climate", "set_hvac_mode", {"entity_id": "climate.sunflow_house", "hvac_mode": "off"}, blocking=True)
+    assert hass.states.get("climate.sunflow_house").attributes["temperature"] == 21.3
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=5))
+    await hass.async_block_till_done()
+
+    puts = [body for method, url, body, _ in aioclient_mock.mock_calls if method == "PUT"]
+    assert puts == [{"setpoint_c": 21.3, "mode": "off"}]
+    state = hass.states.get("climate.sunflow_house")
+    assert (state.state, state.attributes["temperature"]) == ("off", 21.3)
+
+    for value in (17.5, 27.5):
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call("climate", "set_temperature", {"entity_id": "climate.sunflow_house", "temperature": value}, blocking=True)
+
+
+async def test_no_climate_without_house(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    await _setup(hass, aioclient_mock, {**STATE, "house": None})
+
+    assert hass.states.get("climate.sunflow_house") is None

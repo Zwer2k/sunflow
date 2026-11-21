@@ -89,6 +89,10 @@ class SunflowClient:
                 "PUT", "/control/strategy", {"strategy": strategy, "until": until}
             )
 
+    async def set_climate(self, changes: dict[str, Any]) -> dict[str, Any]:
+        """Room setpoint and/or mode of the house; returns what Sunflow stored."""
+        return await self.request("PUT", "/house/climate", changes)
+
     async def replan(self) -> None:
         """Plan again now."""
         await self.request("POST", "/integration/replan")

@@ -1,6 +1,7 @@
 """Discovery of integrations and devices in Home Assistant."""
 
 import asyncio
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from fnmatch import fnmatch
@@ -8,8 +9,9 @@ import logging
 from typing import Any, Protocol
 
 from sunflow.ha import HAClient, HAError
+from sunflow.heat_pump.manifest import DeviceManifest, key_entity
 
-from .profiles import ProfileLibrary
+from .profiles import ProfileLibrary, manifest_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +30,9 @@ class DiscoveredDevice:
     components: list[DiscoveredDevice] = field(default_factory=list)
     # Entities the profile needs that are disabled in Home Assistant (enabled when taken over)
     disabled_entities: list[str] = field(default_factory=list)
+    # Devices recognized by their manifest: MAC address and component (e.g. "can")
+    mac: str | None = None
+    component: str | None = None
 
 
 @dataclass(kw_only=True)
@@ -54,6 +59,8 @@ class Snapshot:
     states: dict[str, dict[str, Any]]
     energy_prefs: dict[str, Any] | None
     integration_names: dict[str, str] = field(default_factory=dict)
+    # Manifests of devices describing themselves: Home Assistant device id -> manifest id -> manifest
+    manifests: dict[str, dict[str, DeviceManifest]] = field(default_factory=dict)
 
 
 async def _fetch_registries(client: HAClient) -> Snapshot:
@@ -81,6 +88,20 @@ class Contributor(Protocol):
 
     def contribute(self, snapshot: Snapshot) -> Snapshot:
         """Snapshot with the own devices added."""
+
+
+class Contributors:
+    """Several contributors applied in order."""
+
+    def __init__(self, *parts: Contributor) -> None:
+        """Initialize with the contributors."""
+        self._parts = parts
+
+    def contribute(self, snapshot: Snapshot) -> Snapshot:
+        """Snapshot with every part's additions."""
+        for part in self._parts:
+            snapshot = part.contribute(snapshot)
+        return snapshot
 
 
 async def fetch_snapshot(client: HAClient, direct: Contributor | None = None) -> Snapshot:
@@ -142,6 +163,12 @@ class SnapshotCache:
         self._generation = -1
         # Last valid state per entity, to bridge short "unknown" phases (e.g. Modbus read errors)
         self._last_good: dict[str, tuple[dict[str, Any], datetime]] = {}
+        # Called with every state_changed event, unbridged (e.g. to see a node going unavailable)
+        self._listeners: list[Callable[[dict[str, Any]], None]] = []
+
+    def add_state_listener(self, listener: Callable[[dict[str, Any]], None]) -> None:
+        """Call listener with every state_changed event while states are followed live."""
+        self._listeners.append(listener)
 
     async def get(self, fresh: bool = False) -> Snapshot:
         """Return a snapshot; fresh refetches registries and states."""
@@ -188,6 +215,11 @@ class SnapshotCache:
         return list(self._live_states.values())
 
     def _on_state_changed(self, event: dict[str, Any]) -> None:
+        for listener in self._listeners:
+            try:
+                listener(event)
+            except Exception:  # noqa: BLE001 - one listener must not stop the states
+                _LOGGER.exception("State listener failed")
         if self._live_states is not None:
             _apply_state_change(self._live_states, event)
         elif self._live_buffer is not None:
@@ -253,10 +285,13 @@ def match_profile(
     device: dict[str, Any],
     device_entities: list[dict[str, Any]],
     entry_has_battery: bool,
+    manifests: Mapping[str, DeviceManifest] | None = None,
 ) -> str | None:
-    """Return the id of the first profile matching the device."""
+    """Return the id of the first profile matching the device; manifests: the device's, by manifest id."""
     for profile in library.for_integration(domain):
         match = profile["match"]
+        if (wanted := manifest_id(profile)) is not None and wanted not in (manifests or {}):
+            continue
         if "has_battery" in match and match["has_battery"] != entry_has_battery:
             continue
         if "manufacturer" in match and match["manufacturer"] != device.get(
@@ -305,6 +340,47 @@ def needed_keys(profile: dict[str, Any]) -> set[str]:
 DIRECT_DOMAIN = "sunflow_direct"
 
 
+def _discovered_device(
+    library: ProfileLibrary,
+    snapshot: Snapshot,
+    domain: str,
+    device: dict[str, Any],
+    device_entities: list[dict[str, Any]],
+    entity_count: int,
+    entry_has_battery: bool,
+    is_component: bool,
+) -> DiscoveredDevice:
+    manifests = snapshot.manifests.get(device["id"], {})
+    if domain == DIRECT_DOMAIN:
+        profile_id = device.get("model") if device.get("model") in library.profiles else None
+    elif is_component:
+        profile_id = None
+    else:
+        profile_id = match_profile(library, domain, device, device_entities, entry_has_battery, manifests)
+    profile = library.profiles[profile_id] if profile_id else None
+    needed = needed_keys(profile) if profile else set()
+    found = manifests.get(manifest_id(profile)) if profile and manifest_id(profile) else None
+    if found is not None:
+        # The node names its entities freely: they are found through the manifest
+        disabled = {e["entity_id"] for key in needed if (e := key_entity(found.manifest, key, device_entities)) and e.get("disabled_by")}
+    else:
+        disabled = {e["entity_id"] for e in device_entities if e.get("disabled_by") and any(entity_has_key(e, key) for key in needed)}
+    # A node describing itself has no useful model ("esp32-s3-devkitc-1"): without a registry name its manifest names it
+    fallback = found.manifest.get("name") if found is not None else None
+    return DiscoveredDevice(
+        device_id=device["id"],
+        name=device.get("name_by_user") or device.get("name") or fallback or device["id"],
+        manufacturer=device.get("manufacturer"),
+        model=device.get("model"),
+        entity_count=entity_count,
+        disabled_entities=sorted(disabled),
+        profile=profile_id,
+        capabilities=profile["capabilities"] if profile else [],
+        mac=found.mac if found else None,
+        component=found.component if found else None,
+    )
+
+
 def discover(
     snapshot: Snapshot, library: ProfileLibrary, optimizer_entries: frozenset[str] = frozenset()
 ) -> list[DiscoveredIntegration]:
@@ -337,15 +413,6 @@ def discover(
             continue
 
         entry_has_battery = any(_is_battery(snapshot.states.get(e["entity_id"], {})) for e in entry_entities)
-        integration = DiscoveredIntegration(
-            entry_id=entry_id,
-            domain=domain,
-            name=snapshot.integration_names.get(domain, domain),
-            title=entry["title"],
-            state=entry["state"],
-            supported=supported,
-            in_energy_dashboard=in_energy,
-        )
         entry_devices = [
             d
             for d in snapshot.devices
@@ -355,36 +422,26 @@ def discover(
         entry_device_ids = {d["id"] for d in entry_devices}
         by_id: dict[str, DiscoveredDevice] = {}
         for device in entry_devices:
-            device_entities = all_by_device[device["id"]]
-            # Sub-devices such as battery modules are matched as part of their parent
-            is_component = device.get("via_device_id") in entry_device_ids
-            if domain == DIRECT_DOMAIN:
-                profile_id = device.get("model") if device.get("model") in library.profiles else None
-            else:
-                profile_id = (
-                    None
-                    if is_component
-                    else match_profile(
-                        library, domain, device, device_entities, entry_has_battery
-                    )
-                )
-            needed = needed_keys(library.profiles[profile_id]) if profile_id else set()
-            by_id[device["id"]] = DiscoveredDevice(
-                device_id=device["id"],
-                name=device.get("name_by_user") or device.get("name") or device["id"],
-                manufacturer=device.get("manufacturer"),
-                model=device.get("model"),
-                entity_count=len(entities_by_device.get(device["id"], [])),
-                disabled_entities=sorted(
-                    e["entity_id"]
-                    for e in device_entities
-                    if e.get("disabled_by") and any(entity_has_key(e, key) for key in needed)
-                ),
-                profile=profile_id,
-                capabilities=library.profiles[profile_id]["capabilities"]
-                if profile_id
-                else [],
+            by_id[device["id"]] = _discovered_device(
+                library, snapshot, domain, device, all_by_device[device["id"]],
+                len(entities_by_device.get(device["id"], [])), entry_has_battery,
+                # Sub-devices such as battery modules are matched as part of their parent
+                is_component=device.get("via_device_id") in entry_device_ids,
             )
+        # Nodes of an integration known only by manifests (ESPHome) count when one of them matches
+        if library.manifest_only(domain) and entry_id not in optimizer_entries and not any(d.profile for d in by_id.values()):
+            supported = False
+            if not in_energy:
+                continue
+        integration = DiscoveredIntegration(
+            entry_id=entry_id,
+            domain=domain,
+            name=snapshot.integration_names.get(domain, domain),
+            title=entry["title"],
+            state=entry["state"],
+            supported=supported,
+            in_energy_dashboard=in_energy,
+        )
         for device in entry_devices:
             discovered = by_id[device["id"]]
             if (parent_id := device.get("via_device_id")) in by_id:

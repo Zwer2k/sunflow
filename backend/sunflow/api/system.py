@@ -28,7 +28,7 @@ from sunflow.mcp_key import McpKey
 from sunflow.shadow.runner import ShadowRunner
 from sunflow.shadow.store import evaluate as evaluate_shadow
 
-from .common import _library, _snapshot
+from .common import _library, _snapshot, _with_manifests
 
 # Unpacked size an import may have (years of slots stay far below)
 IMPORT_MAX_BYTES = 2_000_000_000
@@ -121,7 +121,7 @@ async def profiles(request: Request) -> dict[str, Any]:
 async def discovery(request: Request) -> list[dict[str, Any]]:
     """Return integrations and devices found in Home Assistant."""
     # Newly installed integrations must show up right away
-    snapshot = await _snapshot(request, fresh=True)
+    snapshot = await _with_manifests(request, await _snapshot(request, fresh=True), force=True)
     found = discover_optimizers(snapshot)
     used = used_entries(request.app.state.store.load(), found)
     # An integration with optimizers only (e.g. Tigo) can be chosen for them
@@ -151,7 +151,8 @@ async def export_data(request: Request) -> Response:
             runner.shadow.backup_to(copy)
             with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
                 archive.write(copy, "shadow.db")
-                for name in ("config.json", "eeprom_writes.json", JOURNAL_FILE):
+                # heat_pump_state.json: for analysis only, not imported (discardable, design/heat_pump.md 10)
+                for name in ("config.json", "eeprom_writes.json", JOURNAL_FILE, "heat_pump_state.json"):
                     if (data_dir / name).exists():
                         archive.write(data_dir / name, name)
                 if latest is not None:
@@ -201,9 +202,9 @@ async def import_data(request: Request, file: UploadFile, config: bool = False) 
             raise HTTPException(status_code=422, detail=t("Keine gültige Export-Datei")) from err
         if config:
             # Migrated like a stored configuration, so older exports work too
-            imported = ConfigStore(Path(tmp)).load()
+            imported = ConfigStore(Path(tmp), request.app.state.store.known_profiles).load()
         try:
-            count = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
+            counts = await asyncio.to_thread(runner.shadow.merge_from, Path(tmp) / "shadow.db")
         except sqlite3.Error as err:
             raise HTTPException(status_code=422, detail=t("Export-Datei nicht lesbar: {error}", error=err)) from err
         if config:
@@ -214,7 +215,8 @@ async def import_data(request: Request, file: UploadFile, config: bool = False) 
             if eeprom.exists():
                 shutil.copyfile(eeprom, request.app.state.settings.data_dir / "eeprom_writes.json")
             runner.request_replan()
-    return {"imported_slots": count, "config": config}
+    # imported: rows per table; imported_slots stays for the UI of older versions
+    return {"imported_slots": counts.get("slots", 0), "imported": counts, "config": config}
 
 
 @router.get("/shadow")

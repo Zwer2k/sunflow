@@ -168,5 +168,12 @@ the plan looks right to you.
 
 Under **Analysis → Shadow mode**, "Export data" downloads a ZIP file with the recording,
 configuration, control log and current plan. "Import export" merges the recording into another installation; **With configuration** also takes
-over the settings, **Recording only** leaves them as they are. Keys
+over the settings, **Recording only** leaves them as they are.
+The recording comprises the time slots with plan and measurement, the expectations of the plan and of
+PV soiling, and charging sessions imported from evcc; entries for the same moment are replaced by
+those from the export. If the import fails, the recording stays as it was. Keys
 (integration, MCP) are never part of the export.
+
+When an update changes the structure of the recording, Sunflow first keeps a copy `shadow.v<n>.db` in
+the App's data folder (like `config.v<n>.json` for the configuration). It allows going back to the
+older version.

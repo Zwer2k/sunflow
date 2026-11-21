@@ -226,6 +226,36 @@ class HAClient:
         """Return all entity states."""
         return await self.command("get_states")
 
+    @property
+    def rest_url(self) -> str:
+        """Base of the REST API on the same host as the websocket (…/api)."""
+        base = self._url.removesuffix("/websocket")
+        if base.startswith("ws"):
+            base = "http" + base.removeprefix("ws")
+        # The Supervisor proxy serves the websocket at /core/websocket and the REST API at /core/api
+        return base if base.endswith("/api") else f"{base}/api"
+
+    async def get_state(self, entity_id: str) -> dict[str, Any] | None:
+        """One entity's state over REST, with last_reported (the websocket has no single-state command).
+
+        Unlike the states kept by events it shows when a sensor last reported, also an unchanged value.
+        None if the entity does not exist.
+        """
+        if self._session is None:
+            raise HAError("Not connected")
+        try:
+            async with self._session.get(
+                f"{self.rest_url}/states/{entity_id}",
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status == 404:
+                    return None
+                response.raise_for_status()
+                return await response.json()
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise HAError(f"State of {entity_id}: {err}") from err
+
     async def get_config_entries(self) -> list[dict[str, Any]]:
         """Return all config entries."""
         return await self.command("config_entries/get")

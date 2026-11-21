@@ -172,4 +172,11 @@ Unter **Analyse → Schattenbetrieb** lädt „Daten exportieren“ eine ZIP-Dat
 Konfiguration, Steuerungsprotokoll und aktuellem Plan herunter. „Export importieren“ führt die
 Aufzeichnung in eine andere Installation zusammen; **Mit Konfiguration** übernimmt auch die
 Einstellungen, **Nur Aufzeichnung** lässt sie, wie sie sind.
+Zur Aufzeichnung gehören die Zeitabschnitte mit Plan und Messung, die Erwartungen des Plans und der
+PV-Verschmutzung sowie aus evcc importierte Ladevorgänge; Einträge mit demselben Zeitpunkt werden durch
+die aus dem Export ersetzt. Schlägt der Import fehl, bleibt die Aufzeichnung, wie sie war.
 Schlüssel (Integration, MCP) sind nicht im Export.
+
+Ändert ein Update den Aufbau der Aufzeichnung, legt Sunflow vorher eine Kopie `shadow.v<n>.db` im
+Datenordner der App an (wie `config.v<n>.json` für die Konfiguration). Mit ihr lässt sich zu der
+älteren Version zurückkehren.

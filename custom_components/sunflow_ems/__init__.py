@@ -35,6 +35,7 @@ PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.CALENDAR,
+    Platform.CLIMATE,
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,

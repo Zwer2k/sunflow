@@ -75,48 +75,99 @@ Je Wallbox:
 
 ## Wärmepumpe
 
-Messung und Ansteuerung der Wärmepumpe (SG-Ready über zwei Relais, nur Kontakt 2 oder eine
-Auswahl, Sollwert, gemeldeter PV-Überschuss, Boost-Schalter) mit den Regeln, wann sie verstärkt
-oder gesperrt wird; dazu der Heizstab der Wärmepumpe mit seinem Modus je Jahreszeit und die Erkennung der Heizperiode.
-Live-Werte zeigen Strom, Wärme, COP und den Zustand, den Sunflow setzt oder (im Schattenmodus)
-setzen würde. Einzelheiten unter [Unterstützte Geräte](geraete.md#wärmepumpe).
+Die Regelung der Wärmepumpe läuft im **Schattenbetrieb**: Sunflow rechnet den Vorlauf aus und zeigt
+ihn an, schreibt aber nichts an die Wärmepumpe.
 
-**Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche,
-einer als Referenzraum), optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung,
-sonst die Wärme der Wärmepumpe) und das Komfortband mit optionaler Nachtabsenkung. Sunflow lernt
-daraus ein einfaches Wärmemodell des Hauses aus den Stundenwerten der letzten vier Wochen:
+**Raum-Soll:** die Raumtemperatur, die Sunflow halten soll (18–27 °C), und der Modus Heizen/Aus; dasselbe
+wie das Thermostat „Haus“ in Home Assistant. Daneben das Raum-Ist (gewichtetes Mittel der Räume; ein Raum
+zählt nicht, wenn sein Sensor nicht verfügbar ist oder seit über 2 Stunden nichts gemeldet hat).
+
+**Lüften:** Fällt ein Raum innerhalb von 30 Minuten um mindestens 0,3 K, erkennt Sunflow Lüften. Bis der
+Raum wieder gleichmäßig ist (30 Minuten lang höchstens 0,1 K Änderung), höchstens 2 Stunden, zählt er
+nicht für das Raum-Ist, und die Korrektur hält an. Angezeigt werden gerade gelüftete Räume und das
+Lüften der letzten 24 Stunden.
+
+**Wärmepumpe:** je Gerät Verbindung und Kompatibilität, Programm, Aktivität, Strategie (HK-Funktion),
+Bypass-Ventil, Vorlauf, Rücklauf, wirksamer Vorlauf-Soll und Max T-Vorlauf, eine aktive
+Raumthermostat-Sperre oder Störung deutlich hervorgehoben, und ob die Wärmepumpe gültig heizt – sonst
+der Grund (z. B. Warmwasser, Nachlauf, Bypass-Ventil). Darunter das **Vorlauf-Ziel** = Basis +
+Korrektur: Die Basis ist der wirksame Vorlauf-Soll aus gültigem Heizbetrieb (außerhalb gilt der letzte
+solche Wert). Die Korrektur gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens
+± 3 K; unter ± 0,2 K Abweichung wächst sie nicht). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
+Raumtemperaturen fehlen, gelüftet wird oder der Raum einem geänderten Raum-Soll noch folgt (höchstens
+24 Stunden). Im
+Schattenbetrieb wirkt sie nicht zurück und kann bis an ihre Grenze laufen.
+
+**Kennlinie (Schatten):** Aus den 5-Minuten-Werten lernt Sunflow stündlich, wie viel Wärme die
+Heizflächen abgeben: Q = K · (mittlere Wassertemperatur − Raum-Ist)^n, dazu die Spreizung (Vorlauf −
+Rücklauf) abhängig von der Wärme. n kommt aus dem **Heizflächentyp** (Fußboden 1,1, gemischt 1,2,
+Heizkörper 1,3), K und die Spreizung werden gelernt – nur aus gültigem Heizbetrieb mit seit mindestens
+15 Minuten laufendem Kompressor, ohne Nachlauf und ohne Lüften. Die letzten zwei Tage werden
+zurückgehalten: Die Kennlinie gilt erst als nutzbar, wenn sie dort den Vorlauf besser vorhersagt als
+„der Vorlauf bleibt“, ihre Werte plausibel sind und genug Daten vorliegen (mindestens 12 Stunden aus
+3 Tagen zum Lernen und 2 Stunden zum Prüfen). Angezeigt werden K, n, Spreizung, Güte und Datenumfang.
+
+Ist die Kennlinie nutzbar, ist das Vorlauf-Ziel = Kennlinie + Korrektur: der Vorlauf, mit dem die
+Heizflächen beim Raum-Soll die benötigte Wärme abgeben. Die benötigte Wärme kommt aus dem Hausmodell
+(sobald es nutzbar ist), sonst aus der mittleren Wärme der letzten 3 Stunden (Pausen des Kompressors
+zählen mit 0; Warmwasser, Abtauen, Nachlauf, Lüften und Sperre zählen nicht; mindestens 2 Stunden
+nötig). Diese Wärme entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt – die Kennlinie bildet
+dann nur den aktuellen Zustand nach, die Richtung gibt die Korrektur. Sonst gilt weiter Basis +
+Korrektur. Angezeigt wird, welche Quelle gerade gilt; wechselt sie, springt das Vorlauf-Ziel im
+Schattenbetrieb einmal, die Korrektur bleibt.
+
+**Stellwert und Schutz (Schatten):** Aus dem Vorlauf-Ziel rechnet Sunflow den Stellwert (Max T-Vorlauf),
+den es schreiben würde, und die Raumthermostat-Sperre – angezeigt mit „würde schreiben“, nichts davon
+geht an die Wärmepumpe. Der Stellwert bleibt in den Grenzen des Heizflächentyps (Fußboden 25–40 °C,
+gemischt 25–50 °C, Heizkörper 30–55 °C) und im Bereich der Entity. Ein Vorlauf-Ziel, das mehr als 8 K
+vom wirksamen Vorlauf-Soll (bzw. der Kennlinie) abweicht, würde nicht geschrieben (Eintrag im Journal).
+Erreicht das Vorlauf-Ziel eine Grenze oder die Wärmepumpe ihre Höchst- bzw. Mindestleistung, läuft die
+Korrektur nicht weiter darüber hinaus.
+
+Die Wärmepumpe schaltet den Kompressor ein, wenn der Soll mindestens 3 K über dem Vorlauf liegt, und aus,
+wenn der Vorlauf 3 K über dem Soll liegt. Sunflow würde deshalb: in einer Pause den Stellwert so anheben,
+dass die Wärmepumpe startet (Vorlauf + 3 K, bzw. so, dass der Sprung des Vorlaufs nach dem Start nicht
+abschaltet); während Warmwasser den Stellwert für den Start danach vorbereiten; nach einem Start halten,
+bis der Vorlauf ruhig ist, und dann einmal absenken; im Betrieb nachführen, wenn der Vorlauf der
+Abschaltgrenze nahekommt. Wärme, die es nicht will (Raum 0,5 K über dem Raum-Soll, oder die
+Mindestleistung der Wärmepumpe liegt über dem Bedarf), würde es über die Raumthermostat-Sperre
+abschalten – jeder Zustand mindestens 20 Minuten. Die Schwankung des Vorlaufs im Betrieb, der Sprung nach
+einem Start (normal, nach Warmwasser, nach Abtauen), die Zeit bis zur Ruhe und der Leistungsbereich der
+Wärmepumpe werden aus der Aufzeichnung gelernt; bis genug Daten da sind, gelten vorsichtige Startwerte.
+Schaltet der Kompressor ungewollt ab (Vorlauf 3 K über dem Soll ohne Sperre, Warmwasser oder Abtauen),
+steht das im Journal, und der betroffene Wert wird sofort erhöht; ohne weitere Vorfälle sinkt er über
+Wochen zurück. Die Tabelle **Schreibvorgänge je Tag** zählt für die letzten 7 Tage, was Sunflow
+geschrieben hätte (normal, Start, Nachführen, Sperre an/aus), und die ungewollten Abschaltungen – zum
+Vergleich mit dem geplanten Budget von 48 normalen und 24 Schreibvorgängen für Start und Nachführen je
+Tag. Mindestabstand und Budget gelten erst, wenn Sunflow aktiv schreibt.
+
+**Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
+und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
+Wärmepumpe). Der **Heizflächentyp** (Fußbodenheizung, gemischt, Heizkörper; Standard Fußboden) gibt den
+Startwert der Kennlinie vor; nach einer Änderung wird sie neu bewertet, die gemessenen Daten bleiben
+erhalten. Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
+der Sensor der Wärmepumpe), der Außentemperatur-Sensor der Wärmepumpe, der Fühler ihres Außengeräts
+(HPSU: TA2) oder nur der eigene Sensor. Sunflow lernt daraus ein einfaches Wärmemodell des Hauses aus den
+Stundenwerten der letzten vier Wochen. Stunden, in denen die Wärmepumpe Warmwasser bereitet oder
+abgetaut hat, lässt es aus – deren Wärme ging nicht ins Haus. Die Stundenwerte kommen zuerst aus den
+Stundenmitteln von Home Assistant; sobald die Aufzeichnung der Wärmepumpe mindestens 7 Tage mit
+gültigem Heizbetrieb enthält (je Tag mindestens 1 Stunde), aus deren 5-Minuten-Werten – dann ohne
+Stunden mit Warmwasser, Abtauen, Nachlauf oder Lüften. Umgestellt wird erst, wenn das Modell daraus
+nicht schlechter ist; danach bleibt es dabei. Welche Quelle gilt, steht unter „Gelernt“:
 
 | Gelernt | Bedeutung |
 |---|---|
 | Zeitkonstante | Stunden, bis zwei Drittel des Unterschieds nach außen weg sind |
-| Abkühlung bei 0 °C außen | wie viel Kelvin pro Stunde es ohne Heizung und Sonne verliert |
+| Abkühlung bei 0 °C außen | wie viel Kelvin pro Stunde es bei 20 °C innen ohne Heizung und Sonne verliert |
 | Wärmeverlust | Heizleistung je Kelvin Unterschied (nur mit Wärmemessung) |
 | Wärmespeicher | Wärme für 1 K wärmer im ganzen Haus (nur mit Wärmemessung) |
 | Sonne | Erwärmung bei voller Sonne (mit Helligkeit unter Lernquellen) |
 
-Die letzten zwei Tage hält Sunflow zurück und rechnet sie jeden Tag neu vom Messwert aus; genutzt
-wird das Modell erst, wenn es dabei besser ist als „die Temperatur bleibt gleich“ und die Werte
-plausibel sind (ab 7 Tagen). Ein Diagramm zeigt die letzte Woche gemessen und vom Modell erwartet.
-Räume, deren Temperatur viel stärker springt als die der anderen (Sonne, Heizkörper, Fenster am
-Sensor), werden genannt.
-
-Ist das Modell zuverlässig, sichert es die Regeln der Wärmepumpe ab: In der Heizperiode **sperrt**
-Sunflow sie nur, wenn die vorhergesagte Temperatur des Referenzraums ohne Heizen bis zum Ende der
-Sperre über der Untergrenze bleibt (nachts gilt die Absenkung); kühlt das Haus schneller, endet eine
-laufende Sperre sofort. **Verstärken** endet in der Heizperiode an der Obergrenze; im Sommer
-heizt die Wärmepumpe Warmwasser, dort zählen die Räume nicht.
-
-**Vorheizen planen (Test):** An der Wärmepumpe unter Ansteuerung einschaltbar, mit der höchsten
-elektrischen Leistung. Sunflow plant die Wärmepumpe dann im Optimierer zusammen mit Speicher und
-Verbrauchern; die Raumtemperatur ist dort ein Wärmespeicher. Es heizt in sonnigen oder günstigen
-Stunden vor und lässt das Haus in teuren auskühlen, immer im Komfortband (darunter ist sehr
-teuer, darüber leicht). Der COP folgt der Außentemperatur der Wetterprognose. Was die Wärmepumpe
-ohne Planung ziehen würde, nimmt Sunflow aus der Verbrauchsprognose heraus und rechnet es beim
-Vergleich „ohne Sunflow“ wieder ein. Liegt die geplante Leistung deutlich über diesem Bedarf, wird
-verstärkt („Vorheizen nach Plan“), deutlich darunter gesperrt („Pause nach Plan“), mit allen
-Grenzen der Sperre und der Prüfung oben; das ersetzt die günstigsten und teuersten Stunden. Gilt
-nur in der Heizperiode und sobald das Hausmodell zuverlässig ist und die Wärme der Heizung kennt.
-Der Abschnitt „Haus“ zeigt die geplante Raumtemperatur der nächsten 48 Stunden.
+Die letzten zwei Tage hält Sunflow zurück und rechnet sie jeden Tag neu vom Messwert aus; als
+zuverlässig gilt das Modell erst, wenn es dabei besser ist als „die Temperatur bleibt gleich“ und
+die Werte plausibel sind (ab 7 Tagen). Ein Diagramm zeigt die letzte Woche gemessen und vom Modell
+erwartet. Räume, deren Temperatur viel stärker springt als die der anderen (Sonne, Heizkörper,
+Fenster am Sensor), werden genannt.
 
 ## Verbraucher
 

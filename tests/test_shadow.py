@@ -109,7 +109,7 @@ def test_backup_and_merge(tmp_path: Path) -> None:
         dev.store_planned(START, planned | {"action": "force_charge"})
         prod.backup_to(tmp_path / "copy.db")
 
-        assert dev.merge_from(tmp_path / "copy.db") == 2
+        assert dev.merge_from(tmp_path / "copy.db")["slots"] == 2
         rows = dev.rows(START)
     finally:
         prod.close()
@@ -168,7 +168,7 @@ def test_merge_skips_columns_of_a_newer_version(tmp_path: Path) -> None:
     db.close()
     store = ShadowStore(tmp_path / "own")
 
-    assert store.merge_from(tmp_path / "newer" / "shadow.db") == 1
+    assert store.merge_from(tmp_path / "newer" / "shadow.db")["slots"] == 1
     assert store.rows(datetime(2026, 10, 1, tzinfo=UTC))[0]["actual_pv_w"] == 900
 
 

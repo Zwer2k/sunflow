@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.80.10
+
+- Heat pumps (sixth part of the new flow temperature control, still shadow operation): Sunflow computes the set value (Max T-Vorlauf) it would write and the writes it would cause, with time, value and reason (normal, start, tracking, block on/off) – nothing is written to the heat pump. Limits: the range of the heating surface type (underfloor 25–40 °C, mixed 25–50 °C, radiators 30–55 °C) within the entity's range; a flow target more than 8 K from the effective setpoint (or the curve) would not be written; at a limit or at the heat pump's maximum/minimum output the correction does not move further beyond it.
+- Protection against the 3 K shutdown: start rule in a pause, preparing the start during hot water, holding after a start, lowering once, tracking a rising flow; wanted off only through the room thermostat block (room 0.5 K above the setpoint or minimum output above the need, each state at least 20 minutes). Swing, jump and settling time per kind of start and the output range are learned from `heat_pump_samples`, with cautious start values.
+- Unwanted compressor shutdowns are noted in the journal and raise the value concerned; block decisions are noted in the journal as well. Planned writes, starts and shutdowns are recorded in `heat_pump_samples` (events).
+- Settings → Heat pump shows set value, protective bound, block, learned values, the latest planned writes and a table of writes and unwanted shutdowns per day for the last 7 days, to judge the planned budget (48 + 24).
+- House model from the heat pump's samples: each hour now takes the sun sensor's value of that hour also when Home Assistant has no other values for it.
+
+## 0.80.9
+
+- Heat pumps (fifth part of the new flow temperature control, still shadow operation): Sunflow learns the heating curve of the heating surfaces every hour from `heat_pump_samples` – K and the spread (flow − return) depending on the heat, with the exponent n from the new setting **heating surface type** (underfloor 1.1, mixed 1.2, radiators 1.3; default underfloor). Only intervals of valid heating with the compressor running for 15 minutes, without after-run and airing count. The curve is used once it has enough data, is plausible and predicts the flow on the last two days better than "the flow stays". Settings → Heat pump shows K, n, spread, quality and the amount of data, marked as shadow.
+- With a usable curve the flow target = curve + correction: the flow for the heat needed at the room setpoint, from the house model or, without one, the mean heat of the last 3 hours (at least 2 hours of valid heating). Otherwise base + correction as before. The source in use is shown in the UI and in the attributes of the thermostat "Haus" (with the learned curve); a change of source is noted in `heat_pump_samples` (events), the correction stays.
+- House model: once `heat_pump_samples` holds 7 days of valid heating, it learns from the heat pump's 5 minute values instead of Home Assistant's hourly means (without hours with hot water, defrost, after-run or airing), switching only when the model is not worse. The source is shown under Learned.
+- Changing the heating surface type re-evaluates the curve; the recorded data are kept.
+
+## 0.80.8
+
+- Heat pumps (fourth part of the new flow temperature control, still shadow operation): Sunflow notices airing per room – the room falls by at least 0.3 K within 30 minutes. Until the room is flat again (at most 2 hours) it does not count for the room temperature, and the correction pauses. Settings → Heat pump shows rooms being aired and the airing of the last 24 hours.
+- When a room leaves or rejoins the room temperature (aired, unavailable, no report for 2 hours), the correction no longer jumps.
+- The recording `heat_pump_samples` notes aired rooms per 5 minutes (`flags.ventilation`).
+
+## 0.80.7
+
+- Heat pumps (third part of the new flow temperature control, shadow operation): new thermostat "Haus" in the Sunflow integration with room setpoint (18–27 °C, step 0.5 °C, via automations to 0.1 °C), room temperature and mode heat/off; also under Settings → Heat pump. The setpoint starts at the former comfort minimum (if it lies in the range, else 21 °C); the previous configuration stays as `config.v5.json`.
+- Sunflow computes a flow target for each heat pump: the effective flow setpoint from valid heating plus a slow room correction (at most ± 3 K). Nothing is written to the heat pump yet. The correction pauses while the heat pump does not heat validly, room temperatures are missing or the room still follows a changed setpoint (at most 24 hours). A room counts only while its sensor reported within the last 2 hours.
+- Settings → Heat pump now shows per device connection, program, activity, strategy, bypass valve, flow and return, setpoints, room thermostat block, fault, whether it heats validly or why not, and the flow target with base and correction.
+- The export now contains `heat_pump_state.json`.
+
+## 0.80.6
+
+- Heat pumps (second part of the new flow temperature control): Sunflow reads the states of the Rotex/Daikin HPSU every minute – operating mode, mode of operation, HK function, bypass valve, room thermostat block and error code – and decides whether it heats validly (mode heating, mode of operation heating, bypass valve closed for 10 minutes, no after-run 10 minutes after hot water or defrosting, no block, no fault with an E code, the HPSU not limiting the flow itself, device reachable and compatible). Nothing is written to the heat pump.
+- Every 5 minutes the means with the states are recorded in the new table `heat_pump_samples` (flow, flow peak, return, setpoints, heat, outside, bypass valve, compressor starts and stops, rooms, reasons). Rows older than a year are deleted; the table is part of export and import. The recording is migrated with a copy `shadow.v9.db`.
+- The log notes unknown states, the start and end of a fault, the room thermostat block on and off and when the HPSU limits the flow itself (setback time, T-Vorlauf Nacht). `GET /api/v1/heat_pump/status` shows the current states.
+- House model: the heat output of the HPSU is now found through its manifest. Hours with hot water or defrosting are left out of learning, also with an own heat meter. The outside temperature can be chosen under Settings → Heat pump: automatic, the heat pump's sensor, the outdoor unit's sensor (TA2) or the own sensor.
+- Profile `esphome/rotex_hpsu_can` version 2 (optional role for TA2); devices added before show a note to check the roles.
+
+## 0.80.5
+
+- Heat pumps (first part of the new flow temperature control): a Rotex/Daikin HPSU with the ESPHome component `daikin_rotex_can` is recognized by the manifest its firmware delivers (profile `esphome/rotex_hpsu_can`), not by entity names. Other ESPHome devices do not appear in the device search. Taking it over stores the device under its name in Home Assistant, its MAC address and the component. Nothing is controlled or written yet.
+- Sunflow checks every role of the profile against the manifest (key, type, unit, options, range of Max T-Vorlauf and its step of at most 0.5 K). A device that does not fit is marked not compatible with the reason in the summary, the device preview and the log, and is not used. The manifest is reloaded after flashing, when the node is back after an outage and hourly; changes are logged once.
+- If the ESPHome integration was added again, Sunflow finds the node by its MAC address and assigns it anew.
+- The summary points out devices added with an older version of their profile.
+
+## 0.80.4
+
+- Importing an export now merges the whole recording: besides the time slots also the plan's expectations (state of charge, PV, load six hours ahead), the soiling expectations and the charging sessions imported from evcc. The import runs in one transaction: if it fails, the recording stays as it was.
+- Before an update changes the structure of the recording, Sunflow keeps a copy `shadow.v<n>.db` (like `config.v<n>.json`) for going back. If the copy cannot be written (e.g. disk full), the recording is not changed and the App does not start.
+
+
+- The former heat pump control is removed; a new flow temperature control replaces it. Gone are the device "heat pump" (measuring, SG-Ready, setpoint, PV surplus, boost switch, built-in heating rod), comfort band, night setback, reference room, "Plan preheating", the heating season and the season modes of heating rods.
+- A configured heat pump is removed from the configuration on update, with everything referring to it, and has to be added again later; the previous configuration stays as `config.v4.json`.
+- The rooms and the learned house model stay under Settings → Heat pump. Heating rods with a relay per phase keep running as normal loads.
+- Devices with a profile this version does not know (e.g. after going back to an older version) are skipped and kept in the configuration.
+
 ## 0.80.2
 
 - Removed the profile `setup` steps, which were never executed: the Sofar passive mode is set as control mode, the passive timeout is not used.

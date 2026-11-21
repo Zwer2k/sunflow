@@ -75,46 +75,94 @@ Per wallbox:
 
 ## Heat pump
 
-Measuring and controlling the heat pump (SG-Ready with two relays, contact 2 only or a select,
-setpoint, reported PV surplus, boost switch) with the rules for when it is boosted or blocked; also
-the heat pump's heating rod with its mode per season and how the heating season is detected. Live values show power, heat,
-COP and the state Sunflow sets or (in shadow mode) would set. Details under
-[Supported devices](devices.md#heat-pump).
+The heat pump control runs in **shadow operation**: Sunflow computes the flow temperature and shows
+it, but writes nothing to the heat pump.
 
-**House:** room temperatures (one or more sensors, optionally weighted, e.g. by area, one as the
-reference room), optionally the heat into the house (e.g. the heating's heat meter, otherwise the
-heat pump's heat) and the comfort band with an optional night setback. From the hourly values of
-the last four weeks Sunflow learns a simple thermal model of the house:
+**Room setpoint:** the room temperature Sunflow is to keep (18–27 °C) and the mode heat/off; the same as
+the thermostat "Haus" in Home Assistant. Next to it the room temperature (weighted mean of the rooms; a
+room does not count while its sensor is unavailable or has not reported for more than 2 hours).
+
+**Airing:** when a room falls by at least 0.3 K within 30 minutes, Sunflow notices airing. Until the
+room is steady again (changed by at most 0.1 K for 30 minutes), at most 2 hours, it does not count for
+the room temperature and the correction pauses. Rooms being aired and the airing of the last 24 hours
+are shown.
+
+**Heat pump:** per device connection and compatibility, program, activity, strategy (HK function),
+bypass valve, flow, return, effective flow setpoint and Max T-Vorlauf, an active room thermostat block or
+a fault clearly highlighted, and whether the heat pump heats validly – otherwise why not (e.g. hot water,
+after-run, bypass valve). Below it the **flow target** = base + correction: the base is the effective
+flow setpoint from valid heating (outside it the last such value counts). The correction slowly evens
+out the difference between room temperature and setpoint (at most ± 3 K; it does not grow within
+± 0.2 K). It pauses while the heat pump does not heat validly, room temperatures are missing, a room is
+being aired or the room is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
+may run to its limit.
+
+**Heating curve (shadow):** from the 5 minute values Sunflow learns every hour how much heat the heating
+surfaces give off: Q = K · (mean water temperature − room temperature)^n, plus the spread (flow −
+return) depending on the heat. n comes from the **heating surface type** (underfloor 1.1, mixed 1.2,
+radiators 1.3); K and the spread are learned – only from valid heating with the compressor running for
+at least 15 minutes, without after-run and without airing. The last two days are held back: the curve
+counts as usable only when it predicts the flow there better than "the flow stays", its values are
+plausible and there is enough data (at least 12 hours from 3 days for learning and 2 hours for checking).
+K, n, spread, quality and amount of data are shown.
+
+With a usable curve the flow target = curve + correction: the flow at which the heating surfaces give
+off the heat needed at the room setpoint. The heat needed comes from the house model (once it is
+usable), else from the mean heat of the last 3 hours (compressor pauses count as 0; hot water, defrost,
+after-run, airing and the block do not count; at least 2 hours needed). That heat comes from the flow the
+heat pump runs now – the curve then only follows the current state, the direction comes from the
+correction. Otherwise base + correction still applies. The source in use is shown; when it changes, the
+flow target jumps once in shadow operation, the correction stays.
+
+**Set value and protection (shadow):** From the flow target Sunflow computes the set value (Max
+T-Vorlauf) it would write and the room thermostat block – shown as "would write", none of it goes to the
+heat pump. The set value stays within the limits of the heating surface type (underfloor 25–40 °C,
+mixed 25–50 °C, radiators 30–55 °C) and the entity's range. A flow target more than 8 K away from the
+effective flow setpoint (or the heating curve) would not be written (journal entry). When the flow
+target reaches a limit or the heat pump its maximum or minimum output, the correction does not move
+further beyond it.
+
+The heat pump starts the compressor when the setpoint is at least 3 K above the flow, and stops it when
+the flow is 3 K above the setpoint. So Sunflow would: in a pause raise the set value so that the heat
+pump starts (flow + 3 K, or enough that the jump of the flow after the start does not stop it); during
+hot water prepare the set value for the start afterwards; after a start hold it until the flow is calm,
+then lower it once; while running follow it up when the flow comes close to the shutdown limit. Heat it
+does not want (room 0.5 K above the setpoint, or the heat pump's minimum output above the need) it would
+switch off with the room thermostat block – each state for at least 20 minutes. The swing of the flow
+while running, the jump after a start (normal, after hot water, after defrost), the time until it is
+calm and the heat pump's output range are learned from the recording; until there are enough data,
+cautious start values apply. When the compressor stops unwantedly (flow 3 K above the setpoint without
+block, hot water or defrost), the journal says so and the value concerned is raised at once; without
+further incidents it goes back over weeks. The table **Writes per day** counts for the last 7 days what
+Sunflow would have written (normal, start, tracking, block on/off) and the unwanted shutdowns – to
+compare with the planned budget of 48 normal writes and 24 for start and tracking per day. Spacing and
+budget apply only once Sunflow writes.
+
+**House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
+optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
+The **heating surface type** (underfloor heating, mixed, radiators; default underfloor) sets the start
+value of the heating curve; after a change the curve is evaluated anew, the measured data are kept.
+The **outside temperature** can be chosen: automatic (own sensor under learning sources, else the heat
+pump's sensor), the heat pump's outside temperature sensor, the sensor of its outdoor unit (HPSU: TA2)
+or only the own sensor. From the hourly values of the last four weeks Sunflow learns a simple thermal
+model of the house. Hours in which the heat pump made hot water or defrosted are left out – their heat
+did not go into the house. The hourly values first come from Home Assistant's hourly means; once the
+heat pump's recording holds at least 7 days of valid heating (at least 1 hour each), from its 5 minute
+values – then without hours with hot water, defrost, after-run or airing. The switch happens only when
+the model from them is not worse; after that it stays. The source in use is shown under "Learned":
 
 | Learned | Meaning |
 |---|---|
 | Time constant | hours until two thirds of the difference to outside are gone |
-| Cooling at 0 °C outside | kelvin per hour lost without heating and sun |
+| Cooling at 0 °C outside | kelvin per hour lost at 20 °C inside without heating and sun |
 | Heat loss | heating power per kelvin of difference (only with heat measurement) |
 | Heat storage | heat for 1 K warmer in the whole house (only with heat measurement) |
 | Sun | warming in full sun (with brightness under learning sources) |
 
 Sunflow holds back the last two days and computes them anew from the measurement each day; the
-model is used only when it beats "the temperature stays the same" there and its values are
-plausible (from 7 days). A chart shows the last week measured and expected by the model. Rooms whose
-temperature jumps far more than the others' (sun, radiator, window at the sensor) are named.
-
-Once the model is reliable it safeguards the heat pump's rules: in the heating season Sunflow
-**blocks** it only if the reference room's predicted temperature without heating stays above the
-lower bound until the block ends (the night setback applies at night); if the house cools faster, a
-running block ends at once. **Boosting** ends at the upper bound in the heating season; in summer the
-heat pump heats hot water and the rooms do not count.
-
-**Plan preheating (test):** switched on at the heat pump under control, with its maximum electric
-power. Sunflow then plans the heat pump in the optimizer together with the battery and loads; the
-room temperature is a heat storage there. It preheats in sunny or cheap hours and lets the house cool
-in dear ones, always within the comfort band (below it is very expensive, above it slightly). The COP
-follows the outside temperature of the weather forecast. What the heat pump would draw unplanned is
-taken out of the load forecast and added back for the comparison "without Sunflow". Planned power
-well above that draw boosts ("preheating as planned"), well below it blocks ("pause as planned"),
-with all block limits and the check above; this replaces the cheapest and dearest hours. Only in
-the heating season and once the house model is reliable and knows the heating's heat. The section
-"House" shows the planned room temperature of the next 48 hours.
+model counts as reliable only when it beats "the temperature stays the same" there and its values
+are plausible (from 7 days). A chart shows the last week measured and expected by the model. Rooms
+whose temperature jumps far more than the others' (sun, radiator, window at the sensor) are named.
 
 ## Loads
 
