@@ -749,8 +749,13 @@ Sunflow zuletzt geschrieben hätte (virtuell, Start beim vorgefundenen Max T-Vor
   ungewollter Abschaltung (Warnung), Sperr-Entscheidung („Schatten: Sunflow würde die
   Raumthermostat-Sperre setzen/aufheben …“) und nicht plausiblem V_Ziel.
 - Zählung je Tag (Zeitzone von HA): `GET /api/v1/heat_pump/<id>/shadow_writes?days=7` aus den Ereignissen;
-  normal, Start, Nachführen, Sperre an/aus, ungewollte Abschaltungen, dazu das Budget des Profils. Ohne
-  Mindestabstand und Budget (Teil 4), daher eine Obergrenze dessen, was aktiv geschrieben würde.
+  normal, Start, Nachführen, Sperre an/aus, ungewollte Abschaltungen, dazu das Budget des Profils. Seit
+  Teil 4.2 mit Mindestabstand (8.5), noch ohne Budget (Teil 4.3), daher eine Obergrenze dessen, was aktiv
+  geschrieben würde.
+- Seit Teil 4.2 schreibt die Schutzschicht nicht mehr selbst: Sie liefert je Takt den gewünschten Stellwert
+  mit Grund (`normal`, `start`, `track`; Schutzschritt = `start`/`track`), die Schreibschicht (8.5)
+  entscheidet, wann er geschrieben wird. Sperre an/aus geht nicht durch die Schreibschicht (eigene
+  Mindestdauer, kein EEPROM).
 
 ### 8.5 Schreiben
 
@@ -785,6 +790,35 @@ Berechnen ≠ Schreiben.
   Automation, ESP-Regelung, Hand), meldet Sunflow das im Journal und in der Zusammenfassung.
 - Anzeige: „geschrieben 10:42: 31,2 °C“ / „ausstehend: 30,6 °C, wird um 10:45 geschrieben“ / Grund.
 - Journal: jeder Schreibvorgang mit Grund (Soll-Änderung, Plan, Schutzschritt, Start, manuell).
+
+Umsetzung (3, Teil 4.2, `heat_pump/writer.py`, Schicht hinter der Schutzschicht 8.4; `write_step` verbindet
+beide je Takt; noch nichts an die Wärmepumpe):
+- Eingang je Takt: gewünschter Stellwert, Grund und ob Schutzschritt (von der Schutzschicht), dazu der
+  geschriebene Wert mit Zeit (im Schatten virtuell). Kein Wunsch (nichts nötig, `inactive`, gesperrt) →
+  nichts ausstehend; ein ausstehender Wert wird nicht gespeichert, sondern jeden Takt neu berechnet, also
+  gilt immer nur der letzte.
+- Rundung auf `step` in die sichere Richtung (Schutzschritt aufwärts, normal zum nächsten Schritt), dann in
+  [min, max] (8.3). Normal nur bei Abweichung > Totzone; Schutzschritt bei jeder Anhebung, nie abwärts.
+- Mindestabstand ab dem letzten Schreibvorgang auf den Stellwert, gleich welcher Art: normal
+  `writes.min_interval` (5 min), Schutzschritt `writes.protect_interval` (2 min); fehlt der Wert im Profil,
+  gelten diese, ein kleinerer als 60 s (`WRITE_INTERVAL_FLOOR_S`) zählt als 60 s. Einstellbar nur im Profil
+  (Entscheidung des Nutzers). Ohne bekannten letzten Schreibvorgang (Start, Neustart ohne Zeit) sofort.
+- Ausstehend (Status `guard.pending`): Wert, Grund, Schutzschritt, `due_at` (wann er geschrieben wird) und
+  `held` (`spacing`; ab Teil 4.3 auch `budget`, dann ohne `due_at`). UI: „würde um … geschrieben“ im
+  Schatten, „wird um … geschrieben“ aktiv.
+- „Jetzt schreiben“ (`POST /api/v1/heat_pump/<id>/write_now`, Ablauf vom Nutzer festgelegt): 202, wenn das
+  Schreiben aktiv ist und ein Wert aussteht; 409 mit `reason` `not_active` (Schatten) bzw. `nothing_pending`;
+  404 ohne Wärmepumpe. Der Wunsch wird nur im Speicher gemerkt (nicht über einen Neustart) und im nächsten
+  Takt mit frischen Messwerten über denselben Weg geschrieben (Schutzschicht, Grenzen, Rundung, Budget),
+  ohne Mindestabstand. Kann er dort nicht geschrieben werden (`nothing_pending`, `inactive`, `budget`,
+  `not_active`), verfällt er: Grund im Status (`guard.write_now.last`) und im Journal. Das Ereignis `write`
+  trägt dann `manual: true` (Grund bleibt der der Schutzschicht und zählt wie dieser), das Journal nennt den
+  Grund „manuell“. Status `guard.write_now.requested_at`, solange er wartet; das UI zeigt „wird
+  geschrieben …“ bis zum Takt und die Taste nur bei aktivem Schreiben.
+- Journal: im Schatten keins (Ereignisse wie bisher, `shadow: true`); bei aktivem Schreiben je Schreibvorgang
+  „Max T-Vorlauf geschrieben: … (vorher …), Grund: …“. Aktiv schaltet erst Teil 4.7
+  (`FlowShadow.writing_active`, bis dahin für jede Wärmepumpe falsch); Status `guard.shadow` folgt dem.
+- Status `guard.parameters.min_interval_s`/`protect_interval_s`; Tests `tests/test_heat_pump_writer.py`.
 
 ### 8.6 Ende der Steuerung und Ausfall
 
@@ -946,7 +980,8 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
     Starts `{"at", "kind": "start_jump", "start_kind", "start_at", "ref_c", "peak_c", "jump_k", "settle_s"}`
     (Grundlage des Lernens) und ungewollte Abschaltungen `{"at", "kind": "unwanted_stop", "tv_c", "peak_c",
     "setpoint_c", "max_setpoint_c", "during", "raised", "value"}`. `written_c` bleibt leer, solange nichts
-    geschrieben wird.
+    geschrieben wird. Ab 3, Teil 4.2 laufen die Schreibvorgänge des Stellwerts durch die Schreibschicht
+    (8.5, Mindestabstand); ein Schreibvorgang über „jetzt schreiben“ trägt zusätzlich `"manual": true`.
 - Aufräumen: Zeilen älter als 1 Jahr löschen (im Runner einmal täglich, Blöcke zu 5000 Zeilen).
 - Lernen zurücksetzen: Zeilen des Geräts löschen und `heat_pump_state.json`-Eintrag verwerfen.
 - Export/Import: `heat_pump_samples` wird beim Import übernommen (in `IMPORT_TABLES` eintragen); der
@@ -1086,7 +1121,9 @@ Nur CAN:
     „jetzt schreiben“. Seit 3, Teil 3 im Schatten:
     Stellwert und Sperre „würde schreiben“, Schutz-Untergrenze und Phase, Grenzen, gelernte Werte mit
     Herkunft, letzte geplante Schreibvorgänge und ungewollte Abschaltungen, Tabelle der
-    Schreibvorgänge je Tag (normal, Start, Nachführen, Sperre an/aus, ungewollte Abschaltungen).
+    Schreibvorgänge je Tag (normal, Start, Nachführen, Sperre an/aus, ungewollte Abschaltungen). Seit 3,
+    Teil 4.2: ausstehender Wert mit Zeit und Grund, Mindestabstand, Taste „jetzt schreiben“ (nur bei aktivem
+    Schreiben) mit „wird geschrieben …“ und dem Ergebnis, wenn er verfallen ist.
   - Journal: Schreibvorgänge mit Grund, ungewollte Abschaltungen, fremde Schreiber, Sperre an/aus.
 - Schattenbetrieb: alles wird berechnet und angezeigt, nichts geschrieben.
 
@@ -1139,7 +1176,9 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    liest); das liegt auf der sicheren Seite (Spitze eher zu hoch) und macht `steady_swing` im Dauerlauf
    kaum größer, keine Änderung nötig.
 2. Sommer vs. Bereitschaft der HPSU im Detail (RoCon-Anleitung).
-3. Startwerte Budget (48 + 24) nach den ersten Wochen prüfen.
+3. Startwerte Budget (48 + 24) nach den ersten Wochen prüfen. Seit 3, Teil 4.2 zählt
+   `shadow_writes` mit Mindestabstand (noch ohne Budget); damit lässt sich die Zahl schon im Schatten
+   beurteilen.
 4. Höchster Vorlauf für den Estrich (Nutzereinstellung, Standard?). **Geklärt, umgesetzt (0.80.11):**
    Einstellung min/max des Stellwerts je Wärmepumpe (8.3), leer = Startgrenzen des Heizflächentyps
    (`HEATING_SURFACES`), immer eingeengt auf `min`/`max` der Entity im Manifest; max ist zugleich der
@@ -1264,6 +1303,10 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
          Rundung auf `step` (sichere Richtung), „ausstehend … um …“, Taste „jetzt schreiben“ (überspringt
          den Mindestabstand, nicht das Budget), Journal je Schreibvorgang mit Grund. Im Schatten wirkt sie
          auf die virtuellen Schreibvorgänge; Journal nur für echte, im Schatten Ereignisse wie bisher.
+         **Umgesetzt (0.80.13):** `heat_pump/writer.py` (`Writer`, `write_step`), Schutzschicht liefert
+         `GuardResult.request`, Intervalle in `ControlSettings` (`min_interval_s`, `protect_interval_s`),
+         Status `guard.pending`/`guard.write_now`, `POST /api/v1/heat_pump/<id>/write_now` (im Schatten
+         409), UI; Mindestabstand nur im Profil einstellbar (Nutzer). Tests `tests/test_heat_pump_writer.py`.
       3. **Budget über `EepromGuard`**: normal 48/Tag, Notkontingent 24/Tag nur für Schutzschritte, 6/h;
          Tag in der Zeitzone von HA; Raumthermostat-Sperre zählt nicht (Punkt 7). Erschöpft: normal nicht
          mehr schreiben, Schutz über das Notkontingent, danach Sperre statt Nachführen, Journal. Im Schatten

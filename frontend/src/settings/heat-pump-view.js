@@ -60,6 +60,14 @@ const WRITE_REASONS = () => ({
   block_on: t("Sperre an"),
   block_off: t("Sperre aus"),
 });
+// Why a value waits (write layer, 8.5) or a "write now" lapsed
+const HELD = () => ({
+  spacing: t("Mindestabstand"),
+  budget: t("Budget erschöpft"),
+  not_active: t("Schreiben nicht aktiv (Schatten)"),
+  nothing_pending: t("kein ausstehender Wert"),
+  inactive: t("kein gültiger Zustand zum Schreiben"),
+});
 // Why the block would be set
 const BLOCK_REASONS = () => ({
   room_warm: t("Raum deutlich über dem Ziel"),
@@ -138,6 +146,7 @@ class SunflowHeatPump extends LitElement {
     _status: { state: true },
     _writes: { state: true },
     _limitsEdit: { state: true },
+    _writeNow: { state: true },
     _climateBusy: { state: true },
     _error: { state: true },
     _busy: { state: true },
@@ -153,6 +162,8 @@ class SunflowHeatPump extends LitElement {
     this._writes = {};
     // Per heat pump the range of the set value being edited: { min, max } as typed
     this._limitsEdit = {};
+    // Per heat pump: "write now" sent, waiting for the next tick
+    this._writeNow = {};
     this._climateBusy = false;
     this._timer = null;
     this._error = null;
@@ -174,6 +185,10 @@ class SunflowHeatPump extends LitElement {
   async _loadStatus() {
     try {
       this._status = await api.heatPumpStatus();
+      // A "write now" is done once the tick ran: then its result shows instead of "being written"
+      const waiting = Object.keys(this._writeNow).filter((id) =>
+        this._status.devices?.find((d) => d.id === id)?.state?.flow?.guard?.write_now?.requested_at != null);
+      this._writeNow = Object.fromEntries(waiting.map((id) => [id, true]));
     } catch (err) {
       this._status = { error: err.message, devices: [], house: null };
     }
@@ -353,7 +368,7 @@ class SunflowHeatPump extends LitElement {
               ? t("Gültiger Heizbetrieb: Sunflow rechnet die Korrektur und lernt.")
               : t("Eingefroren: {reasons}", { reasons: state.frozen.map(frozenText).join(", ") })}</p>
             ${flow ? this._renderFlow(flow, one, tile) : nothing}
-            ${flow?.guard ? this._renderGuard(flow.guard, this._writes[device.id], one, tile) : nothing}`}
+            ${flow?.guard ? this._renderGuard(device.id, flow.guard, this._writes[device.id], one, tile) : nothing}`}
         ${device.flow_limits ? this._renderLimits(device, one) : nothing}
       </section>
     `;
@@ -417,6 +432,19 @@ class SunflowHeatPump extends LitElement {
     }
   }
 
+  /** "Write now": the next tick writes the pending value without waiting for the spacing (only when active). */
+  async _sendWriteNow(deviceId) {
+    this._writeNow = { ...this._writeNow, [deviceId]: true };
+    try {
+      await api.heatPumpWriteNow(deviceId);
+      this._error = null;
+    } catch (err) {
+      const { [deviceId]: _, ...rest } = this._writeNow;
+      this._writeNow = rest;
+      this._error = t("„Jetzt schreiben“ nicht möglich: {error}", { error: err.message });
+    }
+  }
+
   /** Source, base or curve value, correction and flow target; shadow: computed, not written. */
   _renderFlow(flow, one, tile) {
     const signed = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${decimal(Math.abs(v).toFixed(1))} K`);
@@ -454,7 +482,7 @@ class SunflowHeatPump extends LitElement {
   }
 
   /** Set value and writes Sunflow would cause (protection layer, shadow), learned values, daily counts. */
-  _renderGuard(guard, writes, one, tile) {
+  _renderGuard(deviceId, guard, writes, one, tile) {
     const time = (iso) => new Date(iso).toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
     const two = (v) => (v == null ? "–" : decimal(Number(v).toFixed(1)));
     const minutes = (s) => (s == null ? "–" : decimal((s / 60).toFixed(0)));
@@ -464,7 +492,20 @@ class SunflowHeatPump extends LitElement {
     const source = (key) => VALUE_SOURCES()[sources[key]] ?? sources[key] ?? "";
     const writeText = (w) => w.reason === "block_on" || w.reason === "block_off"
       ? WRITE_REASONS()[w.reason]
-      : t("{reason}: {value} °C", { reason: WRITE_REASONS()[w.reason] ?? w.reason, value: one(w.value_c) });
+      : t("{reason}: {value} °C", { reason: WRITE_REASONS()[w.reason] ?? w.reason, value: one(w.value_c) }) + (w.manual ? ` (${t("manuell")})` : "");
+    const shadow = guard.shadow !== false;
+    const pending = guard.pending;
+    const lastWriteNow = guard.write_now?.last;
+    // "write now" sent: waiting until the tick ran (cleared in _loadStatus)
+    const sent = Boolean(this._writeNow[deviceId]);
+    const pendingText = !pending
+      ? null
+      : pending.due_at
+        ? (shadow
+          ? t("ausstehend: {value} °C ({reason}), würde um {time} geschrieben", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, time: time(pending.due_at) })
+          : t("ausstehend: {value} °C ({reason}), wird um {time} geschrieben", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, time: time(pending.due_at) }))
+        : t("ausstehend: {value} °C ({reason}), wartet: {why}", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, why: HELD()[pending.held] ?? pending.held });
+    const params = guard.parameters ?? {};
     return html`
       <div class="learned">
         <span class="field-label">${t("Stellwert und Schutz (Schatten)")}</span>
@@ -473,7 +514,9 @@ class SunflowHeatPump extends LitElement {
           ? html`<div class="alert warn" role="status">${t("Raumthermostat-Sperre aktiv, nicht von Sunflow gesetzt: Die Wärmepumpe heizt nicht. Sunflow hebt sie nicht auf – bitte selbst aufheben, wenn sie nicht gewollt ist.")}</div>`
           : guard.block ? html`<div class="alert warn" role="status">${t("Sunflow würde die Raumthermostat-Sperre setzen: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })}</div>` : nothing}
         <div class="tiles">
-          ${tile(t("Stellwert"), guard.setpoint_c == null ? "–" : `${one(guard.setpoint_c)} °C`, last ? t("würde schreiben {time}: {what}", { time: time(last.at), what: writeText(last) }) : t("würde noch nichts schreiben"))}
+          ${tile(t("Stellwert"), guard.setpoint_c == null ? "–" : `${one(guard.setpoint_c)} °C`, last
+            ? (shadow ? t("würde schreiben {time}: {what}", { time: time(last.at), what: writeText(last) }) : t("geschrieben {time}: {what}", { time: time(last.at), what: writeText(last) }))
+            : (shadow ? t("würde noch nichts schreiben") : t("noch nichts geschrieben")))}
           ${tile(t("Vorlauf-Ziel in Grenzen"), guard.desired_c == null ? "–" : `${one(guard.desired_c)} °C`, t("Grenzen {min}–{max} °C", { min: one(guard.min_c), max: one(guard.max_c) }))}
           ${tile(t("Untergrenze Schutz"), guard.floor_c == null ? "–" : `${one(guard.floor_c)} °C`, GUARD_PHASES()[guard.phase] ?? guard.phase)}
           ${tile(t("Sperre"), guard.block ? (guard.block_reason === "foreign" ? t("an (nicht von Sunflow)") : t("an")) : t("aus"), guard.block_since ? t("seit {time}", { time: time(guard.block_since) }) : null)}
@@ -481,6 +524,17 @@ class SunflowHeatPump extends LitElement {
         ${guard.inactive?.length
           ? html`<p class="small muted">${t("Würde nichts schreiben: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })}</p>`
           : nothing}
+        ${pendingText ? html`<p class="small">${pendingText}</p>` : nothing}
+        ${!shadow && (pending || sent)
+          ? html`<div class="actions">
+              <button class="secondary" ?disabled=${sent} @click=${() => this._sendWriteNow(deviceId)}>${t("Jetzt schreiben")}</button>
+              ${sent ? html`<span class="small muted">${t("wird geschrieben …")}</span>` : nothing}
+            </div>`
+          : nothing}
+        ${lastWriteNow && !lastWriteNow.done
+          ? html`<p class="small warn-text">${t("„Jetzt schreiben“ verfallen {time}: {why}", { time: time(lastWriteNow.at), why: HELD()[lastWriteNow.reason] ?? lastWriteNow.reason })}</p>`
+          : nothing}
+        <p class="small muted">${t("Mindestabstand zwischen zwei Schreibvorgängen {normal} min, bei Schutzschritten (Start, Nachführen) {protect} min; dazwischen merkt Sunflow nur den letzten Wert. Die erste Änderung nach einer Ruhepause geht sofort hinaus.", { normal: minutes(params.min_interval_s), protect: minutes(params.protect_interval_s) })}</p>
         ${guard.implausible_k != null
           ? html`<p class="small warn-text">${t("Vorlauf-Ziel nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): würde nicht geschrieben.", { k: two(guard.implausible_k) })}</p>`
           : nothing}
@@ -529,7 +583,7 @@ class SunflowHeatPump extends LitElement {
           </tr>`)}
         </tbody>
       </table>
-      <p class="small muted">${t("Geplantes Budget (ab dem Aktivschalten): {normal} normale Schreibvorgänge und {emergency} für Start und Nachführen je Tag, höchstens {hour} je Stunde. Im Schatten gelten noch kein Mindestabstand und kein Budget; die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
+      <p class="small muted">${t("Geplantes Budget (ab dem Aktivschalten): {normal} normale Schreibvorgänge und {emergency} für Start und Nachführen je Tag, höchstens {hour} je Stunde. Im Schatten gilt schon der Mindestabstand, noch kein Budget; die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
     `;
   }
 

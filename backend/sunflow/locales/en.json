@@ -266,5 +266,15 @@
   "Raum {room} °C, Ziel {plan} °C": "room {room} °C, target {plan} °C",
   "keine Raumtemperatur": "no room temperature",
   "Raum {room} °C, {k} K über dem Ziel {plan} °C": "room {room} °C, {k} K above the target {plan} °C",
-  "Mindestleistung {min} kW über dem Bedarf {need} kW": "minimum output {min} kW above the need {need} kW"
+  "Mindestleistung {min} kW über dem Bedarf {need} kW": "minimum output {min} kW above the need {need} kW",
+  "manuell (jetzt schreiben)": "manual (write now)",
+  "Vorlauf-Ziel": "flow target",
+  "Schutzschritt Start": "protection step start",
+  "Schutzschritt Nachführen": "protection step tracking",
+  "Schreiben nicht aktiv (Schatten)": "writing not active (shadow)",
+  "kein ausstehender Wert": "no pending value",
+  "kein gültiger Zustand zum Schreiben": "no valid state to write",
+  "Budget erschöpft": "budget used up",
+  "Max T-Vorlauf geschrieben: {value} °C (vorher {before} °C), Grund: {reason}.": "Max T-Vorlauf written: {value} °C (before {before} °C), reason: {reason}.",
+  "„Jetzt schreiben“ verfallen: {why}.": "“Write now” lapsed: {why}."
 }

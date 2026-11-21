@@ -24,6 +24,7 @@ from sunflow.heat_pump.limits import ControlSettings, clamp, implausible, round_
 from sunflow.heat_pump.shadow import FlowShadow
 from sunflow.heat_pump.state_store import HeatPumpStateStore
 from sunflow.heat_pump.states import Evaluation, Reading
+from sunflow.heat_pump.writer import Writer, write_step
 
 NOW = datetime(2026, 11, 21, 12, tzinfo=UTC)
 MIN = timedelta(minutes=1)
@@ -36,6 +37,9 @@ class Sim:
 
     def __init__(self, written: float = 30.0, learned: Learned | None = None, **settings: Any) -> None:
         self.guard = Guard()
+        self.writer = Writer()
+        self.active = False
+        self.budget: Any = None
         self.settings = ControlSettings(step=0.1, **settings)
         self.learned = learned
         self.now = NOW
@@ -61,12 +65,12 @@ class Sim:
         if valid is None:
             valid = activity == "heating" and compressor and bypass == 0
         evaluation = Evaluation(valid=valid, frozen=() if valid else ("activity_idle",))
-        result = self.guard.step(GuardInput(
+        result = write_step(self.guard, self.writer, GuardInput(
             at=self.now, reading=reading, evaluation=evaluation, settings=self.settings,
             values=values(self.settings, self.learned, self.guard.bumps, self.now), tv_peak_c=peak, heat_w=self.heat,
             target_c=self.target, heat_needed_w=self.heat_needed, room_c=self.room, plan_c=self.plan, mode=self.mode,
             surface=self.surface,
-        ))
+        ), active=self.active, budget=self.budget)
         self.results.append((self.now, max(tv, peak or tv), result))
         self.now += MIN
         return result

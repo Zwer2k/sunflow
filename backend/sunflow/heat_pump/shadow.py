@@ -19,6 +19,10 @@ Protection layer (8.3, 8.4, step 3 part 3, guard.py): from the flow target the s
 write and the writes it would cause (start, tracking, block, ...), still only computed; at a limit the
 correction does not move further beyond it.
 
+Write layer (8.5, step 3 part 4.2, writer.py): when the wanted set value is written - leading edge,
+minimum spacing, deadband except for protection steps, "write now". In the shadow it acts on the
+virtual writes; writing to the heat pump follows in part 4.7 (until then no heat pump is active).
+
 Ventilation (6.2): a room being aired does not count for the room temperature, and the correction is
 frozen meanwhile. When rooms leave or join the room temperature (aired, stale, missing), the
 correction takes the new value as reference instead of a step, so that alone causes no jump.
@@ -52,6 +56,7 @@ from .rooms import RoomTemperature, StateReader, reported_times, room_temperatur
 from .state_store import HeatPumpStateStore
 from .states import UNKNOWN
 from .ventilation import VentilationWatch
+from .writer import NOT_ACTIVE, NOTHING_PENDING, Writer, write_step
 
 if TYPE_CHECKING:
     from .samples import Minute
@@ -132,6 +137,10 @@ class FlowShadow:
         self.guards: dict[str, Guard] = {}
         self.learned: dict[str, Learned] = {}
         self.settings: dict[str, ControlSettings] = {}
+        # Write layer per heat pump (8.5) and the heat pumps Sunflow writes to for real. Nothing switches
+        # writing on before step 3 part 4.7: every heat pump runs in the shadow.
+        self.writers: dict[str, Writer] = {}
+        self.active: dict[str, bool] = {}
         for device_id, stored in store.devices.items():
             if (learned := Learned.from_dict(stored.get("learned"))) is not None:
                 self.learned[device_id] = learned
@@ -160,6 +169,25 @@ class FlowShadow:
         if device_id not in self.guards:
             self.guards[device_id] = Guard((self._store.devices.get(device_id) or {}).get("guard"))
         return self.guards[device_id]
+
+    def writer(self, device_id: str) -> Writer:
+        """The write layer of one heat pump."""
+        return self.writers.setdefault(device_id, Writer())
+
+    def writing_active(self, device_id: str) -> bool:
+        """Sunflow writes to this heat pump for real (not before step 3 part 4.7)."""
+        return self.active.get(device_id, False)
+
+    def request_write_now(self, device_id: str, now: datetime) -> tuple[bool, str | None, dict[str, Any] | None]:
+        """"Write now": accepted (written with the next tick) or why not, and the value pending."""
+        if not self.writing_active(device_id):
+            return False, NOT_ACTIVE, None
+        writer = self.writers.get(device_id)
+        pending = writer.pending if writer is not None else None
+        if pending is None:
+            return False, NOTHING_PENDING, None
+        writer.request_now(now)
+        return True, None, pending.as_dict()
 
     def recent(self, device_id: str) -> RecentHeat:
         """Heat of the last hours of one heat pump (source heat_recent)."""
@@ -300,6 +328,8 @@ class FlowShadow:
             self.curves.pop(gone, None)
             self._recent.pop(gone, None)
             self.guards.pop(gone, None)
+            self.writers.pop(gone, None)
+            self.active.pop(gone, None)
             self.learned.pop(gone, None)
             self.settings.pop(gone, None)
         self._store.house = {
@@ -319,14 +349,14 @@ class FlowShadow:
         settings = minute.control or ControlSettings()
         self.settings[device_id] = settings
         try:
-            result = guard.step(GuardInput(
+            result = write_step(guard, self.writer(device_id), GuardInput(
                 at=now, reading=minute.reading, evaluation=minute.evaluation, settings=settings,
                 values=guard_values(settings, self.learned.get(device_id), guard.bumps, now),
                 tv_peak_c=minute.tv_peak_c, heat_w=minute.heat_w, target_c=target,
                 curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w,
                 room_c=room_c, plan_c=config.house.climate.setpoint_c, mode=config.house.climate.mode,
                 surface=config.house.heating_surface,
-            ))
+            ), active=self.writing_active(device_id))
         except Exception:
             # The flow target goes on without it
             _LOGGER.exception("%s: protection layer failed", device.name)
@@ -350,7 +380,7 @@ class FlowShadow:
             return None
         surface = self._config.house.heating_surface if self._config else None
         return {
-            "shadow": True,
+            "shadow": not self.writing_active(device_id),
             "strategy": flow.strategy,
             "base_c": flow.base_c,
             "base_at": flow.base_at.isoformat() if flow.base_at else None,
@@ -385,8 +415,9 @@ class FlowShadow:
         settings = self.settings.get(device_id) or ControlSettings()
         learned = self.learned.get(device_id)
         now = self._observed_at or datetime.now(UTC)
+        writer = self.writers.get(device_id)
         return {
-            "shadow": True,
+            "shadow": not self.writing_active(device_id),
             "phase": result.phase,
             "inactive": list(result.inactive),
             "setpoint_c": result.setpoint_c,
@@ -404,6 +435,12 @@ class FlowShadow:
             "block_reason": guard.block_reason,
             "start": guard.start.as_dict() if guard.start else None,
             "written_at": guard.written_at.isoformat() if guard.written_at else None,
+            # Write layer (8.5): a value waiting for the spacing or the budget, the last "write now"
+            "pending": result.pending.as_dict() if result.pending else None,
+            "write_now": {
+                "requested_at": writer.manual_at.isoformat() if writer.manual_at else None,
+                "last": writer.manual_result,
+            } if writer is not None else None,
             "writes": list(reversed(guard.recent_writes)),
             "unwanted_stops": list(reversed(guard.recent_stops)),
             "values": guard_values(settings, learned, guard.bumps, now).as_dict(),
@@ -411,6 +448,7 @@ class FlowShadow:
             "parameters": {
                 "start_margin_k": settings.start_margin, "stop_margin_k": settings.stop_margin,
                 "deadband_k": settings.deadband, "step_k": settings.step, "block_min_s": settings.block_min_s,
+                "min_interval_s": settings.min_interval_s, "protect_interval_s": settings.protect_interval_s,
             },
         }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.13
+
+- Heat pumps (still shadow operation): writing the set value now follows the write rules – the first change after a calm spell at once, then at least 5 minutes between two writes (2 minutes for protection steps: start and tracking); in between only the latest value is kept and written once the spacing has passed, if it still differs (normal values by more than 0.5 K). Settings → Heat pump shows a waiting value as "pending … would be written at …", and the table of writes per day now counts with the spacing. Nothing is written to the heat pump yet; the budget and the button "Write now" (skips the spacing, not the budget) follow with active writing.
+
 ## 0.80.12
 
 - Heat pumps (still shadow operation): the room correction now integrates as fast as the heating surface type reacts – integral time underfloor 6 h, mixed 4 h, radiators 2 h (before 6 h for every type). Changing the type changes only how the correction moves from then on; it does not jump. The integral time is shown with the correction in Settings → Heat pump.

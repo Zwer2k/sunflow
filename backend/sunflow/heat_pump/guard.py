@@ -4,7 +4,9 @@ Turns the flow target into the set value Sunflow would write (Max T-Vorlauf) and
 would cause - each with time, value and reason (normal, start, track, block_on, block_off). Nothing
 is written to the heat pump: the "written" value here is the one Sunflow would have written last
 (virtual, starting from the heat pump's Max T-Vorlauf), the block is the room thermostat input as
-Sunflow would have set it. Spacing and budget follow in step 3 part 4.
+Sunflow would have set it. The protection layer only says which value it wants and whether that is a
+protection step; when it is written (spacing, deadband, "write now") decides the write layer behind it
+(writer.py, 8.5, step 3 part 4.2). The budget follows in part 4.3.
 
 Rules (8.4), with the learned values (learned.py; start values until there are enough data):
 - Start: Sunflow wants heat (no block) and the compressor is off → set value ≥ max(Tv + start_margin,
@@ -52,6 +54,7 @@ from .defaults import (
 from .learned import NORMAL, START_JUMP_EVENT, Values
 from .limits import ControlSettings, clamp, implausible, round_near, round_up, setpoint_range
 from .states import FIXED, HEATING, Evaluation, Reading
+from .writer import Pending, Request
 
 _LOGGER = logging.getLogger(__name__)
 _EPS = 1e-6
@@ -66,6 +69,8 @@ START = "start"
 TRACK = "track"
 BLOCK_ON = "block_on"
 BLOCK_OFF = "block_off"
+# Protection steps (8.5): shorter spacing, no deadband
+PROTECT_REASONS = (START, TRACK)
 WRITE_EVENT = "write"
 STOP_EVENT = "unwanted_stop"
 # Why Sunflow wants the heat pump off (block)
@@ -176,6 +181,11 @@ class GuardResult:
     calm: bool = False
     writes: list[dict[str, Any]] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
+    # The set value wanted this minute (for the write layer) and what it decided: a value waiting
+    # (spacing, budget) and the outcome of a "write now"
+    request: Request | None = None
+    pending: Pending | None = None
+    manual: dict[str, Any] | None = None
     # Journal entries (message, warn)
     notes: list[tuple[str, bool]] = field(default_factory=list)
 
@@ -457,10 +467,19 @@ class Guard:
             reasons.append("setpoint_missing")
         return reasons
 
-    def _write(self, result: GuardResult, now: datetime, value: float, reason: str) -> None:
+    @staticmethod
+    def _request(result: GuardResult, value: float, reason: str) -> None:
+        """The set value wanted now; the write layer decides when it is written (8.5)."""
+        result.request = Request(value_c=value, reason=reason, protect=reason in PROTECT_REASONS)
+
+    def record_write(self, result: GuardResult, now: datetime, value: float, reason: str, *, shadow: bool = True, manual: bool = False) -> None:
+        """The write layer wrote the set value (in the shadow virtually)."""
         event = {"at": _iso(now), "kind": WRITE_EVENT, "reason": reason, "value_c": value, "from_c": self.written_c,
-                 "phase": result.phase, "shadow": True}
+                 "phase": result.phase, "shadow": shadow}
+        if manual:
+            event["manual"] = True
         self.written_c, self.written_at = value, now
+        result.setpoint_c = value
         result.writes.append(event)
         self.recent_writes.append(event)
         del self.recent_writes[:-GUARD_RECENT_MAX]
@@ -546,13 +565,13 @@ class Guard:
         if floor is not None:
             result.floor_c = clamp(round_up(floor, step), low, high, step)
             if result.floor_c > self.written_c + _EPS:
-                self._write(result, now, result.floor_c, reason)
+                self._request(result, result.floor_c, reason)
                 return
         if result.phase == "running" and data.evaluation.valid and result.calm and result.desired_c is not None and result.implausible_k is None:
             bound = clamp(round_up((self._peak(now, TRACK_LOOKBACK) or tv) + swing - guard, step), low, high, step)
             wanted = max(result.desired_c, bound)
             if abs(wanted - self.written_c) > settings.deadband + _EPS:
-                self._write(result, now, wanted, NORMAL_WRITE)
+                self._request(result, wanted, NORMAL_WRITE)
 
 
 # Daily counts for the user: writes Sunflow would have caused and unwanted shutdowns (shadow)

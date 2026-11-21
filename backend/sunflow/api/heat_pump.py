@@ -140,6 +140,25 @@ async def shadow_writes(request: Request, device_id: str, days: int = Query(defa
     }
 
 
+@router.post("/heat_pump/{device_id}/write_now", status_code=202)
+async def write_now(request: Request, device_id: str) -> dict[str, Any]:
+    """"Write now" (8.5): the next tick writes the pending set value without waiting for the minimum
+    spacing (the budget still applies). 409 when nothing is pending or Sunflow does not write to the heat
+    pump (shadow), with the reason; the wish lapses when the next tick cannot write it."""
+    config = request.app.state.store.load()
+    device = next((d for d in config.devices if d.id == device_id), None)
+    profile = _library(request).profiles.get(device.profile) if device else None
+    if device is None or profile is None or not records_heat_pump(profile):
+        raise HTTPException(status_code=404, detail="No heat pump with this id")
+    flow = getattr(_recorder(request), "flow", None)
+    if flow is None:
+        raise HTTPException(status_code=409, detail={"reason": "not_active"})
+    accepted, reason, pending = flow.request_write_now(device_id, datetime.now(UTC))
+    if not accepted:
+        raise HTTPException(status_code=409, detail={"reason": reason})
+    return {"accepted": True, "pending": pending}
+
+
 class FlowLimits(BaseModel):
     """Range of the set value of one heat pump; None: the heating surface type's start limit."""
 

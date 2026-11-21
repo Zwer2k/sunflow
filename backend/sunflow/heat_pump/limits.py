@@ -28,6 +28,9 @@ from .defaults import (
     START_SETTLE_S,
     STEADY_SWING_K,
     STOP_MARGIN_K,
+    WRITE_INTERVAL_FLOOR_S,
+    WRITE_MIN_INTERVAL_S,
+    WRITE_PROTECT_INTERVAL_S,
 )
 from .manifest import entities_by_key
 from .states import FIXED, duration
@@ -61,6 +64,9 @@ class ControlSettings:
     # The heat pump has the room thermostat input (role heating_block)
     has_block: bool = True
     deadband: float = DEADBAND_K
+    # Minimum spacing of two writes of the set value (8.5): normal and for protection steps
+    min_interval_s: float = WRITE_MIN_INTERVAL_S
+    protect_interval_s: float = WRITE_PROTECT_INTERVAL_S
     # Step and range of the written entity (manifest); None when it names none
     step: float = DEFAULT_SETPOINT_STEP_K
     entity_min: float | None = None
@@ -83,6 +89,7 @@ class ControlSettings:
         key = (profile.get("roles", {}).get(role) or {}).get("key") if role else None
         entity = entities_by_key(manifest).get(key) if key else None
         step = _number((entity or {}).get("step"), 0.0)
+        writes = flow.get("writes") or {}
         return cls(
             start_margin=_number(rules.get("start_margin"), START_MARGIN_K),
             stop_margin=_number(rules.get("stop_margin"), STOP_MARGIN_K),
@@ -93,7 +100,10 @@ class ControlSettings:
             power_max_w=_number(power.get("max"), POWER_MAX_KW_DEFAULT) * 1000,
             block_min_s=duration(block.get("min_duration"), BLOCK_MIN_S).total_seconds(),
             has_block="heating_block" in profile.get("roles", {}) and bool(block),
-            deadband=_number((flow.get("writes") or {}).get("deadband"), DEADBAND_K),
+            deadband=_number(writes.get("deadband"), DEADBAND_K),
+            # Never shorter than the heat pump needs to take a value over (8.5)
+            min_interval_s=max(duration(writes.get("min_interval"), WRITE_MIN_INTERVAL_S).total_seconds(), WRITE_INTERVAL_FLOOR_S),
+            protect_interval_s=max(duration(writes.get("protect_interval"), WRITE_PROTECT_INTERVAL_S).total_seconds(), WRITE_INTERVAL_FLOOR_S),
             step=step if step > 0 else DEFAULT_SETPOINT_STEP_K,
             entity_min=_optional((entity or {}).get("min")),
             entity_max=_optional((entity or {}).get("max")),

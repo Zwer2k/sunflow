@@ -145,8 +145,15 @@ steht das im Journal, und der betroffene Wert wird sofort erhöht; ohne weitere 
 Wochen zurück. Die Tabelle **Schreibvorgänge je Tag** zählt für die letzten 7 Tage, was Sunflow
 geschrieben hätte (normal, Start, Nachführen, Sperre an/aus), und die ungewollten Abschaltungen – zum
 Vergleich mit dem geplanten Budget von 48 normalen und 24 Schreibvorgängen für Start und Nachführen je
-Tag. Mindestabstand und Budget gelten erst, wenn Sunflow aktiv schreibt. Die Raumthermostat-Sperre zählt
-nicht ins Budget: Die HPSU legt diesen Eingang nicht im EEPROM ab.
+Tag. Schon im Schatten gilt dabei der **Mindestabstand** zwischen zwei Schreibvorgängen auf den Stellwert
+(aus dem Geräteprofil, bei der HPSU 5 Minuten, für Schutzschritte – Start und Nachführen – 2 Minuten): Die
+erste Änderung nach einer Ruhepause geht sofort hinaus, weitere Änderungen in dieser Zeit merkt Sunflow
+nur, und nach Ablauf schreibt es den letzten Wert, falls er noch abweicht (ein normaler Wert um mehr als
+0,5 K, ein Schutzschritt bei jeder Anhebung). Ein wartender Wert wird als „ausstehend … würde um …
+geschrieben“ angezeigt. Das Budget gilt erst, wenn Sunflow aktiv schreibt; ebenso die Taste **Jetzt
+schreiben**, die den Mindestabstand für den ausstehenden Wert überspringt (nicht das Budget) und im
+Schattenbetrieb noch nicht angeboten wird. Die Raumthermostat-Sperre zählt nicht ins Budget und nicht
+zum Mindestabstand: Die HPSU legt diesen Eingang nicht im EEPROM ab; gegen Takten gilt ihre Mindestdauer.
 
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der

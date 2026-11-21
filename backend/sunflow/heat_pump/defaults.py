@@ -3,6 +3,13 @@
 # Deadband of writing (8.5): a new set value is written only when it differs by more than this from the
 # written one. A profile may override it in flow_control.writes.deadband.
 DEADBAND_K = 0.5
+# Minimum spacing of two writes of the set value (8.5), fallbacks when the profile leaves them out
+# (flow_control.writes.min_interval, protect_interval): normal writes and protection steps. A profile
+# value below WRITE_INTERVAL_FLOOR_S counts as that: the heat pump takes a new value over only after
+# 30-60 s, a shorter spacing would write before the effect of the last value shows.
+WRITE_MIN_INTERVAL_S = 5 * 60
+WRITE_PROTECT_INTERVAL_S = 2 * 60
+WRITE_INTERVAL_FLOOR_S = 60
 # Coarsest step of the written set value (3.6): with a coarser one the rounding alone exceeds the
 # deadband (e.g. step 1.0 of a firmware without tenths). Firmware property, so not the profile's deadband.
 MAX_SETPOINT_STEP_K = DEADBAND_K

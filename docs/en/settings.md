@@ -141,9 +141,16 @@ cautious start values apply. When the compressor stops unwantedly (flow 3 K abov
 block, hot water or defrost), the journal says so and the value concerned is raised at once; without
 further incidents it goes back over weeks. The table **Writes per day** counts for the last 7 days what
 Sunflow would have written (normal, start, tracking, block on/off) and the unwanted shutdowns – to
-compare with the planned budget of 48 normal writes and 24 for start and tracking per day. Spacing and
-budget apply only once Sunflow writes. The room thermostat block does not count against the budget: the
-HPSU does not store this input in its EEPROM.
+compare with the planned budget of 48 normal writes and 24 for start and tracking per day. The **minimum
+spacing** between two writes of the set value already applies in shadow (from the device profile, for the
+HPSU 5 minutes, for protection steps – start and tracking – 2 minutes): the first change after a calm
+spell goes out at once, further changes within that time are only kept, and once it has passed Sunflow
+writes the latest value if it still differs (a normal value by more than 0.5 K, a protection step with any
+raise). A waiting value is shown as "pending … would be written at …". The budget applies only once
+Sunflow writes; so does the button **Write now**, which skips the spacing for the pending value (not the
+budget) and is not offered in shadow operation yet. The room thermostat block counts neither against the
+budget nor for the spacing: the HPSU does not store this input in its EEPROM; its minimum duration
+prevents cycling.
 
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
 optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
