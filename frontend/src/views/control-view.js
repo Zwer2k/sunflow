@@ -527,7 +527,7 @@ class SunflowControl extends LitElement {
             <span class="small muted">${CATEGORY_LABELS[device.category] ?? KIND_LABELS[device.kind] ?? t("Verbraucher")} · ${status.join(" · ")}</span>
           </div>
           <div class="head-actions">
-            ${device.override ? html`<span class="chip">${t("angepasst")}</span>${this._renderDeviceDuration(device)}` : nothing}
+            ${device.override ? this._renderDeviceDuration(device) : nothing}
             <button class="pin ${device.live ? "on" : ""}" aria-pressed=${Boolean(device.live)} ?disabled=${this._busy}
               title=${device.live ? t("Nicht mehr in Live zeigen") : t("Schnellsteuerung in Live zeigen")}
               aria-label=${t("Schnellsteuerung von {name} in Live zeigen", { name: device.name })}
@@ -681,7 +681,7 @@ class SunflowControl extends LitElement {
     .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .heading > div:first-child { flex: 1 1 260px; min-width: 0; }
     .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end; }
-    .duration { display: flex; flex-direction: column; gap: 4px; }
+    .duration { display: flex; align-items: center; gap: 8px; }
     .head-end { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
     select.mini { font-size: 12px; min-height: 28px; padding: 0 6px; border-radius: 6px; }
     select {

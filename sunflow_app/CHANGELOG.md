@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.6
+
+- Control: the consumer's duration selection stands alone (no "changed" chip, no line break); "Overrides apply" at the home battery sits left of its selection.
+
 ## 0.80.5
 
 - Control: a consumer's change has its own small duration selection next to "changed", shown once something was changed. At a wallbox a change lasts until charging ends (the car is unplugged) by default instead of until midnight; also from the live view's quick controls.

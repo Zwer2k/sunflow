@@ -102,7 +102,7 @@ stehen, solange sie höchstens 60 % des Bildschirms brauchen:
 Hier greifst du in den Plan ein. Strategie, Ziel und Speichermodus gelten vorübergehend, danach
 gilt wieder der Standard aus den Einstellungen. Beim Hausspeicher legt **Eingriffe gelten** fest,
 wie lange: bis Mitternacht, 4 Stunden oder bis auf Weiteres. Bei einem Verbraucher erscheint nach
-einer Änderung neben „angepasst“ eine eigene kleine Auswahl. An einer Wallbox gilt eine Änderung
+einer Änderung oben im Rahmen eine eigene kleine Auswahl. An einer Wallbox gilt eine Änderung
 zunächst **bis Ladeende**, also bis das Auto abgesteckt wird, sonst bis Mitternacht. Die Schalter
 unter „Sunflow steuert“, die Priorität und ein ausgewähltes Fahrzeug (bis zum Abstecken) gelten
 dauerhaft. Nach jeder Änderung plant Sunflow sofort neu.

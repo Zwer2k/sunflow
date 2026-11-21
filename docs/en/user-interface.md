@@ -96,8 +96,8 @@ as they take at most 60 % of the screen:
 
 Changes to the plan. Strategy, target and battery mode are temporary; afterwards the defaults
 from the settings apply again. For the home battery, **Overrides apply** sets for how long: until
-midnight, 4 hours or until further notice. A consumer shows a small selection of its own next to
-"adjusted" once something was changed. At a wallbox a change first lasts **until charging ends**,
+midnight, 4 hours or until further notice. A consumer shows a small selection of its own at the top of
+its frame once something was changed. At a wallbox a change first lasts **until charging ends**,
 i.e. until the car is unplugged, otherwise until midnight. The switches under "Sunflow
 controls", the priority and a chosen vehicle (until it is unplugged) stay until you change them.
 Sunflow replans immediately after every change.
