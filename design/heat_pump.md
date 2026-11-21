@@ -1,7 +1,8 @@
 # Entwurf: Vorlaufregelung für Wärmepumpen in Sunflow
 
-Stand: 20.11.2026 · Status: Spezifikation; ESP-Teil (Manifest, `tv_max`, Zehntel für Max/Min T-Vorlauf;
-Abschnitt 3, 12) umgesetzt; Sunflow: Altlösung entfernt (Abschnitt 16, 2a), Rest offen
+Stand: 21.11.2026 · Status: Spezifikation; ESP-Teil (Manifest, `tv_max`, Zehntel für Max/Min T-Vorlauf;
+Abschnitt 3, 12) umgesetzt; Sunflow: Altlösung entfernt (Abschnitt 16, 2a), Datenhaltung (2b), Manifest,
+Kompatibilität und Profil (2c, Teil 1) umgesetzt, Rest offen
 
 Sunflow regelt den Vorlauf-Sollwert einer Luft-Wasser-Wärmepumpe so, dass das Haus den eingestellten
 Raum-Soll hält – selbstlernend, ohne die Wärmepumpe in Fehlbetrieb zu treiben – und nutzt einen
@@ -121,8 +122,17 @@ Fehler, YAML-Aktion funktioniert weiter; ohne `api:` deaktiviert und baut. Reali
 CAN-Beispiel 113 Entities ≈ 18 KiB in 2 Seiten, UART 28 Entities ≈ 3 KiB in 1 Seite.
 Auf echter Hardware (vor Seiten-Umbau) für CAN und UART über HA bestätigt.
 
-- Dienstname: Sunflow listet die Dienste der Domain `esphome`, ordnet über `device_name` des
-  ESPHome-Config-Entry dem HA-Gerät zu.
+- Dienstname: Sunflow listet die Dienste der Domain `esphome` (`get_services`). Der Knotenname steckt im
+  Dienstnamen (`<knoten>_rotex_can_manifest`, `-` wird `_`). Zuordnung zum HA-Gerät **nur über die
+  Entities** (`heat_pump/manifest.py`, `assign_device`; HA liefert den Knotennamen eines
+  ESPHome-Config-Entry über `config_entries/get` nicht):
+  1. Das Gerät ist das ESPHome-Gerät, bei dem alle Entities des Manifests vorkommen (`/<domain>/<name>`
+     am Ende der `unique_id`, Rückfall `original_name`; abgeschaltete Entities zählen mit).
+  2. Haben mehrere Geräte alle (gleiche Firmware, gleiche Entity-Namen), entscheidet hilfsweise der
+     Knotenname aus dem Dienstnamen, verglichen mit dem Gerätenamen der Registrierung als Slug (`name`,
+     sonst `name_by_user`; z. B. `HPSU.CAN` → `hpsu_can`). Zugeordnet wird nur bei genau einem Treffer.
+  Mehrdeutig oder kein Treffer: keine Zuordnung, Hinweis in Zusammenfassung und Log; der Nutzer wählt
+  dann im Assistenten (Schritt 5). Reicht das nicht, MAC ins Manifest (ESP-Änderung, vorher abstimmen).
 - Abruf und Neuladen: siehe 3.6.
 
 **Vorfilter:** Ob ein Knoten einen dieser Dienste anbietet (HA-Dienstliste, ohne Kosten).
@@ -177,8 +187,10 @@ Regeln:
 - Weitere Felder je Entity: `unit`, `min`/`max`/`step` (Number), `internal`, `device` (ESPHome-Untergerät).
 - Laufzeit-Zustände (z. B. ob `supply_setpoint_regulated` aktiv ist) stehen nicht im Manifest; Sunflow
   liest die Entity.
-- Hinweis: Die CAN-Komponente zeigt in `mode_of_operating` zur Laufzeit auch „Optimiertes Abtauen“
-  (`optimized_defrosting`), das nicht in der Karte steht – Sunflow ordnet es dem Zustand `defrost` zu.
+- Hinweis: „Abtau-Optimierung“ (`optimized_defrosting`) ist eine Auswahl der CAN-Komponente, kein Wert von
+  `mode_of_operating`. Ist sie an, stellt die Komponente beim Abtauen den Betriebsmodus kurz auf Sommer und
+  danach zurück (weniger Wasser aus dem Speicher in den Fußboden). Sunflow sieht dann Programm `summer`
+  und friert ein (Abschnitt 4); sonst ist sie für Sunflow ohne Bedeutung.
 
 ### 3.4 Topologien und Profile
 
@@ -235,7 +247,13 @@ Prüfung je Rolle des Profils (inklusive Begleiter):
 - Einheit passt (z. B. `°C`, `%`, `kW`);
 - Auswahlwerte: alle Übersetzungsschlüssel bzw. Werte, auf die Sunflow reagiert, sind vorhanden
   (z. B. `heating`, `hot_water_production`, `defrosting`, `fixed`, `weather_dependent`, `on`/`off`);
-- Number: `min`/`max` decken den Bereich ab, den Sunflow schreibt;
+- Rolle, auf die Sunflow schreibt (`flow_control.strategies.*.write.role`, HPSU `max_flow_setpoint`):
+  Domain immer `number`, Einheit wie im Profil, `min`/`max` decken die Grenzen ab
+  (`flow_control.limits`), Schrittweite `step` höchstens `MAX_SETPOINT_STEP_K` = Totzone `DEADBAND_K`
+  (0,5 K, `heat_pump/defaults.py`; 0,5 selbst ist erlaubt). Gröber (z. B. 1,0 bei alter Firmware ohne
+  Zehntel) → inkompatibel: „Schrittweite von Max T-Vorlauf zu grob (1 K, höchstens 0,5 K) – Firmware der
+  Komponente aktualisieren“. Die Grenze ist eine Eigenschaft der Firmware und hängt nicht an einer im
+  Profil oder später vom Nutzer geänderten Totzone;
 - Manifest strukturell lesbar (`id`, `entities`, `page`/`pages`).
 
 Ergebnis:
@@ -252,6 +270,15 @@ Neuladen des Manifests:
 2. **Neustart / Verbindungsabbruch:** Entities des Knotens `unavailable` → wieder verfügbar. Ab
    `unavailable` schreibt Sunflow für das Gerät nichts, bis das Manifest neu geladen und geprüft ist.
 3. **Rückfall:** stündlich.
+
+Umsetzung (2c, Teil 1): `heat_pump/compat.py` leitet je Rolle (`role_requirements`) Domain (Rollenfeld
+`domain`, bei der beschriebenen Rolle immer `number`), Einheit, nötige Auswahlwerte (aus `states` und
+`flow_control`) und für die beschriebene Rolle Bereich (`flow_control.limits`) und höchste Schrittweite
+(`MAX_SETPOINT_STEP_K`) ab und prüft dagegen. `heat_pump/link.py` (`ManifestManager`) lädt neu
+(Ereignis `device_registry_updated`, Rollen-Entity wieder verfügbar, stündlich), speichert das
+Manifest in `heat_pump_manifests.json` (Hash ohne `git`) und meldet jede Änderung von Manifest,
+Kompatibilität, Profilversion und Neu-Bindung über die MAC einmal in Journal und Log. Status je Gerät:
+`GET /api/v1/heat_pump/status`.
 
 Geändert hat sich etwas, wenn das neue Manifest vom gespeicherten abweicht (Vergleich in Sunflow). Ein
 Signal vom ESP beim Start wird nicht genutzt: ESPHome-Knoten dürfen in HA nur Ereignisse auslösen, wenn
@@ -653,12 +680,15 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
 
 ---
 
-## 11. Geräteprofil Rotex HPSU (Entwurf, braucht Schema-Erweiterung)
+## 11. Geräteprofil Rotex HPSU (umgesetzt, `profiles/heat_pumps/esphome/rotex_hpsu_can.yaml`)
 
 Sunflow beschreibt Geräte über Profile (`profiles/`, Schema `schema/profile.schema.json`): Erkennung,
-Rollen (welche Entity welchen Wert liefert), Steuerung und Grenzen. So sähe das Profil der HPSU aus. Die
-Teile `manifest`, `companion`, `states` und `flow_control` kennt das Schema noch nicht; sie kommen mit
-dieser Umsetzung hinzu. Weitere Wärmepumpen bekommen später nur ein eigenes Profil dieser Art.
+Rollen (welche Entity welchen Wert liefert), Steuerung und Grenzen. Für die HPSU kamen ins Schema:
+`match.manifest`, das Rollenfeld `domain`, sowie `companion`, `states` und
+`flow_control`. Was noch niemand auswertet (`companion`, `states`, `flow_control` außer für die
+Kompatibilitätsprüfung), wird nur gegen das Schema geprüft und darf in späteren Schritten angepasst werden
+(keine Datenmigration; ändert sich das Profil, steigt `version`). Die Fähigkeit `flow_control` kommt erst
+in Schritt 3 hinzu. Weitere Wärmepumpen bekommen nur ein eigenes Profil dieser Art.
 
 ```yaml
 profile: esphome/rotex_hpsu_can
@@ -666,42 +696,43 @@ version: 1
 match:
   integration: esphome
   manifest: {id: rotex_hpsu_can}
-capabilities: [heat_pump, flow_control]
+capabilities: [heat_pump]
 
-roles:
-  flow_temperature:   {key: tv, unit: "°C"}
-  flow_temperature_bh: {key: tvbh, unit: "°C"}
-  return_temperature: {key: tr, unit: "°C"}
-  flow_setpoint:      {key: target_supply_temperature, unit: "°C"}
-  heat_power:         {key: thermal_power, unit: kW}
-  flow_temperature_max: {key: tv_max, unit: "°C"}   # Spitze zwischen zwei tv-Werten (Pflicht)
-  outside_temperature:{key: temperature_outside, unit: "°C"}
-  compressor:         {key: status_kompressor}
-  program:            {key: operating_mode}
-  activity:           {key: mode_of_operating}
-  strategy_select:    {key: hk_function}
-  bypass_valve:       {key: bypass_valve, unit: "%"}
-  heating_block:      {key: room_therm}              # Raumthermostat: on = gesperrt, off = frei
-  error:              {key: error_code}
-  outdoor_unit:       {key: outdoor_unit, optional: true}
-  electric_energy:    {key: total_electrical_energy, unit: kWh, optional: true}
+roles:                      # domain: erlaubte Entity-Domains laut Manifest
+  flow_temperature:     {key: tv, domain: [sensor], unit: "°C"}
+  flow_temperature_bh:  {key: tvbh, domain: [sensor], unit: "°C"}
+  return_temperature:   {key: tr, domain: [sensor], unit: "°C"}
+  flow_setpoint:        {key: target_supply_temperature, domain: [sensor], unit: "°C"}
+  heat_power:           {key: thermal_power, domain: [sensor], unit: kW}
+  flow_temperature_max: {key: tv_max, domain: [sensor], unit: "°C"}   # Spitze zwischen zwei tv-Werten
+  outside_temperature:  {key: temperature_outside, domain: [sensor], unit: "°C"}
+  compressor:           {key: status_kompressor, domain: [binary_sensor]}
+  program:              {key: operating_mode, domain: [select, text_sensor]}
+  activity:             {key: mode_of_operating, domain: [text_sensor]}
+  strategy_select:      {key: hk_function, domain: [select, text_sensor]}
+  bypass_valve:         {key: bypass_valve, domain: [sensor], unit: "%"}
+  heating_block:        {key: room_therm, domain: [select, switch]}   # on = gesperrt, off = frei
+  error:                {key: error_code, domain: [text_sensor, sensor]}
+  max_flow_setpoint:    {key: max_target_flow_temp, domain: [number], unit: "°C"}   # Max T-Vorlauf, beschrieben
+  outdoor_unit:         {key: outdoor_unit, domain: [select, text_sensor], optional: true}
+  electric_energy:      {key: total_electrical_energy, domain: [sensor], unit: kWh, optional: true}
 
 companion:
   profile: esphome/rotex_hpsu_uart
   roles:
-    compressor_current: {key: inv_prim_current, unit: A, optional: true}
-    compressor_speed:   {key: inv_freq, unit: rpm, optional: true}
+    compressor_current: {key: inv_prim_current, domain: [sensor], unit: A, optional: true}
+    compressor_speed:   {key: inv_freq, domain: [sensor], unit: rpm, optional: true}
 
 states:
   program:  {heating: [heating, lowering, automatic_1, automatic_2], summer: [summer],
              standby: [standby], cooling: [cooling]}
   activity: {heating: [heating], hot_water: [hot_water_production],
-             defrost: [defrosting, optimized_defrosting], idle: [standby], cooling: [cooling]}
+             defrost: [defrosting], idle: [standby], cooling: [cooling]}
 
 flow_control:
   strategies:
     fixed:   {when: {strategy_select: fixed}, setpoint_kind: direct,
-              write: {key: max_target_flow_temp, storage: eeprom}}
+              write: {role: max_flow_setpoint, storage: eeprom}}
     weather: {when: {strategy_select: weather_dependent}, setpoint_kind: curve, enabled: false}
   compressor_rules: {start_margin: 3.0, stop_margin: 3.0}
   learned_defaults: {steady_swing: 0.5, start_jump: 6.0, start_settle: 5min}
@@ -709,11 +740,23 @@ flow_control:
   limits: {min: 25, max: 40}                  # Startwerte Fußboden, Nutzer stellt ein
   heat_power: {min: 0.6, max: 6.0}            # kW, Startwerte; später gelernt
   settle_after_bypass: 10min                  # BPV muss so lange 0 % sein, sonst Übergang
-  heating_block: {on: on, off: off, min_duration: 20min}
-  writes: {min_interval: 5min, protect_interval: 2min, deadband: 0.5,
+  heating_block: {"on": "on", "off": "off", min_duration: 20min}   # in YAML quoten (sonst true/false)
+  writes: {min_interval: 5min, protect_interval: 2min,   # Totzone: DEADBAND_K (0,5 K), im Profil überschreibbar
            per_day: 48, emergency_per_day: 24, per_hour: 6}
   frozen_after: {hot_water: 10min, defrost: 10min}
 ```
+
+`flow_control`:
+- `strategies`: je Strategie die Bedingung `when` (Rolle → Auswahlwert, hier `strategy_select`),
+  `setpoint_kind` (`direct`/`curve`), optional `enabled` und `write: {role, storage}`. Geschrieben wird
+  über eine **Rolle**, nicht über einen Schlüssel: Die Rolle (`max_flow_setpoint`) muss in `roles`
+  stehen und wird in der Kompatibilitätsprüfung als beschreibbar geprüft (Domain `number`, Einheit °C,
+  `min`/`max` gegen `limits`, `step` gegen `MAX_SETPOINT_STEP_K`, 3.6).
+- `limits` (Stellwertbereich, Startwerte), `heat_power`, `compressor_rules`, `learned_defaults`,
+  `adopt_delay`, `settle_after_bypass`, `frozen_after`: Parameter für Schritt 2c, Teil 2, und 3.
+- `heating_block`: Auswahlwerte für gesperrt/frei der Rolle `heating_block`, Mindestdauer.
+- `writes`: Mindestabstände und Budget (8.5); `deadband` nur, wenn ein Profil von `DEADBAND_K` abweicht.
+Beim Laden prüft Sunflow, dass `states` und `flow_control` nur Rollen des Profils nennen.
 
 ---
 
@@ -817,9 +860,11 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       Laden weiter funktionieren (ignorieren, nicht abbrechen; `datenhaltung.md`).
    b. **Datenhaltung vorbereiten** (umgesetzt, 0.80.4): Backup vor Migration, Import aller Tabellen
       (`datenhaltung.md`, Regel 7 und „Export/Import“).
-   c. Manifest-Auflösung und Kompatibilitätsprüfung, Profil `rotex_hpsu_can` (Schema-Erweiterung),
-      Zustände, Datensammlung (`heat_pump_samples` in `shadow.db`), climate-Entity, Schattenbetrieb mit
-      einfacher Regelung (Korrektur ohne Kennlinie).
+   c. Teil 1 (umgesetzt, 0.80.5): Manifest auslesen und neu laden, Kompatibilitätsprüfung je Rolle,
+      `profile_version`, Profil `esphome/rotex_hpsu_can` mit Schema-Erweiterung, Gerät über das Manifest
+      erkennen und anlegen (`ha_device_id`, MAC, Komponente), Neu-Bindung über die MAC; nur CAN, nichts
+      schreiben. Teil 2: Zustände, Datensammlung (`heat_pump_samples` in `shadow.db`), climate-Entity,
+      Schattenbetrieb mit einfacher Regelung (Korrektur ohne Kennlinie).
 3. Kennlinie lernen, Vorsteuerung, Schutzschicht (Schaltregeln mit gelernten Sprungwerten,
    Raumthermostat-Sperre), Schreiblogik, Budget → aktiv.
 4. Planung mit Raum-Soll + Spielraum (Vorheizen).

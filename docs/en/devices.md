@@ -111,6 +111,34 @@ Below the configured limit (default 12.2 V) the wallbox charges for the configur
 charging according to plan anyway, that continues. An evcc loadpoint charges in "Min+PV" mode for
 this. Only effective while Sunflow controls the wallbox.
 
+## Heat pumps
+
+| Device | Connection | Profile | Measures | Control | Requirements | Measuring tested |
+|---|---|---|---|---|---|---|
+| Rotex/Daikin HPSU | ESPHome with the component `daikin_rotex_can` (CAN bus) | `esphome/rotex_hpsu_can` | Flow, flow peak, return, effective flow setpoint, heat output, outside temperature, operating mode, mode of operation, bypass valve, compressor, error code | not yet (flow control follows) | Firmware with manifest and `tv_max` | 🧪 |
+
+Sunflow does not recognize the HPSU by entity names – they are free and translated in ESPHome –
+but by the **manifest** the component delivers as an ESPHome action (`…_rotex_can_manifest`).
+Other ESPHome devices therefore do not show up among the recognized devices. When adding the device,
+Sunflow stores the Home Assistant device, its MAC address and the component (CAN).
+
+- **Assignment:** Sunflow finds the node through the manifest's entities. If several ESPHome devices have
+  them all, the device name decides: `HPSU.CAN` fits the action `hpsu_can_rotex_can_manifest`. If no
+  device or more than one fits, Sunflow assigns none and reports this in the summary.
+- **Compatibility:** On every load Sunflow checks each role of the profile: key present, matching
+  type (e.g. select), unit, every option it reacts to, and for Max T-Vorlauf that the range covers the
+  limits and the step is at most 0.5 K (older firmware with whole degrees: update the component). If a required role is missing or does not fit, the device is **not compatible**:
+  Sunflow does not use it and names the reason in the summary and the log (e.g. "key
+  max_target_flow_temp missing"). A missing optional role only disables that function.
+- **Reload:** after flashing (new firmware version), when the node is reachable again after an
+  outage, and hourly otherwise. A changed manifest is noted once in the log, as is every change of
+  the compatibility.
+- **Integration added again:** If Sunflow no longer finds the Home Assistant device, it looks for one
+  with the same MAC address and assigns it anew (log entry).
+- **Profile version:** If the profile is newer than when the device was added, the summary says so.
+
+The UART node (`daikin_rotex_uart`) as a companion and the flow control follow in a later step.
+
 ## Own loads
 
 Devices Sunflow does not detect by itself are added in the settings under "Devices → Custom

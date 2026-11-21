@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.80.5
+
+- Heat pumps (first part of the new flow temperature control): a Rotex/Daikin HPSU with the ESPHome component `daikin_rotex_can` is recognized by the manifest its firmware delivers (profile `esphome/rotex_hpsu_can`), not by entity names. Other ESPHome devices do not appear in the device search. Taking it over stores the device under its name in Home Assistant, its MAC address and the component. Nothing is controlled or written yet.
+- Sunflow checks every role of the profile against the manifest (key, type, unit, options, range of Max T-Vorlauf and its step of at most 0.5 K). A device that does not fit is marked not compatible with the reason in the summary, the device preview and the log, and is not used. The manifest is reloaded after flashing, when the node is back after an outage and hourly; changes are logged once.
+- If the ESPHome integration was added again, Sunflow finds the node by its MAC address and assigns it anew.
+- The summary points out devices added with an older version of their profile.
+
 ## 0.80.4
 
 - Importing an export now merges the whole recording: besides the time slots also the plan's expectations (state of charge, PV, load six hours ahead), the soiling expectations and the charging sessions imported from evcc. The import runs in one transaction: if it fails, the recording stays as it was.

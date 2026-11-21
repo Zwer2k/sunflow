@@ -25,7 +25,7 @@ def _complete_config() -> SunflowConfig:
         id="huawei",
         ha_device_id="d_hw",
         profile="huawei_solar/pv_only",
-        profile_version=1,
+        profile_version=2,
         name="Huawei",
     )
     return SunflowConfig(

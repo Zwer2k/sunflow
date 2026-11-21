@@ -2127,15 +2127,19 @@ class SunflowApp extends LitElement {
     return html`
       <div class="tiles">
         ${preview.roles
-          .filter((r) => r.unit !== null || r.missing || isText(r))
+          .filter((r) => r.unit !== null || r.missing || r.problem || isText(r))
           .map(
             (r) => html`
-              <div class="tile ${r.missing ? "missing" : ""}">
+              <div class="tile ${r.missing || r.problem ? "missing" : ""}">
                 <div class="small muted">${roleLabel(r.role)}</div>
                 <div class="value ${isText(r) ? "text" : ""}">
                   ${isText(r) ? r.raw_state : SIGNED_ROLES.has(r.role) ? formatSigned(r.value, r.unit) : formatValue(r.value, r.unit)}
                 </div>
-                <div class="small muted">${r.missing ? t("nicht gefunden") : roleHint(r.role, r.value)}</div>
+                <div class="small muted">
+                  ${r.problem
+                    ? t("inkompatibel: {reason}", { reason: r.problem })
+                    : r.missing ? t("nicht gefunden") : roleHint(r.role, r.value)}
+                </div>
               </div>
             `,
           )}

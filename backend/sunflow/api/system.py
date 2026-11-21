@@ -28,7 +28,7 @@ from sunflow.mcp_key import McpKey
 from sunflow.shadow.runner import ShadowRunner
 from sunflow.shadow.store import evaluate as evaluate_shadow
 
-from .common import _library, _snapshot
+from .common import _library, _snapshot, _with_manifests
 
 # Unpacked size an import may have (years of slots stay far below)
 IMPORT_MAX_BYTES = 2_000_000_000
@@ -121,7 +121,7 @@ async def profiles(request: Request) -> dict[str, Any]:
 async def discovery(request: Request) -> list[dict[str, Any]]:
     """Return integrations and devices found in Home Assistant."""
     # Newly installed integrations must show up right away
-    snapshot = await _snapshot(request, fresh=True)
+    snapshot = await _with_manifests(request, await _snapshot(request, fresh=True), force=True)
     found = discover_optimizers(snapshot)
     used = used_entries(request.app.state.store.load(), found)
     # An integration with optimizers only (e.g. Tigo) can be chosen for them

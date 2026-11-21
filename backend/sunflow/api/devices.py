@@ -2,6 +2,7 @@
 
 from contextlib import suppress
 from dataclasses import asdict
+from datetime import UTC, datetime
 import logging
 import re
 from typing import Any, Literal
@@ -39,11 +40,14 @@ from sunflow.devices.resolver import (
     device_entities,
     preview,
 )
+from sunflow.devices.profiles import manifest_id
 from sunflow.devices.site import battery_module_ids, device_category, device_parameters
+from sunflow.heat_pump.compat import check_compatibility
+from sunflow.heat_pump.manifest import key_entity
 from sunflow.ha import HAError
 from sunflow.i18n import N_, t
 
-from .common import _configured_device, _library, _replan, _snapshot, display_name
+from .common import _configured_device, _library, _replan, _snapshot, _with_manifests, display_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,7 +125,7 @@ async def _preview(
     overrides: dict[str, RoleOverride],
 ) -> dict[str, Any]:
     library = _library(request)
-    snapshot = await _snapshot(request)
+    snapshot = await _with_manifests(request, await _snapshot(request))
 
     if profile is None:
         devices = {
@@ -145,19 +149,39 @@ async def _preview(
     # A role whose entity is disabled in Home Assistant is enabled when the device is taken over
     specs = library.profiles[profile]["roles"]
     disabled = [e for e in snapshot.entities if e.get("device_id") == device_id and e.get("disabled_by")]
+    wanted = manifest_id(library.profiles[profile])
+    found = snapshot.manifests.get(device_id, {}).get(wanted) if wanted else None
 
     def enabled_later(role: Any) -> str | None:
         if not role.missing or "key" not in specs.get(role.role, {}):
             return None
+        if wanted:
+            entity = key_entity(found.manifest, specs[role.role]["key"], disabled) if found else None
+            return entity["entity_id"] if entity else None
         return next((e["entity_id"] for e in disabled if entity_has_key(e, specs[role.role]["key"])), None)
 
     later = {r.role: entity_id for r in roles if (entity_id := enabled_later(r))}
+    # Devices describing themselves: what their manifest does not serve as the profile needs
+    compatibility = check_compatibility(library.profiles[profile], found.manifest if found else None) if wanted else None
+
+    def problem(role: str) -> str | None:
+        found_problem = compatibility.for_role(role) if compatibility else None
+        return found_problem.reason if found_problem else None
+
     return {
         "device_id": device_id,
         "profile": profile,
-        "complete": not any(r.missing and not r.optional and r.role not in later for r in roles),
-        "roles": [asdict(r) | {"missing": r.missing and r.role not in later, "enabled_later": later.get(r.role)} for r in roles],
+        "complete": not any(r.missing and not r.optional and r.role not in later for r in roles)
+        and (compatibility is None or compatibility.compatible),
+        "roles": [
+            asdict(r) | {"missing": r.missing and r.role not in later, "enabled_later": later.get(r.role), "problem": problem(r.role)}
+            for r in roles
+        ],
         "balance": asdict(balance) if balance else None,
+        "compatibility": None if compatibility is None else {
+            "compatible": compatibility.compatible,
+            "reasons": compatibility.reasons(),
+        },
     }
 
 
@@ -172,7 +196,7 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
     """Add a discovered device to the configuration."""
     library = _library(request)
     store: ConfigStore = request.app.state.store
-    snapshot = await _snapshot(request)
+    snapshot = await _with_manifests(request, await _snapshot(request))
     # Load after the await: a parallel add in the meantime must not be overwritten
     config = store.load()
     if any(d.ha_device_id == body.ha_device_id for d in [*config.devices, *config.disabled_devices]):
@@ -190,6 +214,8 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
         profile_version=library.profiles[profile_id]["version"],
         name=display_name(discovered, library.profiles[profile_id]),
         role_overrides=body.role_overrides,
+        mac=discovered.mac,
+        component=discovered.component,
     )
     profile = library.profiles[profile_id]
     if "loadpoint" in profile["capabilities"]:
@@ -209,6 +235,12 @@ async def add_device(request: Request, body: AddDevice) -> dict[str, Any]:
             _LOGGER.warning("Could not enable %s: %s", entity_id, err)
         else:
             enabled.append(entity_id)
+    if (manifests := getattr(request.app.state, "manifests", None)) is not None and device.component is not None:
+        # Checked right away, so the summary shows whether the device is compatible
+        try:
+            await manifests.check(store, snapshot, datetime.now(UTC))
+        except HAError as err:
+            _LOGGER.warning("Manifest check of %s failed: %s", device.name, err)
     _replan(request)
     return device.model_dump() | {"enabled_entities": enabled}
 

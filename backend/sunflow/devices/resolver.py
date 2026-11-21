@@ -1,9 +1,13 @@
 """Resolve profile roles to entities and normalize their values."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
+from sunflow.heat_pump.manifest import DeviceManifest, bind_manifest
+
 from .discovery import Snapshot, entity_has_key
+from .profiles import manifest_id
 
 UNAVAILABLE_STATES = {"unavailable", "unknown", ""}
 
@@ -66,9 +70,16 @@ def device_entities(snapshot: Snapshot, device_id: str) -> list[dict[str, Any]]:
 
 
 def bind_roles(
-    profile: dict[str, Any], entities: list[dict[str, Any]]
+    profile: dict[str, Any], entities: list[dict[str, Any]], manifests: Mapping[str, DeviceManifest] | None = None
 ) -> dict[str, str | None]:
-    """Return role -> entity_id; parent device entities win over sub-devices."""
+    """Return role -> entity_id; parent device entities win over sub-devices.
+
+    A profile matching on a manifest names manifest keys: they are resolved through the
+    device's manifest (manifests: by manifest id); without it no role is bound.
+    """
+    if (wanted := manifest_id(profile)) is not None:
+        found = (manifests or {}).get(wanted)
+        return bind_manifest(profile, found.manifest if found else None, entities)
     bindings: dict[str, str | None] = {}
     for role, spec in profile["roles"].items():
         matches = [e for e in entities if entity_has_key(e, spec["key"])]
@@ -191,7 +202,8 @@ def preview(
     """
     overrides = overrides or {}
     entities = device_entities(snapshot, device_id)
-    bindings = bind_roles(profile, entities)
+    manifests = getattr(snapshot, "manifests", None) or {}
+    bindings = bind_roles(profile, entities, manifests.get(device_id))
     registry = {e["entity_id"]: e for e in entities}
     result: list[RoleValue] = []
     for role, spec in profile["roles"].items():

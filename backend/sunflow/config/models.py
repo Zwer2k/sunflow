@@ -242,6 +242,10 @@ class DeviceConfig(BaseModel):
     charger: ChargerSettings | None = None
     # Batteries: short name for the live diagram (e.g. "Haus", "Balk."); None: the name's first word
     short_name: str | None = Field(default=None, max_length=8)
+    # Devices recognized by their manifest (ESPHome): MAC address of the node, lower case, to find it
+    # again when its Home Assistant device id changed, and the component the manifest came from
+    mac: str | None = None
+    component: Literal["can", "uart"] | None = None
 
 
 class TariffConfig(BaseModel):

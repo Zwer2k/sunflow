@@ -76,6 +76,20 @@ async def _snapshot(request: Request, fresh: bool = False) -> Snapshot:
         raise HTTPException(status_code=502, detail=str(err)) from err
 
 
+async def _with_manifests(request: Request, snapshot: Snapshot, force: bool = False) -> Snapshot:
+    """The snapshot with the manifests of all nodes offering one (scanned anew when force or stale).
+
+    A node that cannot be asked only lacks its manifest; the rest of the snapshot stays usable.
+    """
+    if (manifests := getattr(request.app.state, "manifests", None)) is None:
+        return snapshot
+    try:
+        await manifests.scan(snapshot, datetime.now(UTC), force=force)
+    except HAError as err:
+        _LOGGER.warning("Manifests not scanned: %s", err)
+    return manifests.contribute(snapshot)
+
+
 def _library(request: Request) -> ProfileLibrary:
     return request.app.state.profiles
 
@@ -89,7 +103,13 @@ def _configured_device(request: Request, device_id: str) -> DeviceConfig:
 
 def display_name(device: Any, profile: dict[str, Any]) -> str:
     """Name for a new device: one-word names like "Inverter" are ambiguous, so use
-    manufacturer and model there; profiles may strip noise from names."""
+    manufacturer and model there; profiles may strip noise from names.
+
+    A device recognized by its manifest (component set) keeps its registry name: manufacturer
+    and model are those of the ESP board, not of the device behind it.
+    """
+    if getattr(device, "component", None) is not None:
+        return device.name
     name = device.name
     for part in profile.get("name_strip", []):
         name = name.replace(part, "")

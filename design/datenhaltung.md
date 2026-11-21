@@ -14,6 +14,7 @@ Rückweg auf eine ältere Version (z. B. Wechsel zwischen Sunflow und Sunflow Ed
 | `shadow.db` | SQLite | `PRAGMA user_version`, `SCHEMA_VERSION` | `shadow/store.py`: `SCHEMA_STEPS` je Version, `migrate()` beim Start, vorher Kopie `shadow.v<n>.db` (Regel 7); neuere Datenbank bleibt unberührt |
 | `eeprom_writes.json` | JSON | – | nur Tageszähler, verwerfbar |
 | `heat_pump_state.json` (geplant, `heat_pump.md`) | JSON | – | Laufzeit-Zustand, verwerfbar |
+| `heat_pump_manifests.json` | JSON | Feld `format` (1) | zuletzt geladenes Manifest je Gerät (Manifest, Hash, Ladezeit, `sw_version`, bereits gemeldete Hinweise); verwerfbar: fehlt oder ist sie kaputt, gilt das nächste Laden als neu; unbekannte Schlüssel werden ignoriert; geschrieben nur bei Änderung, atomar mit `fsync`; Einträge entfernter Geräte fallen beim Laden weg; nicht im Export (`heat_pump.md` 3.6) |
 
 Export/Import (`api/system.py`): ein Export einer älteren Version wird beim Import migriert, Spalten einer
 neueren Version werden weggelassen. Die Export-Datei wird in ein temporäres Verzeichnis entpackt und dort

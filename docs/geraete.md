@@ -113,6 +113,37 @@ nach der Pause (Vorgabe 60 min) beginnt es erneut, damit ein selten aktualisiert
 ständig neu auslöst. Lädt die Wallbox nach Plan ohnehin, bleibt es dabei. Ein evcc-Ladepunkt
 lädt dafür im Modus „Min+PV“. Wirkt nur, solange Sunflow die Wallbox steuert.
 
+## Wärmepumpen
+
+| Gerät | Anbindung | Profil | Messen | Steuern | Voraussetzungen | Messen geprüft |
+|---|---|---|---|---|---|---|
+| Rotex/Daikin HPSU | ESPHome mit der Komponente `daikin_rotex_can` (CAN-Bus) | `esphome/rotex_hpsu_can` | Vorlauf, Vorlauf-Spitze, Rücklauf, wirksamer Vorlauf-Soll, Wärmeleistung, Außentemperatur, Betriebsmodus, Betriebsart, Bypass-Ventil, Kompressor, Fehlercode | noch nicht (Vorlaufregelung folgt) | Firmware mit Manifest und `tv_max` | 🧪 |
+
+Sunflow erkennt die HPSU nicht an Entitätsnamen – die sind in ESPHome frei wählbar und übersetzt –,
+sondern am **Manifest**, das die Komponente als ESPHome-Aktion (`…_rotex_can_manifest`) mitliefert.
+Andere ESPHome-Geräte erscheinen deshalb nicht unter den erkannten Geräten. Beim Übernehmen
+speichert Sunflow das Home-Assistant-Gerät, dessen MAC-Adresse und die Komponente (CAN).
+
+- **Zuordnung:** Den Knoten findet Sunflow über die Entitäten des Manifests. Haben mehrere ESPHome-Geräte
+  sie alle, entscheidet der Gerätename: `HPSU.CAN` passt zur Aktion `hpsu_can_rotex_can_manifest`.
+  Passt kein oder mehr als ein Gerät, ordnet Sunflow keines zu und meldet das in der Zusammenfassung.
+- **Kompatibilität:** Bei jedem Laden prüft Sunflow jede Rolle des Profils: Schlüssel vorhanden,
+  passender Typ (z. B. Auswahl), Einheit, alle Auswahlwerte, auf die es reagiert, und beim
+  Max T-Vorlauf, dass der Bereich die Grenzen abdeckt und die Schrittweite höchstens 0,5 K beträgt
+  (ältere Firmware mit ganzen Grad: Komponente aktualisieren). Fehlt eine Pflichtrolle oder
+  passt sie nicht, gilt das Gerät als **nicht kompatibel**: Sunflow nutzt es nicht und nennt den
+  Grund in der Zusammenfassung und im Protokoll (z. B. „Schlüssel max_target_flow_temp fehlt“).
+  Fehlt eine optionale Rolle, fehlt nur diese Funktion.
+- **Neu laden:** nach dem Flashen (neue Firmware-Version), wenn der Knoten nach einem Ausfall wieder
+  erreichbar ist, und sonst stündlich. Hat sich das Manifest geändert, steht das einmal im
+  Protokoll, ebenso jede Änderung der Kompatibilität.
+- **Neu angelegte Integration:** Findet Sunflow das Home-Assistant-Gerät nicht mehr, sucht es eines
+  mit derselben MAC-Adresse und ordnet es neu zu (Eintrag im Protokoll).
+- **Profilversion:** Ist das Profil neuer als beim Übernehmen, weist die Zusammenfassung darauf hin.
+
+Den UART-Knoten (`daikin_rotex_uart`) als Begleiter und die Vorlaufregelung unterstützt Sunflow in
+einem späteren Schritt.
+
 ## Eigene Verbraucher
 
 Geräte, die Sunflow nicht von selbst erkennt, legst du in den Einstellungen unter

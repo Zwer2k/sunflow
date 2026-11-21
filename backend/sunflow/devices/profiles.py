@@ -93,6 +93,30 @@ class ProfileLibrary:
         """Return the profiles of devices Sunflow connects to itself (no integration)."""
         return [p for p in self.profiles.values() if "connection" in p]
 
+    def manifest_only(self, domain: str) -> bool:
+        """Every profile of the integration recognizes devices by their manifest."""
+        profiles = self.for_integration(domain)
+        return bool(profiles) and all(manifest_id(p) for p in profiles)
+
+
+def manifest_id(profile: dict[str, Any]) -> str | None:
+    """The manifest id a profile matches on (devices describing themselves), else None."""
+    return profile.get("match", {}).get("manifest", {}).get("id")
+
+
+def _reference_errors(data: dict[str, Any]) -> list[str]:
+    """Roles named in states and flow_control that the profile does not have."""
+    roles = data["roles"]
+    flow = data.get("flow_control", {})
+    named = [(f"states/{role}", role) for role in data.get("states", {})]
+    for name, strategy in flow.get("strategies", {}).items():
+        named += [(f"flow_control/strategies/{name}/when", role) for role in strategy["when"]]
+        if "write" in strategy:
+            named.append((f"flow_control/strategies/{name}/write", strategy["write"]["role"]))
+    if "heating_block" in flow:
+        named.append(("flow_control/heating_block", "heating_block"))
+    return [f"{where}: no role {role}" for where, role in named if role not in roles]
+
 
 def load_schema(schema_dir: Path) -> dict[str, Any]:
     """Load the profile JSON schema."""
@@ -118,6 +142,9 @@ def load_profiles(profiles_dir: Path, schema: dict[str, Any]) -> ProfileLibrary:
             continue
         if wrong := sorted(r for r, spec in data["roles"].items() if spec.get("minus") not in (None, *data["roles"]) or spec.get("minus") == r):
             library.errors.append(ProfileError(path=path, message=f"minus names no other role: {', '.join(wrong)}"))
+            continue
+        if references := _reference_errors(data):
+            library.errors.append(ProfileError(path=path, message="; ".join(references)))
             continue
         if data["profile"] in library.profiles:
             library.errors.append(
