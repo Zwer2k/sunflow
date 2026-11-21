@@ -93,7 +93,8 @@ a fault clearly highlighted, and whether the heat pump heats validly – otherwi
 after-run, bypass valve). Below it the **flow target** = base + correction: the base is the effective
 flow setpoint from valid heating (outside it the last such value counts). The correction slowly evens
 out the difference between room temperature and setpoint (at most ± 3 K; it does not grow within
-± 0.2 K). It pauses while the heat pump does not heat validly, room temperatures are missing, a room is
+± 0.2 K); how slowly depends on the heating surface type (integral time: underfloor 6 h, mixed 4 h,
+radiators 2 h). It pauses while the heat pump does not heat validly, room temperatures are missing, a room is
 being aired or the room is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
 may run to its limit.
 
@@ -147,7 +148,8 @@ HPSU does not store this input in its EEPROM.
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
 optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
 The **heating surface type** (underfloor heating, mixed, radiators; default underfloor) sets the start
-value of the heating curve; after a change the curve is evaluated anew, the measured data are kept.
+value of the heating curve and the integral time of the correction; after a change the curve is
+evaluated anew, the measured data are kept and the correction does not jump.
 The **outside temperature** can be chosen: automatic (own sensor under learning sources, else the heat
 pump's sensor), the heat pump's outside temperature sensor, the sensor of its outdoor unit (HPSU: TA2)
 or only the own sensor. From the hourly values of the last four weeks Sunflow learns a simple thermal

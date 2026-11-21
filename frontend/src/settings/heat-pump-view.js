@@ -436,7 +436,7 @@ class SunflowHeatPump extends LitElement {
             ? tile(t("Kennlinie"), `${one(flow.curve_c)} °C`, t("für {kw} kW bei Raum-Soll", { kw: kw(flow.heat_needed_w) }))
             : nothing}
           ${tile(t("Basis"), flow.base_c == null ? "–" : `${one(flow.base_c)} °C`, curve ? t("wirksamer Vorlauf-Soll, gilt ohne Kennlinie") : t("wirksamer Vorlauf-Soll im gültigen Heizbetrieb"))}
-          ${tile(t("Korrektur"), signed(flow.correction_k), t("aus Raum-Ist und Raum-Soll, höchstens ± {limit} K", { limit: decimal(String(flow.parameters.limit_k)) }))}
+          ${tile(t("Korrektur"), signed(flow.correction_k), t("aus Raum-Ist und Raum-Soll, Nachstellzeit {ti} h, höchstens ± {limit} K", { ti: decimal(String(flow.parameters.ti_h)), limit: decimal(String(flow.parameters.limit_k)) }))}
         </div>
         ${source === "heat_recent"
           ? html`<p class="small muted">${t("Die Wärme der letzten 3 h entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt: Die Kennlinie bildet nur den aktuellen Zustand nach, die Richtung gibt die Korrektur vor.")}</p>`

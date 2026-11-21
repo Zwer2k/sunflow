@@ -547,7 +547,7 @@ export default {
   "Basis": "Base",
   "wirksamer Vorlauf-Soll im gültigen Heizbetrieb": "effective flow setpoint while heating validly",
   "Korrektur": "Correction",
-  "aus Raum-Ist und Raum-Soll, höchstens ± {limit} K": "from room temperature and setpoint, at most ± {limit} K",
+  "aus Raum-Ist und Raum-Soll, Nachstellzeit {ti} h, höchstens ± {limit} K": "from room temperature and setpoint, integral time {ti} h, at most ± {limit} K",
   "Korrektur angehalten: {reasons}": "Correction paused: {reasons}",
   "Korrektur läuft.": "Correction running.",
   "Im Schattenbetrieb wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Aktivschalten beginnt sie bei 0.": "In shadow operation the correction has no effect back and may run to its limit; when switched to active it starts at 0.",

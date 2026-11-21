@@ -38,11 +38,11 @@ from .defaults import (
     CORRECTION_KP,
     CORRECTION_LIMIT_K,
     CORRECTION_MAX_STEP_S,
-    CORRECTION_TI_H,
     ROOM_DEADBAND_K,
     ROOM_SETPOINT_MAX_C,
     ROOM_SETPOINT_MIN_C,
     ROOM_SETPOINT_STEP_C,
+    correction_ti_h,
 )
 from .feedforward import BASE, Feed, HouseContext, RecentHeat, feedforward, house_heat_w
 from .guard import Guard, GuardInput, GuardResult
@@ -280,6 +280,7 @@ class FlowShadow:
                     correction.step(
                         room.value_c, setpoint, now,
                         block_up=last is not None and last.freeze_up, block_down=last is not None and last.freeze_down,
+                        ti_h=correction_ti_h(config.house.heating_surface),
                     )
                 correction_k = correction.value_k
                 stored.setdefault("corrections", {})[strategy] = round(correction.value_k, 4)
@@ -347,6 +348,7 @@ class FlowShadow:
         flow = self.flows.get(device_id)
         if flow is None:
             return None
+        surface = self._config.house.heating_surface if self._config else None
         return {
             "shadow": True,
             "strategy": flow.strategy,
@@ -364,9 +366,9 @@ class FlowShadow:
             "curve_c": round(flow.feed.curve_c, 2) if flow.feed and flow.feed.curve_c is not None else None,
             "heat_recent_s": round(flow.recent_s),
             "curve": curve.status() if (curve := self.curves.get(device_id)) is not None else None,
-            "surface": self._config.house.heating_surface if self._config else None,
+            "surface": surface,
             "parameters": {
-                "kp": CORRECTION_KP, "ti_h": CORRECTION_TI_H, "deadband_k": ROOM_DEADBAND_K, "limit_k": CORRECTION_LIMIT_K,
+                "kp": CORRECTION_KP, "ti_h": correction_ti_h(surface), "deadband_k": ROOM_DEADBAND_K, "limit_k": CORRECTION_LIMIT_K,
             },
             # Limits the correction does not move beyond (8.3); the direction in guard.freeze_up/down
             "limited": list(flow.limited),

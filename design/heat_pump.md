@@ -522,7 +522,7 @@ Wärmeabgabe der Heizflächen:
   fehlt das Feld oder ist der Wert unbekannt, z. B. aus einer neueren Version, gilt der Standard ohne
   Fehler). `n` ist der Startwert der Kennlinie und wird nicht gelernt (9.2). Startwerte je Typ zusammen
   mit den Startgrenzen des Stellwerts (8.3; Fußboden 25/40 °C, gemischt 25/50 °C, Heizkörper 30/55 °C)
-  an einer Stelle: `HEATING_SURFACES` in `heat_pump/defaults.py`. Ändert der Nutzer den Typ, wird die
+  und der Nachstellzeit Ti der Korrektur (8.2) an einer Stelle: `HEATING_SURFACES` in `heat_pump/defaults.py`. Ändert der Nutzer den Typ, wird die
   Kennlinie sofort neu bewertet; die Daten in `heat_pump_samples` bleiben, Hinweis im UI.
 - `K` gelernt (Abschnitt 9). Spreizung `s` gelernt als Funktion der Leistung (einfaches Modell, z. B.
   linear in Q).
@@ -567,10 +567,14 @@ PI auf Raum-Ist gegen Planziel, addiert auf V_Ziel.
   einer Grenze.
 - Integralanteil wird je Strategie gespeichert.
 
-Umsetzung (2c, Teil 2b, `heat_pump/correction.py`, Konstanten in `heat_pump/defaults.py`), fest für
-Fußbodenheizung bis Schritt 3 (Heizflächentyp):
+Umsetzung (2c, Teil 2b, `heat_pump/correction.py`, Konstanten in `heat_pump/defaults.py`; Ti je
+Heizflächentyp seit 3, Teil 4.1):
 - Inkrementell: ΔKorrektur = Kp/Ti · e · Δt − Kp · ΔRaum-Ist, e = Planziel − Raum-Ist (Planziel =
-  Raum-Soll bis Schritt 4); Kp = 1,0 K Vorlauf je K Raum, Ti = 6 h. Der I-Teil wirkt nur außerhalb der
+  Raum-Soll bis Schritt 4); Kp = 1,0 K Vorlauf je K Raum für jeden Typ, Ti je Heizflächentyp
+  (`house.heating_surface`, `HEATING_SURFACES`, `ti_h`): Fußboden 6 h, gemischt 4 h, Heizkörper 2 h;
+  unbekannter Typ wie der Standard. Ein Wechsel des Typs ändert nur die Inkremente ab dann, nicht den Wert
+  der Korrektur (kein Sprung, keine Rückrechnung); das gilt im Schatten wie aktiv. Status
+  `parameters.ti_h` und UI zeigen das aktuelle Ti. Der I-Teil wirkt nur außerhalb der
   Totzone ±0,2 K. Begrenzung ±3 K: ein Inkrement, das darüber hinausführt, wird abgeschnitten.
 - Ein Schritt wird gerechnet, sobald sich das Raum-Ist ändert, spätestens 30 min nach dem letzten mit
   dem letzten Raum-Ist (dann nur I-Teil); Δt höchstens 30 min, auch nach einer Lücke.
@@ -1112,8 +1116,8 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
 
 **Inbetriebnahme:**
 0. Andere Regler abschalten, die denselben Stellwert oder den Raumthermostat-Eingang schreiben
-   (Integrationen, Automationen, Skripte, ESP-Regelung `supply_setpoint_regulated` auf 0). Sunflow
-   meldet fremde Schreiber (8.5).
+   (Integrationen, Automationen, Skripte, ESP-Regelung `supply_setpoint_regulated` auf 0). Nur eine
+   Sunflow-Instanz (App) darf laufen. Sunflow meldet fremde Schreiber (8.5).
 1. Firmware mit Manifest und `tv_max` auf CAN (und Manifest auf UART).
 2. Sunflow: Gerät erkennen, Räume eintragen, **Schattenbetrieb 1–3 Tage** (Daten sammeln, Vergleich).
 3. Aktiv mit S1, Budget eng beobachten, Journal prüfen.
@@ -1124,14 +1128,23 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
 ## 15. Offene Punkte
 
 1. Manifest mit Seiten und `tv_max` auf echter Hardware testen (Manifest ohne Seiten bereits bestätigt).
+   **Geklärt (Prüfung per MCP vor Teil 4):** Die CAN-Firmware liefert das Manifest in zwei Seiten; Sunflow
+   setzt sie zusammen und meldet das Gerät in `GET /api/v1/heat_pump/status` als `compatible`, nutzbar,
+   ohne fehlende Rollen (`problems` leer). `tv_max` arbeitet wie in 8.4 beschrieben: in der HA-History
+   liegt es nie unter `tv`, kommt mit `tv` zusammen im Takt von `tv`, und bei Kompressorstarts (aus
+   Bereitschaft und nach Warmwasser) sowie im Dauerlauf zeigt es Spitzen zwischen zwei `tv`-Werten, die in
+   `tv` fehlen. Die gesehenen Startsprünge liegen deutlich unter dem Startwert von `start_jump`; der
+   Startwert bleibt, bis Sunflow eigene Werte gelernt hat. Beobachtung: Bei schnell fallendem Tv ist `tv_max`
+   oft gleich dem vorigen `tv` (die HPSU liefert den Tv-Wert offenbar seltener neu, als die Komponente
+   liest); das liegt auf der sicheren Seite (Spitze eher zu hoch) und macht `steady_swing` im Dauerlauf
+   kaum größer, keine Änderung nötig.
 2. Sommer vs. Bereitschaft der HPSU im Detail (RoCon-Anleitung).
 3. Startwerte Budget (48 + 24) nach den ersten Wochen prüfen.
 4. Höchster Vorlauf für den Estrich (Nutzereinstellung, Standard?). **Geklärt, umgesetzt (0.80.11):**
    Einstellung min/max des Stellwerts je Wärmepumpe (8.3), leer = Startgrenzen des Heizflächentyps
    (`HEATING_SURFACES`), immer eingeengt auf `min`/`max` der Entity im Manifest; max ist zugleich der
-   höchste Vorlauf für den Estrich (Standard Fußboden 40 °C). Offen: Die CAN-Komponente meldet für
-   Max T-Vorlauf im Manifest 20–90 °C; begrenzt die HPSU selbst niedriger (laut Nutzer 40 °C), sollte das
-   Manifest diesen Bereich melden (Änderung an der Komponente, Abschnitt 12).
+   höchste Vorlauf für den Estrich (Standard Fußboden 40 °C). Offen: Bereich von Max T-Vorlauf, siehe
+   Punkt 9.
 5. Untergrenze je Raum ja/nein.
 6. S2-Entwurf nach Analyse.
 7. Raumthermostat-Eingang: liegt er in der HPSU im EEPROM? Davon hängt ab, ob die Sperre ins
@@ -1154,6 +1167,36 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    einer Warmwasser-Bereitung Max T-Vorlauf einmal ändern, z. B. um 3 K über den Wert vorher, und prüfen,
    ob Warmwasser normal weiterläuft und ob der Kompressor beim Start danach mit dem neuen Wert läuft
    (wirksamer Vorlauf-Soll, keine Abschaltung kurz nach dem Start).
+9. **Bereich von Max T-Vorlauf gegen die eigene Grenze der HPSU** (offen, vor dem Aktivschalten zu
+   entscheiden). Das Manifest meldet für Max T-Vorlauf (`max_target_flow_temp`) 20–90 °C – den
+   Registerbereich, fest beim Kompilieren. Die HPSU begrenzt den wirksamen Vorlauf-Soll laut Nutzer selbst
+   niedriger (40 °C); dazu passt der HPSU-Parameter „Max Temp Heizung“ (`max_heating_temperature`, im
+   Manifest number 5–85 °C, Schritt 1), eine Nutzereinstellung in der HPSU, kein fester Gerätewert.
+   **Auswirkung:** 8.3 engt den Stellwertbereich nur auf `min`/`max` der Entity ein, also auf 90 °C.
+   - Fußbodenheizung (Startgrenze 40 °C): fällt zufällig zusammen, solange `flow_max_c` nicht darüber
+     gesetzt wird.
+   - Heizkörper (55 °C) und gemischt (50 °C), ebenso jedes `flow_max_c` über der HPSU-Grenze: Sunflow hält
+     Werte bis zur Obergrenze für wirksam, die HPSU fährt aber höchstens ihre Grenze. Folgen: (a) V_Ziel
+     über der Grenze ändert nichts, die Korrektur läuft ohne Wirkung hoch, „Grenze erreicht“ (`limit_max`)
+     greift nicht, weil die Obergrenze höher liegt; (b) Schutzschritte über der Grenze (Starten,
+     Vorbereiten, Nachführen) sind wirkungslos, kosten aber Budget: Die Abschaltgrenze liegt am
+     wirksamen Soll + 3 K, nicht am geschriebenen Wert – Sunflow hält sich für geschützt, die HPSU schaltet
+     ab, und das Lernen erhöht die Sprungwerte für einen Fehler, der kein Sprung war; (c) die
+     Plausibilität (Bezug wirksamer Soll) und „nicht schreiben, wenn schon gesetzt“ vergleichen mit einem
+     Wert, den die HPSU nie übernimmt, sodass derselbe Wert wieder und wieder geschrieben würde.
+   **Vorschlag (nicht umgesetzt):** Die Obergrenze des Stellwerts = Minimum aus Nutzer-/Startgrenze,
+   Manifest-`max` und der eigenen Grenze der HPSU. Dazu (1) im Profil eine optionale Rolle für „Max Temp
+   Heizung“ (z. B. `flow_setpoint_cap`, Schlüssel `max_heating_temperature`, nur lesen, nie schreiben),
+   jeden Takt gelesen, damit eine Änderung in der HPSU sofort gilt; eingeengt wird abwärts gerundet auf
+   `step`. Liegt ein Schutzwert über dieser Grenze, ist er nicht erreichbar: dann Sperre statt Schreiben
+   (wie „Budget erschöpft“), Journal. (2) Als Absicherung für Geräte ohne diese Rolle eine
+   Klemm-Erkennung: Bleibt im gültigen Heizbetrieb der wirksame Soll nach `adopt_delay` um mehr als einen
+   Schritt unter dem geschriebenen Wert, gilt der wirksame Soll als Obergrenze (bis er wieder folgt),
+   einmal Journal, Status `limited` = `device_cap`. (3) Das UI zeigt die HPSU-Grenze bei den Grenzen und
+   warnt, wenn `flow_max_c` oder die Startgrenze des Heizflächentyps darüber liegt. Eine Änderung am
+   Manifest (Abschnitt 12) hilft nicht: `min`/`max` dort sind fest beim Kompilieren, die HPSU-Grenze ist
+   eine Einstellung. Vorher am Gerät bestätigen (Nutzer), dass „Max Temp Heizung“ der begrenzende Wert ist
+   (z. B. Max T-Vorlauf kurz über die Grenze setzen und den wirksamen Vorlauf-Soll ansehen).
 
 ## 16. Reihenfolge
 
@@ -1205,11 +1248,45 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       aus Pause, nach Warmwasser, Abtauen, Sperre an/aus, Nachführen bei steigendem Tv, ungewollte
       Abschaltung, Grenzen, Lernen, Zählung).
    4. **Schreiblogik** (8.5) mit Budget (`EepromGuard`), HA-Sensoren (13), Übernahme mit eingefrorener
-      Basis und Korrektur 0 (8.1, 8.2) – erst damit schreibt Sunflow aktiv. Dazu:
-      - Ti der Korrektur je Heizflächentyp (Fußboden 6 h, gemischt 4 h, Heizkörper 2 h); bis dahin fest
-        Fußboden (Kp 1, Ti 6 h).
-      - Stoßfreier Quellenwechsel im aktiven Betrieb (Basis ↔ Kennlinie, Hausmodell ↔ Wärme der letzten
-        3 h): Korrektur so anpassen, dass V_Ziel nicht springt (Sprungschutz). Im Schatten bewusst nicht.
+      Basis und Korrektur 0 (8.1, 8.2) – erst damit schreibt Sunflow aktiv. **Aufteilung (vom Nutzer
+      freigegeben)** in sieben Teile, je einzeln getestet und committet. Feste Vorgaben für alle:
+      Aktives Schreiben nur über einen Schalter je Wärmepumpe, Standard aus, eingeschaltet nur vom Nutzer;
+      Ausschalten, Modus `off` und Ausfall stellen nichts zurück (8.6); bis zum Einschalten läuft alles im
+      Schatten weiter. Teil 4.1 bis 4.6 schreiben nichts an die Wärmepumpe.
+      1. **Ti je Heizflächentyp** (8.2): Kp 1, Ti aus `HEATING_SURFACES` (Fußboden 6 h, gemischt 4 h,
+         Heizkörper 2 h); Wechsel des Typs ohne Sprung der Korrektur; wirkt schon im Schatten.
+         **Umgesetzt (0.80.12):** `defaults.correction_ti_h`, `Correction.step(ti_h=…)`, Status und UI;
+         Tests in `tests/test_heat_pump_shadow.py`.
+      2. **Schreiblogik 8.5** als eigene Schicht hinter der Schutzschicht (Schutzschicht liefert je Takt
+         den gewünschten Stellwert und ob er ein Schutzschritt ist; die Schreibschicht entscheidet, wann
+         geschrieben wird): Vorderflanke, Mindestabstand 5 min normal / 2 min Schutzschritt (Profil
+         `writes`, einstellbar), dazwischen nur den letzten Wert merken, Totzone außer bei Schutzschritten,
+         Rundung auf `step` (sichere Richtung), „ausstehend … um …“, Taste „jetzt schreiben“ (überspringt
+         den Mindestabstand, nicht das Budget), Journal je Schreibvorgang mit Grund. Im Schatten wirkt sie
+         auf die virtuellen Schreibvorgänge; Journal nur für echte, im Schatten Ereignisse wie bisher.
+      3. **Budget über `EepromGuard`**: normal 48/Tag, Notkontingent 24/Tag nur für Schutzschritte, 6/h;
+         Tag in der Zeitzone von HA; Raumthermostat-Sperre zählt nicht (Punkt 7). Erschöpft: normal nicht
+         mehr schreiben, Schutz über das Notkontingent, danach Sperre statt Nachführen, Journal. Im Schatten
+         virtuell gezählt (aus den Ereignissen), nicht in `eeprom_writes.json`; `shadow_writes` zeigt
+         dann, was mit Mindestabstand und Budget wirklich geschrieben würde.
+      4. **Fremde Schreiber** (8.5): Änderung von Max T-Vorlauf, die nicht von Sunflow stammt, und
+         ESP-Regelung (`supply_setpoint_regulated` > 0, optionale Profilrolle) → Journal (Warnung, einmal je
+         Episode), Zusammenfassung, Status; der virtuelle bzw. geschriebene Wert folgt dem echten. Wirkt
+         schon im Schatten.
+      5. **Sprungschutz beim Quellenwechsel** (8.1) für den aktiven Betrieb: Korrektur um alt − neu
+         verschieben, damit V_Ziel nicht springt (in der Begrenzung ±3 K, Rest bleibt als Sprung, Journal).
+         Im Schatten bewusst nicht; getestet in der Simulation.
+      6. **HA-Sensoren** (13): „Vorlauf-Ziel“, „Stellwert“ (Attribute geschrieben/ausstehend, Zeit, Grund,
+         `shadow`), „Schreibvorgänge heute“; climate-Attribute Stellwert geschrieben/ausstehend und Schalter
+         (nur Anzeige). Im Schatten gekennzeichnet.
+      7. **Aktivschalten**: Schalter je Wärmepumpe (Standard aus), Übernahme beim Einschalten mit
+         eingefrorener Basis und Korrektur 0 (V_Ziel springt nicht, geschrieben wird erst, wenn die Regeln es
+         verlangen), echtes Schreiben über die Profil-Schreibschritte (`storage: eeprom`), eigene Sperre ist
+         nicht fremd, Prüfung des Übernommenen (wirksamer Soll nach `adopt_delay`), Journal bei Ein/Aus;
+         Ausschalten, Modus `off`, Ausfall: nichts zurückstellen (8.6), danach wieder Schatten.
+         Voraussetzungen zum Einschalten: Gerät kompatibel, Strategie `fixed`, keine ESP-Regelung, Punkt 9
+         entschieden. Simulation nach Abschnitt 14 (HPSU-Nachbildung) als Abnahme. Das erste Schreiben an
+         der Wärmepumpe nur mit Freigabe des Nutzers.
       - **Todo (offener Punkt 8):** in den ersten Tagen des aktiven Betriebs per MCP (HA-History) und aus
         `heat_pump_samples` prüfen, ob der während Warmwasser geschriebene Stellwert (Vorbereiten, 8.4)
         beim Start danach gilt: Ereignisse `write` mit Phase `hot_water`, danach `start` mit
@@ -1220,10 +1297,15 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    Vorbereitung (0.80.11): fremd gesetzte Sperre wird nicht aufgehoben, nur angezeigt (8.4, 8.6);
    Grenzen des Stellwerts je Wärmepumpe (8.3, Punkt 4); Sperre außerhalb des Budgets (8.5, Punkt 7);
    Punkt 8 aus der HA-History nicht beantwortbar, wird in Teil 4 im aktiven Betrieb beobachtet (Todo oben).
-   Die alten Regler sind entfernt (Nutzer, Inbetriebnahme Schritt 0, Abschnitt 14).
+   Die alten Regler sollen vor dem Aktivschalten abgeschaltet sein (Inbetriebnahme Schritt 0, Abschnitt 14);
+   ein bei der Prüfung vor Teil 4 noch laufender Altregler (schrieb den Raumthermostat-Eingang) ist
+   inzwischen entfernt.
 
-   **Vor Teil 4** offen: Hardware-Test (Abschnitt 15, Punkt 1; prüfbar per MCP). Geklärt sind
-   Raumthermostat-Eingang (7) und höchster Vorlauf für den Estrich (4); Punkt 8 folgt in Teil 4.
+   **Vor Teil 4:** Hardware-Test geklärt (Abschnitt 15, Punkt 1), ebenso Raumthermostat-Eingang (7) und
+   höchster Vorlauf für den Estrich (4); Punkt 8 folgt in Teil 4. Neu offen und vor Teil 4.7 zu entscheiden:
+   Bereich von Max T-Vorlauf gegen die eigene Grenze der HPSU (Punkt 9). Vor dem Einschalten Inbetriebnahme
+   Schritt 0 (Abschnitt 14) erneut prüfen: kein anderer Regler darf Max T-Vorlauf oder den
+   Raumthermostat-Eingang schreiben.
 4. Planung mit Raum-Soll + Spielraum (Vorheizen).
 5. UART-Begleiter, Paarung.
 6. S2.

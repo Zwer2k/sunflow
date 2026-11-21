@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.12
+
+- Heat pumps (still shadow operation): the room correction now integrates as fast as the heating surface type reacts – integral time underfloor 6 h, mixed 4 h, radiators 2 h (before 6 h for every type). Changing the type changes only how the correction moves from then on; it does not jump. The integral time is shown with the correction in Settings → Heat pump.
+
 ## 0.80.11
 
 - Heat pumps (still shadow operation): a room thermostat block Sunflow did not set – found on start or set later by hand, an automation or another controller – is no longer released. Sunflow shows it in Settings → Heat pump and notes it in the journal, writes nothing while it lasts and controls again once someone else has released it.

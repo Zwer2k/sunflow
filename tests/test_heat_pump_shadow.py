@@ -17,6 +17,7 @@ from sunflow.api.integration import router as integration_router
 from sunflow.config.models import ClimateSettings, DeviceConfig, HouseSettings, Room, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.heat_pump.correction import Correction, SetpointWatch, Settling
+from sunflow.heat_pump.defaults import HEATING_SURFACES, correction_ti_h
 from sunflow.heat_pump.rooms import reported_times, room_temperature
 from sunflow.heat_pump.samples import Minute
 from sunflow.heat_pump.shadow import FlowShadow
@@ -312,6 +313,67 @@ async def test_strategy_change_starts_without_jump(tmp_path: Path) -> None:
 
     assert house.flow()["correction_k"] == 0.0
     assert house.flow()["strategy"] == "weather"
+
+
+# Integral time per heating surface type (8.2, step 3 part 4.1)
+
+
+def test_integral_time_per_heating_surface_type() -> None:
+    assert set(HEATING_SURFACES) == {"underfloor", "mixed", "radiator"}
+    assert {s: correction_ti_h(s) for s in HEATING_SURFACES} == {"underfloor": 6.0, "mixed": 4.0, "radiator": 2.0}
+    # Unknown or missing type: the default's
+    assert correction_ti_h("floor_and_ceiling") == correction_ti_h(None) == 6.0
+
+
+@pytest.mark.parametrize(("ti", "expected"), [(6.0, 0.5), (4.0, 0.75), (2.0, 1.5)])
+def test_correction_integrates_with_the_given_integral_time(ti: float, expected: float) -> None:
+    """0.5 K below the setpoint for 6 h: Kp/Ti · e · t."""
+    correction = Correction()
+    for minute in range(6 * 60 + 1):
+        correction.step(20.5, 21.0, NOW + minute * MIN, ti_h=ti)
+
+    assert correction.value_k == pytest.approx(expected)
+
+
+def test_non_positive_integral_time_counts_as_the_default() -> None:
+    correction = Correction()
+    for minute in range(6 * 60 + 1):
+        correction.step(20.5, 21.0, NOW + minute * MIN, ti_h=0.0)
+
+    assert correction.value_k == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize(("surface", "ti"), [("underfloor", 6.0), ("mixed", 4.0), ("radiator", 2.0)])
+async def test_shadow_uses_the_integral_time_of_the_heating_surface(tmp_path: Path, surface: str, ti: float) -> None:
+    house = House(tmp_path)
+    house.config.house.heating_surface = surface
+    house.room = "20.5"
+    for minute in range(6 * 60 + 1):
+        await house.tick(NOW + minute * MIN)
+
+    flow = house.flow()
+    assert flow["parameters"]["ti_h"] == ti
+    assert flow["correction_k"] == pytest.approx(0.5 * 6.0 / ti)
+
+
+async def test_changing_the_heating_surface_does_not_jump_the_correction(tmp_path: Path) -> None:
+    """Underfloor for 3 h, then radiators: the value stays at the change, only the increments get faster."""
+    house = House(tmp_path)
+    house.room = "20.5"
+    for minute in range(3 * 60 + 1):
+        await house.tick(NOW + minute * MIN)
+    before = house.flow()["correction_k"]
+    assert before == pytest.approx(0.25)
+
+    house.config.house.heating_surface = "radiator"
+    await house.tick(NOW + 181 * MIN)
+    assert house.flow()["correction_k"] == pytest.approx(before)
+    assert house.flow()["parameters"]["ti_h"] == 2.0
+
+    for minute in range(182, 6 * 60 + 1):
+        await house.tick(NOW + minute * MIN)
+    # 3 h more with Ti 2 h: + 0.5 · 3 / 2
+    assert house.flow()["correction_k"] == pytest.approx(0.25 + 0.75)
 
 
 # Climate entity "Haus" (6.3) and the room setpoint in the configuration

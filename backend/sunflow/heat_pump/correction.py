@@ -2,7 +2,9 @@
 
 The correction is a PI controller in incremental form, added to the flow target:
     Δcorrection = Kp/Ti · e · Δt (only outside the deadband) − Kp · Δroom,   e = target − room
-The proportional part acts on the room temperature itself, so a setpoint change causes no jump.
+The proportional part acts on the room temperature itself, so a setpoint change causes no jump. Ti
+depends on the heating surface type (defaults.correction_ti_h); in the incremental form a change of Ti
+only changes the increments from then on, never the correction itself (no jump).
 A step is taken when the room temperature changed, at the latest CORRECTION_MAX_STEP after the last
 one (then only the integral part); Δt is never longer than that. While frozen (no valid heating,
 setpoint change, no room data) nothing changes, and what the room did meanwhile is dropped, not made
@@ -53,8 +55,13 @@ class Correction:
         if self._room is not None:
             self._room = room_c
 
-    def step(self, room_c: float, target_c: float, now: datetime, block_up: bool = False, block_down: bool = False) -> bool:
+    def step(
+        self, room_c: float, target_c: float, now: datetime, block_up: bool = False, block_down: bool = False,
+        ti_h: float = CORRECTION_TI_H,
+    ) -> bool:
         """One step if the room changed or the longest step passed; True if a step was taken.
+
+        ti_h: integral time of the heating surface type (8.2); not positive counts as the default.
 
         block_up / block_down: the flow target is at a limit (8.3) in that direction - an increment
         towards it is dropped like a frozen step (anti-windup), one away from it counts.
@@ -68,7 +75,8 @@ class Correction:
             return False
         hours = max(min(elapsed, MAX_STEP), timedelta(0)).total_seconds() / 3600
         error = target_c - room_c
-        integral = CORRECTION_KP / CORRECTION_TI_H * error * hours if abs(error) > ROOM_DEADBAND_K + _EPS else 0.0
+        ti = ti_h if ti_h > 0 else CORRECTION_TI_H
+        integral = CORRECTION_KP / ti * error * hours if abs(error) > ROOM_DEADBAND_K + _EPS else 0.0
         proportional = -CORRECTION_KP * (room_c - self._room)
         increment = integral + proportional
         if (increment > _EPS and block_up) or (increment < -_EPS and block_down):

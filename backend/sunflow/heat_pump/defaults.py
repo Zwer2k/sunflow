@@ -22,9 +22,10 @@ ROOM_SETPOINT_DEFAULT_C = 21.0
 ROOM_SETPOINT_STEP_C = 0.5
 ROOM_SETPOINT_RESOLUTION_C = 0.1
 
-# Room correction (8.2) without a heating curve, fixed for underfloor heating until step 3:
-# proportional part on the room temperature, integral time, deadband of the integral part (also of
-# the setpoint change), limit of the correction and the longest time step counted after a gap
+# Room correction (8.2): proportional part on the room temperature (the same for every heating surface
+# type), integral time of the default type (each type's own in HEATING_SURFACES, ti_h), deadband of the
+# integral part (also of the setpoint change), limit of the correction and the longest time step counted
+# after a gap
 CORRECTION_KP = 1.0
 CORRECTION_TI_H = 6.0
 ROOM_DEADBAND_K = 0.2
@@ -50,19 +51,29 @@ VENT_RECENT_KEEP_S = 24 * 3600
 VENT_RECENT_MAX = 20
 
 # Type of the heating surfaces (8.1, setting house.heating_surface): start value of the exponent n of
-# the heating curve Q = K·(Tw − T_room)^n and the start limits of the set value (8.3, used from step 3
-# part 3 on). n is not learned (9.2: optional; kept at the start value of the type).
+# the heating curve Q = K·(Tw − T_room)^n, the start limits of the set value (8.3, used from step 3
+# part 3 on) and the integral time of the room correction (8.2, ti_h; slower surfaces react later, so
+# the correction integrates more slowly). n is not learned (9.2: optional; kept at the start value).
 HEATING_SURFACE_DEFAULT = "underfloor"
 HEATING_SURFACES: dict[str, dict[str, float]] = {
-    "underfloor": {"n": 1.1, "min_c": 25.0, "max_c": 40.0},
-    "mixed": {"n": 1.2, "min_c": 25.0, "max_c": 50.0},
-    "radiator": {"n": 1.3, "min_c": 30.0, "max_c": 55.0},
+    "underfloor": {"n": 1.1, "min_c": 25.0, "max_c": 40.0, "ti_h": CORRECTION_TI_H},
+    "mixed": {"n": 1.2, "min_c": 25.0, "max_c": 50.0, "ti_h": 4.0},
+    "radiator": {"n": 1.3, "min_c": 30.0, "max_c": 55.0, "ti_h": 2.0},
 }
+
+
+def _surface(surface: str | None) -> dict[str, float]:
+    return HEATING_SURFACES.get(surface or "", HEATING_SURFACES[HEATING_SURFACE_DEFAULT])
 
 
 def curve_exponent(surface: str | None) -> float:
     """Start value of n for a heating surface type; the default type for an unknown one."""
-    return HEATING_SURFACES.get(surface or "", HEATING_SURFACES[HEATING_SURFACE_DEFAULT])["n"]
+    return _surface(surface)["n"]
+
+
+def correction_ti_h(surface: str | None) -> float:
+    """Integral time of the room correction (h) for a heating surface type; the default type for an unknown one."""
+    return _surface(surface)["ti_h"]
 
 
 # Heating curve (9.2), learned from heat_pump_samples every CURVE_REFRESH: rows of the last

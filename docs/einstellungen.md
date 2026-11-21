@@ -93,7 +93,8 @@ Raumthermostat-Sperre oder Störung deutlich hervorgehoben, und ob die Wärmepum
 der Grund (z. B. Warmwasser, Nachlauf, Bypass-Ventil). Darunter das **Vorlauf-Ziel** = Basis +
 Korrektur: Die Basis ist der wirksame Vorlauf-Soll aus gültigem Heizbetrieb (außerhalb gilt der letzte
 solche Wert). Die Korrektur gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens
-± 3 K; unter ± 0,2 K Abweichung wächst sie nicht). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
+± 3 K; unter ± 0,2 K Abweichung wächst sie nicht); wie langsam, hängt vom Heizflächentyp ab
+(Nachstellzeit: Fußboden 6 h, gemischt 4 h, Heizkörper 2 h). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
 Raumtemperaturen fehlen, gelüftet wird oder der Raum einem geänderten Raum-Soll noch folgt (höchstens
 24 Stunden). Im
 Schattenbetrieb wirkt sie nicht zurück und kann bis an ihre Grenze laufen.
@@ -150,8 +151,8 @@ nicht ins Budget: Die HPSU legt diesen Eingang nicht im EEPROM ab.
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
 Wärmepumpe). Der **Heizflächentyp** (Fußbodenheizung, gemischt, Heizkörper; Standard Fußboden) gibt den
-Startwert der Kennlinie vor; nach einer Änderung wird sie neu bewertet, die gemessenen Daten bleiben
-erhalten. Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
+Startwert der Kennlinie und die Nachstellzeit der Korrektur vor; nach einer Änderung wird die
+Kennlinie neu bewertet, die gemessenen Daten bleiben erhalten, die Korrektur springt nicht. Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
 der Sensor der Wärmepumpe), der Außentemperatur-Sensor der Wärmepumpe, der Fühler ihres Außengeräts
 (HPSU: TA2) oder nur der eigene Sensor. Sunflow lernt daraus ein einfaches Wärmemodell des Hauses aus den
 Stundenwerten der letzten vier Wochen. Stunden, in denen die Wärmepumpe Warmwasser bereitet oder
