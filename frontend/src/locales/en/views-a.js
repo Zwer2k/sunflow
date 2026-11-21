@@ -239,7 +239,7 @@ export default {
   "Speicher geplant": "Battery planned",
   "Speicher gibt je Viertelstunde bis zu {energy} ab und deckt dabei auch Spitzen ganz, danach hält er": "Battery gives up to {energy} per quarter hour, covering peaks in full, then holds",
   "Speicher lädt höchstens {power} aus PV, der übrige Überschuss wird eingespeist": "Battery charges at most {power} from PV; the remaining surplus is exported",
-  "Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.": "Left of \"now\" measured values, right of it forecasts and the planned control. Overrides in the \"Control\" tab, presets under \"Settings → Planning\".",
+  "Bis jetzt gemessene Werte, danach Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.": "Measured values up to now, forecasts and the planned control after it. Overrides in the \"Control\" tab, presets under \"Settings → Planning\".",
   "Sunflow steuert noch nichts – die Planung zeigt, was es tun würde.": "Sunflow does not control anything yet – the plan shows what it would do.",
   "Sunflow setzt den Plan um.": "Sunflow carries out the plan.",
   "Sunflow setzt den Plan bei {devices} um; Geräte mit „nur Plan“ zeigen nur, was es tun würde.": "Sunflow carries out the plan for {devices}; devices marked \"plan only\" only show what it would do.",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.7
+
+- Plan: clearer caption (measured values up to now, forecast and plan after it).
+
 ## 0.80.6
 
 - Control: the consumer's duration selection stands alone (no "changed" chip, no line break); "Overrides apply" at the home battery sits left of its selection.

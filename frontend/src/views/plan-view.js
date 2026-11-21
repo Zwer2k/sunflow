@@ -298,7 +298,7 @@ class SunflowPlan extends LitElement {
             <h1>${t("Planung")}</h1>
             <sf-display-toggles placement="title" help></sf-display-toggles>
           </div>
-          <p class="muted help">${t("Links von „jetzt“ gemessene Werte, rechts Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.")}
+          <p class="muted help">${t("Bis jetzt gemessene Werte, danach Prognosen und die geplante Steuerung. Eingriffe im Tab „Steuerung“, Voreinstellungen unter „Einstellungen → Planung“.")}
             ${plan ? this._controlNote(plan) : nothing}</p>
         </div>
         <button class="secondary" ?disabled=${this._loading} @click=${() => this._load(true)}>
