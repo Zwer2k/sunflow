@@ -99,9 +99,11 @@ stehen, solange sie höchstens 60 % des Bildschirms brauchen:
 
 ![Steuerung](images/control.png)
 
-Hier greifst du vorübergehend in den Plan ein. Danach gilt wieder der Standard aus den
-Einstellungen. **Eingriffe gelten** legt fest, wie lange: bis Mitternacht, 4 Stunden oder bis
-auf Weiteres. Nach jeder Änderung plant Sunflow sofort neu.
+Hier greifst du in den Plan ein. Strategie, Ziel und Speichermodus gelten vorübergehend, danach
+gilt wieder der Standard aus den Einstellungen. Wie lange, legt **Eingriffe gelten** im Rahmen
+Hausspeicher bzw. Verbraucher fest: bis Mitternacht, 4 Stunden oder bis auf Weiteres. Die
+Schalter unter „Sunflow steuert“, die Priorität und ein ausgewähltes Fahrzeug (bis zum Abstecken)
+gelten dauerhaft. Nach jeder Änderung plant Sunflow sofort neu.
 
 - **Sunflow steuert**: Hauptschalter und Schalter je Gerät, dazu der Zustand jedes Geräts.
   Zugeklappt zeigt der Abschnitt, wie viele Geräte gesteuert werden und ob eines ein Problem hat.

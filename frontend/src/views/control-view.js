@@ -181,17 +181,9 @@ class SunflowControl extends LitElement {
             <h1>${t("Steuerung")}</h1>
             <sf-display-toggles placement="title" help></sf-display-toggles>
           </div>
-          <p class="muted help">${t("Vorübergehende Eingriffe – danach gilt wieder der Standard aus den Einstellungen.")}
+          <p class="muted help">${t("Eingriffe in Strategie, Ziel und Speichermodus gelten vorübergehend (Dauer im jeweiligen Rahmen), danach gilt wieder der Standard aus den Einstellungen. Steuerung und Priorität gelten dauerhaft.")}
             ${t("Sunflow plant nach jeder Änderung sofort neu.")}</p>
         </div>
-        <label class="duration">
-          <span class="small muted">${t("Eingriffe gelten")}</span>
-          <select aria-label=${t("Eingriffe gelten")} @change=${(e) => (this._duration = e.target.value)}>
-            ${Object.entries(DURATIONS).map(
-              ([value, label]) => html`<option value=${value} ?selected=${this._duration === value}>${label}</option>`,
-            )}
-          </select>
-        </label>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${data === null && !this._error ? html`<p class="muted">${t("Lade …")}</p>` : nothing}
@@ -201,7 +193,10 @@ class SunflowControl extends LitElement {
           ${data.strategy.available ? this._renderBattery(data.strategy, data.batteries ?? []) : nothing}
           ${data.devices.length
             ? html`<section>
-                <h2>${t("Verbraucher")}</h2>
+                <div class="section-head">
+                  <h2>${t("Verbraucher")}</h2>
+                  ${this._renderDuration()}
+                </div>
                 <div class="cards">${this._orderedDevices(data).map((d) => this._renderDevice(d))}</div>
               </section>`
             : html`<p class="muted">${t("Noch keine Verbraucher eingerichtet (Wallbox, Warmwasser, eigene Geräte).")}</p>`}
@@ -375,6 +370,18 @@ class SunflowControl extends LitElement {
     return [...data.devices].sort((a, b) => (rank[a.id] ?? 99) - (rank[b.id] ?? 99));
   }
 
+  /** How long changes of strategy, target and battery mode last; shared by the battery and the consumers. */
+  _renderDuration() {
+    return html`<label class="duration">
+      <span class="small muted">${t("Eingriffe gelten")}</span>
+      <select aria-label=${t("Eingriffe gelten")} @change=${(e) => (this._duration = e.target.value)}>
+        ${Object.entries(DURATIONS).map(
+          ([value, label]) => html`<option value=${value} ?selected=${this._duration === value}>${label}</option>`,
+        )}
+      </select>
+    </label>`;
+  }
+
   _renderBattery(strategy, batteries) {
     return html`
       <section class="card">
@@ -383,9 +390,12 @@ class SunflowControl extends LitElement {
             <h2>${t("Hausspeicher")}</h2>
             <span class="small muted">${t("Standard: {strategy}", { strategy: STRATEGIES[strategy.default].short })}</span>
           </div>
-          ${strategy.override
-            ? html`<span class="chip">${STRATEGIES[strategy.effective].short} · ${untilText(strategy.override.until)}</span>`
-            : nothing}
+          <div class="head-end">
+            ${strategy.override
+              ? html`<span class="chip">${STRATEGIES[strategy.effective].short} · ${untilText(strategy.override.until)}</span>`
+              : nothing}
+            ${this._renderDuration()}
+          </div>
         </div>
         <div class="segmented strategies" role="group" aria-label=${t("Strategie Hausspeicher")}>
           ${Object.entries(STRATEGIES).map(
@@ -661,6 +671,8 @@ class SunflowControl extends LitElement {
     .heading > div:first-child { flex: 1 1 260px; min-width: 0; }
     .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end; }
     .duration { display: flex; flex-direction: column; gap: 4px; }
+    .head-end { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+    .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: flex-end; }
     select {
       min-height: 40px; padding: 0 10px; font: inherit; font-size: 14px; border: 1px solid var(--sf-border-strong);
       border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);

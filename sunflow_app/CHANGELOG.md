@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.4
+
+- Control: "Overrides apply" moved from the page header into the home battery and the consumers frame, where it takes effect; the page text says that control switches, priority and a chosen vehicle stay until changed.
+
 ## 0.80.3
 
 - The periodic full charge ("full charge every … days") no longer buys grid power at the normal price: if PV is not enough it waits for the next cheap tariff (e.g. night rate) after which a full battery would feed nothing in the next day. The overdue full charge ("from the grid after … days") is unchanged.

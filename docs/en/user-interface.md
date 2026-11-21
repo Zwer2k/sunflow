@@ -94,9 +94,11 @@ as they take at most 60 % of the screen:
 
 ![Control](../images/en/control.png)
 
-Temporary overrides of the plan; afterwards the defaults from the settings apply again.
-**Overrides apply** sets for how long: until midnight, 4 hours or until
-further notice. Sunflow replans immediately after every change.
+Changes to the plan. Strategy, target and battery mode are temporary; afterwards the defaults
+from the settings apply again. **Overrides apply** in the home battery and the consumers frame
+sets for how long: until midnight, 4 hours or until further notice. The switches under
+"Sunflow controls", the priority and a chosen vehicle (until it is unplugged) stay until you
+change them. Sunflow replans immediately after every change.
 
 - **Sunflow controls**: main switch and one switch per device, with each
   device's state. Collapsed, it shows how many devices are controlled and whether one has a

@@ -207,7 +207,7 @@ export default {
   "bis {time}": "until {time}",
   "Steuerung nicht verfügbar: {error}": "Control not available: {error}",
   "Änderung fehlgeschlagen: {error}": "Change failed: {error}",
-  "Vorübergehende Eingriffe – danach gilt wieder der Standard aus den Einstellungen.": "Temporary overrides – afterwards the default from the settings applies again.",
+  "Eingriffe in Strategie, Ziel und Speichermodus gelten vorübergehend (Dauer im jeweiligen Rahmen), danach gilt wieder der Standard aus den Einstellungen. Steuerung und Priorität gelten dauerhaft.": "Changes of strategy, target and battery mode are temporary (duration in their frame); afterwards the default from the settings applies again. Control and priority stay until you change them.",
   "Sunflow plant nach jeder Änderung sofort neu.": "Sunflow replans immediately after every change.",
   "Eingriffe gelten": "Overrides apply",
   "Noch keine Verbraucher eingerichtet (Wallbox, Warmwasser, eigene Geräte).": "No loads set up yet (wallbox, hot water, custom devices).",
