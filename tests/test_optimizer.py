@@ -891,6 +891,87 @@ async def test_battery_care_overdue_uses_grid(monkeypatch: pytest.MonkeyPatch) -
     assert "überfällig" in care.notes[0]
 
 
+def test_blocked_slots_charge_no_grid_for_the_full_charge() -> None:
+    """A full charge with the grid blocked stays short rather than buy at the normal price."""
+    battery = BatterySpec(capacity_wh=10000, soc_wh=5000, min_soc_wh=1000, max_charge_w=5000, max_discharge_w=5000)
+    inputs = _slots(12, price=lambda i: 0.30)
+
+    plan = optimize(
+        inputs, battery, Settings(allow_grid_charge=True, full_charge_slot=23, grid_charge_blocked=frozenset(range(24)))
+    )
+
+    assert all(s.charge_w < 1 for s in plan.slots[:24])
+
+
+def _night_tariff(i: int) -> float:
+    """22:00-06:00 local cheap (START is 22:00)."""
+    return 0.226 if i % 96 < 32 else 0.326
+
+
+async def _due_care(monkeypatch: pytest.MonkeyPatch, config: SunflowConfig, battery: BatterySpec, inputs: list[SlotInput]):
+    from types import SimpleNamespace
+
+    import sunflow.planning.plan as plan_module
+
+    async def due_now(client: object, entity: object, days: int) -> datetime:
+        return (START - timedelta(days=14)).astimezone(UTC)
+
+    monkeypatch.setattr(plan_module, "last_full_charge", due_now)
+    return await plan_module.battery_care(
+        None, config, {"roles": {}}, SimpleNamespace(ha_device_id="x", role_overrides={}),
+        SimpleNamespace(devices=[], entities=[], states={}), battery, inputs, BERLIN,
+    )
+
+
+@pytest.mark.parametrize(
+    ("soc_wh", "pv_w", "target", "blocked"),
+    [
+        # Weak PV: full in the first night, the next day's surplus still fits
+        pytest.param(10000, lambda i: 1000.0 if 48 <= i < 64 else 0.0, 31, frozenset(), id="first_night"),
+        # A full battery after the first night would feed in the next day: the second night
+        pytest.param(2000, lambda i: 1500.0 if 48 <= i < 72 else 0.0, 127, frozenset(range(32, 96)), id="second_night"),
+    ],
+)
+async def test_full_charge_without_pv_waits_for_the_cheap_tariff(
+    monkeypatch: pytest.MonkeyPatch, soc_wh: float, pv_w: callable, target: int, blocked: frozenset[int]
+) -> None:
+    """PV does not fill the battery: the full charge moves to the end of a cheap window, never the normal price."""
+    from sunflow.config.models import OptimizerConfig
+
+    config = SunflowConfig(optimizer=OptimizerConfig(full_charge_every_days=14))
+    battery = BatterySpec(capacity_wh=20000, soc_wh=soc_wh, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+
+    care = await _due_care(monkeypatch, config, battery, _slots(72, price=_night_tariff, pv=pv_w))
+
+    assert care.full_charge_slot == target
+    assert not care.from_grid
+    assert "günstigen Tarif" in care.notes[0]
+    # The normal price of the day in between is blocked for grid charging
+    assert care.grid_blocked == blocked
+
+
+@pytest.mark.parametrize(
+    ("price", "allow_grid_charge"),
+    [
+        pytest.param(lambda i: 0.30, True, id="no_cheap_tariff"),
+        pytest.param(_night_tariff, False, id="grid_charging_off"),
+    ],
+)
+async def test_full_charge_without_pv_or_cheap_tariff_waits(
+    monkeypatch: pytest.MonkeyPatch, price: callable, allow_grid_charge: bool
+) -> None:
+    """Without enough PV and without a usable cheap tariff no full charge is planned yet."""
+    from sunflow.config.models import OptimizerConfig
+
+    config = SunflowConfig(optimizer=OptimizerConfig(full_charge_every_days=14, allow_grid_charge=allow_grid_charge))
+    battery = BatterySpec(capacity_wh=20000, soc_wh=10000, min_soc_wh=2000, max_charge_w=5000, max_discharge_w=5000)
+
+    care = await _due_care(monkeypatch, config, battery, _slots(72, price=price))
+
+    assert care.full_charge_slot is None
+    assert "wartet" in care.notes[0]
+
+
 def test_cautious_pv_charges_more_from_the_grid() -> None:
     """Planning towards the pessimistic PV forecast stores more cheap night energy."""
     import math

@@ -87,6 +87,8 @@ class Settings:
     # €/kWh missing to full at that slot; high enough to prefer PV, low enough not to
     # force expensive grid charging
     full_charge_penalty: float = 0.25
+    # Slots in which the battery must not charge from the grid (a full charge from PV or the cheap tariff)
+    grid_charge_blocked: frozenset[int] = frozenset()
     # Calendar aging is faster at a high SoC: every kWh above this (Wh) costs per hour
     high_soc_wh: float | None = None
     high_soc_ct_per_kwh_h: float = 0.0
@@ -672,11 +674,12 @@ def optimize(
     for t, slot in enumerate(inputs):
         surplus = max(pv_rest[t], 0)
         for k, b in enumerate(batteries):
+            from_grid = grid_charge[k] and t not in settings.grid_charge_blocked
             # Without grid charging only the surplus over the house load may go into the battery
-            upper[c[k][t]] = b.max_charge_w if grid_charge[k] else min(b.max_charge_w, surplus)
+            upper[c[k][t]] = b.max_charge_w if from_grid else min(b.max_charge_w, surplus)
             upper[d[k][t]] = b.max_discharge_w
             if cg[k] is not None:
-                upper[cg[k][t]] = b.max_charge_w if grid_charge[k] else 0.0
+                upper[cg[k][t]] = b.max_charge_w if from_grid else 0.0
             lower[s[k][t]] = soc_min[k]
             upper[s[k][t]] = soc_upper[k]
         # The grid only carries what the house, loads and batteries can take or give

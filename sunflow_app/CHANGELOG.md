@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.3
+
+- The periodic full charge ("full charge every … days") no longer buys grid power at the normal price: if PV is not enough it waits for the next cheap tariff (e.g. night rate) after which a full battery would feed nothing in the next day. The overdue full charge ("from the grid after … days") is unchanged.
+
 ## 0.80.2
 
 - Removed the profile `setup` steps, which were never executed: the Sofar passive mode is set as control mode, the passive timeout is not used.

@@ -49,7 +49,7 @@ from .load_forecast import (
 from .house_model import HouseModel
 from .house_plan import thermal_loads
 from .load_model import LoadModel
-from .optimizer import DT_H, BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
+from .optimizer import DT_H, FULL_FRACTION, BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
 from .price_estimate import extend_prices
 from .pv_learning import PvCorrection, cloud_class
 from .pv_sun import SunCorrection
@@ -850,6 +850,8 @@ class BatteryCare:
     full_charge_at: datetime | None = None
     # Overdue: charge full from the grid if PV does not do it in time
     from_grid: bool = False
+    # Slots before the full charge in which the grid must not charge the battery
+    grid_blocked: frozenset[int] = frozenset()
     # A day with less PV than consumption ahead, for which the charge limit is lifted
     poor_day: date | None = None
     notes: list[str] = field(default_factory=list)
@@ -1172,15 +1174,60 @@ async def battery_care(
     for index, slot in enumerate(inputs):
         if slot.start >= due_day and slot.pv_w > slot.load_w:
             candidates[slot.start.astimezone(tz).date()] = index
-    if not candidates:
-        care.notes.append(t("Vollladung fällig (zuletzt voll: {since}) – im Planungszeitraum ist kein PV-Überschuss in Sicht.", since=since))
+    cheap = cheap_slots([slot.price for slot in inputs])
+    pv_slot = candidates[min(candidates)] if candidates else None
+    if pv_slot is not None and fills_from_pv(inputs, battery, pv_slot):
+        target, text = pv_slot, N_("Vollladung fällig (zuletzt voll: {since}) – geplant bis {time}.")
+    else:
+        first = next((index for index, slot in enumerate(inputs) if slot.start >= due_day), 0)
+        target = cheap_full_slot(inputs, battery, cheap, first) if options.allow_grid_charge else None
+        text = N_("Vollladung fällig (zuletzt voll: {since}) – PV reicht nicht, wird bis {time} im günstigen Tarif nachgeholt.")
+    if target is None:
+        care.notes.append(
+            t("Vollladung fällig (zuletzt voll: {since}) – PV reicht nicht; sie wartet auf einen günstigen Tarif, nach dem am Folgetag nichts eingespeist würde.", since=since)
+        )
         return care
-    care.full_charge_slot = candidates[min(candidates)]
-    care.full_charge_at = inputs[care.full_charge_slot].start + SLOT
-    care.notes.append(
-        t("Vollladung fällig (zuletzt voll: {since}) – geplant bis {time}.", since=since, time=german_time(care.full_charge_at.astimezone(tz)))
-    )
+    care.full_charge_slot = target
+    care.full_charge_at = inputs[target].start + SLOT
+    # Only PV or the cheap tariff fill it, never grid power at the normal price
+    care.grid_blocked = frozenset(index for index in range(target + 1) if not cheap[index])
+    care.notes.append(t(text, since=since, time=german_time(care.full_charge_at.astimezone(tz))))
     return care
+
+
+# Wh above full that still count as no feed-in after a full charge from the grid
+EXPORT_TOLERANCE_WH = 200
+
+
+def _run_battery(inputs: list[SlotInput], battery: BatterySpec, soc: float, slots: range) -> tuple[float, float]:
+    """SoC after the slots on PV and load alone (no grid charging), and the most it would have topped full by."""
+    over = 0.0
+    for index in slots:
+        net = (inputs[index].pv_w - inputs[index].load_w) * SLOT.total_seconds() / 3600
+        soc += net * battery.efficiency_charge if net > 0 else net / battery.efficiency_discharge
+        soc = max(soc, battery.min_soc_wh)
+        if soc > battery.capacity_wh:
+            over = max(over, soc - battery.capacity_wh)
+            soc = battery.capacity_wh
+    return soc, over
+
+
+def fills_from_pv(inputs: list[SlotInput], battery: BatterySpec, target: int) -> bool:
+    """Whether the PV surplus up to the target slot charges the battery full."""
+    soc, over = _run_battery(inputs, battery, battery.soc_wh, range(target + 1))
+    return over > 0 or soc >= battery.capacity_wh * FULL_FRACTION
+
+
+def cheap_full_slot(inputs: list[SlotInput], battery: BatterySpec, cheap: list[bool], first: int) -> int | None:
+    """End of the first cheap window from first on after which a full battery feeds nothing in for a day."""
+    day = int(timedelta(days=1) / SLOT)
+    for end in range(first, len(inputs) - day):
+        if not cheap[end] or cheap[end + 1]:
+            continue
+        _, over = _run_battery(inputs, battery, battery.capacity_wh, range(end + 1, end + 1 + day))
+        if over <= EXPORT_TOLERANCE_WH:
+            return end
+    return None
 
 
 # The problem of a battery whose SoC cannot be read (then the history's last value stands in)
@@ -1892,7 +1939,9 @@ async def compute_plan(
     settings = replace(settings, battery_gate_after=battery_gate)
     warnings += flex_warnings
     care = await battery_care(client, config, profile, battery_device, snapshot, battery, inputs, tz, pv)
-    settings = replace(settings, soc_limit_wh=care.limit_wh, full_charge_slot=care.full_charge_slot)
+    settings = replace(
+        settings, soc_limit_wh=care.limit_wh, full_charge_slot=care.full_charge_slot, grid_charge_blocked=care.grid_blocked
+    )
     if care.from_grid:
         # Explicitly wanted by the user: grid charging for the overdue full charge
         settings = replace(settings, allow_grid_charge=True, full_charge_penalty=OVERDUE_FULL_CHARGE_PENALTY)

@@ -103,7 +103,9 @@ differences. This is intended, not a bug.
 ## Protecting the battery
 
 - **Everyday charge limit**: Sunflow only charges above it for a due full charge.
-- **Full charge every … days**: to balance the cells, preferably with PV.
+- **Full charge every … days**: to balance the cells, preferably with PV. If PV is not enough, the
+  full charge waits for the next cheap tariff (e.g. night rate) after which nothing would be fed in
+  the next day. Sunflow never charges from the grid at the normal price for it.
 - **From the grid at the latest after … days**: if PV has not filled the battery for that long,
   Sunflow fills it from the grid at the cheapest time.
 - **Aging at high SoC** (calendar aging): cells age faster the longer they sit

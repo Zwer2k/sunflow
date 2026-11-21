@@ -105,7 +105,9 @@ Preisunterschieden nicht aus dem Netz. Das ist Absicht und kein Fehler.
 ## Speicher schonen
 
 - **Ladegrenze im Alltag**: Höher als die Grenze lädt Sunflow nur für eine fällige Vollladung.
-- **Voll laden alle … Tage**: zum Ausgleichen der Zellen, bevorzugt mit PV.
+- **Voll laden alle … Tage**: zum Ausgleichen der Zellen, bevorzugt mit PV. Reicht die PV nicht,
+  wartet die Vollladung auf den nächsten günstigen Tarif (z. B. Nachtstrom), nach dem am Folgetag
+  nichts eingespeist würde. Zum normalen Preis lädt Sunflow dafür nie aus dem Netz.
 - **Spätestens nach … aus dem Netz**: Hat PV den Speicher so lange nicht gefüllt, lädt Sunflow
   ihn zur günstigsten Zeit aus dem Netz voll.
 - **Alterung bei hohem Ladestand** (kalendarische Alterung): Zellen altern schneller, je länger
