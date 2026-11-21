@@ -24,7 +24,7 @@ is there and not worse in use than the one from Home Assistant, and it is kept (
 import asyncio
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 import math
 from statistics import median
@@ -329,6 +329,9 @@ class HouseData:
     coverage_days: int = 0
     # Sun value of a bright hour: the model's sun (0-1) is relative to it
     sun_bright: float | None = None
+    # Sun (0-1) of every hour the sensor's history has, by hour start: each hour learns with its own
+    # hour's value, also hours that rows leave out here but the samples keep (9.3)
+    sun_hours: dict[datetime, float] = field(default_factory=dict)
 
 
 async def house_data(
@@ -371,6 +374,7 @@ async def house_data(
         sun_entity=sun_entity if sun else None,
         excluded_hours=sum(1 for start in inside if start in outside and start in busy),
         sun_bright=_bright(sun_raw) if sun else None,
+        sun_hours=sun,
     )
 
 
@@ -545,10 +549,14 @@ def sample_hours(
 
 
 def samples_house_data(rows: list[dict[str, Any]], config: SunflowConfig, ha: HouseData, coverage_days: int) -> HouseData:
-    """The house's hourly rows from heat_pump_samples; sun and the outside entity as from Home Assistant."""
+    """The house's hourly rows from heat_pump_samples; sun and the outside entity as from Home Assistant.
+
+    The sun of an hour is the sensor's mean of that very hour (never the current value), taken from
+    all hours of its history - not only from the hours Home Assistant's rows keep (those leave out
+    hours with hot water or without an outside or room value there)."""
     weights = {room.entity_id: room.weight for room in config.house.rooms}
     hours, excluded, heat_source = sample_hours(rows, weights)
-    sun = {r.start: r.sun for r in ha.rows if r.sun is not None}
+    sun = ha.sun_hours
     per_room: dict[str, dict[datetime, float]] = {room.entity_id: {} for room in config.house.rooms}
     for hour, values in hours.items():
         for entity_id, value in values["rooms"].items():

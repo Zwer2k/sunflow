@@ -40,6 +40,55 @@ function sourceReasonText(reason) {
 }
 // Status of the latest values; refreshed while the view is open
 const STATUS_EVERY_MS = 60_000;
+// Days the counts of the writes Sunflow would have caused cover
+const WRITES_DAYS = 7;
+// What the protection layer is doing (design/heat_pump.md, 8.4)
+const GUARD_PHASES = () => ({
+  idle: t("Pause: Startregel"),
+  hot_water: t("Warmwasser: Start danach vorbereiten"),
+  defrost: t("Abtauen: nichts schreiben"),
+  start_hold: t("nach dem Start: halten"),
+  running: t("Heizbetrieb"),
+  blocked: t("Sperre: Wärmepumpe aus"),
+  inactive: t("schreibt nicht"),
+});
+// Reasons of a write Sunflow would cause
+const WRITE_REASONS = () => ({
+  normal: t("normal"),
+  start: t("Start"),
+  track: t("Nachführen"),
+  block_on: t("Sperre an"),
+  block_off: t("Sperre aus"),
+});
+// Why the block would be set
+const BLOCK_REASONS = () => ({
+  room_warm: t("Raum deutlich über dem Ziel"),
+  min_power: t("Mindestleistung über dem Bedarf"),
+  adopted: t("vorgefunden"),
+});
+// Limits the flow target or the heat pump reached (8.3)
+const LIMITS = () => ({
+  limit_max: t("Stellwert an der Obergrenze"),
+  limit_min: t("Stellwert an der Untergrenze"),
+  power_max: t("Wärmepumpe an der Höchstleistung"),
+  power_min: t("Wärmepumpe an der Mindestleistung"),
+  implausible: t("Vorlauf-Ziel nicht plausibel"),
+});
+const START_KINDS = () => ({ normal: t("normal"), hot_water: t("nach Warmwasser"), defrost: t("nach Abtauen") });
+const VALUE_SOURCES = () => ({ start: t("Startwert"), learned: t("gelernt"), raised: t("nach Abschaltung erhöht") });
+/** Why Sunflow would write nothing, in words. */
+function inactiveText(reason) {
+  const fixed = {
+    mode_off: t("Modus Aus"),
+    unusable: t("Gerät nicht erreichbar oder passt nicht"),
+    fault: t("Störung"),
+    tv_missing: t("Vorlauf unbekannt"),
+    setpoint_missing: t("Max T-Vorlauf unbekannt"),
+  }[reason];
+  if (fixed) return fixed;
+  if (reason.startsWith("strategy_")) return t("Strategie: {state}", { state: STRATEGIES()[reason.slice(9)] ?? reason.slice(9) });
+  return frozenText(reason);
+}
 // Canonical states (design/heat_pump.md, section 4)
 const PROGRAMS = () => ({
   heating: t("Heizen"), summer: t("Sommer"), standby: t("Bereitschaft"), cooling: t("Kühlen"), unknown: t("unbekannt"),
@@ -87,6 +136,7 @@ class SunflowHeatPump extends LitElement {
     _houseEdit: { state: true },
     _houseModel: { state: true },
     _status: { state: true },
+    _writes: { state: true },
     _climateBusy: { state: true },
     _error: { state: true },
     _busy: { state: true },
@@ -99,6 +149,7 @@ class SunflowHeatPump extends LitElement {
     this._houseEdit = null;
     this._houseModel = null;
     this._status = null;
+    this._writes = {};
     this._climateBusy = false;
     this._timer = null;
     this._error = null;
@@ -123,6 +174,21 @@ class SunflowHeatPump extends LitElement {
     } catch (err) {
       this._status = { error: err.message, devices: [], house: null };
     }
+    this._loadWrites();
+  }
+
+  /** Per day the writes Sunflow would have caused and the unwanted shutdowns (shadow). */
+  async _loadWrites() {
+    const writes = {};
+    for (const device of this._status?.devices ?? []) {
+      if (!device.state?.flow?.guard) continue;
+      try {
+        writes[device.id] = await api.heatPumpShadowWrites(device.id, WRITES_DAYS);
+      } catch (err) {
+        writes[device.id] = { error: err.message };
+      }
+    }
+    this._writes = writes;
   }
 
   async _load() {
@@ -283,7 +349,8 @@ class SunflowHeatPump extends LitElement {
             <p class="small ${state.valid ? "muted" : "warn-text"}">${state.valid
               ? t("Gültiger Heizbetrieb: Sunflow rechnet die Korrektur und lernt.")
               : t("Eingefroren: {reasons}", { reasons: state.frozen.map(frozenText).join(", ") })}</p>
-            ${flow ? this._renderFlow(flow, one, tile) : nothing}`}
+            ${flow ? this._renderFlow(flow, one, tile) : nothing}
+            ${flow?.guard ? this._renderGuard(flow.guard, this._writes[device.id], one, tile) : nothing}`}
       </section>
     `;
   }
@@ -316,8 +383,89 @@ class SunflowHeatPump extends LitElement {
         <p class="small muted">${flow.frozen.length
           ? t("Korrektur angehalten: {reasons}", { reasons: flow.frozen.map(frozenText).join(", ") })
           : t("Korrektur läuft.")} ${t("Im Schattenbetrieb wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Aktivschalten beginnt sie bei 0.")}</p>
+        ${(flow.limited ?? []).length
+          ? html`<p class="small warn-text">${t("An einer Grenze, die Korrektur läuft nicht weiter darüber hinaus: {limits}", { limits: flow.limited.map((l) => LIMITS()[l] ?? l).join(", ") })}</p>`
+          : nothing}
       </div>
       ${this._renderCurve(flow.curve, flow.surface, tile)}
+    `;
+  }
+
+  /** Set value and writes Sunflow would cause (protection layer, shadow), learned values, daily counts. */
+  _renderGuard(guard, writes, one, tile) {
+    const time = (iso) => new Date(iso).toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    const two = (v) => (v == null ? "–" : decimal(Number(v).toFixed(1)));
+    const minutes = (s) => (s == null ? "–" : decimal((s / 60).toFixed(0)));
+    const last = guard.writes?.[0];
+    const values = guard.values ?? {};
+    const sources = values.sources ?? {};
+    const source = (key) => VALUE_SOURCES()[sources[key]] ?? sources[key] ?? "";
+    const writeText = (w) => w.reason === "block_on" || w.reason === "block_off"
+      ? WRITE_REASONS()[w.reason]
+      : t("{reason}: {value} °C", { reason: WRITE_REASONS()[w.reason] ?? w.reason, value: one(w.value_c) });
+    return html`
+      <div class="learned">
+        <span class="field-label">${t("Stellwert und Schutz (Schatten)")}</span>
+        <p class="small muted">${t("Sunflow rechnet aus, was es an die Wärmepumpe schreiben würde (Max T-Vorlauf und Raumthermostat-Sperre), schreibt aber nichts.")}</p>
+        ${guard.block ? html`<div class="alert warn" role="status">${t("Sunflow würde die Raumthermostat-Sperre setzen: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })}</div>` : nothing}
+        <div class="tiles">
+          ${tile(t("Stellwert"), guard.setpoint_c == null ? "–" : `${one(guard.setpoint_c)} °C`, last ? t("würde schreiben {time}: {what}", { time: time(last.at), what: writeText(last) }) : t("würde noch nichts schreiben"))}
+          ${tile(t("Vorlauf-Ziel in Grenzen"), guard.desired_c == null ? "–" : `${one(guard.desired_c)} °C`, t("Grenzen {min}–{max} °C", { min: one(guard.min_c), max: one(guard.max_c) }))}
+          ${tile(t("Untergrenze Schutz"), guard.floor_c == null ? "–" : `${one(guard.floor_c)} °C`, GUARD_PHASES()[guard.phase] ?? guard.phase)}
+          ${tile(t("Sperre"), guard.block ? t("an") : t("aus"), guard.block_since ? t("seit {time}", { time: time(guard.block_since) }) : null)}
+        </div>
+        ${guard.inactive?.length
+          ? html`<p class="small muted">${t("Würde nichts schreiben: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })}</p>`
+          : nothing}
+        ${guard.implausible_k != null
+          ? html`<p class="small warn-text">${t("Vorlauf-Ziel nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): würde nicht geschrieben.", { k: two(guard.implausible_k) })}</p>`
+          : nothing}
+        <div class="tiles">
+          ${tile(t("Schwankung im Betrieb"), `${two(values.steady_swing)} K`, source("steady_swing"))}
+          ${["normal", "hot_water", "defrost"].map((kind) => tile(
+            t("Sprung beim Start ({kind})", { kind: START_KINDS()[kind] }),
+            `${two(values.start_jump?.[kind])} K`,
+            t("{source}, beruhigt nach {minutes} min", { source: source(`start_jump.${kind}`), minutes: minutes(values.start_settle_s?.[kind]) }),
+          ))}
+          ${tile(t("Leistungsbereich"), `${decimal((values.power_min_w / 1000).toFixed(1))}–${decimal((values.power_max_w / 1000).toFixed(1))} kW`, source("power"))}
+        </div>
+        ${guard.writes?.length
+          ? html`<p class="small muted">${t("Würde schreiben (zuletzt): {writes}", { writes: guard.writes.slice(0, 8).map((w) => `${time(w.at)} ${writeText(w)}`).join(" · ") })}</p>`
+          : nothing}
+        ${guard.unwanted_stops?.length
+          ? html`<p class="small warn-text">${t("Ungewollte Abschaltungen (zuletzt): {stops}", { stops: guard.unwanted_stops.slice(0, 5).map((s) => t("{time} bei {peak} °C (Soll {setpoint} °C)", { time: time(s.at), peak: one(s.peak_c), setpoint: one(s.setpoint_c) })).join(" · ") })}</p>`
+          : nothing}
+        ${this._renderWriteCounts(writes)}
+      </div>
+    `;
+  }
+
+  /** Per day: writes Sunflow would have caused by reason and unwanted shutdowns, against the budget. */
+  _renderWriteCounts(writes) {
+    if (!writes) return nothing;
+    if (writes.error) return html`<p class="small warn-text">${t("Zählung nicht verfügbar: {error}", { error: writes.error })}</p>`;
+    const budget = writes.budget ?? {};
+    const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale(), { weekday: "short", day: "2-digit", month: "2-digit" });
+    const over = (count, limit) => (limit != null && count > limit ? "warn-text" : "");
+    return html`
+      <span class="field-label">${t("Schreibvorgänge je Tag (würde schreiben)")}</span>
+      <table>
+        <thead><tr>
+          <th>${t("Tag")}</th><th>${t("normal")}</th><th>${t("Start")}</th><th>${t("Nachführen")}</th>
+          <th>${t("Sperre an/aus")}</th><th>${t("ungewollte Abschaltungen")}</th>
+        </tr></thead>
+        <tbody>
+          ${writes.days.map((d) => html`<tr>
+            <td>${day(d.date)}</td>
+            <td class=${over(d.normal, budget.per_day)}>${d.normal}</td>
+            <td class=${over(d.protect, budget.emergency_per_day)}>${d.start}</td>
+            <td class=${over(d.protect, budget.emergency_per_day)}>${d.track}</td>
+            <td>${d.block_on}/${d.block_off}</td>
+            <td class=${d.unwanted_stops ? "warn-text" : ""}>${d.unwanted_stops}</td>
+          </tr>`)}
+        </tbody>
+      </table>
+      <p class="small muted">${t("Geplantes Budget (ab dem Aktivschalten): {normal} normale Schreibvorgänge und {emergency} für Start und Nachführen je Tag, höchstens {hour} je Stunde. Im Schatten gelten noch kein Mindestabstand und kein Budget; ob die Sperre mitzählt, ist offen.", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
     `;
   }
 
@@ -551,6 +699,9 @@ class SunflowHeatPump extends LitElement {
     .chart .axis { fill: var(--sf-muted); font-size: 11px; }
     .chart .hit { fill: transparent; }
     .chart .hit:hover { fill: var(--sf-text); fill-opacity: 0.06; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; display: block; overflow-x: auto; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--sf-border); font-variant-numeric: tabular-nums; }
+    th { font-size: 13px; color: var(--sf-muted); font-weight: 600; }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }
     .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }

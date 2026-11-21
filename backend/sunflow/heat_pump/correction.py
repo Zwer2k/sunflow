@@ -53,8 +53,12 @@ class Correction:
         if self._room is not None:
             self._room = room_c
 
-    def step(self, room_c: float, target_c: float, now: datetime) -> bool:
-        """One step if the room changed or the longest step passed; True if a step was taken."""
+    def step(self, room_c: float, target_c: float, now: datetime, block_up: bool = False, block_down: bool = False) -> bool:
+        """One step if the room changed or the longest step passed; True if a step was taken.
+
+        block_up / block_down: the flow target is at a limit (8.3) in that direction - an increment
+        towards it is dropped like a frozen step (anti-windup), one away from it counts.
+        """
         if self._room is None or self._at is None:
             self.hold(room_c, now)
             return False
@@ -66,6 +70,10 @@ class Correction:
         error = target_c - room_c
         integral = CORRECTION_KP / CORRECTION_TI_H * error * hours if abs(error) > ROOM_DEADBAND_K + _EPS else 0.0
         proportional = -CORRECTION_KP * (room_c - self._room)
+        increment = integral + proportional
+        if (increment > _EPS and block_up) or (increment < -_EPS and block_down):
+            self.hold(room_c, now)
+            return False
         self.value_k = max(-CORRECTION_LIMIT_K, min(CORRECTION_LIMIT_K, self.value_k + integral + proportional))
         self._room, self._at = room_c, now
         return True

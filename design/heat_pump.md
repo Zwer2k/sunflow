@@ -4,7 +4,8 @@ Stand: 21.11.2026 · Status: Spezifikation; ESP-Teil (Manifest, `tv_max`, Zehnte
 Abschnitt 3, 12) umgesetzt; Sunflow: Altlösung entfernt (Abschnitt 16, 2a), Datenhaltung (2b), Manifest,
 Kompatibilität und Profil (2c, Teil 1), Zustände und Datensammlung (2c, Teil 2a), climate-Entity und
 Schattenbetrieb mit Korrektur ohne Kennlinie (2c, Teil 2b), Lüft-Erkennung (3, Teil 1), Kennlinie,
-Vorsteuerung und Hausmodell aus `heat_pump_samples` (3, Teil 2) umgesetzt, Rest offen
+Vorsteuerung und Hausmodell aus `heat_pump_samples` (3, Teil 2), Grenzen und Schutzschicht im Schatten (3, Teil 3)
+umgesetzt, Rest offen
 
 Sunflow regelt den Vorlauf-Sollwert einer Luft-Wasser-Wärmepumpe so, dass das Haus den eingestellten
 Raum-Soll hält – selbstlernend, ohne die Wärmepumpe in Fehlbetrieb zu treiben – und nutzt einen
@@ -601,6 +602,26 @@ Fußbodenheizung bis Schritt 3 (Heizflächentyp):
 - Plausibilität: V_Ziel außerhalb eines Bands um den Wert der gelernten Kennlinie bzw. letzten wirksamen
   Soll (Start ±8 K) → nicht schreiben, Journal.
 
+Umsetzung (3, Teil 3, nur Schatten; `heat_pump/limits.py`, `heat_pump/learned.py`, Konstanten in
+`heat_pump/defaults.py`):
+- Stellwertbereich: Startgrenzen des Heizflächentyps aus `HEATING_SURFACES`, eingeengt auf `min`/`max` der
+  beschriebenen Entity im Manifest. Eine Nutzereinstellung je Wärmepumpe gibt es noch nicht (Teil 4 bzw.
+  offener Punkt 4). Rundung auf `step` der Entity (ohne Angabe die gröbste erlaubte Schrittweite 0,5 K):
+  Vorlauf-Ziel zum nächsten Schritt, Schutzwerte aufwärts, alles höchstens bis zur Obergrenze.
+- Plausibilität: Bezug ist der aktuelle wirksame Vorlauf-Soll und, wenn die Quelle die Kennlinie ist,
+  deren Wert; weicht V_Ziel von einem davon mehr als 8 K (`PLAUSIBLE_BAND_K`) ab, wird kein normaler
+  Wert geschrieben (Schutzschritte bleiben), Journal einmal je Episode.
+- Leistungsbereich: Startwerte aus dem Profil (`heat_power`), gelernt aus Zeilen im Dauerlauf (gültiger
+  Heizbetrieb, Kompressor in der Zeile und den 3 Zeilen davor durchgehend an, kein Start), ab 288 Zeilen
+  der letzten 28 Tage: Mindestleistung = 5-%-Quantil der Wärme, Höchstleistung nur angehoben
+  (99-%-Quantil, wenn darüber), weil milde Wochen sie nicht zeigen.
+- Grenze erreicht (Grund im Status `limited`): V_Ziel an Ober-/Untergrenze (`limit_max`/`limit_min`),
+  gemessene Wärme bei laufendem Kompressor innerhalb 5 % an der Höchst-/Mindestleistung
+  (`power_max`/`power_min`), nicht plausibel (`implausible`). Die Korrektur ist dann **in Richtung der
+  Grenze** eingefroren (Inkremente dorthin werden verworfen wie ein eingefrorener Schritt, in
+  Gegenrichtung zählen sie), damit sie nicht an der Grenze hängen bleibt; ausgewertet wird die Grenze der
+  vorigen Minute.
+
 ### 8.4 3-K-Schaltregeln (Profilparameter)
 
 `start_margin` (Kompressor startet, wenn Soll ≥ Tv + 3,0 K), `stop_margin` (aus, wenn Tv ≥ Soll + 3,0 K).
@@ -662,6 +683,59 @@ vorsichtige Startwerte, die gelten, bis genug eigene Messungen vorliegen:
   Mindestdauer je Zustand (Start 20 min) gegen Takten. Bei Ende der Steuerung und Ausfall wird sie nicht
   zurückgenommen (8.6).
 - Nicht verhinderbar: Takten, wenn Mindestleistung > Bedarf und Budget erschöpft → Journal-Ereignis.
+
+Umsetzung (3, Teil 3, nur Schatten; `heat_pump/guard.py`, gelernte Werte `heat_pump/learned.py`,
+Konstanten in `heat_pump/defaults.py`). Sunflow schreibt nichts; „geschrieben“ ist hier der Wert, den
+Sunflow zuletzt geschrieben hätte (virtuell, Start beim vorgefundenen Max T-Vorlauf), ebenso die Sperre
+(Start beim vorgefundenen Zustand). Tv und Kompressor sind die echten der Wärmepumpe. Jeden Takt:
+- Unterer Schutzwert „− 2,9“ = `stop_margin` − 0,1 (`SHUTDOWN_RESOLUTION_K`).
+- **Start:** Beginn von Heizen mit laufendem Kompressor (Kompressorstart oder Wechsel von Warmwasser/
+  Abtauen auf Heizen). Art: nach Warmwasser bzw. Abtauen, wenn das innerhalb von 30 min endete
+  (`START_AFTER_S`), sonst normal. Bezug: Tv vor dem Warmwasser bzw. Abtauen (letzter Tv bei Heizen/
+  Bereitschaft mit BPV 0), sonst Tv der Minute vor dem Start. Die erste Minute nach einem Neustart von
+  Sunflow ist kein Start.
+- **Pause** (Programm Heizen, Kompressor aus, nicht gesperrt): Untergrenze max(Tv + `start_margin`, Tv +
+  `start_jump` − 2,9); innerhalb von 30 min nach Warmwasser/Abtauen stattdessen die Vorbereitung (unten),
+  weil die HPSU dann selbst startet. Jedes Aus, das nicht über die Sperre gewollt ist, gilt als Heizbedarf.
+- **Warmwasser:** Untergrenze Tv vor dem Warmwasser + `start_jump` (nach Warmwasser) − 2,9; Abtauen:
+  nichts (8.5), der Start danach wird mit seinem Bezug geschützt.
+- **Halten:** ab dem Start Untergrenze Bezug + `start_jump` der Art − 2,9; Ende, wenn `start_settle` der Art
+  vorbei und Tv ruhig ist (Spanne von Tv inklusive `tv_max` über 5 min ≤ `steady_swing`,
+  `TV_FLAT_WINDOW_S`). Während des Haltens wird nur nachgeführt, wenn die Spitze selbst die Grenze
+  erreicht (Spitze − 2,9 statt Spitze + Schwankung − 2,9, der Sprung ist schon eingerechnet).
+- **Normal** (laufender Betrieb nach dem Halten, gültiger Heizbetrieb, Tv ruhig, plausibel): Ziel
+  max(V_Ziel in Grenzen, Spitze der letzten 5 min + `steady_swing` − 2,9); geschrieben, wenn es um mehr als
+  die Totzone vom geschriebenen abweicht. Das erste solche Schreiben nach einem Start ist das einmalige
+  Absenken.
+- **Nachführen:** Spitze der letzten 5 min + `steady_swing` − 2,9 über dem geschriebenen Wert → anheben auf
+  diesen Wert + 0,5 K (`TRACK_HEADROOM_K`), damit ein steigender Tv nicht jede Minute einen
+  Schreibvorgang auslöst. Ist der Bedarf `Q*` (8.1) bekannt und kleiner als die Mindestleistung, und die
+  Sperre darf schalten → Sperre statt Nachführen (`min_power`).
+- **Sperre** (nur mit Rolle `heating_block`): an, wenn Raum-Ist ≥ Planziel + 0,5 K (`BLOCK_ROOM_ABOVE_K`,
+  `room_warm`) oder wie oben `min_power`; aus bei `room_warm`, wenn Raum-Ist ≤ Planziel + 0,2 K, bei
+  `min_power`, wenn ≤ Planziel − 0,2 K; ohne Raum-Ist aus. Jeder Zustand mindestens `min_duration` (20 min).
+  Eine vorgefundene Sperre (`adopted`) wird wie `room_warm` aufgehoben. Gesperrt: kein Stellwert.
+- **Kein Schreiben** (Status `inactive`): Modus `off`, Strategie ≠ `fixed`, Gerät nicht nutzbar, Programm ≠
+  Heizen, unbekannte Aktivität, Störung, Tv oder Max T-Vorlauf unbekannt.
+- **Ungewollte Abschaltung:** Kompressor an → aus, vorher Aktivität Heizen, nicht Warmwasser/Abtauen danach,
+  keine (echte) Sperre, höchste Spitze der letzten 3 min (inklusive der Veröffentlichungen seit der letzten
+  Minute) ≥ wirksamer Soll + `stop_margin` − 0,2 K (`STOP_TOLERANCE_K`). Innerhalb von 30 min nach einem
+  Start wird `start_jump` dieser Art erhöht (gesehen: Spitze − Bezug), sonst `steady_swing` (Spitze − Mittel
+  von Tv der letzten 5 min); jeweils auf das Gesehene + 0,5 K (`BUMP_EXTRA_K`), wenn das mehr ist als der
+  aktuelle Wert. Die Erhöhung sinkt um 0,1 K je Tag (`BUMP_DECAY_K_PER_DAY`) und wird in
+  `heat_pump_state.json` gehalten. Im Schatten sind das Abschaltungen der heutigen Regelung.
+- **Gelernt** (stündlich mit der Kennlinie, Cache `devices.<id>.learned`): `steady_swing` = 95-%-Quantil
+  von `tv_max_c − tv_c` der Dauerlauf-Zeilen (ab 288); `start_jump`, `start_settle` je Art = 90-%-Quantil
+  der Ereignisse `start_jump` der letzten 28 Tage (ab 5 je Art), sonst die Startwerte aus dem Profil.
+- Ergebnis: Stellwert (virtuell geschrieben), Vorlauf-Ziel in Grenzen, Schutz-Untergrenze, Phase (`idle`,
+  `hot_water`, `defrost`, `start_hold`, `running`, `blocked`, `inactive`), Sperre, die letzten 20
+  geplanten Schreibvorgänge und ungewollten Abschaltungen, gelernte Werte mit Herkunft (`start`,
+  `learned`, `raised`) im Status `state.flow.guard`; Ereignisse in `heat_pump_samples` (10); Journal bei
+  ungewollter Abschaltung (Warnung), Sperr-Entscheidung („Schatten: Sunflow würde die
+  Raumthermostat-Sperre setzen/aufheben …“) und nicht plausiblem V_Ziel.
+- Zählung je Tag (Zeitzone von HA): `GET /api/v1/heat_pump/<id>/shadow_writes?days=7` aus den Ereignissen;
+  normal, Start, Nachführen, Sperre an/aus, ungewollte Abschaltungen, dazu das Budget des Profils. Ohne
+  Mindestabstand und Budget (Teil 4), daher eine Obergrenze dessen, was aktiv geschrieben würde.
 
 ### 8.5 Schreiben
 
@@ -792,7 +866,9 @@ Umstellung auf `heat_pump_samples` (3, Teil 2, `planning/house_model.py`, `learn
   gebildet: mindestens 10 von 12 Zeilen; Raum-Ist = Wert der Zeile zu Beginn der Stunde (das Modell
   rechnet von Stundenbeginn zu Stundenbeginn), Außentemperatur und Wärme als Mittel. Eine Stunde fällt
   heraus bei Warmwasser, Abtauen, Nachlauf, Lüften, Störung, unbekannter Aktivität oder Heizen ohne
-  gültigen Heizbetrieb; Pausen und Sommer/Bereitschaft (Wärme 0) bleiben drin. Sonne weiter aus HA.
+  gültigen Heizbetrieb; Pausen und Sommer/Bereitschaft (Wärme 0) bleiben drin. Sonne weiter aus HA: je
+  Stunde das Stundenmittel des Helligkeitssensors genau dieser Stunde (nie der aktuelle Wert), aus allen
+  Stunden seiner Statistik – auch für Stunden, für die HA sonst keine Zeile hat (korrigiert in 3, Teil 3).
 - Ohne Sprung in der Anzeige: umgestellt wird erst, wenn das Modell aus den Messwerten zustande kommt
   und nicht schlechter ist (nutzbar, oder das aus HA ist es auch nicht); danach bleibt es dabei
   (`house.model_source` in `heat_pump_state.json`). Kommt aus den Messwerten kein Modell zustande (z. B.
@@ -844,7 +920,13 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
     `after_run`: Nachlauf `hot_water`/`defrost`/`unknown`; `blocked`, `fault`, `self_limited`;
     `ventilation`: in einer Minute des Intervalls gelüftete Räume, sortierte Liste der Entities, leer
     ohne Lüften; fehlt in älteren Zeilen → leer). In `events` zusätzlich der Quellenwechsel des
-    Vorlauf-Ziels (8.1): `{"at", "kind": "flow_source", "from", "to"}` (ab 3, Teil 2).
+    Vorlauf-Ziels (8.1): `{"at", "kind": "flow_source", "from", "to"}` (ab 3, Teil 2). Ab 3, Teil 3 (8.4,
+    im Schatten mit `shadow: true`): geplante Schreibvorgänge `{"at", "kind": "write", "reason"
+    (normal/start/track/block_on/block_off), "value_c", "from_c" bzw. "block", "block_reason", "phase"}`,
+    Starts `{"at", "kind": "start_jump", "start_kind", "start_at", "ref_c", "peak_c", "jump_k", "settle_s"}`
+    (Grundlage des Lernens) und ungewollte Abschaltungen `{"at", "kind": "unwanted_stop", "tv_c", "peak_c",
+    "setpoint_c", "max_setpoint_c", "during", "raised", "value"}`. `written_c` bleibt leer, solange nichts
+    geschrieben wird.
 - Aufräumen: Zeilen älter als 1 Jahr löschen (im Runner einmal täglich, Blöcke zu 5000 Zeilen).
 - Lernen zurücksetzen: Zeilen des Geräts löschen und `heat_pump_state.json`-Eintrag verwerfen.
 - Export/Import: `heat_pump_samples` wird beim Import übernommen (in `IMPORT_TABLES` eintragen); der
@@ -852,8 +934,11 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
 - `heat_pump_state.json` (klein, verwerfbar; umgesetzt in 2c, Teil 2b, `heat_pump/state_store.py`):
   `house` (zuletzt gesehener Raum-Soll, laufende Soll-Änderung `settling`, Lüften `ventilation` mit
   `active` und `recent`, 6.2, Quelle des Hausmodells `model_source`, 9.3) und je Gerät `base_c`,
-  `base_at`, `corrections` je Strategie, `source` (zuletzt genutzte Quelle des Vorlauf-Ziels, 8.1) und
-  `curve` (Cache der Kennlinie, 9.2); unbekannte Schlüssel werden ignoriert, geschrieben nur bei
+  `base_at`, `corrections` je Strategie, `source` (zuletzt genutzte Quelle des Vorlauf-Ziels, 8.1),
+  `curve` (Cache der Kennlinie, 9.2), `learned` (Cache der gelernten Schwankungs-, Sprung- und
+  Leistungswerte, eigenes `format`) und `guard` (Schutzschicht 8.4: zuletzt geschrieben – im Schatten
+  virtuell –, Sperre mit Zeit und Grund, Tv vor Warmwasser/Abtauen, laufender Start, Erhöhungen nach
+  ungewollten Abschaltungen, die letzten geplanten Schreibvorgänge und Abschaltungen); unbekannte Schlüssel werden ignoriert, geschrieben nur bei
   Änderung, atomar. Im Export enthalten, beim Import nicht übernommen.
 - `config.json`: `house.heating_surface` (Heizflächentyp, 8.1; additiv ohne Migration, Standard
   `underfloor`).
@@ -977,7 +1062,10 @@ Nur CAN:
   - Gelerntes: Kennlinie (K, n, Spreizung, Güte), Hausmodell, Korrektur je Strategie, Sprung- und
     Schwankungswerte (`steady_swing`, `start_jump`, `start_settle`), Prognose-Korrektur.
   - Live: Tv, `tv_max`, Tr, BPV, wirksamer Soll, Vorlauf-Ziel, Stellwert geschrieben/ausstehend,
-    Raumthermostat-Sperre (deutlich sichtbar, wenn aktiv), „jetzt schreiben“.
+    Raumthermostat-Sperre (deutlich sichtbar, wenn aktiv), „jetzt schreiben“. Seit 3, Teil 3 im Schatten:
+    Stellwert und Sperre „würde schreiben“, Schutz-Untergrenze und Phase, Grenzen, gelernte Werte mit
+    Herkunft, letzte geplante Schreibvorgänge und ungewollte Abschaltungen, Tabelle der
+    Schreibvorgänge je Tag (normal, Start, Nachführen, Sperre an/aus, ungewollte Abschaltungen).
   - Journal: Schreibvorgänge mit Grund, ungewollte Abschaltungen, fremde Schreiber, Sperre an/aus.
 - Schattenbetrieb: alles wird berechnet und angezeigt, nichts geschrieben.
 
@@ -1069,7 +1157,15 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       Tage, Rauschen, zu wenig Daten, Umschalten des Hausmodells).
    3. **Grenzen** (8.3) und **Schutzschicht** (8.4: Schaltregeln mit gelernten Sprung- und
       Schwankungswerten, Raumthermostat-Sperre) – weiterhin nur im Schatten: Stellwert und Sperre werden
-      berechnet und angezeigt, nicht geschrieben.
+      berechnet und angezeigt, nicht geschrieben. **Umgesetzt (0.80.10):** `heat_pump/limits.py`,
+      `heat_pump/learned.py`, `heat_pump/guard.py`; geplante Schreibvorgänge (Zeit, Wert, Grund),
+      Starts und ungewollte Abschaltungen in `heat_pump_samples` (`events`), Status und UI („würde
+      schreiben“), Journal bei ungewollter Abschaltung und Sperr-Entscheidung; Zählung je Tag im UI
+      (`GET /api/v1/heat_pump/<id>/shadow_writes`) zum Beurteilen des Budgets (48 + 24); Korrektur an einer
+      Grenze in deren Richtung eingefroren. Sonne beim Hausmodell aus `heat_pump_samples` je Stunde aus
+      der Statistik des Sensors (9.3). Tests `tests/test_heat_pump_guard.py` (synthetische Abläufe: Start
+      aus Pause, nach Warmwasser, Abtauen, Sperre an/aus, Nachführen bei steigendem Tv, ungewollte
+      Abschaltung, Grenzen, Lernen, Zählung).
    4. **Schreiblogik** (8.5) mit Budget (`EepromGuard`), HA-Sensoren (13), Übernahme mit eingefrorener
       Basis und Korrektur 0 (8.1, 8.2) – erst damit schreibt Sunflow aktiv. Dazu:
       - Ti der Korrektur je Heizflächentyp (Fußboden 6 h, gemischt 4 h, Heizkörper 2 h); bis dahin fest

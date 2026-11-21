@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.80.10
+
+- Heat pumps (sixth part of the new flow temperature control, still shadow operation): Sunflow computes the set value (Max T-Vorlauf) it would write and the writes it would cause, with time, value and reason (normal, start, tracking, block on/off) – nothing is written to the heat pump. Limits: the range of the heating surface type (underfloor 25–40 °C, mixed 25–50 °C, radiators 30–55 °C) within the entity's range; a flow target more than 8 K from the effective setpoint (or the curve) would not be written; at a limit or at the heat pump's maximum/minimum output the correction does not move further beyond it.
+- Protection against the 3 K shutdown: start rule in a pause, preparing the start during hot water, holding after a start, lowering once, tracking a rising flow; wanted off only through the room thermostat block (room 0.5 K above the setpoint or minimum output above the need, each state at least 20 minutes). Swing, jump and settling time per kind of start and the output range are learned from `heat_pump_samples`, with cautious start values.
+- Unwanted compressor shutdowns are noted in the journal and raise the value concerned; block decisions are noted in the journal as well. Planned writes, starts and shutdowns are recorded in `heat_pump_samples` (events).
+- Settings → Heat pump shows set value, protective bound, block, learned values, the latest planned writes and a table of writes and unwanted shutdowns per day for the last 7 days, to judge the planned budget (48 + 24).
+- House model from the heat pump's samples: each hour now takes the sun sensor's value of that hour also when Home Assistant has no other values for it.
+
 ## 0.80.9
 
 - Heat pumps (fifth part of the new flow temperature control, still shadow operation): Sunflow learns the heating curve of the heating surfaces every hour from `heat_pump_samples` – K and the spread (flow − return) depending on the heat, with the exponent n from the new setting **heating surface type** (underfloor 1.1, mixed 1.2, radiators 1.3; default underfloor). Only intervals of valid heating with the compressor running for 15 minutes, without after-run and airing count. The curve is used once it has enough data, is plausible and predicts the flow on the last two days better than "the flow stays". Settings → Heat pump shows K, n, spread, quality and the amount of data, marked as shadow.

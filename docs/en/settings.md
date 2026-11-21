@@ -114,6 +114,30 @@ heat pump runs now – the curve then only follows the current state, the direct
 correction. Otherwise base + correction still applies. The source in use is shown; when it changes, the
 flow target jumps once in shadow operation, the correction stays.
 
+**Set value and protection (shadow):** From the flow target Sunflow computes the set value (Max
+T-Vorlauf) it would write and the room thermostat block – shown as "would write", none of it goes to the
+heat pump. The set value stays within the limits of the heating surface type (underfloor 25–40 °C,
+mixed 25–50 °C, radiators 30–55 °C) and the entity's range. A flow target more than 8 K away from the
+effective flow setpoint (or the heating curve) would not be written (journal entry). When the flow
+target reaches a limit or the heat pump its maximum or minimum output, the correction does not move
+further beyond it.
+
+The heat pump starts the compressor when the setpoint is at least 3 K above the flow, and stops it when
+the flow is 3 K above the setpoint. So Sunflow would: in a pause raise the set value so that the heat
+pump starts (flow + 3 K, or enough that the jump of the flow after the start does not stop it); during
+hot water prepare the set value for the start afterwards; after a start hold it until the flow is calm,
+then lower it once; while running follow it up when the flow comes close to the shutdown limit. Heat it
+does not want (room 0.5 K above the setpoint, or the heat pump's minimum output above the need) it would
+switch off with the room thermostat block – each state for at least 20 minutes. The swing of the flow
+while running, the jump after a start (normal, after hot water, after defrost), the time until it is
+calm and the heat pump's output range are learned from the recording; until there are enough data,
+cautious start values apply. When the compressor stops unwantedly (flow 3 K above the setpoint without
+block, hot water or defrost), the journal says so and the value concerned is raised at once; without
+further incidents it goes back over weeks. The table **Writes per day** counts for the last 7 days what
+Sunflow would have written (normal, start, tracking, block on/off) and the unwanted shutdowns – to
+compare with the planned budget of 48 normal writes and 24 for start and tracking per day. Spacing and
+budget apply only once Sunflow writes.
+
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
 optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
 The **heating surface type** (underfloor heating, mixed, radiators; default underfloor) sets the start

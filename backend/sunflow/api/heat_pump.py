@@ -1,19 +1,22 @@
 """Heat pumps: link status of devices recognized by their manifest, their current states, the house's
 room setpoint (climate entity "Haus") and the shadow flow control."""
 
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from sunflow.config.models import ClimateSettings, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.devices.profiles import manifest_id
 from sunflow.heat_pump.defaults import ROOM_SETPOINT_MAX_C, ROOM_SETPOINT_MIN_C
+from sunflow.heat_pump.guard import daily_counts
 from sunflow.heat_pump.samples import records_heat_pump
 from sunflow.heat_pump.shadow import climate_status
 
-from .common import _library
+from .common import _library, _local_tz
 
 router = APIRouter()
 
@@ -82,6 +85,36 @@ async def heat_pump_status(request: Request) -> dict[str, Any]:
             | {"state": states.get(device.id)}
         )
     return {"devices": devices, "notes": manifest_notes(request), "house": house_status(request, config)}
+
+
+# Days the counts of planned writes cover at most
+WRITES_DAYS_MAX = 31
+
+
+@router.get("/heat_pump/{device_id}/shadow_writes")
+async def shadow_writes(request: Request, device_id: str, days: int = Query(default=7, ge=1, le=WRITES_DAYS_MAX)) -> dict[str, Any]:
+    """Per day (Home Assistant's time zone): writes Sunflow would have caused, by reason, and unwanted
+    shutdowns (shadow, 8.4), with the budget of the profile (8.5) to judge them against."""
+    config = request.app.state.store.load()
+    device = next((d for d in config.devices if d.id == device_id), None)
+    profile = _library(request).profiles.get(device.profile) if device else None
+    if device is None or profile is None or not records_heat_pump(profile):
+        raise HTTPException(status_code=404, detail="No heat pump with this id")
+    now = datetime.now(UTC)
+    tz = await _local_tz(request)
+    since = datetime.combine(now.astimezone(tz).date() - timedelta(days=days - 1), datetime.min.time(), tz)
+    recorder = _recorder(request)
+    store = getattr(getattr(request.app.state, "runner", None), "shadow", None)
+    rows = await asyncio.to_thread(store.heat_pump_samples, device_id, since) if store is not None else []
+    events = [e for row in rows for e in row.get("events") or []]
+    if recorder is not None:
+        events += recorder.pending_events(device_id)
+    writes = (profile.get("flow_control") or {}).get("writes") or {}
+    return {
+        "days": daily_counts(events, tz, days, now),
+        "budget": {k: writes.get(k) for k in ("per_day", "emergency_per_day", "per_hour")},
+        "shadow": True,
+    }
 
 
 class ClimateUpdate(BaseModel):

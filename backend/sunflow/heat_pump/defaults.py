@@ -97,6 +97,69 @@ FEED_HEAT_WINDOW_S = 3 * 3600
 FEED_HEAT_MIN_S = 2 * 3600
 FEED_HEAT_MIN_W = CURVE_HEAT_MIN_W
 
+# Limits (8.3). The set value stays within the start limits of the heating surface type (HEATING_SURFACES)
+# and the entity's own range (manifest min/max). Without a step in the manifest the coarsest allowed one
+# counts (rounding then still goes the safe way). A flow target further than PLAUSIBLE_BAND_K from the
+# effective setpoint (and from the curve's value, when the curve is used) is not plausible: not written.
+PLAUSIBLE_BAND_K = 8.0
+DEFAULT_SETPOINT_STEP_K = MAX_SETPOINT_STEP_K
+# Heat output range of the heat pump (kW): the profile's start values until learned from steady running
+# in heat_pump_samples (POWER_LEARN_DAYS, at least POWER_MIN_ROWS rows): the minimum is a low quantile of
+# the heat; the maximum is only raised by a high quantile (mild days do not show it). A heat within
+# POWER_AT_LIMIT_SHARE of a limit counts as at the limit.
+POWER_MIN_KW_DEFAULT = 0.6
+POWER_MAX_KW_DEFAULT = 6.0
+POWER_LEARN_DAYS = 28
+POWER_MIN_ROWS = 288
+POWER_MIN_QUANTILE = 0.05
+POWER_MAX_QUANTILE = 0.99
+POWER_AT_LIMIT_SHARE = 0.05
+
+# Protection layer (8.4). Fallbacks when the profile leaves them out (compressor_rules, learned_defaults,
+# heating_block.min_duration).
+START_MARGIN_K = 3.0
+STOP_MARGIN_K = 3.0
+STEADY_SWING_K = 0.5
+START_JUMP_K = 6.0
+START_SETTLE_S = 5 * 60
+BLOCK_MIN_S = 20 * 60
+# Temperatures have one decimal: a lower bound against the shutdown keeps this below it ("− 2.9")
+SHUTDOWN_RESOLUTION_K = 0.1
+# Tv is calm ("flat") when it moved by at most steady_swing over this window
+TV_FLAT_WINDOW_S = 5 * 60
+# Tracking in running operation: the peak of the last TRACK_LOOKBACK counts; a raise goes TRACK_HEADROOM
+# above the bound, so a slowly rising Tv does not cause a write every minute
+TRACK_LOOKBACK_S = 5 * 60
+TRACK_HEADROOM_K = DEADBAND_K
+# A start within START_AFTER of the end of hot water or defrost is a start after it; the jump and
+# settling time of a start are measured for at most START_OBSERVE_MAX
+START_AFTER_S = 30 * 60
+START_OBSERVE_MAX_S = 30 * 60
+# Unwanted shutdown: the compressor stops in heating while Tv peaked (within STOP_LOOKBACK before) at
+# least effective setpoint + stop margin − STOP_TOLERANCE, and neither the block nor hot water or
+# defrost stopped it
+STOP_LOOKBACK_S = 3 * 60
+STOP_TOLERANCE_K = 0.2
+# Wanted off (block): the room is BLOCK_ROOM_ABOVE_K above its target; released when back within
+# ROOM_DEADBAND_K. Minimum output above the need: released when the room is ROOM_DEADBAND_K below.
+BLOCK_ROOM_ABOVE_K = 0.5
+# Learned jump and swing values (from heat_pump_samples): starts of the last JUMP_LEARN_DAYS, at least
+# JUMP_MIN_EVENTS per kind of start, their JUMP_QUANTILE; steady swing from rows of steady running
+# (the row and SWING_STEADY_ROWS before with the compressor on, no start), at least SWING_MIN_ROWS,
+# their SWING_QUANTILE of tv_max − tv.
+JUMP_LEARN_DAYS = 28
+JUMP_MIN_EVENTS = 5
+JUMP_QUANTILE = 0.9
+SWING_MIN_ROWS = 288
+SWING_QUANTILE = 0.95
+SWING_STEADY_ROWS = 3
+# After an unwanted shutdown the value concerned is raised at once to what was seen plus BUMP_EXTRA_K;
+# without further incidents the raise fades by BUMP_DECAY_K_PER_DAY (weeks)
+BUMP_EXTRA_K = 0.5
+BUMP_DECAY_K_PER_DAY = 0.1
+# Shown in the status: the latest planned writes and unwanted shutdowns
+GUARD_RECENT_MAX = 20
+
 # House model from heat_pump_samples (9.3): a day counts for the coverage when it holds at least
 # HOUSE_SAMPLES_DAY_MIN_S of valid heating without ventilation; an hour is used with at least
 # HOUSE_SAMPLES_HOUR_MIN_ROWS of its 5 minute rows.

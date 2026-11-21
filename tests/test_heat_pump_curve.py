@@ -571,3 +571,74 @@ async def test_house_model_switches_after_seven_days(tmp_path: Path) -> None:
     assert (before.data.source, before.data.coverage_days, before.model) == (HA_HOURLY, MIN_DAYS - 1, None)
     assert (after.data.source, after.data.coverage_days) == (SAMPLES, 14)
     assert after.model is not None and after.model.useful
+
+
+# Sun of each hour when learning the house from heat_pump_samples (9.3, step 3 part 2, decision 9)
+
+SUN = "sensor.lux"
+# K per hour at full sun of the synthetic house
+SUN_GAIN = 0.3
+
+
+def _sun(hour: datetime) -> float:
+    """Brightness (lux) of an hour: a day arc from 6 to 18 UTC, brighter on some days than others."""
+    position = (hour.hour + 0.5 - 6) / 12
+    day = 0.6 + 0.4 * math.sin(hour.timestamp() / 86400 / 3 * 2 * math.pi)
+    return 50_000 * day * math.sin(position * math.pi) if 0 < position < 1 else 0.0
+
+
+def _sunny_house_rows(days: int, end: datetime) -> list[dict[str, Any]]:
+    """Like _house_rows, the sun warming the house by SUN_GAIN K/h at full sun (relative to the brightest hours)."""
+    rows = _house_rows(days, end=end)
+    bright = sorted(_sun(r["start"].replace(minute=0)) for r in rows)[int(0.95 * (len(rows) - 1))]
+    inside = rows[0]["rooms"][ROOM]
+    for row in rows:
+        row["rooms"] = {ROOM: inside}
+        sun = min(_sun(row["start"].replace(minute=0)) / bright, 1.0)
+        inside += (0.02 * (row["outside_c"] - inside) + 0.04 * row["heat_w"] / 1000 * (row["activity"] == "heating") + SUN_GAIN * sun) / 12
+    return rows
+
+
+class _SunHistory:
+    """Home Assistant with the hourly statistics of the sun sensor only; its current state is something else."""
+
+    def __init__(self, hours: list[datetime]) -> None:
+        self.hours = hours
+
+    async def command(self, msg_type: str, **data: Any) -> dict[str, Any]:
+        if msg_type == "recorder/statistics_during_period" and data["statistic_ids"] == [SUN]:
+            return {SUN: [{"start": h.timestamp() * 1000, "mean": _sun(h)} for h in self.hours]}
+        return {}
+
+    async def get_state(self, entity_id: str) -> dict[str, Any]:
+        return {"entity_id": entity_id, "state": "99999"}
+
+
+async def test_house_from_samples_takes_the_sun_of_each_hour(tmp_path: Path) -> None:
+    """The sun comes from the sensor's mean of that very hour - also for hours without Home Assistant rows."""
+    store = ShadowStore(tmp_path)
+    config = SunflowConfig(
+        devices=[DeviceConfig(id="hp", ha_device_id="dev", profile=PROFILE, profile_version=2, name="HPSU CAN")],
+        house=HouseSettings(rooms=[Room(entity_id=ROOM)]),
+    )
+    config.learning_sources.outdoor_temperature = "sensor.out"
+    config.learning_sources.irradiance = SUN
+    profiles = {PROFILE: {"capabilities": ["heat_pump"]}}
+    end = NOW.replace(hour=0)
+    rows = _sunny_house_rows(21, end)
+    hours = sorted({r["start"].replace(minute=0) for r in rows})
+    try:
+        store.store_heat_pump_samples(rows)
+        # Home Assistant has no room or outside history: none of its hourly rows exists
+        learned = await learn_house(_SunHistory(hours), config, profiles, end, None, store)  # type: ignore[arg-type]
+    finally:
+        store.close()
+
+    data, model = learned.data, learned.model
+    assert data.source == SAMPLES
+    bright = data.sun_bright
+    assert bright is not None
+    for row in data.rows:
+        assert row.sun == pytest.approx(min(_sun(row.start) / bright, 1.0))
+    assert model is not None and model.c is not None
+    assert model.c == pytest.approx(SUN_GAIN, rel=0.15)

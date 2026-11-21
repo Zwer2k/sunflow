@@ -152,6 +152,8 @@ export const api = {
   houseModel: () => request("GET", "/house/model"),
   setClimate: (body) => request("PUT", "/house/climate", body),
   heatPumpStatus: () => request("GET", "/heat_pump/status"),
+  heatPumpShadowWrites: (deviceId, days = 7) =>
+    request("GET", `/heat_pump/${encodeURIComponent(deviceId)}/shadow_writes?days=${days}`),
   setIntegrationSettings: (body) => request("PUT", "/config/integration", body),
   directStatus: () => request("GET", "/direct/status"),
   addDirect: (body) => request("POST", "/config/devices/direct", body),

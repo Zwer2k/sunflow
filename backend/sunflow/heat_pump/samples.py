@@ -5,7 +5,8 @@ heat_pump_samples of shadow.db. The peak of the flow temperature (tv_max, publis
 and compressor starts and stops come from state_changed events, so none is lost between two
 samples. Rooms being aired (6.2) are taken from the shadow control each minute and noted per row
 in flags.ventilation, changes of the flow target's source (8.1) in events. The heating curve of each
-heat pump is learned from the table every hour (9.2). Unknown states, faults, the room thermostat block and the heat pump limiting the flow
+heat pump is learned from the table every hour (9.2), with the swing, start jumps and output range
+of the protection layer (8.3, 8.4); the writes it would cause are noted in events. Unknown states, faults, the room thermostat block and the heat pump limiting the flow
 itself are noted once per change in the journal. Reads only; nothing is written to a device.
 """
 
@@ -27,7 +28,9 @@ from sunflow.planning.house_model import outside_entity
 from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
 
 from .curve import Curve, learn as learn_curve
-from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, FEED_HEAT_WINDOW_S
+from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, FEED_HEAT_WINDOW_S, JUMP_LEARN_DAYS, POWER_LEARN_DAYS
+from .learned import Learned, learn as learn_guard
+from .limits import ControlSettings
 from .shadow import FlowShadow
 from .states import UNKNOWN, Evaluation, HeatingTracker, Reading, StateSettings, canonical, read, value_key
 
@@ -89,6 +92,10 @@ class Minute:
     rooms: dict[str, float]
     # Rooms being aired in this minute (6.2)
     ventilation: tuple[str, ...] = ()
+    # Highest tv_max published since the previous minute (8.4)
+    tv_peak_c: float | None = None
+    # Parameters of the protection layer from the profile and the manifest (8.3, 8.4)
+    control: ControlSettings | None = None
 
 
 @dataclass(kw_only=True)
@@ -108,6 +115,8 @@ class Recording:
     # Latest values of the followed roles, for the events
     current: dict[str, float] = field(default_factory=dict)
     last: Minute | None = None
+    # Highest tv_max since the last sample
+    minute_peak: float | None = None
     outside_entity: str | None = None
     # What the journal was told
     noted_unknown: set[tuple[str, str]] = field(default_factory=set)
@@ -175,6 +184,7 @@ class HeatPumpRecorder:
         if role == PEAK_ROLE:
             bucket = interval_start(at)
             recording.peaks[bucket] = max(recording.peaks.get(bucket, value), value)
+            recording.minute_peak = max(recording.minute_peak if recording.minute_peak is not None else value, value)
 
     def _activity_changed(self, recording: Recording, old: str | None, new: str | None, at: datetime) -> None:
         if old is None or new is None or old in UNAVAILABLE_STATES or new in UNAVAILABLE_STATES:
@@ -248,6 +258,10 @@ class HeatPumpRecorder:
             for device_id, event in events:
                 if (recording := self._recordings.get(device_id)) is not None:
                     recording.events.setdefault(interval_start(now), []).append(event)
+            notes, self.flow.notes = self.flow.notes, []
+            for device_id, message, warn in notes:
+                if (device := next((d for d in devices if d.id == device_id), None)) is not None:
+                    self._journal(device, message, now, warn=warn)
             if self._curve_task is None or self._curve_task.done():
                 self._curve_task = asyncio.create_task(self.learn_curves(config, now))
         if rows:
@@ -272,20 +286,31 @@ class HeatPumpRecorder:
             return
         key = self.curve_key(config)
         weights = {room.entity_id: room.weight for room in config.house.rooms}
+        days = max(CURVE_HISTORY_DAYS, JUMP_LEARN_DAYS, POWER_LEARN_DAYS)
         for device_id in list(self._recordings):
             current: Curve | None = self.flow.curves.get(device_id)
-            if current is not None and current.key == key and timedelta(0) <= now - current.computed_at < CURVE_REFRESH:
+            curve_due = not (current is not None and current.key == key and timedelta(0) <= now - current.computed_at < CURVE_REFRESH)
+            learned: Learned | None = self.flow.learned.get(device_id)
+            guard_due = learned is None or not timedelta(0) <= now - learned.computed_at < CURVE_REFRESH
+            if not curve_due and not guard_due:
                 continue
             try:
-                rows = await asyncio.to_thread(self._store.heat_pump_samples, device_id, now - timedelta(days=CURVE_HISTORY_DAYS))
-                curve = await asyncio.to_thread(learn_curve, rows, weights, config.house.heating_surface, now, key)
+                rows = await asyncio.to_thread(self._store.heat_pump_samples, device_id, now - timedelta(days=days))
+                since = now - timedelta(days=CURVE_HISTORY_DAYS)
+                curve_rows = [r for r in rows if isinstance(r.get("start"), str) and r["start"] >= since.astimezone(UTC).isoformat()]
+                curve = await asyncio.to_thread(learn_curve, curve_rows, weights, config.house.heating_surface, now, key) if curve_due else None
+                guard = await asyncio.to_thread(learn_guard, rows, now) if guard_due else None
             except Exception:
                 # Tried again with the next tick
                 _LOGGER.exception("Learning the heating curve failed")
                 return
-            if (current is None or current.state != curve.state) and (recording := self._recordings.get(device_id)):
-                _LOGGER.info("%s: heating curve %s (%s intervals)", recording.name, curve.state, curve.intervals)
-            self.flow.set_curve(device_id, curve)
+            recording = self._recordings.get(device_id)
+            if curve is not None:
+                if (current is None or current.state != curve.state) and recording:
+                    _LOGGER.info("%s: heating curve %s (%s intervals)", recording.name, curve.state, curve.intervals)
+                self.flow.set_curve(device_id, curve)
+            if guard is not None:
+                self.flow.set_learned(device_id, guard)
 
     def _sample(
         self,
@@ -330,7 +355,10 @@ class HeatPumpRecorder:
             outside_c=_number(snapshot.states.get(recording.outside_entity)) if recording.outside_entity else None,
             rooms=rooms,
             ventilation=aired,
+            tv_peak_c=recording.minute_peak,
+            control=ControlSettings.from_profile(profile, recording.manifest),
         )
+        recording.minute_peak = None
         return minute, entities
 
     def _row(self, recording: Recording) -> dict[str, Any] | None:
@@ -425,6 +453,11 @@ class HeatPumpRecorder:
             self.journal.note(device.id, device.name, JOURNAL_ACTION, message, now)
 
     # Status
+
+    def pending_events(self, device_id: str) -> list[dict[str, Any]]:
+        """Events of the intervals not stored yet (shown with the stored ones)."""
+        recording = self._recordings.get(device_id)
+        return [e for events in (recording.events.values() if recording else []) for e in events]
 
     def status(self) -> dict[str, dict[str, Any]]:
         """Per heat pump: the latest states and whether it heats validly."""

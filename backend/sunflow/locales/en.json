@@ -251,5 +251,19 @@
   "Störung der Wärmepumpe behoben": "Heat pump fault cleared",
   "Raumthermostat-Sperre aktiv: die Wärmepumpe heizt nicht.": "Room thermostat block active: the heat pump does not heat.",
   "Raumthermostat-Sperre aufgehoben": "Room thermostat block released",
-  "Die Wärmepumpe begrenzt den Vorlauf selbst (Absenk-Zeit, T-Vorlauf Nacht).": "The heat pump limits the flow itself (setback time, T-Vorlauf Nacht)."
+  "Die Wärmepumpe begrenzt den Vorlauf selbst (Absenk-Zeit, T-Vorlauf Nacht).": "The heat pump limits the flow itself (setback time, T-Vorlauf Nacht).",
+  "Ungewollte Abschaltung des Kompressors {when}: Vorlauf {peak} °C, wirksamer Soll {setpoint} °C + {margin} K. {value} jetzt {k} K.": "Unwanted compressor shutdown {when}: flow {peak} °C, effective setpoint {setpoint} °C + {margin} K. {value} now {k} K.",
+  "nach dem Start": "after the start",
+  "nach dem Start nach Warmwasser": "after the start after hot water",
+  "nach dem Start nach Abtauen": "after the start after defrost",
+  "Schatten: Sunflow würde die Raumthermostat-Sperre setzen ({why}).": "Shadow: Sunflow would set the room thermostat block ({why}).",
+  "Schatten: Sunflow würde die Raumthermostat-Sperre aufheben ({why}).": "Shadow: Sunflow would release the room thermostat block ({why}).",
+  "im laufenden Betrieb": "while running",
+  "Sprung beim Start": "Jump at the start",
+  "Schwankung im Betrieb": "Swing while running",
+  "Vorlauf-Ziel {target} °C nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): Sunflow würde es nicht schreiben.": "Flow target {target} °C not plausible ({k} K from the effective setpoint or the heating curve): Sunflow would not write it.",
+  "Raum {room} °C, Ziel {plan} °C": "room {room} °C, target {plan} °C",
+  "keine Raumtemperatur": "no room temperature",
+  "Raum {room} °C, {k} K über dem Ziel {plan} °C": "room {room} °C, {k} K above the target {plan} °C",
+  "Mindestleistung {min} kW über dem Bedarf {need} kW": "minimum output {min} kW above the need {need} kW"
 }

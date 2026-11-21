@@ -15,6 +15,10 @@ Shadow: everything is computed, stored and shown, nothing is written to a heat p
 not act, the correction has no effect back and may run to its limit; it is marked as shadow and starts
 at 0 when Sunflow takes over (step 3), with the base frozen then.
 
+Protection layer (8.3, 8.4, step 3 part 3, guard.py): from the flow target the set value Sunflow would
+write and the writes it would cause (start, tracking, block, ...), still only computed; at a limit the
+correction does not move further beyond it.
+
 Ventilation (6.2): a room being aired does not count for the room temperature, and the correction is
 frozen meanwhile. When rooms leave or join the room temperature (aired, stale, missing), the
 correction takes the new value as reference instead of a step, so that alone causes no jump.
@@ -41,6 +45,9 @@ from .defaults import (
     ROOM_SETPOINT_STEP_C,
 )
 from .feedforward import BASE, Feed, HouseContext, RecentHeat, feedforward, house_heat_w
+from .guard import Guard, GuardInput, GuardResult
+from .learned import Learned, values as guard_values
+from .limits import ControlSettings
 from .rooms import RoomTemperature, StateReader, reported_times, room_temperature
 from .state_store import HeatPumpStateStore
 from .states import UNKNOWN
@@ -88,6 +95,9 @@ class FlowState:
     reason: str | None
     feed: Feed | None = None
     recent_s: float = 0.0
+    # Protection layer (8.3, 8.4): set value and writes Sunflow would cause, limits reached
+    guard: GuardResult | None = None
+    limited: tuple[str, ...] = ()
 
 
 class FlowShadow:
@@ -118,11 +128,20 @@ class FlowShadow:
             if (curve := Curve.from_dict(stored.get("curve"))) is not None:
                 self.curves[device_id] = curve
         self.house: HouseContext | None = None
+        # Protection layer per heat pump and its learned values (from the cache until learned anew)
+        self.guards: dict[str, Guard] = {}
+        self.learned: dict[str, Learned] = {}
+        self.settings: dict[str, ControlSettings] = {}
+        for device_id, stored in store.devices.items():
+            if (learned := Learned.from_dict(stored.get("learned"))) is not None:
+                self.learned[device_id] = learned
         # Where the house model learns from: heat_pump_samples once chosen (kept, no jump back)
         self.house_source: str | None = house.get("model_source") if isinstance(house.get("model_source"), str) else None
         self._recent: dict[str, RecentHeat] = {}
-        # Source changes of this tick: (device id, event) for heat_pump_samples
+        # Source changes, planned writes, starts and unwanted shutdowns of this tick: (device id, event)
+        # for heat_pump_samples; journal entries (device id, message, warn)
         self.source_events: list[tuple[str, dict[str, Any]]] = []
+        self.notes: list[tuple[str, str, bool]] = []
         # The rooms the room temperature is made of changed with the last observation
         self._rooms_changed = False
 
@@ -130,6 +149,17 @@ class FlowShadow:
         """A newly learned curve; kept as cache with the next save."""
         self.curves[device_id] = curve
         self._store.devices.setdefault(device_id, {})["curve"] = curve.as_dict()
+
+    def set_learned(self, device_id: str, learned: Learned) -> None:
+        """Newly learned swing, jumps and heat output range; kept as cache with the next save."""
+        self.learned[device_id] = learned
+        self._store.devices.setdefault(device_id, {})["learned"] = learned.as_dict()
+
+    def guard(self, device_id: str) -> Guard:
+        """The protection layer of one heat pump (from the stored state)."""
+        if device_id not in self.guards:
+            self.guards[device_id] = Guard((self._store.devices.get(device_id) or {}).get("guard"))
+        return self.guards[device_id]
 
     def recent(self, device_id: str) -> RecentHeat:
         """Heat of the last hours of one heat pump (source heat_recent)."""
@@ -236,6 +266,9 @@ class FlowShadow:
                 correction_k = None
             else:
                 correction = self._correction(device_id, strategy)
+                guard = self.guard(device_id)
+                # Limits reached in the previous minute (8.3): the correction does not move beyond them
+                last = guard.last
                 if self._active.get(device_id) != strategy:
                     correction.hold(room.value_c, now)
                     self._active[device_id] = strategy
@@ -244,21 +277,30 @@ class FlowShadow:
                 else:
                     if self._rooms_changed:
                         correction.rebase(room.value_c)
-                    correction.step(room.value_c, setpoint, now)
+                    correction.step(
+                        room.value_c, setpoint, now,
+                        block_up=last is not None and last.freeze_up, block_down=last is not None and last.freeze_down,
+                    )
                 correction_k = correction.value_k
                 stored.setdefault("corrections", {})[strategy] = round(correction.value_k, 4)
             start = feed.curve_c if feed.source != BASE else base
             target = start + correction_k if start is not None and correction_k is not None else None
             reason = "no_base" if start is None else "strategy_unknown" if correction_k is None else None
+            result = self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now)
+            stored["guard"] = self.guard(device_id).as_dict()
             flows[device_id] = FlowState(
                 strategy=strategy, base_c=base, base_at=base_at, correction_k=correction_k, target_c=target,
                 frozen=tuple(sorted(set(frozen))), reason=reason, feed=feed, recent_s=recent_s,
+                guard=result, limited=result.limited if result else (),
             )
         self.flows = flows
         for gone in set(self._store.devices) - set(minutes):
             del self._store.devices[gone]
             self.curves.pop(gone, None)
             self._recent.pop(gone, None)
+            self.guards.pop(gone, None)
+            self.learned.pop(gone, None)
+            self.settings.pop(gone, None)
         self._store.house = {
             "setpoint_c": self.watch.last_c,
             "settling": self.watch.settling.as_dict() if self.watch.settling else None,
@@ -266,6 +308,33 @@ class FlowShadow:
             "model_source": self.house_source,
         }
         self._store.save()
+
+    def _guard_step(
+        self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",
+        target: float | None, feed: Feed, room_c: float | None, now: datetime,
+    ) -> GuardResult | None:
+        """The protection layer for this minute: set value and writes Sunflow would cause (shadow)."""
+        guard = self.guard(device_id)
+        settings = minute.control or ControlSettings()
+        self.settings[device_id] = settings
+        try:
+            result = guard.step(GuardInput(
+                at=now, reading=minute.reading, evaluation=minute.evaluation, settings=settings,
+                values=guard_values(settings, self.learned.get(device_id), guard.bumps, now),
+                tv_peak_c=minute.tv_peak_c, heat_w=minute.heat_w, target_c=target,
+                curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w,
+                room_c=room_c, plan_c=config.house.climate.setpoint_c, mode=config.house.climate.mode,
+                surface=config.house.heating_surface,
+            ))
+        except Exception:
+            # The flow target goes on without it
+            _LOGGER.exception("%s: protection layer failed", device.name)
+            return None
+        for event in (*result.events, *result.writes):
+            self.source_events.append((device_id, event))
+        for message, warn in result.notes:
+            self.notes.append((device_id, message, warn))
+        return result
 
     # Status
 
@@ -298,6 +367,48 @@ class FlowShadow:
             "surface": self._config.house.heating_surface if self._config else None,
             "parameters": {
                 "kp": CORRECTION_KP, "ti_h": CORRECTION_TI_H, "deadband_k": ROOM_DEADBAND_K, "limit_k": CORRECTION_LIMIT_K,
+            },
+            # Limits the correction does not move beyond (8.3); the direction in guard.freeze_up/down
+            "limited": list(flow.limited),
+            "guard": self.guard_status(device_id),
+        }
+
+    def guard_status(self, device_id: str) -> dict[str, Any] | None:
+        """Set value and writes Sunflow would cause (8.3, 8.4, shadow), learned values, unwanted shutdowns."""
+        flow = self.flows.get(device_id)
+        guard = self.guards.get(device_id)
+        result = flow.guard if flow else None
+        if guard is None or result is None:
+            return None
+        settings = self.settings.get(device_id) or ControlSettings()
+        learned = self.learned.get(device_id)
+        now = self._observed_at or datetime.now(UTC)
+        return {
+            "shadow": True,
+            "phase": result.phase,
+            "inactive": list(result.inactive),
+            "setpoint_c": result.setpoint_c,
+            "desired_c": result.desired_c,
+            "floor_c": result.floor_c,
+            "min_c": result.limits[0] if result.limits else None,
+            "max_c": result.limits[1] if result.limits else None,
+            "limited": list(result.limited),
+            "freeze_up": result.freeze_up,
+            "freeze_down": result.freeze_down,
+            "implausible_k": result.implausible_k,
+            "calm": result.calm,
+            "block": guard.block,
+            "block_since": guard.block_at.isoformat() if guard.block_at else None,
+            "block_reason": guard.block_reason,
+            "start": guard.start.as_dict() if guard.start else None,
+            "written_at": guard.written_at.isoformat() if guard.written_at else None,
+            "writes": list(reversed(guard.recent_writes)),
+            "unwanted_stops": list(reversed(guard.recent_stops)),
+            "values": guard_values(settings, learned, guard.bumps, now).as_dict(),
+            "learned": learned.as_dict() if learned else None,
+            "parameters": {
+                "start_margin_k": settings.start_margin, "stop_margin_k": settings.stop_margin,
+                "deadband_k": settings.deadband, "step_k": settings.step, "block_min_s": settings.block_min_s,
             },
         }
 

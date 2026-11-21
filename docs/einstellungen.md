@@ -116,6 +116,31 @@ dann nur den aktuellen Zustand nach, die Richtung gibt die Korrektur. Sonst gilt
 Korrektur. Angezeigt wird, welche Quelle gerade gilt; wechselt sie, springt das Vorlauf-Ziel im
 Schattenbetrieb einmal, die Korrektur bleibt.
 
+**Stellwert und Schutz (Schatten):** Aus dem Vorlauf-Ziel rechnet Sunflow den Stellwert (Max T-Vorlauf),
+den es schreiben würde, und die Raumthermostat-Sperre – angezeigt mit „würde schreiben“, nichts davon
+geht an die Wärmepumpe. Der Stellwert bleibt in den Grenzen des Heizflächentyps (Fußboden 25–40 °C,
+gemischt 25–50 °C, Heizkörper 30–55 °C) und im Bereich der Entity. Ein Vorlauf-Ziel, das mehr als 8 K
+vom wirksamen Vorlauf-Soll (bzw. der Kennlinie) abweicht, würde nicht geschrieben (Eintrag im Journal).
+Erreicht das Vorlauf-Ziel eine Grenze oder die Wärmepumpe ihre Höchst- bzw. Mindestleistung, läuft die
+Korrektur nicht weiter darüber hinaus.
+
+Die Wärmepumpe schaltet den Kompressor ein, wenn der Soll mindestens 3 K über dem Vorlauf liegt, und aus,
+wenn der Vorlauf 3 K über dem Soll liegt. Sunflow würde deshalb: in einer Pause den Stellwert so anheben,
+dass die Wärmepumpe startet (Vorlauf + 3 K, bzw. so, dass der Sprung des Vorlaufs nach dem Start nicht
+abschaltet); während Warmwasser den Stellwert für den Start danach vorbereiten; nach einem Start halten,
+bis der Vorlauf ruhig ist, und dann einmal absenken; im Betrieb nachführen, wenn der Vorlauf der
+Abschaltgrenze nahekommt. Wärme, die es nicht will (Raum 0,5 K über dem Raum-Soll, oder die
+Mindestleistung der Wärmepumpe liegt über dem Bedarf), würde es über die Raumthermostat-Sperre
+abschalten – jeder Zustand mindestens 20 Minuten. Die Schwankung des Vorlaufs im Betrieb, der Sprung nach
+einem Start (normal, nach Warmwasser, nach Abtauen), die Zeit bis zur Ruhe und der Leistungsbereich der
+Wärmepumpe werden aus der Aufzeichnung gelernt; bis genug Daten da sind, gelten vorsichtige Startwerte.
+Schaltet der Kompressor ungewollt ab (Vorlauf 3 K über dem Soll ohne Sperre, Warmwasser oder Abtauen),
+steht das im Journal, und der betroffene Wert wird sofort erhöht; ohne weitere Vorfälle sinkt er über
+Wochen zurück. Die Tabelle **Schreibvorgänge je Tag** zählt für die letzten 7 Tage, was Sunflow
+geschrieben hätte (normal, Start, Nachführen, Sperre an/aus), und die ungewollten Abschaltungen – zum
+Vergleich mit dem geplanten Budget von 48 normalen und 24 Schreibvorgängen für Start und Nachführen je
+Tag. Mindestabstand und Budget gelten erst, wenn Sunflow aktiv schreibt.
+
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
 Wärmepumpe). Der **Heizflächentyp** (Fußbodenheizung, gemischt, Heizkörper; Standard Fußboden) gibt den
