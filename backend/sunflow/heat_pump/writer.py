@@ -12,18 +12,21 @@ protection step (start, tracking); this layer decides when it is written:
 - "write now" skips the spacing (not the budget) for one tick; the wish lapses when nothing can be
   written in the next tick (nothing pending, budget, no valid state, writing not active), with the reason
   in the status and the journal.
-In the shadow it works on the virtual writes and adds nothing to the journal (events as before); a real
-write gets a journal entry with its reason. Writing to the heat pump itself follows in step 3 part 4.7;
-until then nothing switches it on.
+- the budget (budget.py, step 3 part 4.3): a value it holds back waits without a time (held budget);
+  a protection step held back sets the block instead (guard.py), each exhaustion once a day in the journal.
+In the shadow it works on the virtual writes (counted virtually against the budget) and adds nothing to
+the journal for a write (events as before); a real write gets a journal entry with its reason. Writing to
+the heat pump itself follows in step 3 part 4.7; until then nothing switches it on.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from sunflow.i18n import number, t
 
+from .budget import DAY, EMERGENCY, HOUR, WriteBudget
 from .limits import ControlSettings, clamp, round_near, round_up
 
 if TYPE_CHECKING:
@@ -63,12 +66,14 @@ class Pending:
     protect: bool
     due_at: datetime | None
     held: str
+    # With held budget: which limit (day, emergency, hour)
+    budget: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """For the status."""
         return {
             "value_c": self.value_c, "reason": self.reason, "protect": self.protect,
-            "due_at": _iso(self.due_at) if self.due_at else None, "held": self.held,
+            "due_at": _iso(self.due_at) if self.due_at else None, "held": self.held, "budget": self.budget,
         }
 
 
@@ -85,7 +90,7 @@ class WriteOutcome:
     notes: list[tuple[str, bool]] = field(default_factory=list)
 
 
-# Budget (part 4.3): None when the write may go ahead, else why not
+# Budget (part 4.3, budget.WriteBudget): None when the write may go ahead, else which limit holds it back
 Budget = Callable[[Request, datetime], str | None]
 
 
@@ -153,8 +158,10 @@ class Writer:
             manual = manual_at is not None and lapse is None
             if due is not None and now < due and not manual:
                 self.pending = Pending(value_c=wanted.value_c, reason=wanted.reason, protect=wanted.protect, due_at=due, held=SPACING)
-            elif budget is not None and (held := budget(wanted, now)) is not None:
-                self.pending = Pending(value_c=wanted.value_c, reason=wanted.reason, protect=wanted.protect, due_at=None, held=held)
+            elif budget is not None and (limit := budget(wanted, now)) is not None:
+                self.pending = Pending(
+                    value_c=wanted.value_c, reason=wanted.reason, protect=wanted.protect, due_at=None, held=BUDGET, budget=limit,
+                )
                 if manual:
                     lapse = BUDGET
             else:
@@ -194,8 +201,33 @@ class Writer:
         return Request(value_c=value, reason=request.reason, protect=request.protect)
 
 
+def budget_text(limit: str, limits: Any, shadow: bool) -> str:
+    """The journal entry when the budget first holds a value back on a day."""
+    if limit == DAY:
+        message = t(
+            "Schreibbudget für heute erschöpft ({n} Schreibvorgänge): normale Werte erst morgen wieder, Schutzschritte über das Notkontingent.",
+            n=limits.per_day,
+        )
+    elif limit == EMERGENCY:
+        message = t(
+            "Notkontingent für heute erschöpft ({n} Schreibvorgänge zusätzlich): Raumthermostat-Sperre statt Schutzschritt.",
+            n=limits.emergency_per_day,
+        )
+    elif limit == HOUR:
+        message = t("Höchstens {n} Schreibvorgänge je Stunde erreicht: Werte warten, Raumthermostat-Sperre statt Schutzschritt.", n=limits.per_hour)
+    else:
+        message = t("Budget erschöpft")
+    return t("Schatten: {message}", message=message) if shadow else message
+
+
 def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bool = False, budget: Budget | None = None) -> "GuardResult":
-    """One minute: the protection layer decides what it wants, the write layer when it is written."""
+    """One minute: the protection layer decides what it wants, the write layer when it is written.
+
+    A protection step the budget holds back sets the block instead (guard.budget_block); the block the
+    budget set is released once a protection step may be written again."""
+    if budget is not None:
+        free = budget(Request(value_c=0.0, reason="start", protect=True), data.at) is None
+        data = replace(data, protect_budget=free)
     result = guard.step(data)
     outcome = writer.step(
         now=data.at, request=result.request, written_c=guard.written_c, written_at=guard.written_at,
@@ -203,7 +235,22 @@ def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bo
     )
     if outcome.write is not None:
         guard.record_write(result, data.at, outcome.write.value_c, outcome.write.reason, shadow=not active, manual=outcome.manual)
-    result.pending = outcome.pending
+        if isinstance(budget, WriteBudget):
+            budget.wrote(data.at)
+    pending = outcome.pending
+    if pending is not None and pending.held == BUDGET:
+        if pending.protect:
+            blocked = guard.budget_block(result, data)
+            if blocked:
+                # The block protects instead: nothing waits for the budget any more
+                writer.pending = pending = None
+            elif guard.budget_unprotected(data):
+                message = t("Schutzschritt wegen des Budgets nicht möglich, die Raumthermostat-Sperre ebenfalls nicht (keine Sperre oder ihre Mindestdauer): die Wärmepumpe kann abschalten.")
+                result.notes.append((t("Schatten: {message}", message=message) if not active else message, True))
+        limit = outcome.pending.budget if outcome.pending is not None else None
+        if isinstance(budget, WriteBudget) and limit is not None and budget.notice(limit, data.at):
+            result.notes.append((budget_text(limit, budget.limits, not active), True))
+    result.pending = pending
     result.manual = outcome.manual_result
     result.notes.extend(outcome.notes)
     return result

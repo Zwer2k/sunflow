@@ -10,6 +10,14 @@ DEADBAND_K = 0.5
 WRITE_MIN_INTERVAL_S = 5 * 60
 WRITE_PROTECT_INTERVAL_S = 2 * 60
 WRITE_INTERVAL_FLOOR_S = 60
+# Write budget of the set value (8.5, EepromGuard), fallbacks when the profile leaves them out
+# (flow_control.writes.per_day, emergency_per_day, per_hour): normal writes per day, an emergency
+# quota on top only for protection steps, and at most this many writes in any 60 minutes.
+WRITE_PER_DAY = 48
+WRITE_EMERGENCY_PER_DAY = 24
+WRITE_PER_HOUR = 6
+# Writes kept for counting: a local day (up to 25 h at a change of daylight saving time) and the last hour
+WRITE_TIMES_KEEP_S = 26 * 3600
 # Coarsest step of the written set value (3.6): with a coarser one the rounding alone exceeds the
 # deadband (e.g. step 1.0 of a firmware without tenths). Firmware property, so not the profile's deadband.
 MAX_SETPOINT_STEP_K = DEADBAND_K

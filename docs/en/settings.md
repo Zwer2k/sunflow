@@ -146,9 +146,17 @@ spacing** between two writes of the set value already applies in shadow (from th
 HPSU 5 minutes, for protection steps – start and tracking – 2 minutes): the first change after a calm
 spell goes out at once, further changes within that time are only kept, and once it has passed Sunflow
 writes the latest value if it still differs (a normal value by more than 0.5 K, a protection step with any
-raise). A waiting value is shown as "pending … would be written at …". The budget applies only once
-Sunflow writes; so does the button **Write now**, which skips the spacing for the pending value (not the
-budget) and is not offered in shadow operation yet. The room thermostat block counts neither against the
+raise). A waiting value is shown as "pending … would be written at …". The **budget** applies in shadow
+as well (from the device profile, for the HPSU 48 writes per day, plus 24 only for protection steps, at
+most 6 in any hour; the day follows Home Assistant's time zone): Sunflow counts virtually from the
+recorded writes, the counter of real EEPROM writes stays untouched. When the daily budget is used up, a
+normal value waits ("pending … waits: daily budget used up") until the next day; protection steps go on
+from the emergency quota. When that is used up too or the hourly limit is reached, Sunflow would set the
+room thermostat block instead of the protection step and release it once a protection step may be
+written again (at the earliest after its minimum duration). The journal notes each kind of exhaustion
+once a day. The tile **Budget today (virtual)** shows the day's use, the emergency quota left and the
+last hour. The button **Write now** skips the spacing for the pending value (not the budget) and is not
+offered in shadow operation yet. The room thermostat block counts neither against the
 budget nor for the spacing: the HPSU does not store this input in its EEPROM; its minimum duration
 prevents cycling.
 

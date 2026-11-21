@@ -6,7 +6,7 @@ is written to the heat pump: the "written" value here is the one Sunflow would h
 (virtual, starting from the heat pump's Max T-Vorlauf), the block is the room thermostat input as
 Sunflow would have set it. The protection layer only says which value it wants and whether that is a
 protection step; when it is written (spacing, deadband, "write now") decides the write layer behind it
-(writer.py, 8.5, step 3 part 4.2). The budget follows in part 4.3.
+(writer.py, 8.5, step 3 part 4.2), within the budget (budget.py, part 4.3).
 
 Rules (8.4), with the learned values (learned.py; start values until there are enough data):
 - Start: Sunflow wants heat (no block) and the compressor is off → set value ≥ max(Tv + start_margin,
@@ -22,6 +22,8 @@ Rules (8.4), with the learned values (learned.py; start values until there are e
   each state of the block lasts at least its minimum duration.
 - A block Sunflow did not set (found on start, set by hand, automation or another controller) is not
   released: phase blocked, journal, shown in status and UI, until someone else releases it (8.6).
+- Budget used up for a protection step (emergency quota or hourly limit): the block instead of the
+  write (reason budget), released after its minimum duration once a protection step may be written again.
 - Unwanted shutdown: the compressor stops in heating at Tv ≥ effective setpoint + 3 K without block,
   hot water or defrost → journal; the value concerned (jump of that start, else the swing) is raised.
 Limits (8.3): the set value stays within [min, max]; a flow target beyond the plausibility band is not
@@ -76,6 +78,8 @@ STOP_EVENT = "unwanted_stop"
 # Why Sunflow wants the heat pump off (block)
 ROOM_WARM = "room_warm"
 MIN_POWER = "min_power"
+# The budget holds a protection step back (8.5): the block instead
+BUDGET_BLOCK = "budget"
 # A block Sunflow did not set (found on start or set by someone else): never released by Sunflow (8.6)
 FOREIGN = "foreign"
 # Earlier name in heat_pump_state.json (0.80.10)
@@ -160,6 +164,8 @@ class GuardInput:
     plan_c: float | None = None
     mode: str = "heat"
     surface: str | None = None
+    # The budget would let a protection step be written now (write_step); releases a budget block
+    protect_budget: bool = True
 
 
 @dataclass(kw_only=True)
@@ -214,6 +220,8 @@ class Guard:
         self.recent_writes: list[dict[str, Any]] = [w for w in state.get("recent_writes") or [] if isinstance(w, dict)]
         self.recent_stops: list[dict[str, Any]] = [s for s in state.get("recent_stops") or [] if isinstance(s, dict)]
         self.implausible = bool(state.get("implausible"))
+        # A protection step held back by the budget without a block possible was noted (once per episode)
+        self.unprotected = bool(state.get("unprotected"))
         # In memory only: Tv of the last minutes (time, Tv, peak) and the previous minute
         self._history: deque[tuple[datetime, float, float]] = deque()
         self._activity: str | None = None
@@ -239,6 +247,7 @@ class Guard:
             "recent_writes": self.recent_writes[-GUARD_RECENT_MAX:],
             "recent_stops": self.recent_stops[-GUARD_RECENT_MAX:],
             "implausible": self.implausible,
+            "unprotected": self.unprotected,
         }
 
     # Tv over the last minutes
@@ -479,6 +488,7 @@ class Guard:
         if manual:
             event["manual"] = True
         self.written_c, self.written_at = value, now
+        self.unprotected = False
         result.setpoint_c = value
         result.writes.append(event)
         self.recent_writes.append(event)
@@ -504,6 +514,10 @@ class Guard:
         if not may_switch:
             return
         if self.block:
+            if self.block_reason == BUDGET_BLOCK:
+                if data.protect_budget:
+                    self._switch_block(result, now, False, None, t("Schreibbudget wieder verfügbar"))
+                return
             if self.block_reason == MIN_POWER:
                 release = room is None or plan is None or room <= plan - ROOM_DEADBAND_K + _EPS
             else:
@@ -513,6 +527,28 @@ class Guard:
                 self._switch_block(result, now, False, None, why)
         elif room is not None and plan is not None and room >= plan + BLOCK_ROOM_ABOVE_K - _EPS:
             self._switch_block(result, now, True, ROOM_WARM, t("Raum {room} °C, {k} K über dem Ziel {plan} °C", room=number(room), k=number(room - plan), plan=number(plan)))
+
+    def budget_block(self, result: GuardResult, data: GuardInput) -> bool:
+        """The budget holds a protection step back: the block instead (8.5). False when it cannot be set
+        (no block role, someone else's block, its minimum duration since the last change)."""
+        settings, now = data.settings, data.at
+        if not settings.has_block or self.block_reason == FOREIGN:
+            return False
+        if self.block:
+            return True
+        if self.block_at is not None and now - self.block_at < timedelta(seconds=settings.block_min_s):
+            return False
+        self._switch_block(result, now, True, BUDGET_BLOCK, t("Schreibbudget erschöpft"))
+        result.phase = "blocked"
+        self.unprotected = False
+        return True
+
+    def budget_unprotected(self, data: GuardInput) -> bool:
+        """True the first time in an episode that a protection step is held back without a block."""
+        if self.unprotected:
+            return False
+        self.unprotected = True
+        return True
 
     def _decide(self, data: GuardInput, result: GuardResult, tv: float | None, low: float, high: float, guard: float, swing: float) -> None:
         reading, values, settings, now = data.reading, data.values, data.settings, data.at

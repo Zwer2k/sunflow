@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.14
+
+- Heat pumps (still shadow operation): the write budget now applies to the set value – 48 writes per day, 24 more only for protection steps (start, tracking), at most 6 in any hour; the day follows Home Assistant's time zone. In the shadow Sunflow counts virtually (from the recorded writes), the EEPROM counter file stays untouched. Once the budget is used up a normal value waits ("pending … waits: daily budget used up"); instead of a protection step beyond the emergency quota or the hourly limit Sunflow would set the room thermostat block and release it once a protection step may be written again. Each exhaustion is noted once a day in the journal. Settings → Heat pump shows the budget of today (virtual) and the table of writes per day now counts with spacing and budget.
+
 ## 0.80.13
 
 - Heat pumps (still shadow operation): writing the set value now follows the write rules – the first change after a calm spell at once, then at least 5 minutes between two writes (2 minutes for protection steps: start and tracking); in between only the latest value is kept and written once the spacing has passed, if it still differs (normal values by more than 0.5 K). Settings → Heat pump shows a waiting value as "pending … would be written at …", and the table of writes per day now counts with the spacing. Nothing is written to the heat pump yet; the budget and the button "Write now" (skips the spacing, not the budget) follow with active writing.

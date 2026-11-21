@@ -804,7 +804,7 @@ beide je Takt; noch nichts an die Wärmepumpe):
   gelten diese, ein kleinerer als 60 s (`WRITE_INTERVAL_FLOOR_S`) zählt als 60 s. Einstellbar nur im Profil
   (Entscheidung des Nutzers). Ohne bekannten letzten Schreibvorgang (Start, Neustart ohne Zeit) sofort.
 - Ausstehend (Status `guard.pending`): Wert, Grund, Schutzschritt, `due_at` (wann er geschrieben wird) und
-  `held` (`spacing`; ab Teil 4.3 auch `budget`, dann ohne `due_at`). UI: „würde um … geschrieben“ im
+  `held` (`spacing` oder `budget`, dann ohne `due_at` und mit `budget` = `day`/`emergency`/`hour`). UI: „würde um … geschrieben“ im
   Schatten, „wird um … geschrieben“ aktiv.
 - „Jetzt schreiben“ (`POST /api/v1/heat_pump/<id>/write_now`, Ablauf vom Nutzer festgelegt): 202, wenn das
   Schreiben aktiv ist und ein Wert aussteht; 409 mit `reason` `not_active` (Schatten) bzw. `nothing_pending`;
@@ -819,6 +819,33 @@ beide je Takt; noch nichts an die Wärmepumpe):
   „Max T-Vorlauf geschrieben: … (vorher …), Grund: …“. Aktiv schaltet erst Teil 4.7
   (`FlowShadow.writing_active`, bis dahin für jede Wärmepumpe falsch); Status `guard.shadow` folgt dem.
 - Status `guard.parameters.min_interval_s`/`protect_interval_s`; Tests `tests/test_heat_pump_writer.py`.
+
+Umsetzung Budget (3, Teil 4.3, `heat_pump/budget.py`, Hook `budget` der Schreibschicht; noch nichts an die
+Wärmepumpe):
+- Grenzen aus `writes.per_day`/`emergency_per_day`/`per_hour` (fehlt ein Wert: 48/24/6, `ControlSettings.budget`).
+  Gezählt wird jeder Schreibvorgang des Stellwerts, gleich welcher Grund (auch „jetzt schreiben“). Normal
+  geht bis `per_day`; ein Schutzschritt nutzt zuerst das normale Budget, dann das Notkontingent, also bis
+  `per_day + emergency_per_day`; `per_hour` gilt für alle, gleitend über 60 min.
+- Tag = Kalendertag in der Zeitzone von HA (stündlich neu gelesen); solange sie unbekannt ist, zählen die
+  letzten 24 h (nie großzügiger als ein Kalendertag). Sommerzeitwechsel: Tagesbeginn je lokalem Datum.
+- Schatten: virtuell gezählt (`VirtualLog`), beim ersten Takt aus den Ereignissen `write` mit Grund
+  normal/start/track der letzten 26 h in `heat_pump_samples` (und den noch nicht gespeicherten) befüllt,
+  danach je virtuellem Schreibvorgang; doppelte Ereignisse zählen einmal, `eeprom_writes.json` bleibt
+  unberührt. Aktiv (ab 4.7): `EepromLog` liest die Zeiten, die `EepromGuard` je Entity mitschreibt
+  (Schlüssel `times`, 26 h; Tageszähler wie bisher).
+- Hält das Budget einen Wert zurück: `guard.pending` mit `held` `budget`, `due_at` leer; ein normaler Wert
+  wartet. Ein Schutzschritt, den das Budget zurückhält (Notkontingent erschöpft oder 6/h), setzt statt
+  dessen die Raumthermostat-Sperre (Grund `budget`, Ereignis `block_on`, zählt nicht), sofern die Rolle da
+  ist, keine fremde Sperre gilt und die Mindestdauer seit dem letzten Wechsel um ist; aufgehoben wird sie
+  nach der Mindestdauer, sobald ein Schutzschritt wieder geschrieben werden dürfte (dann gelten wieder die
+  Regeln 8.4). Geht auch die Sperre nicht, bleibt der Schutzschritt ausstehend und das Journal warnt einmal
+  je Episode.
+- Journal: jede Art der Erschöpfung (`day`, `emergency`, `hour`) einmal je lokalem Tag, im Schatten mit
+  „Schatten:“. Status `guard.budget` (`per_day`, `emergency_per_day`, `per_hour`, `used_today`, `used_hour`,
+  `normal_left`, `emergency_left`, `hour_left`, `normal`/`protect` = was gerade zurückhält, `day_start`,
+  `local_day`, `virtual`, `seeded`); UI-Kachel „Budget heute (virtuell)“. `shadow_writes` zählt damit, was
+  mit Mindestabstand und Budget geschrieben würde; `budget` dort mit den Startwerten, wenn das Profil keine
+  nennt. Tests `tests/test_heat_pump_budget.py`.
 
 ### 8.6 Ende der Steuerung und Ausfall
 
@@ -949,7 +976,7 @@ Abbildung Kurvenparameter → wirksamer Soll.
 | 5-min-Messdaten (1 Jahr) | Tabelle `heat_pump_samples` in `shadow.db` | SQLite, neuer Schritt in `SCHEMA_STEPS` |
 | Gelerntes (Kennlinie, Versatz je Raum, Sprung-/Schwankungswerte, Leistungsbereich, Prognose-Korrektur) | aus der Tabelle berechnet, Cache in `heat_pump_state.json` | JSON |
 | Strategie-Zustand je Gerät und Strategie (`fixed`, `weather`) | `heat_pump_state.json` | JSON, atomar (tmp + replace) |
-| Schreibzähler | `eeprom_writes.json` (vorhanden) | JSON |
+| Schreibzähler | `eeprom_writes.json` (vorhanden; Tageszähler, Zeiten der letzten 26 h je Entity) | JSON |
 | Raum-Soll, Spielraum, Räume, Heizflächentyp, Grenzen, Wetter-Entity | `config.json` (vorhanden, Migration) | JSON |
 | Gerätezuordnung (`ha_device_id`, MAC, Komponente, Paarung CAN ↔ UART) | `config.json` (`DeviceConfig`) | JSON |
 
@@ -1176,9 +1203,9 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    liest); das liegt auf der sicheren Seite (Spitze eher zu hoch) und macht `steady_swing` im Dauerlauf
    kaum größer, keine Änderung nötig.
 2. Sommer vs. Bereitschaft der HPSU im Detail (RoCon-Anleitung).
-3. Startwerte Budget (48 + 24) nach den ersten Wochen prüfen. Seit 3, Teil 4.2 zählt
-   `shadow_writes` mit Mindestabstand (noch ohne Budget); damit lässt sich die Zahl schon im Schatten
-   beurteilen.
+3. Startwerte Budget (48 + 24) nach den ersten Wochen prüfen. Seit 3, Teil 4.3 zählt
+   `shadow_writes` mit Mindestabstand und Budget (virtuell, 8.5); damit lässt sich die Zahl schon im Schatten
+   beurteilen – Tage mit Budget-Sperre oder vollem Notkontingent zeigen, dass die Werte zu knapp sind.
 4. Höchster Vorlauf für den Estrich (Nutzereinstellung, Standard?). **Geklärt, umgesetzt (0.80.11):**
    Einstellung min/max des Stellwerts je Wärmepumpe (8.3), leer = Startgrenzen des Heizflächentyps
    (`HEATING_SURFACES`), immer eingeengt auf `min`/`max` der Entity im Manifest; max ist zugleich der
@@ -1312,6 +1339,10 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
          mehr schreiben, Schutz über das Notkontingent, danach Sperre statt Nachführen, Journal. Im Schatten
          virtuell gezählt (aus den Ereignissen), nicht in `eeprom_writes.json`; `shadow_writes` zeigt
          dann, was mit Mindestabstand und Budget wirklich geschrieben würde.
+         **Umgesetzt (0.80.14):** `heat_pump/budget.py` (`WriteBudget`, `VirtualLog`, `EepromLog`), Grenzen in
+         `ControlSettings.budget`, Sperre statt Schutzschritt (Grund `budget`, `Guard.budget_block`), Zeitzone
+         in `FlowShadow`, Status `guard.budget`, UI-Kachel, `EepromGuard` merkt die Zeiten (für 4.7). Tests
+         `tests/test_heat_pump_budget.py`.
       4. **Fremde Schreiber** (8.5): Änderung von Max T-Vorlauf, die nicht von Sunflow stammt, und
          ESP-Regelung (`supply_setpoint_regulated` > 0, optionale Profilrolle) → Journal (Warnung, einmal je
          Episode), Zusammenfassung, Status; der virtuelle bzw. geschriebene Wert folgt dem echten. Wirkt

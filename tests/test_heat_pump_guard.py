@@ -516,9 +516,16 @@ def test_daily_counts_in_local_time() -> None:
 # Through the recorder: events in heat_pump_samples, journal, status, counts
 
 
-async def test_recorder_notes_planned_writes(tmp_path: Path, library: Any) -> None:
+async def test_recorder_notes_planned_writes(tmp_path: Path, library: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     from test_heat_pump_samples import Pump  # noqa: PLC0415
 
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return (NOW + 12 * MIN).astimezone(tz)
+
+    # The counts per day run up to "today": the API's clock at the time of the run, not the real one
+    monkeypatch.setattr("sunflow.api.heat_pump.datetime", Clock)
     pump = Pump(tmp_path, library)
     pump.recorder.flow = FlowShadow(HeatPumpStateStore(tmp_path))
     try:

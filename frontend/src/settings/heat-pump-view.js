@@ -68,10 +68,17 @@ const HELD = () => ({
   nothing_pending: t("kein ausstehender Wert"),
   inactive: t("kein gültiger Zustand zum Schreiben"),
 });
+// Which limit of the budget holds a value back (8.5)
+const BUDGET_LIMITS = () => ({
+  day: t("Tagesbudget erschöpft"),
+  emergency: t("Notkontingent erschöpft"),
+  hour: t("Höchstzahl je Stunde erreicht"),
+});
 // Why the block would be set
 const BLOCK_REASONS = () => ({
   room_warm: t("Raum deutlich über dem Ziel"),
   min_power: t("Mindestleistung über dem Bedarf"),
+  budget: t("Schreibbudget erschöpft (statt Schutzschritt)"),
   foreign: t("nicht von Sunflow gesetzt"),
 });
 // Limits the flow target or the heat pump reached (8.3)
@@ -504,8 +511,9 @@ class SunflowHeatPump extends LitElement {
         ? (shadow
           ? t("ausstehend: {value} °C ({reason}), würde um {time} geschrieben", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, time: time(pending.due_at) })
           : t("ausstehend: {value} °C ({reason}), wird um {time} geschrieben", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, time: time(pending.due_at) }))
-        : t("ausstehend: {value} °C ({reason}), wartet: {why}", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, why: HELD()[pending.held] ?? pending.held });
+        : t("ausstehend: {value} °C ({reason}), wartet: {why}", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, why: (pending.held === "budget" && BUDGET_LIMITS()[pending.budget]) || (HELD()[pending.held] ?? pending.held) });
     const params = guard.parameters ?? {};
+    const budget = guard.budget;
     return html`
       <div class="learned">
         <span class="field-label">${t("Stellwert und Schutz (Schatten)")}</span>
@@ -520,6 +528,13 @@ class SunflowHeatPump extends LitElement {
           ${tile(t("Vorlauf-Ziel in Grenzen"), guard.desired_c == null ? "–" : `${one(guard.desired_c)} °C`, t("Grenzen {min}–{max} °C", { min: one(guard.min_c), max: one(guard.max_c) }))}
           ${tile(t("Untergrenze Schutz"), guard.floor_c == null ? "–" : `${one(guard.floor_c)} °C`, GUARD_PHASES()[guard.phase] ?? guard.phase)}
           ${tile(t("Sperre"), guard.block ? (guard.block_reason === "foreign" ? t("an (nicht von Sunflow)") : t("an")) : t("aus"), guard.block_since ? t("seit {time}", { time: time(guard.block_since) }) : null)}
+          ${budget
+            ? tile(
+              shadow ? t("Budget heute (virtuell)") : t("Budget heute"),
+              `${budget.used_today}/${budget.per_day}`,
+              t("Notkontingent übrig {emergency} von {emergency_per_day}, letzte Stunde {hour}/{per_hour}", { emergency: budget.emergency_left, emergency_per_day: budget.emergency_per_day, hour: budget.used_hour, per_hour: budget.per_hour }),
+            )
+            : nothing}
         </div>
         ${guard.inactive?.length
           ? html`<p class="small muted">${t("Würde nichts schreiben: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })}</p>`
@@ -575,15 +590,15 @@ class SunflowHeatPump extends LitElement {
         <tbody>
           ${writes.days.map((d) => html`<tr>
             <td>${day(d.date)}</td>
-            <td class=${over(d.normal, budget.per_day)}>${d.normal}</td>
-            <td class=${over(d.protect, budget.emergency_per_day)}>${d.start}</td>
-            <td class=${over(d.protect, budget.emergency_per_day)}>${d.track}</td>
+            <td class=${over(d.setpoint, budget.per_day)}>${d.normal}</td>
+            <td class=${over(d.setpoint, (budget.per_day ?? 0) + (budget.emergency_per_day ?? 0))}>${d.start}</td>
+            <td class=${over(d.setpoint, (budget.per_day ?? 0) + (budget.emergency_per_day ?? 0))}>${d.track}</td>
             <td>${d.block_on}/${d.block_off}</td>
             <td class=${d.unwanted_stops ? "warn-text" : ""}>${d.unwanted_stops}</td>
           </tr>`)}
         </tbody>
       </table>
-      <p class="small muted">${t("Geplantes Budget (ab dem Aktivschalten): {normal} normale Schreibvorgänge und {emergency} für Start und Nachführen je Tag, höchstens {hour} je Stunde. Im Schatten gilt schon der Mindestabstand, noch kein Budget; die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
+      <p class="small muted">${t("Budget: {normal} Schreibvorgänge je Tag, dazu {emergency} nur für Schutzschritte (Start, Nachführen), höchstens {hour} je Stunde; der Tag folgt der Zeitzone von Home Assistant. Im Schatten zählt Sunflow virtuell, mit Mindestabstand und Budget. Ist das Budget erschöpft, wartet ein normaler Wert; statt eines Schutzschritts würde die Raumthermostat-Sperre gesetzt. Die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
     `;
   }
 

@@ -27,6 +27,7 @@ from sunflow.i18n import t
 from sunflow.planning.house_model import outside_entity
 from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
 
+from .budget import KEEP as BUDGET_KEEP
 from .curve import Curve, learn as learn_curve
 from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, FEED_HEAT_WINDOW_S, JUMP_LEARN_DAYS, POWER_LEARN_DAYS
 from .learned import Learned, learn as learn_guard
@@ -243,6 +244,15 @@ class HeatPumpRecorder:
                     self.flow.recent(device.id).seed(await asyncio.to_thread(self._store.heat_pump_samples, device.id, since), now)
                 except Exception:
                     _LOGGER.exception("Reading the recent heat failed")
+            if self.flow is not None and not self.flow.budget(device.id).seeded:
+                # The writes of today so far count against the budget (virtually, from the write events);
+                # tried again next minute when the table cannot be read
+                log = self.flow.budget(device.id).log
+                try:
+                    rows = await asyncio.to_thread(self._store.heat_pump_samples, device.id, now - BUDGET_KEEP - INTERVAL)
+                    log.seed([e for row in rows for e in row.get("events") or []] + self.pending_events(device.id), now)
+                except Exception:
+                    _LOGGER.exception("Reading the writes of today failed")
             if minute is not None:
                 recording.minutes.append(minute)
                 recording.last = minute

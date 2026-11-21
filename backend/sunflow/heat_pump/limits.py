@@ -6,13 +6,14 @@
 - Rounding to the entity's step (manifest), always the safe way where it protects (up).
 - Plausibility: a flow target further than PLAUSIBLE_BAND_K from the effective setpoint, and from the
   curve's value when the curve is used, is not written.
-The heat output range is learned in learned.py.
+The heat output range is learned in learned.py; the write budget is in budget.py.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from typing import Any
 
+from .budget import BudgetLimits
 from .defaults import (
     BLOCK_MIN_S,
     DEADBAND_K,
@@ -67,6 +68,8 @@ class ControlSettings:
     # Minimum spacing of two writes of the set value (8.5): normal and for protection steps
     min_interval_s: float = WRITE_MIN_INTERVAL_S
     protect_interval_s: float = WRITE_PROTECT_INTERVAL_S
+    # Write budget of the set value (8.5): per day, emergency quota for protection steps, per hour
+    budget: BudgetLimits = field(default_factory=BudgetLimits)
     # Step and range of the written entity (manifest); None when it names none
     step: float = DEFAULT_SETPOINT_STEP_K
     entity_min: float | None = None
@@ -104,6 +107,7 @@ class ControlSettings:
             # Never shorter than the heat pump needs to take a value over (8.5)
             min_interval_s=max(duration(writes.get("min_interval"), WRITE_MIN_INTERVAL_S).total_seconds(), WRITE_INTERVAL_FLOOR_S),
             protect_interval_s=max(duration(writes.get("protect_interval"), WRITE_PROTECT_INTERVAL_S).total_seconds(), WRITE_INTERVAL_FLOOR_S),
+            budget=BudgetLimits.from_writes(writes),
             step=step if step > 0 else DEFAULT_SETPOINT_STEP_K,
             entity_min=_optional((entity or {}).get("min")),
             entity_max=_optional((entity or {}).get("max")),

@@ -1,7 +1,7 @@
 """Translate profile actions into Home Assistant action calls and run them."""
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 import json
 import logging
 from pathlib import Path
@@ -281,34 +281,72 @@ def plan_charge(
 
 
 class EepromGuard:
-    """Count EEPROM writes per entity and day, persisted in the data directory."""
+    """Count EEPROM writes per entity and day, persisted in the data directory.
+
+    Besides today's counters the times of the writes of the last EEPROM_TIMES_KEEP are kept (key
+    "times"), for budgets per hour and per local day (heat pump set value, design/heat_pump.md 8.5).
+    """
 
     def __init__(self, data_dir: Path, max_writes_per_day: int) -> None:
         """Initialize the guard."""
         self._path = data_dir / "eeprom_writes.json"
         self._max = max_writes_per_day
 
-    def _load(self) -> dict[str, int]:
+    def _read(self) -> dict[str, Any]:
         try:
             data = json.loads(self._path.read_text())
         except FileNotFoundError, ValueError:
             # A file cut off by a crash must not block every write from then on
             return {}
-        today = date.today().isoformat()
-        return data.get(today, {}) if isinstance(data, dict) else {}
+        return data if isinstance(data, dict) else {}
+
+    def _load(self) -> dict[str, int]:
+        counts = self._read().get(date.today().isoformat(), {})
+        return counts if isinstance(counts, dict) else {}
+
+    def _times(self, data: dict[str, Any]) -> dict[str, list[str]]:
+        times = data.get("times")
+        if not isinstance(times, dict):
+            return {}
+        return {k: [t for t in v if isinstance(t, str)] for k, v in times.items() if isinstance(v, list)}
 
     def allowed(self, entity_id: str) -> bool:
         """Return True if another write is allowed today."""
         return self._load().get(entity_id, 0) < self._max
 
-    def record(self, entity_id: str) -> None:
-        """Record a write; only today's counters are kept."""
+    def times(self, entity_id: str) -> list[datetime]:
+        """Times of the recorded writes of the entity (last EEPROM_TIMES_KEEP), oldest first."""
+        return sorted(d for t in self._times(self._read()).get(entity_id, []) if (d := _parse(t)) is not None)
+
+    def record(self, entity_id: str, at: datetime | None = None) -> None:
+        """Record a write; only today's counters and the times of the last EEPROM_TIMES_KEEP are kept."""
+        data = self._read()
         counts = self._load()
         counts[entity_id] = counts.get(entity_id, 0) + 1
+        moment = (at or datetime.now(UTC)).astimezone(UTC)
+        times = self._times(data)
+        times.setdefault(entity_id, []).append(moment.isoformat())
+        kept: dict[str, list[str]] = {}
+        for key, values in times.items():
+            recent = [t for t in values if (d := _parse(t)) is not None and moment - d <= EEPROM_TIMES_KEEP]
+            if recent:
+                kept[key] = recent
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({date.today().isoformat(): counts}))
+        tmp.write_text(json.dumps({date.today().isoformat(): counts, "times": kept}))
         tmp.replace(self._path)
+
+
+# Times of EEPROM writes kept: a local day (up to 25 h at a change of daylight saving time) and an hour
+EEPROM_TIMES_KEEP = timedelta(hours=26)
+
+
+def _parse(text: str) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
 
 
 def current_matches(

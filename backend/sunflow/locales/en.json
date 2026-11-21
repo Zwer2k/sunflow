@@ -276,5 +276,12 @@
   "kein gültiger Zustand zum Schreiben": "no valid state to write",
   "Budget erschöpft": "budget used up",
   "Max T-Vorlauf geschrieben: {value} °C (vorher {before} °C), Grund: {reason}.": "Max T-Vorlauf written: {value} °C (before {before} °C), reason: {reason}.",
-  "„Jetzt schreiben“ verfallen: {why}.": "“Write now” lapsed: {why}."
+  "„Jetzt schreiben“ verfallen: {why}.": "“Write now” lapsed: {why}.",
+  "Schreibbudget für heute erschöpft ({n} Schreibvorgänge): normale Werte erst morgen wieder, Schutzschritte über das Notkontingent.": "Write budget for today used up ({n} writes): normal values again tomorrow, protection steps from the emergency quota.",
+  "Notkontingent für heute erschöpft ({n} Schreibvorgänge zusätzlich): Raumthermostat-Sperre statt Schutzschritt.": "Emergency quota for today used up ({n} additional writes): room thermostat block instead of a protection step.",
+  "Höchstens {n} Schreibvorgänge je Stunde erreicht: Werte warten, Raumthermostat-Sperre statt Schutzschritt.": "At most {n} writes per hour reached: values wait, room thermostat block instead of a protection step.",
+  "Schatten: {message}": "Shadow: {message}",
+  "Schutzschritt wegen des Budgets nicht möglich, die Raumthermostat-Sperre ebenfalls nicht (keine Sperre oder ihre Mindestdauer): die Wärmepumpe kann abschalten.": "Protection step not possible because of the budget, nor the room thermostat block (no block or its minimum duration): the heat pump may shut down.",
+  "Schreibbudget erschöpft": "write budget used up",
+  "Schreibbudget wieder verfügbar": "write budget available again"
 }

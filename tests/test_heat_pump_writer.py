@@ -213,6 +213,7 @@ def test_pending_in_the_guard_status() -> None:
 
     assert result.pending.as_dict() == {
         "value_c": 31.5, "reason": "normal", "protect": False, "due_at": (sim.now - 2 * MIN + 5 * MIN).isoformat(), "held": "spacing",
+        "budget": None,
     }
     assert result.setpoint_c == 33.0
 

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sunflow.config.models import ClimateSettings, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.devices.profiles import manifest_id
+from sunflow.heat_pump.budget import BudgetLimits
 from sunflow.heat_pump.defaults import FLOW_LIMIT_HIGH_C, FLOW_LIMIT_LOW_C, ROOM_SETPOINT_MAX_C, ROOM_SETPOINT_MIN_C
 from sunflow.heat_pump.guard import daily_counts
 from sunflow.heat_pump.limits import ControlSettings, setpoint_range, surface_range
@@ -117,7 +118,8 @@ WRITES_DAYS_MAX = 31
 @router.get("/heat_pump/{device_id}/shadow_writes")
 async def shadow_writes(request: Request, device_id: str, days: int = Query(default=7, ge=1, le=WRITES_DAYS_MAX)) -> dict[str, Any]:
     """Per day (Home Assistant's time zone): writes Sunflow would have caused, by reason, and unwanted
-    shutdowns (shadow, 8.4), with the budget of the profile (8.5) to judge them against."""
+    shutdowns (shadow, 8.4), with the budget of the profile (8.5). The writes are those that passed the
+    minimum spacing and the budget; a block set instead of a protection step counts as block."""
     config = request.app.state.store.load()
     device = next((d for d in config.devices if d.id == device_id), None)
     profile = _library(request).profiles.get(device.profile) if device else None
@@ -132,11 +134,12 @@ async def shadow_writes(request: Request, device_id: str, days: int = Query(defa
     events = [e for row in rows for e in row.get("events") or []]
     if recorder is not None:
         events += recorder.pending_events(device_id)
-    writes = (profile.get("flow_control") or {}).get("writes") or {}
+    flow = getattr(recorder, "flow", None)
     return {
         "days": daily_counts(events, tz, days, now),
-        "budget": {k: writes.get(k) for k in ("per_day", "emergency_per_day", "per_hour")},
-        "shadow": True,
+        # The budget of the profile (defaults where it names none); counted virtually in the shadow (8.5)
+        "budget": BudgetLimits.from_writes((profile.get("flow_control") or {}).get("writes") or {}).as_dict(),
+        "shadow": not flow.writing_active(device_id) if flow is not None else True,
     }
 
 

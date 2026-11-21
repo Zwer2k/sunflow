@@ -22,6 +22,8 @@ correction does not move further beyond it.
 Write layer (8.5, step 3 part 4.2, writer.py): when the wanted set value is written - leading edge,
 minimum spacing, deadband except for protection steps, "write now". In the shadow it acts on the
 virtual writes; writing to the heat pump follows in part 4.7 (until then no heat pump is active).
+Budget (8.5, step 3 part 4.3, budget.py): per day in Home Assistant's time zone, counted virtually in the
+shadow (seeded from the write events in heat_pump_samples), never in eeprom_writes.json.
 
 Ventilation (6.2): a room being aired does not count for the room temperature, and the correction is
 frozen meanwhile. When rooms leave or join the room temperature (aired, stale, missing), the
@@ -29,13 +31,15 @@ correction takes the new value as reference instead of a step, so that alone cau
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 import logging
 import math
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from sunflow.config.models import DeviceConfig, SunflowConfig
 
+from .budget import WriteBudget
 from .correction import Correction, SetpointWatch, Settling
 from .curve import Curve
 from .defaults import (
@@ -65,6 +69,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # last_reported of the room sensors is read again at least this often (and when a room changed)
 REPORTED_EVERY = timedelta(seconds=CORRECTION_MAX_STEP_S)
+# Home Assistant's time zone (local day of the write budget) is read again this often
+TIMEZONE_EVERY = timedelta(hours=1)
 
 
 def _time(text: Any) -> datetime | None:
@@ -141,6 +147,11 @@ class FlowShadow:
         # writing on before step 3 part 4.7: every heat pump runs in the shadow.
         self.writers: dict[str, Writer] = {}
         self.active: dict[str, bool] = {}
+        # Write budget per heat pump (8.5), counted virtually in the shadow; the local day needs Home
+        # Assistant's time zone (None until read: then the last 24 hours count)
+        self.budgets: dict[str, WriteBudget] = {}
+        self.tz: tzinfo | None = None
+        self._tz_at: datetime | None = None
         for device_id, stored in store.devices.items():
             if (learned := Learned.from_dict(stored.get("learned"))) is not None:
                 self.learned[device_id] = learned
@@ -173,6 +184,22 @@ class FlowShadow:
     def writer(self, device_id: str) -> Writer:
         """The write layer of one heat pump."""
         return self.writers.setdefault(device_id, Writer())
+
+    def budget(self, device_id: str) -> WriteBudget:
+        """The write budget of one heat pump (virtual until Sunflow writes for real, step 3 part 4.7)."""
+        return self.budgets.setdefault(device_id, WriteBudget())
+
+    async def _timezone(self, now: datetime) -> None:
+        """Home Assistant's time zone, read again every TIMEZONE_EVERY; the last one stays on a failure."""
+        command = getattr(self._client, "command", None)
+        if command is None or (self._tz_at is not None and timedelta(0) <= now - self._tz_at < TIMEZONE_EVERY):
+            return
+        self._tz_at = now
+        try:
+            self.tz = ZoneInfo((await command("get_config"))["time_zone"])
+        except Exception:
+            # The last one (or the last 24 hours) keeps counting
+            _LOGGER.debug("Time zone of Home Assistant not read", exc_info=True)
 
     def writing_active(self, device_id: str) -> bool:
         """Sunflow writes to this heat pump for real (not before step 3 part 4.7)."""
@@ -248,6 +275,7 @@ class FlowShadow:
     ) -> None:
         """One step: room temperature, setpoint change, then base, correction and target per heat pump."""
         await self.observe(config, states, now)
+        await self._timezone(now)
         room = self.room
         assert room is not None
         setpoint = config.house.climate.setpoint_c
@@ -329,6 +357,7 @@ class FlowShadow:
             self._recent.pop(gone, None)
             self.guards.pop(gone, None)
             self.writers.pop(gone, None)
+            self.budgets.pop(gone, None)
             self.active.pop(gone, None)
             self.learned.pop(gone, None)
             self.settings.pop(gone, None)
@@ -348,6 +377,8 @@ class FlowShadow:
         guard = self.guard(device_id)
         settings = minute.control or ControlSettings()
         self.settings[device_id] = settings
+        budget = self.budget(device_id)
+        budget.limits, budget.tz = settings.budget, self.tz
         try:
             result = write_step(guard, self.writer(device_id), GuardInput(
                 at=now, reading=minute.reading, evaluation=minute.evaluation, settings=settings,
@@ -356,7 +387,7 @@ class FlowShadow:
                 curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w,
                 room_c=room_c, plan_c=config.house.climate.setpoint_c, mode=config.house.climate.mode,
                 surface=config.house.heating_surface,
-            ), active=self.writing_active(device_id))
+            ), active=self.writing_active(device_id), budget=budget)
         except Exception:
             # The flow target goes on without it
             _LOGGER.exception("%s: protection layer failed", device.name)
@@ -441,6 +472,8 @@ class FlowShadow:
                 "requested_at": writer.manual_at.isoformat() if writer.manual_at else None,
                 "last": writer.manual_result,
             } if writer is not None else None,
+            # Budget (8.5): used today and in the last hour, left, what it holds back (virtual in the shadow)
+            "budget": self.budget(device_id).status(now, virtual=not self.writing_active(device_id)),
             "writes": list(reversed(guard.recent_writes)),
             "unwanted_stops": list(reversed(guard.recent_stops)),
             "values": guard_values(settings, learned, guard.bumps, now).as_dict(),

@@ -150,10 +150,19 @@ Tag. Schon im Schatten gilt dabei der **Mindestabstand** zwischen zwei Schreibvo
 erste Änderung nach einer Ruhepause geht sofort hinaus, weitere Änderungen in dieser Zeit merkt Sunflow
 nur, und nach Ablauf schreibt es den letzten Wert, falls er noch abweicht (ein normaler Wert um mehr als
 0,5 K, ein Schutzschritt bei jeder Anhebung). Ein wartender Wert wird als „ausstehend … würde um …
-geschrieben“ angezeigt. Das Budget gilt erst, wenn Sunflow aktiv schreibt; ebenso die Taste **Jetzt
-schreiben**, die den Mindestabstand für den ausstehenden Wert überspringt (nicht das Budget) und im
-Schattenbetrieb noch nicht angeboten wird. Die Raumthermostat-Sperre zählt nicht ins Budget und nicht
-zum Mindestabstand: Die HPSU legt diesen Eingang nicht im EEPROM ab; gegen Takten gilt ihre Mindestdauer.
+geschrieben“ angezeigt. Ebenso gilt schon im Schatten das **Budget** (aus dem Geräteprofil, bei der HPSU
+48 Schreibvorgänge je Tag, dazu 24 nur für Schutzschritte, höchstens 6 in jeder Stunde; der Tag folgt der
+Zeitzone von Home Assistant): Sunflow zählt dafür virtuell aus den aufgezeichneten Schreibvorgängen, der
+Zähler für echte EEPROM-Schreibvorgänge bleibt unberührt. Ist das Tagesbudget erschöpft, wartet ein
+normaler Wert („ausstehend … wartet: Tagesbudget erschöpft“) bis zum nächsten Tag; Schutzschritte gehen
+über das Notkontingent weiter. Ist auch dieses erschöpft oder die Höchstzahl je Stunde erreicht, würde
+Sunflow statt des Schutzschritts die Raumthermostat-Sperre setzen und sie aufheben, sobald wieder ein
+Schutzschritt geschrieben werden darf (frühestens nach ihrer Mindestdauer). Das Journal vermerkt jede Art
+der Erschöpfung einmal am Tag. Die Kachel **Budget heute (virtuell)** zeigt den Verbrauch des Tages, das
+übrige Notkontingent und die letzte Stunde. Die Taste **Jetzt schreiben** überspringt den Mindestabstand
+für den ausstehenden Wert (nicht das Budget) und wird im Schattenbetrieb noch nicht angeboten. Die
+Raumthermostat-Sperre zählt nicht ins Budget und nicht zum Mindestabstand: Die HPSU legt diesen Eingang
+nicht im EEPROM ab; gegen Takten gilt ihre Mindestdauer.
 
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
