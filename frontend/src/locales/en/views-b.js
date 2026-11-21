@@ -210,6 +210,8 @@ export default {
   "Eingriffe in Strategie, Ziel und Speichermodus gelten vorübergehend (Dauer im jeweiligen Rahmen), danach gilt wieder der Standard aus den Einstellungen. Steuerung und Priorität gelten dauerhaft.": "Changes of strategy, target and battery mode are temporary (duration in their frame); afterwards the default from the settings applies again. Control and priority stay until you change them.",
   "Sunflow plant nach jeder Änderung sofort neu.": "Sunflow replans immediately after every change.",
   "Eingriffe gelten": "Overrides apply",
+  "bis Ladeende": "until charging ends",
+  "Änderung von {name} gilt": "Change of {name} applies",
   "Noch keine Verbraucher eingerichtet (Wallbox, Warmwasser, eigene Geräte).": "No loads set up yet (wallbox, hot water, custom devices).",
   "Protokoll": "Log",
   "Was Sunflow an den gesteuerten Geräten geschrieben hat, mit Schreibfehlern (ein Fehler, der jede Minute wiederkommt, steht einmal da) – und Änderungen, die nicht von Sunflow kamen, mit dem, was Home Assistant über den Auslöser weiß.": "What Sunflow wrote to the controlled devices, with write errors (an error that recurs every minute is listed once) – and changes that did not come from Sunflow, with what Home Assistant knows about the trigger.",

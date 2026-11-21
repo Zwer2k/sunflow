@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.5
+
+- Control: a consumer's change has its own small duration selection next to "changed", shown once something was changed. At a wallbox a change lasts until charging ends (the car is unplugged) by default instead of until midnight; also from the live view's quick controls.
+
 ## 0.80.4
 
 - Control: "Overrides apply" moved from the page header into the home battery and the consumers frame, where it takes effect; the page text says that control switches, priority and a chosen vehicle stay until changed.

@@ -20,12 +20,30 @@ export function untilFor(duration) {
   return until.toISOString();
 }
 
-export function untilText(until) {
+export function untilText(until, untilDone = false) {
+  if (untilDone) return t("bis Ladeende");
   if (!until) return t("bis auf Weiteres");
   const date = new Date(until);
   return date.toDateString() === new Date().toDateString() || date.getHours() === 0
     ? date.getHours() === 0 && date.getMinutes() === 0 ? t("bis Mitternacht") : t("bis {time}", { time: time.format(date) })
     : t("bis {time}", { time: dayTime.format(date) });
+}
+
+/** Duration of a new consumer change: at a wallbox until the car is unplugged, else until midnight. */
+export function defaultDuration(device) {
+  return device.connected === null || device.connected === undefined ? "midnight" : "session";
+}
+
+/** Fields of an override for a duration; "session" ends when the car is unplugged. */
+export function durationFields(duration) {
+  return duration === "session" ? { until: null, until_done: true } : { until: untilFor(duration), until_done: false };
+}
+
+/** The override to store: a further change keeps the duration chosen before, a first one gets the default. */
+export function deviceOverride(device, changes) {
+  const next = overrideFor(device, changes);
+  if (next === null || device.override) return next;
+  return { ...next, ...durationFields(defaultDuration(device)) };
 }
 
 /** The override after choosing a mode; null when the consumer is back at its default. */

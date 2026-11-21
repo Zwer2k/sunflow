@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { poll } from "../lib/poll.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "./target-dial.js";
-import { MODES, currentMode, defaultTarget, targetRange, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
+import { MODES, currentMode, defaultTarget, targetRange, modeChanges, deviceOverride, untilText } from "../lib/device-modes.js";
 import { locale, t } from "../lib/i18n.js";
 import { recall, remember } from "../lib/view-cache.js";
 import { toggleSheet } from "../lib/display-toggles.js";
@@ -17,8 +17,6 @@ const NAME_MIN_PX = 96;
 const MENU_HEIGHT = 220;
 // The plan is recomputed in the background after a change
 const REPLAN_DELAY_MS = 2500;
-// Overrides from the live view last until midnight, like the control tab's default
-const DURATION = "midnight";
 const SHORT = { cost: "€", pv_only: t("PV"), fast: "⚡", pause: "⏸" };
 const time = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
 
@@ -124,17 +122,17 @@ class SunflowQuickControls extends LitElement {
   }
 
   _setTarget(device, target) {
-    const next = overrideFor(device, { target });
+    const next = deviceOverride(device, { target });
     return this._apply(() =>
-      next === null ? api.clearDeviceOverride(device.id) : api.setDeviceOverride(device.id, { ...next, until: untilFor(DURATION) }),
+      next === null ? api.clearDeviceOverride(device.id) : api.setDeviceOverride(device.id, next),
     );
   }
 
   _setMode(device, mode) {
     this._closeMenu();
-    const next = overrideFor(device, modeChanges(device, mode));
+    const next = deviceOverride(device, modeChanges(device, mode));
     return this._apply(() =>
-      next === null ? api.clearDeviceOverride(device.id) : api.setDeviceOverride(device.id, { ...next, until: untilFor(DURATION) }),
+      next === null ? api.clearDeviceOverride(device.id) : api.setDeviceOverride(device.id, next),
     );
   }
 
@@ -166,8 +164,8 @@ class SunflowQuickControls extends LitElement {
       <div class="name">
         <strong>${device.name}</strong>
         <span class="small muted status">${device.override
-          ? html`<span class="changed" role="img" title=${`${t("angepasst")} ${untilText(device.override.until)}`}
-              aria-label=${`${t("angepasst")} ${untilText(device.override.until)}`}><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></span> `
+          ? html`<span class="changed" role="img" title=${`${t("angepasst")} ${untilText(device.override.until, device.override.until_done)}`}
+              aria-label=${`${t("angepasst")} ${untilText(device.override.until, device.override.until_done)}`}><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></span> `
           : nothing}${status.join(" · ")}</span>
       </div>
       <div class="controls">

@@ -137,6 +137,14 @@ def plug_states(
     return result
 
 
+def unplugged(previous: dict[str, tuple[str | None, str | None]], current: dict[str, tuple[str | None, str | None]]) -> set[str]:
+    """Wallboxes whose car was plugged in before and is unplugged now."""
+    return {
+        device_id for device_id, (connected, _) in current.items()
+        if connected == "off" and (previous.get(device_id) or (None, None))[0] == "on"
+    }
+
+
 def plugs_differ(previous: dict[str, tuple[str | None, str | None]], current: dict[str, tuple[str | None, str | None]]) -> bool:
     """A wallbox known before shows another connection or card; unavailable states are no change."""
     for device_id, states in current.items():
@@ -494,7 +502,19 @@ class ShadowRunner:
         """Whether a wallbox was plugged in or unplugged or its card changed since the last step."""
         current = plug_states(self._store.load(), self._library.profiles, snapshot)
         previous, self._plugs = self._plugs, current
-        return previous is not None and plugs_differ(previous, current)
+        if previous is None:
+            return False
+        self._end_sessions(unplugged(previous, current))
+        return plugs_differ(previous, current)
+
+    def _end_sessions(self, wallboxes: set[str]) -> None:
+        """Changes meant for one charging session end when its car is unplugged."""
+        config = self._store.load()
+        ended = [d for d in wallboxes if (o := config.overrides.get(d)) is not None and o.until_done]
+        for device_id in ended:
+            del config.overrides[device_id]
+        if ended:
+            self._store.save(config)
 
     def _end_vehicle_choices(self, snapshot: Snapshot) -> None:
         """A vehicle chosen in the control tab counts until it is unplugged."""

@@ -10,7 +10,7 @@ import { STRATEGIES, strategyDetails } from "../lib/strategies.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
 import "../components/target-dial.js";
-import { MODES, currentMode, defaultTarget, targetRange, modeChanges, overrideFor, untilFor, untilText } from "../lib/device-modes.js";
+import { MODES, currentMode, defaultTarget, targetRange, modeChanges, defaultDuration, deviceOverride, durationFields, untilFor, untilText } from "../lib/device-modes.js";
 import { toggleSheet } from "../lib/display-toggles.js";
 
 const REFRESH_MS = 30 * 1000;
@@ -59,6 +59,8 @@ const DURATIONS = {
   hours4: t("4 Stunden"),
   open: t("bis auf Weiteres"),
 };
+// A change at a wallbox lasts until the car is unplugged by default
+const SESSION = { session: t("bis Ladeende") };
 
 const time = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" });
 const dayTime = new Intl.DateTimeFormat(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -155,9 +157,9 @@ class SunflowControl extends LitElement {
   }
 
   _setDevice(device, changes) {
-    const next = overrideFor(device, changes);
+    const next = deviceOverride(device, changes);
     if (next === null) return this._apply(() => api.clearDeviceOverride(device.id));
-    return this._apply(() => api.setDeviceOverride(device.id, { ...next, until: untilFor(this._duration) }));
+    return this._apply(() => api.setDeviceOverride(device.id, next));
   }
 
   _setMode(device, mode) {
@@ -193,10 +195,7 @@ class SunflowControl extends LitElement {
           ${data.strategy.available ? this._renderBattery(data.strategy, data.batteries ?? []) : nothing}
           ${data.devices.length
             ? html`<section>
-                <div class="section-head">
-                  <h2>${t("Verbraucher")}</h2>
-                  ${this._renderDuration()}
-                </div>
+                <h2>${t("Verbraucher")}</h2>
                 <div class="cards">${this._orderedDevices(data).map((d) => this._renderDevice(d))}</div>
               </section>`
             : html`<p class="muted">${t("Noch keine Verbraucher eingerichtet (Wallbox, Warmwasser, eigene Geräte).")}</p>`}
@@ -370,7 +369,19 @@ class SunflowControl extends LitElement {
     return [...data.devices].sort((a, b) => (rank[a.id] ?? 99) - (rank[b.id] ?? 99));
   }
 
-  /** How long changes of strategy, target and battery mode last; shared by the battery and the consumers. */
+  /** How long a consumer's change lasts; shown once something was changed. */
+  _renderDeviceDuration(device) {
+    const override = device.override;
+    const options = { ...(defaultDuration(device) === "session" ? SESSION : {}), ...DURATIONS };
+    const current = override.until_done ? "session" : override.until === null ? "open" : "at";
+    return html`<select class="mini" aria-label=${t("Änderung von {name} gilt", { name: device.name })} ?disabled=${this._busy}
+      @change=${(e) => this._apply(() => api.setDeviceOverride(device.id, { ...override, ...durationFields(e.target.value) }))}>
+      ${current === "at" ? html`<option value="at" selected disabled>${untilText(override.until)}</option>` : nothing}
+      ${Object.entries(options).map(([value, label]) => html`<option value=${value} ?selected=${current === value}>${label}</option>`)}
+    </select>`;
+  }
+
+  /** How long changes of the battery strategy and mode last. */
   _renderDuration() {
     return html`<label class="duration">
       <span class="small muted">${t("Eingriffe gelten")}</span>
@@ -516,7 +527,7 @@ class SunflowControl extends LitElement {
             <span class="small muted">${CATEGORY_LABELS[device.category] ?? KIND_LABELS[device.kind] ?? t("Verbraucher")} · ${status.join(" · ")}</span>
           </div>
           <div class="head-actions">
-            ${device.override ? html`<span class="chip">${t("angepasst")} · ${untilText(device.override.until)}</span>` : nothing}
+            ${device.override ? html`<span class="chip">${t("angepasst")}</span>${this._renderDeviceDuration(device)}` : nothing}
             <button class="pin ${device.live ? "on" : ""}" aria-pressed=${Boolean(device.live)} ?disabled=${this._busy}
               title=${device.live ? t("Nicht mehr in Live zeigen") : t("Schnellsteuerung in Live zeigen")}
               aria-label=${t("Schnellsteuerung von {name} in Live zeigen", { name: device.name })}
@@ -672,7 +683,7 @@ class SunflowControl extends LitElement {
     .heading { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end; }
     .duration { display: flex; flex-direction: column; gap: 4px; }
     .head-end { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
-    .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: flex-end; }
+    select.mini { font-size: 12px; min-height: 28px; padding: 0 6px; border-radius: 6px; }
     select {
       min-height: 40px; padding: 0 10px; font: inherit; font-size: 14px; border: 1px solid var(--sf-border-strong);
       border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);

@@ -571,6 +571,8 @@ class DeviceOverride(BaseModel):
     paused: bool = False
     # None: until reset
     until: datetime | None = None
+    # At a wallbox: ends when the car is unplugged (the charging session is over)
+    until_done: bool = False
 
     def active(self, now: datetime) -> bool:
         """Return True while the override applies."""
