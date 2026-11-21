@@ -1,4 +1,4 @@
-"""The house: the rooms Sunflow learns it from, the comfort band and what it learned."""
+"""The house: the rooms Sunflow learns it from and what it learned."""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -12,27 +12,29 @@ from sunflow.planning.house_model import (
     MIN_DAYS,
     chart,
     fit,
-    heat_pump,
+    heat_pump_device,
     house_data,
     restless_rooms,
 )
 
-from .common import _replan
+from .common import _library, _replan
 
 router = APIRouter()
 # Learning reads four weeks of hourly statistics: kept for a while
 CACHE_FOR = timedelta(minutes=30)
+# Room temperature at which the cooling rate is shown
+COOLING_INSIDE_C = 20.0
 
 
 @router.get("/config/house")
 async def get_house(request: Request) -> dict[str, Any]:
-    """Rooms and comfort band."""
+    """The rooms and the heat meter."""
     return request.app.state.store.load().house.model_dump()
 
 
 @router.put("/config/house")
 async def set_house(request: Request, body: HouseSettings) -> dict[str, Any]:
-    """Choose the rooms and the comfort band."""
+    """Choose the rooms and the heat meter."""
     store: ConfigStore = request.app.state.store
     config = store.load()
     config.house = body
@@ -52,7 +54,8 @@ async def house_model(request: Request) -> dict[str, Any]:
         return {"state": "no_rooms"}
     now = datetime.now(UTC)
     # Everything the model learns from: rooms, sources and the heat pump's sensors
-    pump = heat_pump(config)
+    profiles = _library(request).profiles
+    pump = heat_pump_device(config, profiles)
     key = "|".join((
         config.house.model_dump_json(),
         config.learning_sources.model_dump_json(),
@@ -60,12 +63,14 @@ async def house_model(request: Request) -> dict[str, Any]:
     ))
     cached = getattr(request.app.state, "house_model", None)
     runner = getattr(request.app.state, "runner", None)
-    # Whether the heat pump's rules use it right now (learned by the runner a few times a day)
+    # Whether the runner's model (learned a few times a day) predicts better than "it stays"
     used = {"used": getattr(runner, "house_model", None) is not None}
     if cached and cached[0] == key and now - cached[1] < CACHE_FOR:
         return cached[2] | used
     try:
-        data = await house_data(request.app.state.ha, config, now)
+        snapshots = getattr(request.app.state, "snapshots", None)
+        snapshot = await snapshots.get() if snapshots is not None else None
+        data = await house_data(request.app.state.ha, config, profiles, now, snapshot)
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     if data.outside_entity is None:
@@ -77,6 +82,9 @@ async def house_model(request: Request) -> dict[str, Any]:
             "days": model.days if model else len({r.start.date() for r in data.rows}),
             "min_days": MIN_DAYS,
             "heat_source": data.heat_source,
+            "outside_entity": data.outside_entity,
+            # Hours with hot water or defrost, left out of learning
+            "excluded_hours": data.excluded_hours,
             "sun": data.sun_entity is not None,
             "restless": restless_rooms(data.per_room, data.inside),
             "model": None if model is None else {
@@ -85,7 +93,7 @@ async def house_model(request: Request) -> dict[str, Any]:
                 "loss_w_per_k": model.loss_w_per_k,
                 "sun_k_per_h": model.c,
                 "gains_k_per_h": model.d,
-                "cooling_k_per_h_at_0": model.cooling_k_per_h(config.house.comfort_min, 0.0),
+                "cooling_k_per_h_at_0": model.cooling_k_per_h(COOLING_INSIDE_C, 0.0),
                 "error_k": model.error_k,
                 "baseline_k": model.baseline_k,
                 "plausible": model.plausible,

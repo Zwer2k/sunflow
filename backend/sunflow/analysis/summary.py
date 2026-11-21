@@ -45,9 +45,16 @@ class SetupSummary:
 
 
 def build_summary(
-    config: SunflowConfig, profiles: dict[str, dict[str, Any]]
+    config: SunflowConfig,
+    profiles: dict[str, dict[str, Any]],
+    manifest_status: dict[str, dict[str, Any]] | None = None,
+    manifest_notes: list[str] | None = None,
 ) -> SetupSummary:
-    """Collect configured items and open issues."""
+    """Collect configured items and open issues.
+
+    manifest_status: link status of devices recognized by their manifest, by device id
+    (ManifestManager.status); manifest_notes: manifests no device could be assigned to.
+    """
     summary = SetupSummary(
         tariff=config.tariff.import_entity_id,
         fixed_price_ct=config.tariff.fixed_price_ct,
@@ -68,6 +75,19 @@ def build_summary(
             )
             continue
         capabilities = profile["capabilities"]
+        if device.profile_version != profile["version"]:
+            summary.issues.append(
+                Issue(
+                    level="warning",
+                    step=STEP_DEVICES,
+                    message=t(
+                        "{name}: Profil {profile} liegt in Version {current} vor, übernommen wurde Version {stored} – bitte die Rollen prüfen.",
+                        name=device.name, profile=device.profile, current=profile["version"], stored=device.profile_version,
+                    ),
+                )
+            )
+        if (link := (manifest_status or {}).get(device.id)) is not None:
+            summary.issues.extend(_manifest_issues(device.name, link))
         summary.devices.append(
             {
                 "id": device.id,
@@ -119,6 +139,8 @@ def build_summary(
                 )
             )
 
+    summary.issues.extend(Issue(level="warning", step=STEP_DEVICES, message=note) for note in manifest_notes or [])
+
     if config.tariff.import_entity_id is None and config.tariff.fixed_price_ct is None:
         summary.issues.append(
             Issue(
@@ -149,3 +171,25 @@ def build_summary(
                     Issue(level="warning", step=STEP_SOURCES, message=t("{name}: Keine Prognosefläche zugeordnet.", name=device.name))
                 )
     return summary
+
+
+def _manifest_issues(name: str, link: dict[str, Any]) -> list[Issue]:
+    """Issues of a device recognized by its manifest (design/heat_pump.md, 3.6)."""
+    required = [p["reason"] for p in link["problems"] if not p["optional"]]
+    optional = [p["reason"] for p in link["problems"] if p["optional"]]
+    issues = []
+    match link["status"]:
+        case "incompatible":
+            reasons = "; ".join(required) or t("kein Manifest vom Gerät")
+            issues.append(Issue(level="error", step=STEP_DEVICES, message=t("{name}: nicht kompatibel – {reasons}", name=name, reasons=reasons)))
+        case "not_found":
+            issues.append(Issue(level="error", step=STEP_DEVICES, message=t("{name}: ESPHome-Gerät nicht gefunden – bitte neu zuordnen.", name=name)))
+        case "unavailable":
+            issues.append(Issue(level="info", step=STEP_DEVICES, message=t("{name}: Gerät nicht erreichbar – Manifest wird geprüft, sobald es wieder da ist.", name=name)))
+        case "pending":
+            issues.append(Issue(level="info", step=STEP_DEVICES, message=t("{name}: Manifest wird noch geprüft.", name=name)))
+    if optional:
+        issues.append(
+            Issue(level="warning", step=STEP_DEVICES, message=t("{name}: optionale Funktionen fehlen – {reasons}", name=name, reasons="; ".join(optional)))
+        )
+    return issues

@@ -16,6 +16,7 @@ from sunflow.devices.site import (
 from sunflow.i18n import N_, t
 
 from .common import _library, _replan
+from .heat_pump import manifest_notes, manifest_status
 
 router = APIRouter()
 
@@ -24,11 +25,17 @@ def _summary_response(summary: SetupSummary) -> dict[str, Any]:
     return asdict(summary) | {"can_complete": summary.can_complete}
 
 
+def _build(request: Request, config: SunflowConfig) -> SetupSummary:
+    return build_summary(
+        config, _library(request).profiles, manifest_status=manifest_status(request), manifest_notes=manifest_notes(request)
+    )
+
+
 @router.get("/setup/summary")
 async def get_setup_summary(request: Request) -> dict[str, Any]:
     """Return configured items and open issues of the setup."""
     config = request.app.state.store.load()
-    return _summary_response(build_summary(config, _library(request).profiles))
+    return _summary_response(_build(request, config))
 
 
 @router.post("/setup/complete")
@@ -36,7 +43,7 @@ async def complete_setup(request: Request) -> dict[str, Any]:
     """Mark the setup as completed if nothing blocks it."""
     store: ConfigStore = request.app.state.store
     config = store.load()
-    summary = build_summary(config, _library(request).profiles)
+    summary = _build(request, config)
     if not summary.can_complete:
         raise HTTPException(status_code=409, detail="Setup has open errors")
     config.setup_completed = True

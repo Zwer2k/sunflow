@@ -134,10 +134,6 @@
         "refresh": {"$ref": "#/$defs/duration"}
       }
     },
-    "heat_pump_control": {
-      "description": "Steps that put a heat pump into a state; Sunflow sets sg_contact1, sg_contact2, sg_option, setpoint, surplus_w and boost_switch for the state and method. Roles of other methods are not bound and left out.",
-      "$ref": "#/$defs/steps"
-    },
     "relays": {
       "description": "One relay per phase (roles switch_l1..switch_l3): the power steps are the number of relays on; Sunflow picks which (rotating) and sets relay_l1..relay_l3 to on/off for the charge steps.",
       "type": "boolean"
@@ -195,6 +191,115 @@
       "properties": {
         "max_writes_per_day": {"type": "integer", "minimum": 1}
       }
+    },
+    "companion": {
+      "description": "A second device that only adds optional roles (e.g. the UART node of a heat pump next to its CAN node); its roles are bound against the companion's manifest.",
+      "type": "object",
+      "required": ["profile", "roles"],
+      "additionalProperties": false,
+      "properties": {
+        "profile": {"type": "string", "pattern": "^[a-z0-9_]+/[a-z0-9_]+$"},
+        "roles": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"$ref": "#/$defs/identifier"},
+          "additionalProperties": {"$ref": "#/$defs/role"}
+        }
+      }
+    },
+    "states": {
+      "description": "Device states mapped to canonical states: role -> canonical state -> the role's value keys (translation keys of the manifest). The compatibility check requires every key listed here.",
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "propertyNames": {"$ref": "#/$defs/identifier"},
+        "additionalProperties": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+      }
+    },
+    "flow_control": {
+      "description": "Flow temperature control of a heat pump (design/heat_pump.md).",
+      "type": "object",
+      "required": ["strategies"],
+      "additionalProperties": false,
+      "properties": {
+        "strategies": {
+          "description": "Strategy per value of a select role (e.g. the heating circuit function).",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"$ref": "#/$defs/identifier"},
+          "additionalProperties": {
+            "type": "object",
+            "required": ["when", "setpoint_kind"],
+            "additionalProperties": false,
+            "properties": {
+              "when": {
+                "description": "Role -> value key that selects this strategy.",
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {"$ref": "#/$defs/identifier"},
+                "additionalProperties": {"type": "string"}
+              },
+              "setpoint_kind": {"description": "direct: a real flow setpoint; curve: heating curve parameters.", "enum": ["direct", "curve"]},
+              "write": {
+                "description": "Role Sunflow writes the set value to; it must be a role of the profile and is checked as a number entity (unit, range covering limits, step).",
+                "type": "object",
+                "required": ["role"],
+                "additionalProperties": false,
+                "properties": {"role": {"$ref": "#/$defs/identifier"}, "storage": {"$ref": "#/$defs/storage"}}
+              },
+              "enabled": {"type": "boolean", "default": true}
+            }
+          }
+        },
+        "compressor_rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"start_margin": {"type": "number", "minimum": 0}, "stop_margin": {"type": "number", "minimum": 0}}
+        },
+        "learned_defaults": {
+          "description": "Start values until Sunflow has learned its own.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "steady_swing": {"type": "number", "minimum": 0},
+            "start_jump": {"type": "number", "minimum": 0},
+            "start_settle": {"$ref": "#/$defs/duration"}
+          }
+        },
+        "adopt_delay": {"$ref": "#/$defs/duration"},
+        "limits": {
+          "description": "Start values of the set value range in the role's unit; the written role's min/max must cover them.",
+          "$ref": "#/$defs/range"
+        },
+        "heat_power": {"description": "Heat output range in kW (start values).", "$ref": "#/$defs/range"},
+        "settle_after_bypass": {"$ref": "#/$defs/duration"},
+        "heating_block": {
+          "description": "Role heating_block: value keys for blocked (on) and released (off).",
+          "type": "object",
+          "required": ["on", "off"],
+          "additionalProperties": false,
+          "properties": {"on": {"type": "string"}, "off": {"type": "string"}, "min_duration": {"$ref": "#/$defs/duration"}}
+        },
+        "writes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min_interval": {"$ref": "#/$defs/duration"},
+            "protect_interval": {"$ref": "#/$defs/duration"},
+            "deadband": {"description": "Overrides Sunflow's default deadband (DEADBAND_K).", "type": "number", "minimum": 0},
+            "per_day": {"type": "integer", "minimum": 1},
+            "emergency_per_day": {"type": "integer", "minimum": 0},
+            "per_hour": {"type": "integer", "minimum": 1}
+          }
+        },
+        "frozen_after": {
+          "type": "object",
+          "propertyNames": {"$ref": "#/$defs/identifier"},
+          "additionalProperties": {"$ref": "#/$defs/duration"}
+        }
+      }
     }
   },
   "$defs": {
@@ -244,8 +349,21 @@
             {"type": "array", "items": {"type": "string"}, "minItems": 1}
           ]
         },
-        "manufacturer": {"type": "string"}
+        "manufacturer": {"type": "string"},
+        "manifest": {
+          "description": "The device describes its entities itself (ESPHome manifest action); matches when its manifest has this id. Roles then name manifest keys.",
+          "type": "object",
+          "required": ["id"],
+          "additionalProperties": false,
+          "properties": {"id": {"type": "string", "pattern": "^[a-z0-9_]+$"}}
+        }
       }
+    },
+    "range": {
+      "type": "object",
+      "required": ["min", "max"],
+      "additionalProperties": false,
+      "properties": {"min": {"type": "number"}, "max": {"type": "number"}}
     },
     "role": {
       "type": "object",
@@ -277,6 +395,13 @@
         "includes_pv_ext": {
           "description": "pv_energy: the counter also counts the external PV the device measures (pv_ext_power); a plant measured by it then does not count its own counter again.",
           "type": "boolean"
+        },
+        "domain": {
+          "description": "Manifest profiles: entity domains the role accepts (as the firmware creates them, e.g. text_sensor).",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["sensor", "binary_sensor", "text_sensor", "number", "select", "switch", "button", "text"]}
         }
       }
     },

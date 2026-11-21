@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.80.6
+
+- Heat pumps (second part of the new flow temperature control): Sunflow reads the states of the Rotex/Daikin HPSU every minute – operating mode, mode of operation, HK function, bypass valve, room thermostat block and error code – and decides whether it heats validly (mode heating, mode of operation heating, bypass valve closed for 10 minutes, no after-run 10 minutes after hot water or defrosting, no block, no fault with an E code, the HPSU not limiting the flow itself, device reachable and compatible). Nothing is written to the heat pump.
+- Every 5 minutes the means with the states are recorded in the new table `heat_pump_samples` (flow, flow peak, return, setpoints, heat, outside, bypass valve, compressor starts and stops, rooms, reasons). Rows older than a year are deleted; the table is part of export and import. The recording is migrated with a copy `shadow.v9.db`.
+- The log notes unknown states, the start and end of a fault, the room thermostat block on and off and when the HPSU limits the flow itself (setback time, T-Vorlauf Nacht). `GET /api/v1/heat_pump/status` shows the current states.
+- House model: the heat output of the HPSU is now found through its manifest. Hours with hot water or defrosting are left out of learning, also with an own heat meter. The outside temperature can be chosen under Settings → Heat pump: automatic, the heat pump's sensor, the outdoor unit's sensor (TA2) or the own sensor.
+- Profile `esphome/rotex_hpsu_can` version 2 (optional role for TA2); devices added before show a note to check the roles.
+
+## 0.80.5
+
+- Heat pumps (first part of the new flow temperature control): a Rotex/Daikin HPSU with the ESPHome component `daikin_rotex_can` is recognized by the manifest its firmware delivers (profile `esphome/rotex_hpsu_can`), not by entity names. Other ESPHome devices do not appear in the device search. Taking it over stores the device under its name in Home Assistant, its MAC address and the component. Nothing is controlled or written yet.
+- Sunflow checks every role of the profile against the manifest (key, type, unit, options, range of Max T-Vorlauf and its step of at most 0.5 K). A device that does not fit is marked not compatible with the reason in the summary, the device preview and the log, and is not used. The manifest is reloaded after flashing, when the node is back after an outage and hourly; changes are logged once.
+- If the ESPHome integration was added again, Sunflow finds the node by its MAC address and assigns it anew.
+- The summary points out devices added with an older version of their profile.
+
+## 0.80.4
+
+- Importing an export now merges the whole recording: besides the time slots also the plan's expectations (state of charge, PV, load six hours ahead), the soiling expectations and the charging sessions imported from evcc. The import runs in one transaction: if it fails, the recording stays as it was.
+- Before an update changes the structure of the recording, Sunflow keeps a copy `shadow.v<n>.db` (like `config.v<n>.json`) for going back. If the copy cannot be written (e.g. disk full), the recording is not changed and the App does not start.
+
+
+- The former heat pump control is removed; a new flow temperature control replaces it. Gone are the device "heat pump" (measuring, SG-Ready, setpoint, PV surplus, boost switch, built-in heating rod), comfort band, night setback, reference room, "Plan preheating", the heating season and the season modes of heating rods.
+- A configured heat pump is removed from the configuration on update, with everything referring to it, and has to be added again later; the previous configuration stays as `config.v4.json`.
+- The rooms and the learned house model stay under Settings → Heat pump. Heating rods with a relay per phase keep running as normal loads.
+- Devices with a profile this version does not know (e.g. after going back to an older version) are skipped and kept in the configuration.
+
 ## 0.80.2
 
 - Removed the profile `setup` steps, which were never executed: the Sofar passive mode is set as control mode, the passive timeout is not used.

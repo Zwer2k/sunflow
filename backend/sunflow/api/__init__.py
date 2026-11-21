@@ -7,6 +7,7 @@ from . import (
     device_test,
     devices,
     direct,
+    heat_pump,
     house,
     integration,
     live,
@@ -24,6 +25,7 @@ for _area in (
     system, integration, direct, devices, device_test, setup, sources, plan, vehicles, control, analysis, consumer_stats, live,
     optimizers,
     house,
+    heat_pump,
 ):
     router.include_router(_area.router)
 

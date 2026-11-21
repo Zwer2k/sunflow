@@ -75,46 +75,29 @@ Per wallbox:
 
 ## Heat pump
 
-Measuring and controlling the heat pump (SG-Ready with two relays, contact 2 only or a select,
-setpoint, reported PV surplus, boost switch) with the rules for when it is boosted or blocked; also
-the heat pump's heating rod with its mode per season and how the heating season is detected. Live values show power, heat,
-COP and the state Sunflow sets or (in shadow mode) would set. Details under
-[Supported devices](devices.md#heat-pump).
+The heat pump control is being rebuilt; until then Sunflow does not control a heat pump. The area
+holds the house Sunflow learns from.
 
-**House:** room temperatures (one or more sensors, optionally weighted, e.g. by area, one as the
-reference room), optionally the heat into the house (e.g. the heating's heat meter, otherwise the
-heat pump's heat) and the comfort band with an optional night setback. From the hourly values of
-the last four weeks Sunflow learns a simple thermal model of the house:
+**House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
+optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
+The **outside temperature** can be chosen: automatic (own sensor under learning sources, else the heat
+pump's sensor), the heat pump's outside temperature sensor, the sensor of its outdoor unit (HPSU: TA2)
+or only the own sensor. From the hourly values of the last four weeks Sunflow learns a simple thermal
+model of the house. Hours in which the heat pump made hot water or defrosted are left out – their heat
+did not go into the house:
 
 | Learned | Meaning |
 |---|---|
 | Time constant | hours until two thirds of the difference to outside are gone |
-| Cooling at 0 °C outside | kelvin per hour lost without heating and sun |
+| Cooling at 0 °C outside | kelvin per hour lost at 20 °C inside without heating and sun |
 | Heat loss | heating power per kelvin of difference (only with heat measurement) |
 | Heat storage | heat for 1 K warmer in the whole house (only with heat measurement) |
 | Sun | warming in full sun (with brightness under learning sources) |
 
 Sunflow holds back the last two days and computes them anew from the measurement each day; the
-model is used only when it beats "the temperature stays the same" there and its values are
-plausible (from 7 days). A chart shows the last week measured and expected by the model. Rooms whose
-temperature jumps far more than the others' (sun, radiator, window at the sensor) are named.
-
-Once the model is reliable it safeguards the heat pump's rules: in the heating season Sunflow
-**blocks** it only if the reference room's predicted temperature without heating stays above the
-lower bound until the block ends (the night setback applies at night); if the house cools faster, a
-running block ends at once. **Boosting** ends at the upper bound in the heating season; in summer the
-heat pump heats hot water and the rooms do not count.
-
-**Plan preheating (test):** switched on at the heat pump under control, with its maximum electric
-power. Sunflow then plans the heat pump in the optimizer together with the battery and loads; the
-room temperature is a heat storage there. It preheats in sunny or cheap hours and lets the house cool
-in dear ones, always within the comfort band (below it is very expensive, above it slightly). The COP
-follows the outside temperature of the weather forecast. What the heat pump would draw unplanned is
-taken out of the load forecast and added back for the comparison "without Sunflow". Planned power
-well above that draw boosts ("preheating as planned"), well below it blocks ("pause as planned"),
-with all block limits and the check above; this replaces the cheapest and dearest hours. Only in
-the heating season and once the house model is reliable and knows the heating's heat. The section
-"House" shows the planned room temperature of the next 48 hours.
+model counts as reliable only when it beats "the temperature stays the same" there and its values
+are plausible (from 7 days). A chart shows the last week measured and expected by the model. Rooms
+whose temperature jumps far more than the others' (sun, radiator, window at the sensor) are named.
 
 ## Loads
 

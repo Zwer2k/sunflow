@@ -44,6 +44,23 @@ const ROLE_LABELS = {
   current: t("Stromstärke"),
   energy: t("Energie (Zähler)"),
   temperature: t("Temperatur"),
+  flow_temperature: t("Vorlauf"),
+  flow_temperature_bh: t("Vorlauf nach Heizstab"),
+  return_temperature: t("Rücklauf"),
+  flow_setpoint: t("Vorlauf-Soll (wirksam)"),
+  heat_power: t("Wärmeleistung"),
+  flow_temperature_max: t("Vorlauf-Spitze"),
+  outside_temperature: t("Außentemperatur"),
+  compressor: t("Kompressor"),
+  program: t("Betriebsmodus"),
+  activity: t("Betriebsart"),
+  strategy_select: t("HK-Funktion"),
+  bypass_valve: t("Bypass-Ventil"),
+  heating_block: t("Raumthermostat-Sperre"),
+  error: t("Fehlercode"),
+  max_flow_setpoint: t("Max T-Vorlauf"),
+  outdoor_unit: t("Außengerät"),
+  electric_energy: t("Stromverbrauch (Zähler)"),
 };
 
 const number1 = new Intl.NumberFormat(locale(), { maximumFractionDigits: 1, minimumFractionDigits: 1 });

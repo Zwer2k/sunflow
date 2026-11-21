@@ -26,12 +26,6 @@ from sunflow.devices.site import (
     site_status,
 )
 from sunflow.ha import HAClient, HAError
-from sunflow.planning.heating_season import (
-    current_season,
-    season_source,
-    uses_seasons,
-    with_season,
-)
 from sunflow.planning.house_model import HouseModel, fit as fit_house, house_data
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
@@ -164,7 +158,6 @@ async def current_plan(
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
     pv_recent: tuple[float, float, float] | None = None,
-    house_model: HouseModel | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -186,7 +179,6 @@ async def current_plan(
         chargers,
         sun_corrections,
         pv_recent,
-        house_model,
     )
 
 
@@ -399,6 +391,8 @@ class ShadowRunner:
         self._sun_task: asyncio.Task[None] | None = None
         # Energy per PV string for Home Assistant (set by the app)
         self.counters: EnergyCounters | None = None
+        # Records the heat pumps every minute (set by the app; HeatPumpRecorder)
+        self.heat_pump: Any = None
         self._correction_at = datetime.min.replace(tzinfo=UTC)
         self._recorder: SlotRecorder | None = None
         self._replan_task: asyncio.Task[None] | None = None
@@ -469,6 +463,11 @@ class ShadowRunner:
                 await self._replan(start)
             except Exception as err:
                 _LOGGER.warning("Early replan failed: %s", err, exc_info=not isinstance(err, (HAError, KeyError, ValueError)))
+        if self.snapshots is not None and self.heat_pump is not None:
+            try:
+                await self.heat_pump.tick(self._store.load(), await self.snapshots.get(), now)
+            except Exception as err:
+                _LOGGER.warning("Recording the heat pump failed: %s", err, exc_info=not isinstance(err, HAError))
         if self.snapshots is not None:
             try:
                 snapshot = await self.snapshots.get()
@@ -833,8 +832,6 @@ class ShadowRunner:
         """The rooms changed: the old model no longer applies, learn anew with the next plan."""
         self._house_at = None
         self.house_model = None
-        if self.controller is not None:
-            self.controller.house_model = None
 
     def learn_house(self) -> None:
         """Learn the house in the background when rooms are set and the model is old."""
@@ -850,42 +847,19 @@ class ShadowRunner:
     async def _learn_house(self) -> None:
         now = datetime.now(UTC)
         try:
-            data = await house_data(self._client, self._store.load(), now)
+            snapshot = await self.snapshots.get() if self.snapshots else None
+            data = await house_data(self._client, self._store.load(), self._library.profiles, now, snapshot)
             model = fit_house(data.rows, now)
         except Exception as err:
             # Tried again with the next refresh, not with every plan
             _LOGGER.warning("Learning the house failed: %s", err, exc_info=not isinstance(err, HAError))
             model = None
         self._house_at = now
-        # The rules use it only while it predicts better than "the temperature stays"
+        # Used only while it predicts better than "the temperature stays"
         self.house_model = model if model is not None and model.useful else None
-        if self.controller is not None:
-            self.controller.house_model = self.house_model
-
-    async def _update_heating_season(self) -> None:
-        """Heating rods follow the season: checked before each plan, stored when it changes."""
-        config = self._store.load()
-        if not uses_seasons(config):
-            return
-        now = datetime.now(UTC)
-        try:
-            snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
-            active = await current_season(
-                self._client, season_source(config), snapshot.states, now, await local_timezone(self._client)
-            )
-        except HAError as err:
-            _LOGGER.warning("Checking the heating season failed: %s", err)
-            return
-        if with_season(config, active, now):
-            _LOGGER.info("Heating season %s", "started" if active else "ended")
-            self._store.save(config)
 
     async def _replan(self, start: datetime) -> None:
         await i18n.update_language(self._client, self._store.load().display.language)
-        await self._update_heating_season()
-        if self.controller is not None:
-            # "A day" of the heat pump's block limits and price ranks is Home Assistant's
-            self.controller.tz = await local_timezone(self._client)
         self.learn_house()
         correction = await self.pv_correction()
         self.learn_sun()
@@ -903,7 +877,6 @@ class ShadowRunner:
             chargers=self.controller.chargers if self.controller is not None else None,
             sun_corrections=self.sun_corrections(),
             pv_recent=await asyncio.to_thread(self.pv_recent, await local_timezone(self._client)),
-            house_model=self.house_model,
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)

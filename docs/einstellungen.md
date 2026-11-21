@@ -75,48 +75,30 @@ Je Wallbox:
 
 ## Wärmepumpe
 
-Messung und Ansteuerung der Wärmepumpe (SG-Ready über zwei Relais, nur Kontakt 2 oder eine
-Auswahl, Sollwert, gemeldeter PV-Überschuss, Boost-Schalter) mit den Regeln, wann sie verstärkt
-oder gesperrt wird; dazu der Heizstab der Wärmepumpe mit seinem Modus je Jahreszeit und die Erkennung der Heizperiode.
-Live-Werte zeigen Strom, Wärme, COP und den Zustand, den Sunflow setzt oder (im Schattenmodus)
-setzen würde. Einzelheiten unter [Unterstützte Geräte](geraete.md#wärmepumpe).
+Die Regelung der Wärmepumpe wird neu gebaut; bis dahin steuert Sunflow keine Wärmepumpe. Der
+Bereich enthält das Haus, aus dem Sunflow lernt.
 
-**Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche,
-einer als Referenzraum), optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung,
-sonst die Wärme der Wärmepumpe) und das Komfortband mit optionaler Nachtabsenkung. Sunflow lernt
-daraus ein einfaches Wärmemodell des Hauses aus den Stundenwerten der letzten vier Wochen:
+**Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
+und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
+Wärmepumpe). Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
+der Sensor der Wärmepumpe), der Außentemperatur-Sensor der Wärmepumpe, der Fühler ihres Außengeräts
+(HPSU: TA2) oder nur der eigene Sensor. Sunflow lernt daraus ein einfaches Wärmemodell des Hauses aus den
+Stundenwerten der letzten vier Wochen. Stunden, in denen die Wärmepumpe Warmwasser bereitet oder
+abgetaut hat, lässt es aus – deren Wärme ging nicht ins Haus:
 
 | Gelernt | Bedeutung |
 |---|---|
 | Zeitkonstante | Stunden, bis zwei Drittel des Unterschieds nach außen weg sind |
-| Abkühlung bei 0 °C außen | wie viel Kelvin pro Stunde es ohne Heizung und Sonne verliert |
+| Abkühlung bei 0 °C außen | wie viel Kelvin pro Stunde es bei 20 °C innen ohne Heizung und Sonne verliert |
 | Wärmeverlust | Heizleistung je Kelvin Unterschied (nur mit Wärmemessung) |
 | Wärmespeicher | Wärme für 1 K wärmer im ganzen Haus (nur mit Wärmemessung) |
 | Sonne | Erwärmung bei voller Sonne (mit Helligkeit unter Lernquellen) |
 
-Die letzten zwei Tage hält Sunflow zurück und rechnet sie jeden Tag neu vom Messwert aus; genutzt
-wird das Modell erst, wenn es dabei besser ist als „die Temperatur bleibt gleich“ und die Werte
-plausibel sind (ab 7 Tagen). Ein Diagramm zeigt die letzte Woche gemessen und vom Modell erwartet.
-Räume, deren Temperatur viel stärker springt als die der anderen (Sonne, Heizkörper, Fenster am
-Sensor), werden genannt.
-
-Ist das Modell zuverlässig, sichert es die Regeln der Wärmepumpe ab: In der Heizperiode **sperrt**
-Sunflow sie nur, wenn die vorhergesagte Temperatur des Referenzraums ohne Heizen bis zum Ende der
-Sperre über der Untergrenze bleibt (nachts gilt die Absenkung); kühlt das Haus schneller, endet eine
-laufende Sperre sofort. **Verstärken** endet in der Heizperiode an der Obergrenze; im Sommer
-heizt die Wärmepumpe Warmwasser, dort zählen die Räume nicht.
-
-**Vorheizen planen (Test):** An der Wärmepumpe unter Ansteuerung einschaltbar, mit der höchsten
-elektrischen Leistung. Sunflow plant die Wärmepumpe dann im Optimierer zusammen mit Speicher und
-Verbrauchern; die Raumtemperatur ist dort ein Wärmespeicher. Es heizt in sonnigen oder günstigen
-Stunden vor und lässt das Haus in teuren auskühlen, immer im Komfortband (darunter ist sehr
-teuer, darüber leicht). Der COP folgt der Außentemperatur der Wetterprognose. Was die Wärmepumpe
-ohne Planung ziehen würde, nimmt Sunflow aus der Verbrauchsprognose heraus und rechnet es beim
-Vergleich „ohne Sunflow“ wieder ein. Liegt die geplante Leistung deutlich über diesem Bedarf, wird
-verstärkt („Vorheizen nach Plan“), deutlich darunter gesperrt („Pause nach Plan“), mit allen
-Grenzen der Sperre und der Prüfung oben; das ersetzt die günstigsten und teuersten Stunden. Gilt
-nur in der Heizperiode und sobald das Hausmodell zuverlässig ist und die Wärme der Heizung kennt.
-Der Abschnitt „Haus“ zeigt die geplante Raumtemperatur der nächsten 48 Stunden.
+Die letzten zwei Tage hält Sunflow zurück und rechnet sie jeden Tag neu vom Messwert aus; als
+zuverlässig gilt das Modell erst, wenn es dabei besser ist als „die Temperatur bleibt gleich“ und
+die Werte plausibel sind (ab 7 Tagen). Ein Diagramm zeigt die letzte Woche gemessen und vom Modell
+erwartet. Räume, deren Temperatur viel stärker springt als die der anderen (Sonne, Heizkörper,
+Fenster am Sensor), werden genannt.
 
 ## Verbraucher
 

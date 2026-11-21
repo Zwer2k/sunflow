@@ -5,10 +5,10 @@ from typing import Literal
 import uuid
 
 from pydantic import (
-    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     field_validator,
     model_validator,
 )
@@ -16,7 +16,7 @@ from pydantic import (
 from sunflow.i18n import t
 
 # Raised with every change that needs a migration step (see store.MIGRATIONS)
-CONFIG_VERSION = 4
+CONFIG_VERSION = 5
 
 
 class RoleOverride(BaseModel):
@@ -43,34 +43,11 @@ class MeasuredBy(BaseModel):
     role: str
 
 
-HeaterMode = Literal["off", "pv_only", "cost"]
-
-
-class HeatingSeason(BaseModel):
-    """When the heating season is: heating rods follow a mode of their own in and outside of it."""
-
-    model_config = ConfigDict(allow_inf_nan=False)
-
-    source: Literal["temperature", "dates", "entity"] = "temperature"
-    # Daily mean of the outside temperature below the threshold on `days` days in a row starts it
-    temperature_entity: str | None = None
-    threshold_c: float = Field(default=15, ge=5, le=25)
-    days: int = Field(default=3, ge=1, le=7)
-    # "MM-DD"
-    start: str = Field(default="10-01", pattern=r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
-    end: str = Field(default="04-30", pattern=r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
-    # E.g. the heat pump's summer/winter mode; these states mean heating season
-    entity_id: str | None = None
-    entity_states: list[str] = Field(default_factory=lambda: ["on", "heating", "winter", "heizen"])
-    # Current state, kept between restarts (the temperature only changes it after `days` days)
-    active: bool = True
-    changed_at: datetime | None = None
-
-
 class FlexSettings(BaseModel):
     """How a flexible consumer (EV, heater, switchable load) should be planned."""
 
-    model_config = ConfigDict(allow_inf_nan=False)
+    # Fields of other versions (e.g. the former season modes of heating rods) survive saving
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
 
     strategy: Literal["cost", "pv_only", "fast"] = "cost"
     # Overrides the target from evcc (% for vehicles, °C for heaters)
@@ -82,11 +59,6 @@ class FlexSettings(BaseModel):
     uses_battery: bool = True
     # Price of the alternative heat source (district heating, gas) in ct per kWh of heat
     alternative_cost_ct: float | None = None
-    # A heating rod by season: "off", only PV surplus or by cost; None: the strategy all year
-    heating_mode: HeaterMode | None = None
-    summer_mode: HeaterMode | None = None
-    # Switched on by hand ("fast") while its season mode is off: ends after this many hours at the latest
-    manual_max_h: float = Field(default=24, ge=1, le=168)
 
 
 class AuxBatteryGuard(BaseModel):
@@ -194,131 +166,28 @@ class Connection(BaseModel):
     unit_id: int | None = Field(default=None, ge=0, le=255)
 
 
-HeatPumpState = Literal["block", "normal", "boost", "forced"]
-
-
 class Room(BaseModel):
     """A room temperature sensor and how much the room counts (e.g. by its area)."""
 
-    model_config = ConfigDict(allow_inf_nan=False)
+    # Fields of other versions (e.g. the former reference room) survive saving
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
 
     entity_id: str
     weight: float = Field(default=1.0, gt=0, le=1000)
-    # The comfort band applies to this room
-    reference: bool = False
 
 
 class HouseSettings(BaseModel):
-    """The rooms Sunflow learns the house from, and the temperature band to keep."""
+    """The rooms Sunflow learns the house from."""
 
-    model_config = ConfigDict(allow_inf_nan=False)
+    # Fields of other versions (e.g. the former comfort band) survive saving
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
 
     rooms: list[Room] = Field(default_factory=list, max_length=30)
     # Heat into the house in W (e.g. a heat meter); without it the heat pump's heat counts
     heat_entity: str | None = None
-    comfort_min: float = Field(default=20.0, ge=5, le=30)
-    comfort_max: float = Field(default=22.0, ge=5, le=30)
-    # A lower bound at night (setback); None keeps comfort_min all day
-    night_min: float | None = Field(default=None, ge=5, le=30)
-    night_start: str = Field(default="22:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
-    night_end: str = Field(default="06:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
-
-    @model_validator(mode="after")
-    def _band(self) -> HouseSettings:
-        if self.comfort_min >= self.comfort_max:
-            raise ValueError("comfort_min must be below comfort_max")
-        if self.night_min is not None and self.night_min > self.comfort_min:
-            raise ValueError("night_min must not be above comfort_min")
-        if sum(r.reference for r in self.rooms) > 1:
-            raise ValueError("at most one reference room")
-        return self
-
-
-RodState = Literal["free", "blocked", "max"]
-
-
-class BuiltinRod(BaseModel):
-    """The heat pump's own heating rod (backup heater), as far as its integration lets Sunflow release it.
-
-    Sunflow never switches it on itself: it blocks it, leaves it free (the heat pump's normal setting)
-    or raises its limit; the heat pump's control decides when it runs. Methods:
-    - allow_switch: a switch that permits the rod (e.g. NIBE "allow additive heating")
-    - block_switch: a switch that blocks it (e.g. EMS-ESP "auxheateroff")
-    - select: a select with an option per state (e.g. HeishaMon blocked/free, EMS-ESP kW steps)
-    - limit: a number with the rod's maximum power (e.g. NIBE "max int add. power" in kW)
-    """
-
-    model_config = ConfigDict(allow_inf_nan=False)
-
-    method: Literal["allow_switch", "block_switch", "select", "limit"]
-    # select: state -> option
-    options: dict[RodState, str] = Field(default_factory=dict)
-    # limit: the number's value for free (the installer's setting), max and blocked
-    limit_normal: float | None = Field(default=None, ge=0, le=100_000)
-    limit_max: float | None = Field(default=None, ge=0, le=100_000)
-    limit_blocked: float = Field(default=0, ge=0, le=100_000)
-    # need: blocked unless it is colder than bivalence_c, prices are negative or released by hand;
-    # pv: like need, and released with PV surplus; auto: the heat pump decides alone
-    heating_mode: Literal["auto", "need"] = "need"
-    summer_mode: Literal["auto", "need", "pv"] = "pv"
-    bivalence_c: float = Field(default=-5, ge=-30, le=20)
-    # Its settings are mostly kept in the heat pump's flash memory: changed rarely
-    min_state_min: int = Field(default=60, ge=15, le=480)
-    released_until: AwareDatetime | None = None
-
-
-class HeatPumpSettings(BaseModel):
-    """How Sunflow steers a heat pump and when.
-
-    It never switches the heat pump itself: it recommends a state, the heat pump's own control
-    decides what that means. Methods:
-    - sg_relays: SG-Ready with two relays (contact 1 usually blocks, contact 2 boosts)
-    - sg_relay: only contact 2 (normal or boost; contact 1 often is the grid operator's lock)
-    - sg_select: a select with the SG-Ready states (manufacturer integration, input_select)
-    - setpoint: raise a setpoint (number, e.g. hot water) by some kelvin
-    - surplus: tell the heat pump the PV surplus in W (number; some heat pumps use it themselves)
-    - boost_switch: a switch the integration offers (e.g. a one-time hot water charge)
-    """
-
-    model_config = ConfigDict(allow_inf_nan=False)
-
-    method: Literal["sg_relays", "sg_relay", "sg_select", "setpoint", "surplus", "boost_switch"] | None = None
-    # A relay wired as normally closed: on means open
-    contact1_inverted: bool = False
-    contact2_inverted: bool = False
-    # Blocking in expensive hours (contact 1 must not be the grid operator's lock, §14a EnWG)
-    use_block: bool = False
-    # SG-Ready state 4 at negative prices
-    use_forced: bool = False
-    # sg_select: state -> option of the select
-    options: dict[HeatPumpState, str] = Field(default_factory=dict)
-    # setpoint: the normal value and how much higher (boost) or lower (block)
-    setpoint_normal: float | None = Field(default=None, ge=0, le=90)
-    boost_k: float = Field(default=5, ge=0, le=30)
-    block_k: float = Field(default=5, ge=0, le=30)
-    # Boost from this planned surplus (feed-in or curtailed PV) on
-    min_surplus_w: float = Field(default=1500, ge=0, le=50_000)
-    # Boost in the N cheapest and block in the N most expensive hours of a day; 0: never
-    cheap_hours: int = Field(default=0, ge=0, le=12)
-    expensive_hours: int = Field(default=0, ge=0, le=12)
-    # Protection: a state stays at least this long, a block at most this long and this much per day
-    min_state_min: int = Field(default=20, ge=5, le=120)
-    block_max_min: int = Field(default=120, ge=15, le=240)
-    block_day_max_min: int = Field(default=240, ge=15, le=720)
-    # Plan heating with the learned house: preheat in sunny or cheap hours, pause in dear ones (test)
-    preheat: bool = False
-    # Electric power at full output, for planning
-    max_power_w: float = Field(default=3000, gt=0, le=50_000)
-    # The heat pump's own heating rod, or (the alternative) a consumer of kind heater beside it;
-    # the consumer's season modes count only while linked
-    rod: BuiltinRod | None = None
-    rod_id: str | None = None
-
-    @model_validator(mode="after")
-    def _one_rod(self) -> HeatPumpSettings:
-        if self.rod is not None and self.rod_id is not None:
-            raise ValueError("either the built-in heating rod or a consumer, not both")
-        return self
+    # Outside temperature of the house model and the heat pump recording: auto = the learning
+    # source when set, else the heat pump's sensor; heat_pump_unit = the sensor of its outdoor unit
+    outside_source: Literal["auto", "heat_pump", "heat_pump_unit", "learning_source"] = "auto"
 
 
 class ChargerSettings(BaseModel):
@@ -374,10 +243,12 @@ class DeviceConfig(BaseModel):
     reload_after_min: int | None = Field(default=None, ge=10, le=240)
     # Own loads with a battery of their own; None: planned by their daily need
     charger: ChargerSettings | None = None
-    # Heat pumps: how Sunflow steers it; None: only measured
-    heat_pump: HeatPumpSettings | None = None
     # Batteries: short name for the live diagram (e.g. "Haus", "Balk."); None: the name's first word
     short_name: str | None = Field(default=None, max_length=8)
+    # Devices recognized by their manifest (ESPHome): MAC address of the node, lower case, to find it
+    # again when its Home Assistant device id changed, and the component the manifest came from
+    mac: str | None = None
+    component: Literal["can", "uart"] | None = None
 
 
 class TariffConfig(BaseModel):
@@ -758,8 +629,14 @@ class SunflowConfig(BaseModel):
     disabled_devices: list[DeviceConfig] = Field(default_factory=list)
     # Wallbox id -> vehicle chosen in the control tab (until the car is unplugged)
     selected_vehicles: dict[str, str] = Field(default_factory=dict)
-    heating_season: HeatingSeason = Field(default_factory=HeatingSeason)
     house: HouseSettings = Field(default_factory=HouseSettings)
+    # Devices left out when loading because their profile is unknown (config/store.py); saved again
+    _set_aside: dict[str, list[DeviceConfig]] = PrivateAttr(default_factory=dict)
+
+    @property
+    def set_aside(self) -> dict[str, list[DeviceConfig]]:
+        """Devices with an unknown profile per section ("devices", "disabled_devices"), kept for saving."""
+        return self._set_aside
 
     def flex_of(self, device_id: str) -> FlexSettings:
         """How a consumer is planned (defaults when nothing was set)."""
@@ -825,28 +702,13 @@ class SunflowConfig(BaseModel):
     def effective_flex(
         self, device: DeviceConfig, now: datetime, base: FlexSettings | None = None
     ) -> tuple[FlexSettings, bool]:
-        """Planning settings (base: e.g. a charging profile) with an active override, and whether it is paused.
-
-        A heating rod's season mode replaces its strategy ("off" pauses it); a strategy set by hand wins.
-        """
+        """Planning settings (base: e.g. a charging profile) with an active override, and whether it is paused."""
         settings = base or self.flex_of(device.id)
-        mode = self.season_mode(settings) if device.id in self.heat_pump_rods() else None
-        season_off = mode == "off"
-        if mode in ("pv_only", "cost"):
-            settings = settings.model_copy(update={"strategy": mode})
         override = self.overrides.get(device.id)
         if override is None or not override.active(now):
-            return settings, season_off
+            return settings, False
         changes = {k: v for k, v in (("strategy", override.strategy), ("target", override.target)) if v is not None}
-        return settings.model_copy(update=changes), override.paused or (season_off and override.strategy is None)
-
-    def heat_pump_rods(self) -> set[str]:
-        """Ids of the heating rods linked to a heat pump."""
-        return {d.heat_pump.rod_id for d in self.devices if d.heat_pump is not None and d.heat_pump.rod_id}
-
-    def season_mode(self, settings: FlexSettings) -> HeaterMode | None:
-        """The mode of a heating rod in the current season; None without season modes."""
-        return settings.heating_mode if self.heating_season.active else settings.summer_mode
+        return settings.model_copy(update=changes), override.paused
 
     def effective_strategy(self, now: datetime) -> Strategy:
         """Return the battery strategy with an active override applied."""

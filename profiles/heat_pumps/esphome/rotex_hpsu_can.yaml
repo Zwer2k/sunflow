@@ -1,0 +1,78 @@
+# Rotex/Daikin HPSU through the ESPHome component daikin_rotex_can (CAN bus). Entity names in
+# ESPHome are free and translated, so the node is recognized only by the manifest its component
+# delivers (action rotex_can_manifest) and roles name the component's keys, not unique_id endings.
+# Design: design/heat_pump.md, sections 3 and 11.
+profile: esphome/rotex_hpsu_can
+version: 2
+match:
+  integration: esphome
+  manifest: {id: rotex_hpsu_can}
+
+capabilities: [heat_pump]
+
+roles:
+  flow_temperature: {key: tv, domain: [sensor], unit: "°C"}
+  flow_temperature_bh: {key: tvbh, domain: [sensor], unit: "°C"}
+  return_temperature: {key: tr, domain: [sensor], unit: "°C"}
+  # The setpoint the heat pump currently regulates with
+  flow_setpoint: {key: target_supply_temperature, domain: [sensor], unit: "°C"}
+  heat_power: {key: thermal_power, domain: [sensor], unit: kW}
+  # Highest flow temperature between two tv values (component reads tv every 2 s)
+  flow_temperature_max: {key: tv_max, domain: [sensor], unit: "°C"}
+  outside_temperature: {key: temperature_outside, domain: [sensor], unit: "°C"}
+  # Sensor of the outdoor unit (TA2); selectable as the outside temperature (house.outside_source)
+  outside_temperature_unit: {key: ta2, domain: [sensor], unit: "°C", optional: true}
+  compressor: {key: status_kompressor, domain: [binary_sensor]}
+  program: {key: operating_mode, domain: [select, text_sensor]}
+  activity: {key: mode_of_operating, domain: [text_sensor]}
+  strategy_select: {key: hk_function, domain: [select, text_sensor]}
+  bypass_valve: {key: bypass_valve, domain: [sensor], unit: "%"}
+  # Room thermostat input: on = heating blocked, off = released
+  heating_block: {key: room_therm, domain: [select, switch]}
+  error: {key: error_code, domain: [text_sensor, sensor]}
+  # Max T-Vorlauf: the set value of the strategy "fixed"; written, so checked as a number with range and step
+  max_flow_setpoint: {key: max_target_flow_temp, domain: [number], unit: "°C"}
+  outdoor_unit: {key: outdoor_unit, domain: [select, text_sensor], optional: true}
+  electric_energy: {key: total_electrical_energy, domain: [sensor], unit: kWh, optional: true}
+
+companion:
+  profile: esphome/rotex_hpsu_uart
+  roles:
+    compressor_current: {key: inv_prim_current, domain: [sensor], unit: A, optional: true}
+    compressor_speed: {key: inv_freq, domain: [sensor], unit: rpm, optional: true}
+
+states:
+  program:
+    heating: [heating, lowering, automatic_1, automatic_2]
+    summer: [summer]
+    standby: [standby]
+    cooling: [cooling]
+  activity:
+    heating: [heating]
+    hot_water: [hot_water_production]
+    defrost: [defrosting]
+    idle: [standby]
+    cooling: [cooling]
+
+flow_control:
+  strategies:
+    fixed:
+      when: {strategy_select: fixed}
+      setpoint_kind: direct
+      write: {role: max_flow_setpoint, storage: eeprom}
+    weather:
+      when: {strategy_select: weather_dependent}
+      setpoint_kind: curve
+      enabled: false
+  compressor_rules: {start_margin: 3.0, stop_margin: 3.0}
+  learned_defaults: {steady_swing: 0.5, start_jump: 6.0, start_settle: 5min}
+  adopt_delay: 60s
+  # Start values for underfloor heating; the user sets them per heat pump
+  limits: {min: 25, max: 40}
+  heat_power: {min: 0.6, max: 6.0}
+  settle_after_bypass: 10min
+  # Quoted: YAML 1.1 reads a bare on/off as true/false
+  heating_block: {"on": "on", "off": "off", min_duration: 20min}
+  # Deadband: Sunflow's default (heat_pump/defaults.py, DEADBAND_K)
+  writes: {min_interval: 5min, protect_interval: 2min, per_day: 48, emergency_per_day: 24, per_hour: 6}
+  frozen_after: {hot_water: 10min, defrost: 10min}

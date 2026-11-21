@@ -8,8 +8,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ARG BUILD_VERSION
-ARG SUNFLOW_REPO=https://github.com/Zwer2k/sunflow
-ARG SUNFLOW_REF=main
+ARG SUNFLOW_REPO=https://github.com/wrfz/sunflow
+ARG SUNFLOW_REF=heat_pump
 RUN echo "Sunflow ${BUILD_VERSION}" \
     && git clone --depth 1 --branch "${SUNFLOW_REF}" "${SUNFLOW_REPO}" /app \
     && pip install --no-cache-dir /app/backend \

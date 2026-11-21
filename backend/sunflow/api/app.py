@@ -26,11 +26,14 @@ from sunflow.control.controller import (
 from sunflow.control.journal import ControlJournal
 from sunflow.control.reload import ReloadWatchdog
 from sunflow.devices.device_test import RestoreMarker
-from sunflow.devices.discovery import SnapshotCache
+from sunflow.devices.discovery import Contributors, SnapshotCache
 from sunflow.devices.executor import EepromGuard
 from sunflow.devices.profiles import load_profiles, load_schema
 from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient, HAError
+from sunflow.heat_pump.link import ManifestManager
+from sunflow.heat_pump.manifest_store import ManifestStore
+from sunflow.heat_pump.samples import HeatPumpRecorder
 from sunflow.i18n import t
 from sunflow.integration_link import announce, integration_token, running_peer
 from sunflow.mcp_key import McpKey
@@ -48,6 +51,7 @@ from .common import _LOGGER, DEFAULT_MAX_EEPROM_WRITES, router
 RECONNECT_DELAYS = (1, 2, 5, 10, 30)
 PEER_CHECK_SECONDS = 60
 RELOAD_CHECK_SECONDS = 60
+MANIFEST_CHECK_SECONDS = 60
 
 
 def _plan_controller(app: FastAPI, settings: Settings) -> PlanController:
@@ -94,6 +98,19 @@ async def _watch_integrations(app: FastAPI) -> None:
             _LOGGER.exception("Checking for silent devices failed")
 
 
+async def _watch_manifests(app: FastAPI) -> None:
+    """Keep devices recognized by their manifest checked; events (flashed, back online) wake it early."""
+    manager: ManifestManager = app.state.manifests
+    while True:
+        if app.state.ha.connected:
+            try:
+                snapshot = await app.state.snapshots.get(fresh=manager.wants_fresh)
+                await manager.check(app.state.store, snapshot, datetime.now(UTC))
+            except Exception:  # noqa: BLE001 - the watcher must never die
+                _LOGGER.exception("Checking the manifests failed")
+        await manager.wait(MANIFEST_CHECK_SECONDS)
+
+
 async def _watch_peer(app: FastAPI, supervisor_token: str, port: int) -> None:
     """Stand aside while the other Sunflow App (stable or Edge) runs; announce to the integration otherwise."""
     announced = False
@@ -137,7 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = settings
         app.state.integration_token = integration_token(settings.data_dir)
         app.state.mcp_key = McpKey(settings.data_dir)
-        app.state.store = ConfigStore(settings.data_dir)
+        app.state.store = ConfigStore(settings.data_dir, lambda: app.state.profiles.profiles)
         estimator.load(settings.data_dir)
         app.state.profiles = load_profiles(
             settings.profiles_dir, load_schema(settings.schema_dir)
@@ -145,13 +162,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ha = HAClient(settings.ha_websocket_url, settings.ha_token)
         app.state.direct = DirectHub()
         app.state.direct.start(lambda: (app.state.store.load(), app.state.profiles))
-        app.state.snapshots = SnapshotCache(app.state.ha, direct=app.state.direct, live=True)
+        app.state.manifests = ManifestManager(app.state.ha, ManifestStore(settings.data_dir), lambda: app.state.profiles)
+        app.state.snapshots = SnapshotCache(
+            app.state.ha, direct=Contributors(app.state.direct, app.state.manifests), live=True
+        )
+        app.state.snapshots.add_state_listener(app.state.manifests.on_state_changed)
         app.state.device_tests = {}
         app.state.restore_marker = RestoreMarker(settings.data_dir)
         keeper = asyncio.create_task(_keep_connected(app.state.ha))
         shadow = ShadowStore(settings.data_dir)
         app.state.runner = ShadowRunner(app.state.ha, app.state.store, app.state.profiles, shadow, app.state.snapshots)
         app.state.controller = app.state.runner.controller = _plan_controller(app, settings)
+        app.state.manifests.journal = app.state.controller.journal
+        app.state.runner.heat_pump = HeatPumpRecorder(
+            shadow, lambda: app.state.profiles.profiles, app.state.manifests.usable, app.state.controller.journal
+        )
+        app.state.snapshots.add_state_listener(app.state.runner.heat_pump.on_state_changed)
         app.state.runner.counters = EnergyCounters(settings.data_dir)
         app.state.loads = OneTimeLoads(settings.data_dir)
         runner_task = asyncio.create_task(app.state.runner.run())
@@ -159,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.ha, lambda: app.state.profiles.profiles, app.state.controller.journal
         )
         reload_task = asyncio.create_task(_watch_integrations(app))
+        manifest_task = asyncio.create_task(_watch_manifests(app))
         energy_task = asyncio.create_task(keep_energy_today(app))
         peer_task = (
             asyncio.create_task(_watch_peer(app, settings.supervisor_token, settings.port))
@@ -168,7 +195,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            for task in (reload_task, energy_task):
+            for task in (reload_task, manifest_task, energy_task):
                 task.cancel()
                 with suppress(asyncio.CancelledError):
                     await task
