@@ -2,7 +2,7 @@
 
 Stand: 21.11.2026 · Status: Spezifikation; ESP-Teil (Manifest, `tv_max`, Zehntel für Max/Min T-Vorlauf;
 Abschnitt 3, 12) umgesetzt; Sunflow: Altlösung entfernt (Abschnitt 16, 2a), Datenhaltung (2b), Manifest,
-Kompatibilität und Profil (2c, Teil 1) umgesetzt, Rest offen
+Kompatibilität und Profil (2c, Teil 1), Zustände und Datensammlung (2c, Teil 2a) umgesetzt, Rest offen
 
 Sunflow regelt den Vorlauf-Sollwert einer Luft-Wasser-Wärmepumpe so, dass das Haus den eingestellten
 Raum-Soll hält – selbstlernend, ohne die Wärmepumpe in Fehlbetrieb zu treiben – und nutzt einen
@@ -342,17 +342,37 @@ das Wasser den kurzen Weg nimmt, sind Tv, TvBH und Tr für den Heizkreis nicht a
 - Aktivität `heating` mit BPV > 0 % oder innerhalb der Beruhigungszeit gilt als Übergang → einfrieren.
 - Die Startregel (8.4) gilt davon unabhängig: Sie hängt am Kompressor, nicht am Ventil.
 
-Zusätzliche Eingänge: Kompressor läuft (`status_kompressor`), Störung (`error_code`). Bei einer Störung
-(Fehlercode ≠ 0): nicht schreiben, nicht lernen, Korrektur einfrieren, Journal.
+Zusätzliche Eingänge: Kompressor läuft (`status_kompressor`), Störung (`error_code`). Störung = Fehlercode
+beginnt mit `E` (Übersetzungsschlüssel `err_E…`; ein Text, den das Manifest nicht kennt, zählt, wenn er
+mit `E` und einer Ziffer beginnt). Warnungen (`W…`) und „Kein Fehler“ sind keine Störung. Bei einer
+Störung: nicht schreiben, nicht lernen, Korrektur einfrieren, Journal.
 
 **Gültiger Heizbetrieb** – Voraussetzung für Regeln (Nachführen, Korrektur, 8.2) und Lernen (9.1); sonst
 einfrieren. Alle Bedingungen gleichzeitig:
 - Programm `heating` (Heizen, Absenken, Automatik 1/2);
 - Aktivität `heating` und BPV = 0 % seit mindestens der Beruhigungszeit (10 min);
+- kein Nachlauf: nach Warmwasser und nach Abtauen je `frozen_after` (10 min) ab dem Ende. Nachlauf und
+  BPV-Beruhigung laufen gleichzeitig ab ihrem jeweiligen Ende; es gilt das spätere Ende, nichts wird
+  addiert. Nach einem Neustart von Sunflow ist unbekannt, was vor dem letzten Wechsel der Aktivität lief:
+  liegt er kürzer als der längste Nachlauf zurück, gilt ein Nachlauf „unbekannt“;
 - keine Raumthermostat-Sperre aktiv, keine Störung;
-- die HPSU begrenzt den Vorlauf nicht selbst (wirksamer Soll ≈ Stellwert, siehe Absenken/Automatik);
+- die HPSU begrenzt den Vorlauf nicht selbst (nur Strategie `fixed`): begrenzt = wirksamer Soll liegt
+  mehr als die Totzone (0,5 K) unter Max T-Vorlauf, länger als 5 min (`SELF_LIMIT_AFTER_S`); nach einem
+  eigenen Schreibvorgang zählt die Frist ab dem Schreiben (Übernahme 30–60 s). Ende ohne Wartezeit,
+  sobald der wirksame Soll wieder innerhalb der Totzone liegt. Fehlt einer der beiden Werte: nicht
+  gültig. Bei anderer Strategie greift das Kriterium nicht (S2 später);
 - Gerät erreichbar und kompatibel (3.6).
-Die Startregel (8.4) gilt unabhängig davon.
+Die Startregel (8.4) und Schutzschritte gelten unabhängig davon.
+
+Journal: nur bei unbekanntem Zustandswert (einmal je Wert), Beginn und Ende einer Störung, Sperre an und
+aus, Beginn von „HPSU begrenzt den Vorlauf selbst“. Wechsel gültig ↔ nicht gültig (z. B. jedes Abtauen)
+stehen nur in `heat_pump_samples` (`flags`, `events`) und in `GET /api/v1/heat_pump/status`.
+
+Umsetzung (2c, Teil 2a): `heat_pump/states.py` (`read` bildet Anzeigetexte über die `values` des
+Manifests auf Schlüssel und über `states` des Profils auf kanonische Zustände ab; `HeatingTracker`
+bewertet den gültigen Heizbetrieb mit den Gründen fürs Einfrieren, z. B. `bypass_settling`,
+`after_hot_water`, `blocked`, `self_limited`). Die BPV-Beruhigung zählt ab `last_changed` der Entity
+in HA (übersteht einen Neustart von Sunflow), sonst ab der eigenen ersten Beobachtung.
 
 ---
 
@@ -434,7 +454,7 @@ Stunden.
 
 | Verwendung | Quelle |
 |---|---|
-| aktueller Bedarf (Vorsteuerung 8.1, Korrektur 8.2) | **gemessene** Außentemperatur: Sensor der WP (`temperature_outside`) oder eigener Sensor (Lernquelle „Außentemperatur“) |
+| aktueller Bedarf (Vorsteuerung 8.1, Korrektur 8.2) | **gemessene** Außentemperatur: Sensor der WP (`temperature_outside` oder Außengerät `ta2`) oder eigener Sensor (Lernquelle „Außentemperatur“), wählbar (9.3) |
 | künftige Slots der Planung (vorheizen, kalte Nacht, PV-Fenster) | **Prognose** der `weather`-Entity (`weather.get_forecasts`, stündlich; wie heute in `planning/plan.py`) |
 
 - Die Prognose ist nur so genau wie das Wettermodell (typisch ±1–2 K) und weicht örtlich ab. Sunflow
@@ -606,8 +626,12 @@ aktiv ist.
   Programm, Aktivität, BPV, Raumthermostat-Sperre, Kompressor, wirksamer Soll, Stellwert, Strategie,
   Ereignis-Flags
   (Lüften, Warmwasser-Nachlauf, Abtau-Nachlauf).
-- Gültig für die Kennlinie: gültiger Heizbetrieb (Abschnitt 4), Kompressor läuft ≥ 15 min, kein Nachlauf,
-  Raum-Ist verfügbar, Wärmeleistung plausibel.
+- Gültig für die Kennlinie: gültiger Heizbetrieb (Abschnitt 4, schließt den Nachlauf ein), Kompressor
+  läuft ≥ 15 min, Raum-Ist verfügbar, Wärmeleistung plausibel.
+- Umgesetzt (2c, Teil 2a): `heat_pump/samples.py` (`HeatPumpRecorder`) misst im Takt des Runners jede
+  Minute und speichert je 5 min eine Zeile (Abschnitt 10). `tv_max` und Kompressorstarts/-stopps kommen
+  über `state_changed`-Ereignisse, damit zwischen zwei Messungen nichts verloren geht. Lüften (6.2) folgt
+  als weiterer Schlüssel in `flags`.
 
 **Übersicht – was gelernt wird:**
 
@@ -642,6 +666,19 @@ aktiv ist.
 - Fehlt beides, wird die Wärme wie bisher aus dem Stromverbrauch geschätzt (nur Hausmodell; die Kennlinie
   braucht eine gemessene Wärme).
 - Welche Quelle gilt, zeigt die UI an.
+- Rollen der Wärmepumpe werden über das Manifest gebunden (Nutzer-Overrides gehen vor); der Recorder
+  liefert die Leistung in W (Statistik umgerechnet, Zustände normalisiert), auch bei einem Sensor in kW.
+- Warmwasser- und Abtau-Zeiten werden beim Lernen ausgeschlossen: jede Stunde mit einem Anteil > 0 an
+  `hot_water` oder `defrost` (aus der HA-History der Rolle `activity`) fällt heraus, für beide
+  Wärmequellen (ein eigener Zähler misst das Warmwasser meist mit). Ohne Wärmepumpen-Gerät ist keine
+  Aktivität bekannt, dann wird nichts ausgelassen; Stunden vor Beginn der History bleiben drin. Quelle
+  sind die Stundenmittel, bis `heat_pump_samples` mindestens `MIN_DAYS` (7 Tage) gültigen Heizbetrieb
+  abdeckt (Umstellung offen, Abschnitt 16, Schritt 3).
+
+**Außentemperatur** (Hausmodell und `outside_c`), Einstellung `house.outside_source`: `auto` (eigener
+Sensor aus den Lernquellen, falls gesetzt, sonst Rolle `outside_temperature` der Wärmepumpe),
+`heat_pump` (Rolle `outside_temperature`), `heat_pump_unit` (Rolle `outside_temperature_unit`, bei der
+HPSU `ta2`, Fühler des Außengeräts), `learning_source` (nur der eigene Sensor).
 
 ### 9.4 Je Strategie
 
@@ -667,12 +704,21 @@ gehen per JOIN. Eigene Tabelle statt Spalten in `slots`, weil Takt (5 statt 15 m
 Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen-Regelung beginnen mit
 `heat_pump_` (Regel 12); heute ist das nur `heat_pump_samples`.
 
-- `heat_pump_samples`: Schlüssel (`device_id`, `start`), Spalten mit Einheit im Namen (`tv_c`, `tr_c`,
-  `tvbh_c`, `tv_max_c` (Spitze im Intervall, für die Sprung-Lernwerte), `heat_w`, `outside_c`,
-  `bypass_pct`, `setpoint_c`, `written_c`, …), Ereignisse (Kompressorstart/-stopp mit Tv und Soll), Zustände als
-  kanonische Schlüssel (`program`, `activity`, `strategy`), Räume als JSON (`rooms`: entity → °C),
-  Flags als JSON (`flags`: Lüften, Nachlauf, Sperre, gültig).
-- Aufräumen: Zeilen älter als 1 Jahr löschen (im Runner, blockweise).
+- `heat_pump_samples` (umgesetzt, Schema-Schritt 9 → 10, Index auf `start`): Schlüssel (`device_id`,
+  `start` = Beginn des 5-min-Intervalls, UTC). Spalten:
+  - `samples` (Anzahl Minutenwerte);
+  - Mittelwerte mit Einheit im Namen: `tv_c`, `tr_c`, `tvbh_c`, `setpoint_c` (wirksamer Soll),
+    `max_setpoint_c` (aktueller Max T-Vorlauf), `bypass_pct`, `heat_w`, `outside_c`;
+  - `tv_max_c`: höchste Spitze im Intervall (für die Sprung-Lernwerte);
+  - `written_c`: von Sunflow geschriebener Stellwert (bis Schritt 3 leer);
+  - `heat_source` (`meter`/`measured`); `compressor`: Anteil der Minuten mit laufendem Kompressor (0–1);
+  - Zustände als kanonische Schlüssel (`program`, `activity`, `strategy`; häufigster Wert im Intervall);
+    `error`: Schlüssel des Fehlercodes (z. B. `err_0`) oder unbekannter Text;
+  - JSON: `rooms` (entity → °C), `events` (Kompressorstart/-stopp mit Zeit, Tv, `tv_max`, wirksamem Soll
+    und Max T-Vorlauf), `flags` (`valid` nur, wenn jede Minute gültig war; `frozen`: Gründe;
+    `after_run`: Nachlauf `hot_water`/`defrost`/`unknown`; `blocked`, `fault`, `self_limited`; Lüften
+    folgt).
+- Aufräumen: Zeilen älter als 1 Jahr löschen (im Runner einmal täglich, Blöcke zu 5000 Zeilen).
 - Lernen zurücksetzen: Zeilen des Geräts löschen und `heat_pump_state.json`-Eintrag verwerfen.
 - Export/Import: `heat_pump_samples` wird beim Import übernommen (in `IMPORT_TABLES` eintragen); der
   Import führt alle Tabellen zusammen, siehe `datenhaltung.md` („Export/Import“).
@@ -692,7 +738,7 @@ in Schritt 3 hinzu. Weitere Wärmepumpen bekommen nur ein eigenes Profil dieser 
 
 ```yaml
 profile: esphome/rotex_hpsu_can
-version: 1
+version: 2                  # 2: optionale Rolle outside_temperature_unit (ta2)
 match:
   integration: esphome
   manifest: {id: rotex_hpsu_can}
@@ -706,6 +752,7 @@ roles:                      # domain: erlaubte Entity-Domains laut Manifest
   heat_power:           {key: thermal_power, domain: [sensor], unit: kW}
   flow_temperature_max: {key: tv_max, domain: [sensor], unit: "°C"}   # Spitze zwischen zwei tv-Werten
   outside_temperature:  {key: temperature_outside, domain: [sensor], unit: "°C"}
+  outside_temperature_unit: {key: ta2, domain: [sensor], unit: "°C", optional: true}   # Fühler Außengerät
   compressor:           {key: status_kompressor, domain: [binary_sensor]}
   program:              {key: operating_mode, domain: [select, text_sensor]}
   activity:             {key: mode_of_operating, domain: [text_sensor]}
@@ -863,10 +910,17 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    c. Teil 1 (umgesetzt, 0.80.5): Manifest auslesen und neu laden, Kompatibilitätsprüfung je Rolle,
       `profile_version`, Profil `esphome/rotex_hpsu_can` mit Schema-Erweiterung, Gerät über das Manifest
       erkennen und anlegen (`ha_device_id`, MAC, Komponente), Neu-Bindung über die MAC; nur CAN, nichts
-      schreiben. Teil 2: Zustände, Datensammlung (`heat_pump_samples` in `shadow.db`), climate-Entity,
-      Schattenbetrieb mit einfacher Regelung (Korrektur ohne Kennlinie).
+      schreiben. Teil 2a (umgesetzt, 0.80.6): Zustände und gültiger Heizbetrieb (Abschnitt 4),
+      Datensammlung (`heat_pump_samples` in `shadow.db`, Aufräumen nach 1 Jahr, Import), Wärmequelle
+      und Außentemperatur für das Hausmodell (9.3, Profil Version 2), Zustände in
+      `GET /api/v1/heat_pump/status`; nichts schreiben. Teil 2b: climate-Entity, Schattenbetrieb mit
+      einfacher Regelung (Korrektur ohne Kennlinie), Anzeige der Zustände im UI.
 3. Kennlinie lernen, Vorsteuerung, Schutzschicht (Schaltregeln mit gelernten Sprungwerten,
-   Raumthermostat-Sperre), Schreiblogik, Budget → aktiv.
+   Raumthermostat-Sperre), Schreiblogik, Budget → aktiv. Dazu (offen, frühestens hier, weil die
+   Kennlinie ohnehin aus `heat_pump_samples` lernt): Hausmodell auf `heat_pump_samples` umstellen,
+   sobald die Tabelle mindestens `MIN_DAYS` (7 Tage) gültigen Heizbetrieb (Abschnitt 4) abdeckt – Wärme
+   nur aus gültigen Heiz-Intervallen, ohne Warmwasser, Abtauen und Lüft-Intervalle (9.3). Bis dahin
+   Stundenmittel aus HA mit ausgelassenen Warmwasser- und Abtau-Stunden (umgesetzt in 2c, Teil 2a).
 4. Planung mit Raum-Soll + Spielraum (Vorheizen).
 5. UART-Begleiter, Paarung.
 6. S2.

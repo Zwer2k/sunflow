@@ -245,5 +245,11 @@
   "Manifest geändert, wird neu geprüft": "Manifest changed, checking again",
   "Manifest geladen: {count} Entities, Komponente {git}": "Manifest loaded: {count} entities, component {git}",
   "Mehrere ESPHome-Geräte passen zum Manifest von {node} – bitte das Gerät im Assistenten wählen.": "Several ESPHome devices fit the manifest of {node} – please choose the device in the wizard.",
-  "Kein ESPHome-Gerät passt zum Manifest von {node}.": "No ESPHome device fits the manifest of {node}."
+  "Kein ESPHome-Gerät passt zum Manifest von {node}.": "No ESPHome device fits the manifest of {node}.",
+  "Unbekannter Zustand „{value}“ ({role}) – Sunflow greift dann nicht ein.": "Unknown state “{value}” ({role}) – Sunflow does not intervene then.",
+  "Störung der Wärmepumpe: {error}": "Heat pump fault: {error}",
+  "Störung der Wärmepumpe behoben": "Heat pump fault cleared",
+  "Raumthermostat-Sperre aktiv: die Wärmepumpe heizt nicht.": "Room thermostat block active: the heat pump does not heat.",
+  "Raumthermostat-Sperre aufgehoben": "Room thermostat block released",
+  "Die Wärmepumpe begrenzt den Vorlauf selbst (Absenk-Zeit, T-Vorlauf Nacht).": "The heat pump limits the flow itself (setback time, T-Vorlauf Nacht)."
 }

@@ -12,6 +12,7 @@ from sunflow.shadow.store import IMPORT_TABLES, SCHEMA_VERSION, ShadowBackupErro
 START = datetime(2026, 10, 25, 10, 0, tzinfo=UTC)
 PLANNED = {"action": "auto", "power": None, "soc": 1, "pv": 0, "load": 0, "price": 0.3}
 SESSION = {"source": "evcc", "id": "1", "start": "2026-10-25T08:00:00+00:00", "energy_wh": 5000.0}
+HEAT_PUMP = {"device_id": "hp", "start": START, "samples": 5, "tv_c": 30.5, "program": "heating", "flags": {"valid": True}}
 
 
 def _sql(path: Path, *statements: str) -> None:
@@ -44,6 +45,7 @@ def _filled(directory: Path, action: str = "auto") -> Path:
         store.store_ahead(START, 900.0, {"house": 900.0}, pv_w=1500.0, load_w=400.0)
         store.store_soiling_ahead(date(2026, 10, 25), "south", 0.9, 0.95)
         store.store_imported_sessions([SESSION])
+        store.store_heat_pump_samples([HEAT_PUMP])
     finally:
         store.close()
     return directory / "shadow.db"
@@ -140,6 +142,7 @@ def own(tmp_path: Path) -> Iterator[ShadowStore]:
     store.store_ahead(START - timedelta(hours=1), 500.0, {})
     store.store_soiling_ahead(date(2026, 10, 1), "west", 0.8, 0.8)
     store.store_imported_sessions([SESSION | {"id": "own"}])
+    store.store_heat_pump_samples([HEAT_PUMP | {"device_id": "own", "tv_c": 25.0}, HEAT_PUMP | {"tv_c": 20.0}])
     yield store
     store.close()
 
@@ -150,6 +153,7 @@ def _rows(store: ShadowStore) -> dict[str, list[tuple]]:
         "plan_ahead": "SELECT start, soc_wh FROM plan_ahead ORDER BY start",
         "soiling_ahead": "SELECT day, plane FROM soiling_ahead ORDER BY day",
         "imported_sessions": "SELECT id FROM imported_sessions ORDER BY id",
+        "heat_pump_samples": "SELECT device_id, tv_c FROM heat_pump_samples ORDER BY device_id",
     }
     return {table: store._db.execute(sql).fetchall() for table, sql in queries.items()}
 
@@ -161,6 +165,7 @@ def test_import_of_an_older_export(tmp_path: Path, own: ShadowStore) -> None:
     _sql(
         path,
         "DROP TABLE imported_sessions",
+        "DROP TABLE heat_pump_samples",
         "ALTER TABLE plan_ahead DROP COLUMN pv_w",
         "ALTER TABLE plan_ahead DROP COLUMN load_w",
         "ALTER TABLE slots DROP COLUMN actual_vehicles",
@@ -169,13 +174,14 @@ def test_import_of_an_older_export(tmp_path: Path, own: ShadowStore) -> None:
 
     counts = own.merge_from(path)
 
-    assert counts == {"imported_sessions": 0, "plan_ahead": 1, "slots": 1, "soiling_ahead": 1}
+    assert counts == {"heat_pump_samples": 0, "imported_sessions": 0, "plan_ahead": 1, "slots": 1, "soiling_ahead": 1}
     start, before = START.isoformat(), (START - timedelta(hours=1)).isoformat()
     assert _rows(own) == {
         "slots": [(start, "auto")],
         "plan_ahead": [(before, 500.0), (start, 900.0)],
         "soiling_ahead": [("2026-10-01", "west"), ("2026-10-25", "south")],
         "imported_sessions": [("own",)],
+        "heat_pump_samples": [("hp", 20.0), ("own", 25.0)],
     }
 
 
@@ -194,11 +200,13 @@ def test_import_of_a_newer_export(tmp_path: Path, own: ShadowStore) -> None:
 
     counts = own.merge_from(path)
 
-    assert counts == {"imported_sessions": 1, "plan_ahead": 1, "slots": 1}
+    assert counts == {"heat_pump_samples": 1, "imported_sessions": 1, "plan_ahead": 1, "slots": 1}
     rows = _rows(own)
     assert rows["soiling_ahead"] == [("2026-10-01", "west")]
     assert rows["imported_sessions"] == [("1",), ("own",)]
     assert rows["slots"] == [(START.isoformat(), "auto")]
+    # The same device and start is replaced, another device stays
+    assert rows["heat_pump_samples"] == [("hp", 30.5), ("own", 25.0)]
     tables = {row[0] for row in own._db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert "heat_pump_future" not in tables
     assert _version(path) == 99
@@ -230,3 +238,70 @@ def test_excluded_table_is_not_imported(tmp_path: Path, own: ShadowStore, monkey
 
     assert "soiling_ahead" not in counts
     assert _rows(own)["soiling_ahead"] == [("2026-10-01", "west")]
+
+
+# Heat pump samples (design/heat_pump.md, section 10)
+
+
+def test_migration_adds_heat_pump_samples(tmp_path: Path) -> None:
+    """A database of version 9 gets the table and its index; a second run changes nothing."""
+    path = _filled(tmp_path)
+    _sql(path, "DROP TABLE heat_pump_samples", "PRAGMA user_version = 9")
+
+    ShadowStore(tmp_path).close()
+    schema = _query(path, "SELECT type, name FROM sqlite_master WHERE tbl_name = 'heat_pump_samples' ORDER BY type, name")
+    ShadowStore(tmp_path).close()
+
+    assert _version(path) == SCHEMA_VERSION == 10
+    assert ("table", "heat_pump_samples") in schema
+    assert ("index", "heat_pump_samples_start") in schema
+    assert _query(path, "SELECT type, name FROM sqlite_master WHERE tbl_name = 'heat_pump_samples' ORDER BY type, name") == schema
+    assert _query(path, "SELECT planned_action FROM slots") == [("auto",)]
+
+
+def test_interrupted_heat_pump_step_runs_again(tmp_path: Path) -> None:
+    """The table was created but the index not (interrupted): the step runs again without an error."""
+    path = _filled(tmp_path)
+    _sql(path, "DROP INDEX heat_pump_samples_start", "PRAGMA user_version = 9")
+
+    ShadowStore(tmp_path).close()
+
+    assert _query(path, "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'heat_pump_samples_start'")
+    assert _query(path, "SELECT device_id, tv_c FROM heat_pump_samples") == [("hp", 30.5)]
+
+
+def test_heat_pump_samples_stored_and_read(tmp_path: Path) -> None:
+    """Rows per device and start; JSON columns come back decoded, a row of the same key is replaced."""
+    store = ShadowStore(tmp_path)
+    try:
+        rooms = {"sensor.wohnzimmer": 21.5}
+        store.store_heat_pump_samples([HEAT_PUMP | {"rooms": rooms}, HEAT_PUMP | {"start": START + timedelta(minutes=5)}])
+        store.store_heat_pump_samples([HEAT_PUMP | {"tv_c": 31.0, "rooms": rooms}])
+
+        rows = store.heat_pump_samples("hp", START)
+        other = store.heat_pump_samples("other", START)
+    finally:
+        store.close()
+
+    assert [(r["start"], r["tv_c"], r["rooms"], r["flags"]) for r in rows] == [
+        (START.isoformat(), 31.0, rooms, {"valid": True}),
+        ((START + timedelta(minutes=5)).isoformat(), 30.5, None, {"valid": True}),
+    ]
+    assert other == []
+
+
+def test_heat_pump_samples_older_than_a_year_are_pruned_in_blocks(tmp_path: Path) -> None:
+    """Rows before the cutoff go in blocks; younger rows stay."""
+    store = ShadowStore(tmp_path)
+    try:
+        old = [HEAT_PUMP | {"start": START - timedelta(days=400, minutes=5 * i)} for i in range(5)]
+        store.store_heat_pump_samples([*old, HEAT_PUMP])
+
+        removed = store.prune_heat_pump_samples(START - shadow.HEAT_PUMP_KEEP, block=2)
+        again = store.prune_heat_pump_samples(START - shadow.HEAT_PUMP_KEEP, block=2)
+        left = store.heat_pump_samples("hp", START - timedelta(days=1000))
+    finally:
+        store.close()
+
+    assert (removed, again) == (5, 0)
+    assert [r["start"] for r in left] == [START.isoformat()]

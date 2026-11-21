@@ -1,4 +1,4 @@
-"""Heat pumps: link status of devices recognized by their manifest."""
+"""Heat pumps: link status of devices recognized by their manifest and their current states."""
 
 from typing import Any
 
@@ -28,6 +28,8 @@ async def heat_pump_status(request: Request) -> dict[str, Any]:
     """Devices recognized by their manifest with compatibility, manifest and profile version."""
     library = _library(request)
     status = manifest_status(request)
+    recorder = getattr(getattr(request.app.state, "runner", None), "heat_pump", None)
+    states = recorder.status() if recorder is not None else {}
     devices = []
     for device in request.app.state.store.load().devices:
         profile = library.profiles.get(device.profile)
@@ -44,5 +46,7 @@ async def heat_pump_status(request: Request) -> dict[str, Any]:
                 "profile_version": {"configured": device.profile_version, "current": profile["version"]},
             }
             | status.get(device.id, {"status": "pending", "usable": False, "problems": [], "manifest": None})
+            # Program, activity, block, fault and whether it heats validly (section 4); None before the first sample
+            | {"state": states.get(device.id)}
         )
     return {"devices": devices, "notes": manifest_notes(request)}

@@ -185,6 +185,9 @@ class HouseSettings(BaseModel):
     rooms: list[Room] = Field(default_factory=list, max_length=30)
     # Heat into the house in W (e.g. a heat meter); without it the heat pump's heat counts
     heat_entity: str | None = None
+    # Outside temperature of the house model and the heat pump recording: auto = the learning
+    # source when set, else the heat pump's sensor; heat_pump_unit = the sensor of its outdoor unit
+    outside_source: Literal["auto", "heat_pump", "heat_pump_unit", "learning_source"] = "auto"
 
 
 class ChargerSettings(BaseModel):

@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
@@ -74,6 +74,16 @@ SCHEMA_STEPS: dict[int, list[str]] = {
     ],
     # evcc's CSV export also has the vehicle's state of charge before and after
     8: ["ALTER TABLE imported_sessions ADD COLUMN soc_start REAL", "ALTER TABLE imported_sessions ADD COLUMN soc_end REAL"],
+    # 5 minute means of a heat pump with its states (design/heat_pump.md, sections 9.1 and 10); kept a year
+    9: [
+        "CREATE TABLE heat_pump_samples (device_id TEXT, start TEXT, samples INTEGER,"
+        " tv_c REAL, tr_c REAL, tvbh_c REAL, tv_max_c REAL, heat_w REAL, heat_source TEXT, outside_c REAL,"
+        " bypass_pct REAL, setpoint_c REAL, max_setpoint_c REAL, written_c REAL, compressor REAL,"
+        " program TEXT, activity TEXT, strategy TEXT, error TEXT, rooms TEXT, events TEXT, flags TEXT,"
+        " PRIMARY KEY (device_id, start))",
+        # Clearing out rows older than a year goes by start over all devices
+        "CREATE INDEX heat_pump_samples_start ON heat_pump_samples (start)",
+    ],
 }
 # Per table whether an import takes it over; a table missing here is taken over too.
 # Only what can be thrown away may be left out.
@@ -82,7 +92,17 @@ IMPORT_TABLES: dict[str, bool] = {
     "plan_ahead": True,
     "soiling_ahead": True,
     "imported_sessions": True,
+    "heat_pump_samples": True,
 }
+HEAT_PUMP_COLUMNS = (
+    "device_id", "start", "samples", "tv_c", "tr_c", "tvbh_c", "tv_max_c", "heat_w", "heat_source", "outside_c",
+    "bypass_pct", "setpoint_c", "max_setpoint_c", "written_c", "compressor", "program", "activity", "strategy",
+    "error", "rooms", "events", "flags",
+)  # fmt: skip
+HEAT_PUMP_JSON = ("rooms", "events", "flags")
+# Heat pump samples are kept this long; older ones are deleted in blocks of this many rows
+HEAT_PUMP_KEEP = timedelta(days=365)
+PRUNE_BLOCK = 5000
 # Stored as JSON objects (key -> W)
 JSON_COLUMNS = (
     "plane_forecasts", "actual_strings", "actual_consumers", "actual_levels", "planned_batteries", "actual_batteries",
@@ -390,6 +410,61 @@ class ShadowStore:
             removed = self._db.execute("DELETE FROM imported_sessions WHERE source = ?", (source,)).rowcount
             self._db.commit()
             return removed
+
+    def store_heat_pump_samples(self, rows: list[dict[str, Any]]) -> None:
+        """Keep 5 minute rows of heat pumps; a row of the same device and start is replaced."""
+        if not rows:
+            return
+        values = []
+        for row in rows:
+            record = {c: row.get(c) for c in HEAT_PUMP_COLUMNS}
+            record["start"] = row["start"].astimezone(UTC).isoformat() if isinstance(row["start"], datetime) else row["start"]
+            for column in HEAT_PUMP_JSON:
+                if record[column] is not None:
+                    record[column] = json.dumps(record[column], ensure_ascii=False)
+            values.append(tuple(record[c] for c in HEAT_PUMP_COLUMNS))
+        with self._lock:
+            self._db.executemany(
+                f"INSERT OR REPLACE INTO heat_pump_samples ({', '.join(HEAT_PUMP_COLUMNS)})"  # noqa: S608
+                f" VALUES ({', '.join('?' for _ in HEAT_PUMP_COLUMNS)})",
+                values,
+            )
+            self._db.commit()
+
+    def heat_pump_samples(self, device_id: str, since: datetime) -> list[dict[str, Any]]:
+        """The 5 minute rows of a heat pump from since on, oldest first; JSON columns decoded."""
+        with self._lock:
+            cursor = self._db.execute(
+                "SELECT * FROM heat_pump_samples WHERE device_id = ? AND start >= ? ORDER BY start",
+                (device_id, since.astimezone(UTC).isoformat()),
+            )
+            names = [c[0] for c in cursor.description]
+            rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+        for row in rows:
+            for column in HEAT_PUMP_JSON:
+                # A row written by another version may hold something else: then empty
+                try:
+                    row[column] = json.loads(row[column]) if row.get(column) else None
+                except ValueError:
+                    row[column] = None
+        return rows
+
+    def prune_heat_pump_samples(self, before: datetime, block: int = PRUNE_BLOCK) -> int:
+        """Delete heat pump rows starting before before, a block at a time; returns how many."""
+        removed = 0
+        cutoff = before.astimezone(UTC).isoformat()
+        while True:
+            # The lock is released between the blocks: recording and reading go on meanwhile
+            with self._lock:
+                count = self._db.execute(
+                    "DELETE FROM heat_pump_samples WHERE rowid IN"
+                    " (SELECT rowid FROM heat_pump_samples WHERE start < ? LIMIT ?)",
+                    (cutoff, block),
+                ).rowcount
+                self._db.commit()
+            removed += count
+            if count < block:
+                return removed
 
     def store_actual(self, start: datetime, actual: dict[str, Any]) -> None:
         """Store the measured averages of a finished slot."""

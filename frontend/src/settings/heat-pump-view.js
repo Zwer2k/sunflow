@@ -7,6 +7,13 @@ import { lineChart, SERIES_COLORS } from "../components/charts.js";
 
 // Room temperature at which the cooling rate is shown (api/house.py)
 const COOLING_INSIDE_C = 20;
+// Where the outside temperature comes from (house.outside_source); a function so the texts follow the language
+const OUTSIDE_SOURCES = () => ({
+  auto: t("automatisch (eigener Sensor, sonst Wärmepumpe)"),
+  heat_pump: t("Wärmepumpe: Außentemperatur"),
+  heat_pump_unit: t("Wärmepumpe: Außengerät (TA2)"),
+  learning_source: t("eigener Sensor (Lernquelle)"),
+});
 
 /** The house: its rooms and what Sunflow learned from them (settings area "Wärmepumpe"). */
 class SunflowHeatPump extends LitElement {
@@ -115,6 +122,13 @@ class SunflowHeatPump extends LitElement {
                 @change=${(e) => set({ heat_entity: e.detail.value || null })}></sf-picker>
               <span class="small muted">${t("Wärmeleistung in W, z. B. vom Wärmemengenzähler der Heizung. Ohne Angabe nimmt Sunflow die Wärme der Wärmepumpe.")}</span>
             </div>
+            <label class="field">
+              <span class="field-label">${t("Außentemperatur")}</span>
+              <select @change=${(e) => set({ outside_source: e.target.value })}>
+                ${Object.entries(OUTSIDE_SOURCES()).map(([value, label]) => html`<option value=${value} ?selected=${(house.outside_source ?? "auto") === value}>${label}</option>`)}
+              </select>
+              <span class="small muted">${t("Für das Hausmodell und die Aufzeichnung der Wärmepumpe. Den eigenen Sensor wählst du unter Lernquellen.")}</span>
+            </label>
           </div>
         </fieldset>
         ${this._houseEdit
@@ -179,6 +193,9 @@ class SunflowHeatPump extends LitElement {
           ${m.sun_k_per_h != null ? tile(t("Sonne"), `${m.sun_k_per_h >= 0 ? "+" : ""}${one(m.sun_k_per_h)} K/h`, t("bei voller Sonne")) : nothing}
           ${m.error_k != null ? tile(t("Vorhersage über 24 h"), `± ${one(m.error_k)} K`, t("„bleibt gleich“ läge bei ± {k} K", { k: one(m.baseline_k) })) : nothing}
         </div>
+        ${result.excluded_hours
+          ? html`<p class="small muted">${t("{hours} Stunden mit Warmwasser oder Abtauen sind ausgelassen: deren Wärme ging nicht ins Haus.", { hours: result.excluded_hours })}</p>`
+          : nothing}
         ${result.restless?.length
           ? html`<p class="small warn-text">${t("Auffällig unruhig – vielleicht Sonne, Heizkörper oder Fenster am Sensor: {rooms}. Ein geringeres Gewicht oder ein anderer Sensor hilft.", { rooms: result.restless.map(name).join(", ") })}</p>`
           : nothing}
@@ -221,7 +238,7 @@ class SunflowHeatPump extends LitElement {
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
     .field-label { font-weight: 500; font-size: 13px; }
     .input-unit { display: flex; align-items: center; gap: 8px; }
-    .input-unit input {
+    .input-unit input, select {
       flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; font-size: 15px;
       border: 1px solid var(--sf-border-strong); border-radius: 8px; background: var(--sf-surface); color: var(--sf-text);
     }

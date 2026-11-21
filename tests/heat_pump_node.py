@@ -100,6 +100,23 @@ def snapshot(*nodes: Node, state: str = "1", extra_entries: list[dict[str, Any]]
     )
 
 
+def with_manifest(snap: Snapshot, *nodes: Node) -> Snapshot:
+    """The snapshot with the nodes' manifests assigned to their devices, as the manifest manager adds them."""
+    from dataclasses import replace  # noqa: PLC0415 - only this helper needs it
+
+    from sunflow.heat_pump.manifest import DeviceManifest, manifest_hash  # noqa: PLC0415
+
+    manifests = {}
+    for node in nodes:
+        manifest = joined(node.pages)
+        found = DeviceManifest(
+            service=node.service, node=node.node, component="can", manifest=manifest, hash=manifest_hash(manifest),
+            ha_device_id=node.device_id, mac=node.mac,
+        )
+        manifests[node.device_id] = {found.id: found}
+    return replace(snap, manifests=manifests)
+
+
 class FakeHA:
     """Home Assistant answering get_services and the manifest actions of the nodes."""
 

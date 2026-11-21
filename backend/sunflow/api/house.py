@@ -68,7 +68,9 @@ async def house_model(request: Request) -> dict[str, Any]:
     if cached and cached[0] == key and now - cached[1] < CACHE_FOR:
         return cached[2] | used
     try:
-        data = await house_data(request.app.state.ha, config, profiles, now)
+        snapshots = getattr(request.app.state, "snapshots", None)
+        snapshot = await snapshots.get() if snapshots is not None else None
+        data = await house_data(request.app.state.ha, config, profiles, now, snapshot)
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     if data.outside_entity is None:
@@ -80,6 +82,9 @@ async def house_model(request: Request) -> dict[str, Any]:
             "days": model.days if model else len({r.start.date() for r in data.rows}),
             "min_days": MIN_DAYS,
             "heat_source": data.heat_source,
+            "outside_entity": data.outside_entity,
+            # Hours with hot water or defrost, left out of learning
+            "excluded_hours": data.excluded_hours,
             "sun": data.sun_entity is not None,
             "restless": restless_rooms(data.per_room, data.inside),
             "model": None if model is None else {

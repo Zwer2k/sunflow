@@ -136,6 +136,18 @@ Sunflow stores the Home Assistant device, its MAC address and the component (CAN
 - **Integration added again:** If Sunflow no longer finds the Home Assistant device, it looks for one
   with the same MAC address and assigns it anew (log entry).
 - **Profile version:** If the profile is newer than when the device was added, the summary says so.
+  Version 2 adds the outside sensor of the outdoor unit (TA2, optional).
+- **States and recording:** Every minute Sunflow reads operating mode, mode of operation, HK function,
+  bypass valve, room thermostat and error code and stores the means with the states every 5 minutes
+  (table `heat_pump_samples`, kept for a year; part of the export). Only this counts as **valid
+  heating**: mode heating/setback/automatic, mode of operation heating, bypass valve at 0 % for
+  10 minutes, no after-run (10 minutes after hot water or defrosting), no room thermostat block, no
+  fault (error code starting with E; warnings with W do not count), the HPSU does not limit the flow
+  itself (with "fixed": flow setpoint more than 0.5 K below Max T-Vorlauf for longer than 5 minutes,
+  e.g. T-Vorlauf Nacht) and the device is reachable and compatible. Only then will Sunflow control and
+  learn later. The log names unknown states, the start and end of a fault, the block on and off and
+  the start of the HPSU limiting the flow; `GET /api/v1/heat_pump/status` shows the current state.
+  Sunflow writes nothing.
 
 The UART node (`daikin_rotex_uart`) as a companion and the flow control follow in a later step.
 

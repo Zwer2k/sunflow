@@ -80,7 +80,11 @@ holds the house Sunflow learns from.
 
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
 optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
-From the hourly values of the last four weeks Sunflow learns a simple thermal model of the house:
+The **outside temperature** can be chosen: automatic (own sensor under learning sources, else the heat
+pump's sensor), the heat pump's outside temperature sensor, the sensor of its outdoor unit (HPSU: TA2)
+or only the own sensor. From the hourly values of the last four weeks Sunflow learns a simple thermal
+model of the house. Hours in which the heat pump made hot water or defrosted are left out – their heat
+did not go into the house:
 
 | Learned | Meaning |
 |---|---|

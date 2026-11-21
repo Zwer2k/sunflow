@@ -140,6 +140,18 @@ speichert Sunflow das Home-Assistant-Gerät, dessen MAC-Adresse und die Komponen
 - **Neu angelegte Integration:** Findet Sunflow das Home-Assistant-Gerät nicht mehr, sucht es eines
   mit derselben MAC-Adresse und ordnet es neu zu (Eintrag im Protokoll).
 - **Profilversion:** Ist das Profil neuer als beim Übernehmen, weist die Zusammenfassung darauf hin.
+  Version 2 ergänzt den Außenfühler des Außengeräts (TA2, optional).
+- **Zustände und Aufzeichnung:** Sunflow liest jede Minute Betriebsmodus, Betriebsart, HK-Funktion,
+  Bypass-Ventil, Raumthermostat und Fehlercode und speichert je 5 Minuten die Mittelwerte mit den
+  Zuständen (Tabelle `heat_pump_samples`, ein Jahr lang; im Export enthalten). Als **gültiger
+  Heizbetrieb** zählt nur: Modus Heizen/Absenken/Automatik, Betriebsart Heizen, Bypass-Ventil seit
+  10 Minuten auf 0 %, kein Nachlauf (10 Minuten nach Warmwasser oder Abtauen), keine
+  Raumthermostat-Sperre, keine Störung (Fehlercode mit E; Warnungen mit W zählen nicht), die HPSU
+  begrenzt den Vorlauf nicht selbst (bei „Fest“: Vorlauf-Soll mehr als 0,5 K unter Max T-Vorlauf,
+  länger als 5 Minuten, z. B. T-Vorlauf Nacht) und das Gerät ist erreichbar und kompatibel. Nur dann
+  wird später geregelt und gelernt. Das Protokoll nennt unbekannte Zustände, Beginn und Ende einer
+  Störung, die Sperre an und aus und den Beginn einer Begrenzung durch die HPSU; den aktuellen Stand
+  zeigt `GET /api/v1/heat_pump/status`. Sunflow schreibt dabei nichts.
 
 Den UART-Knoten (`daikin_rotex_uart`) als Begleiter und die Vorlaufregelung unterstützt Sunflow in
 einem späteren Schritt.

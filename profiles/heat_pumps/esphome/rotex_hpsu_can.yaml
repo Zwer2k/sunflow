@@ -3,7 +3,7 @@
 # delivers (action rotex_can_manifest) and roles name the component's keys, not unique_id endings.
 # Design: design/heat_pump.md, sections 3 and 11.
 profile: esphome/rotex_hpsu_can
-version: 1
+version: 2
 match:
   integration: esphome
   manifest: {id: rotex_hpsu_can}
@@ -20,6 +20,8 @@ roles:
   # Highest flow temperature between two tv values (component reads tv every 2 s)
   flow_temperature_max: {key: tv_max, domain: [sensor], unit: "°C"}
   outside_temperature: {key: temperature_outside, domain: [sensor], unit: "°C"}
+  # Sensor of the outdoor unit (TA2); selectable as the outside temperature (house.outside_source)
+  outside_temperature_unit: {key: ta2, domain: [sensor], unit: "°C", optional: true}
   compressor: {key: status_kompressor, domain: [binary_sensor]}
   program: {key: operating_mode, domain: [select, text_sensor]}
   activity: {key: mode_of_operating, domain: [text_sensor]}

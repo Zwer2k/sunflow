@@ -16,17 +16,25 @@ are held out and simulated freely, a day at a time: the model counts as useful o
 """
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import math
 from statistics import median
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from sunflow.config.models import DeviceConfig, SunflowConfig
+from sunflow.devices.profiles import manifest_id
+from sunflow.devices.resolver import bind_roles, device_entities
 from sunflow.ha import HAClient
+from sunflow.heat_pump.manifest import entities_by_key
+from sunflow.heat_pump.states import canonical, value_key
 from sunflow.planning.load_forecast import fetch_hourly_means
+
+if TYPE_CHECKING:
+    from sunflow.devices.discovery import Snapshot
 
 HISTORY_DAYS = 28
 MIN_DAYS = 7
@@ -248,9 +256,37 @@ def heat_pump_device(config: SunflowConfig, profiles: dict[str, dict[str, Any]])
     )
 
 
-def _role(device: DeviceConfig | None, role: str) -> str | None:
-    override = device.role_overrides.get(role) if device else None
-    return override.entity_id if override and override.entity_id else None
+def device_roles(
+    device: DeviceConfig | None, profiles: dict[str, dict[str, Any]], snapshot: "Snapshot | None"
+) -> dict[str, str | None]:
+    """Role -> entity of the heat pump: the user's choice, else bound by the profile (through its manifest)."""
+    if device is None:
+        return {}
+    roles: dict[str, str | None] = {}
+    profile = profiles.get(device.profile)
+    if snapshot is not None and profile is not None:
+        manifests = snapshot.manifests.get(device.ha_device_id)
+        roles = bind_roles(profile, device_entities(snapshot, device.ha_device_id), manifests)
+    for role, override in device.role_overrides.items():
+        if override.entity_id:
+            roles[role] = override.entity_id
+    return roles
+
+
+def outside_entity(config: SunflowConfig, roles: dict[str, str | None]) -> str | None:
+    """The outside temperature chosen for the house (house.outside_source); roles: role -> entity of the heat pump.
+
+    auto: the own sensor (learning source) when set, else the heat pump's outside sensor.
+    """
+    own = config.learning_sources.outdoor_temperature
+    match config.house.outside_source:
+        case "learning_source":
+            return own
+        case "heat_pump":
+            return roles.get("outside_temperature")
+        case "heat_pump_unit":
+            return roles.get("outside_temperature_unit")
+    return own or roles.get("outside_temperature")
 
 
 async def _hourly(client: HAClient, entity_id: str | None, now: datetime) -> dict[datetime, float]:
@@ -270,56 +306,125 @@ class HouseData:
     heat_source: str | None
     outside_entity: str | None
     sun_entity: str | None
+    # Hours left out because the heat pump made hot water or defrosted in them
+    excluded_hours: int = 0
 
 
 async def house_data(
-    client: HAClient, config: SunflowConfig, profiles: dict[str, dict[str, Any]], now: datetime
+    client: HAClient,
+    config: SunflowConfig,
+    profiles: dict[str, dict[str, Any]],
+    now: datetime,
+    snapshot: "Snapshot | None" = None,
 ) -> HouseData:
     """The recorder's hourly means of rooms, outside, heat and sun.
 
-    Heat: the house's own heat meter, else the heat pump's heat output, else estimated from its
-    electric power; without either the model learns without heat.
+    Heat: the house's own heat meter, else the heat pump's heat output (role heat_power), else
+    estimated from its electric power; without either the model learns without heat. Hours in
+    which the heat pump made hot water or defrosted are left out, for every source: their heat
+    did not go into the house. The snapshot resolves the heat pump's roles through its manifest.
     """
     house = config.house
     device = heat_pump_device(config, profiles)
-    outside_entity = _role(device, "outside_temperature") or config.learning_sources.outdoor_temperature
+    roles = device_roles(device, profiles, snapshot)
+    outside_entity_id = outside_entity(config, roles)
     sun_entity = config.learning_sources.irradiance
     per_room = {room.entity_id: await _hourly(client, room.entity_id, now) for room in house.rooms}
     inside = weighted_inside(per_room, {room.entity_id: room.weight for room in house.rooms})
-    outside = await _hourly(client, outside_entity, now)
+    outside = await _hourly(client, outside_entity_id, now)
     if house.heat_entity and (meter := await _hourly(client, house.heat_entity, now)):
         heat, heat_source = {s: max(w, 0.0) / 1000 for s, w in meter.items()}, "meter"
     else:
-        heat, heat_source = await _heat(client, device, outside, now)
+        heat, heat_source = await _heat(client, device, roles, outside, now)
     sun = _relative(await _hourly(client, sun_entity, now))
+    busy = await _busy_hours(client, device, profiles, roles, snapshot, now)
     rows = [
         HourRow(start=start, inside=value, outside=outside[start], heat=heat.get(start) if heat_source else None,
                 sun=sun.get(start) if sun else None)
         for start, value in sorted(inside.items())
-        if start in outside
+        if start in outside and start not in busy
     ]
     return HouseData(
-        rows=rows, per_room=per_room, inside=inside, heat_source=heat_source, outside_entity=outside_entity,
+        rows=rows, per_room=per_room, inside=inside, heat_source=heat_source, outside_entity=outside_entity_id,
         sun_entity=sun_entity if sun else None,
+        excluded_hours=sum(1 for start in inside if start in outside and start in busy),
     )
 
 
+# Activities whose heat does not go into the house
+BUSY_ACTIVITIES = frozenset({"hot_water", "defrost"})
+
+
+def busy_hours(
+    rows: list[dict[str, Any]], key_of: Callable[[str], str | None], start: datetime, end: datetime
+) -> set[datetime]:
+    """Hour starts with any share of hot water or defrost, from minimal history rows ({"s", "lu"/"lc"}).
+
+    key_of maps a shown state to the canonical activity. Hours before the first row are not known
+    and stay in.
+    """
+    hours: set[datetime] = set()
+    changes = [
+        (max(datetime.fromtimestamp(row.get("lu") or row.get("lc") or 0, UTC), start), row.get("s")) for row in rows
+    ]
+    for (since, state), (until, _) in zip(changes, [*changes[1:], (end, None)], strict=True):
+        if state is None or key_of(state) not in BUSY_ACTIVITIES or until <= since:
+            continue
+        hour = since.replace(minute=0, second=0, microsecond=0)
+        while hour < min(until, end):
+            hours.add(hour)
+            hour += HOUR
+    return hours
+
+
+async def _busy_hours(
+    client: HAClient,
+    device: DeviceConfig | None,
+    profiles: dict[str, dict[str, Any]],
+    roles: dict[str, str | None],
+    snapshot: "Snapshot | None",
+    now: datetime,
+) -> set[datetime]:
+    """Hours with hot water or defrost from the activity's state history; none without a heat pump."""
+    profile = profiles.get(device.profile) if device else None
+    if device is None or profile is None or snapshot is None or not (entity_id := roles.get("activity")):
+        return set()
+    found = (snapshot.manifests.get(device.ha_device_id) or {}).get(manifest_id(profile) or "")
+    entity = entities_by_key(found.manifest if found else None).get(profile["roles"].get("activity", {}).get("key", ""))
+    if entity is None:
+        return set()
+    start = (now - timedelta(days=HISTORY_DAYS)).replace(minute=0, second=0, microsecond=0)
+    result = await client.command(
+        "history/history_during_period",
+        start_time=start.isoformat(),
+        end_time=now.isoformat(),
+        entity_ids=[entity_id],
+        minimal_response=True,
+        no_attributes=True,
+        significant_changes_only=False,
+    )
+    return busy_hours(result.get(entity_id, []), lambda raw: canonical(profile, "activity", value_key(entity, raw)), start, now)
+
+
 async def _heat(
-    client: HAClient, device: DeviceConfig | None, outside: dict[datetime, float], now: datetime
+    client: HAClient, device: DeviceConfig | None, roles: dict[str, str | None], outside: dict[datetime, float], now: datetime
 ) -> tuple[dict[datetime, float], str | None]:
-    """Heat per hour in kWh: measured, else electric x COP (sensor, else Carnot estimate)."""
+    """Heat per hour in kWh: measured, else electric x COP (sensor, else Carnot estimate).
+
+    The recorder gives power in W (statistics converted, states normalized), also for a sensor in kW.
+    """
     if device is None:
         return {}, None
-    if heat_power := await _hourly(client, _role(device, "heat_power"), now):
+    if heat_power := await _hourly(client, roles.get("heat_power"), now):
         return {s: max(w, 0.0) / 1000 for s, w in heat_power.items()}, "measured"
-    electric = await _hourly(client, _role(device, "power"), now)
+    electric = await _hourly(client, roles.get("power"), now)
     if not electric:
-        phases = [await _hourly(client, _role(device, f"power_{p}"), now) for p in ("l1", "l2", "l3")]
+        phases = [await _hourly(client, roles.get(f"power_{p}"), now) for p in ("l1", "l2", "l3")]
         phases = [p for p in phases if p]
         electric = {s: sum(p[s] for p in phases) for s in phases[0] if all(s in p for p in phases)} if phases else {}
     if not electric:
         return {}, None
-    if cop := await _hourly(client, _role(device, "cop"), now):
+    if cop := await _hourly(client, roles.get("cop"), now):
         return {s: max(w, 0.0) / 1000 * cop[s] for s, w in electric.items() if s in cop}, "cop"
     return {s: max(w, 0.0) / 1000 * carnot_cop(outside[s]) for s, w in electric.items() if s in outside}, "estimated"
 

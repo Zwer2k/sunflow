@@ -80,8 +80,11 @@ Bereich enthält das Haus, aus dem Sunflow lernt.
 
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
-Wärmepumpe). Sunflow lernt daraus ein einfaches Wärmemodell des Hauses aus den Stundenwerten der
-letzten vier Wochen:
+Wärmepumpe). Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
+der Sensor der Wärmepumpe), der Außentemperatur-Sensor der Wärmepumpe, der Fühler ihres Außengeräts
+(HPSU: TA2) oder nur der eigene Sensor. Sunflow lernt daraus ein einfaches Wärmemodell des Hauses aus den
+Stundenwerten der letzten vier Wochen. Stunden, in denen die Wärmepumpe Warmwasser bereitet oder
+abgetaut hat, lässt es aus – deren Wärme ging nicht ins Haus:
 
 | Gelernt | Bedeutung |
 |---|---|

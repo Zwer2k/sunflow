@@ -391,6 +391,8 @@ class ShadowRunner:
         self._sun_task: asyncio.Task[None] | None = None
         # Energy per PV string for Home Assistant (set by the app)
         self.counters: EnergyCounters | None = None
+        # Records the heat pumps every minute (set by the app; HeatPumpRecorder)
+        self.heat_pump: Any = None
         self._correction_at = datetime.min.replace(tzinfo=UTC)
         self._recorder: SlotRecorder | None = None
         self._replan_task: asyncio.Task[None] | None = None
@@ -461,6 +463,11 @@ class ShadowRunner:
                 await self._replan(start)
             except Exception as err:
                 _LOGGER.warning("Early replan failed: %s", err, exc_info=not isinstance(err, (HAError, KeyError, ValueError)))
+        if self.snapshots is not None and self.heat_pump is not None:
+            try:
+                await self.heat_pump.tick(self._store.load(), await self.snapshots.get(), now)
+            except Exception as err:
+                _LOGGER.warning("Recording the heat pump failed: %s", err, exc_info=not isinstance(err, HAError))
         if self.snapshots is not None:
             try:
                 snapshot = await self.snapshots.get()
@@ -840,7 +847,8 @@ class ShadowRunner:
     async def _learn_house(self) -> None:
         now = datetime.now(UTC)
         try:
-            data = await house_data(self._client, self._store.load(), self._library.profiles, now)
+            snapshot = await self.snapshots.get() if self.snapshots else None
+            data = await house_data(self._client, self._store.load(), self._library.profiles, now, snapshot)
             model = fit_house(data.rows, now)
         except Exception as err:
             # Tried again with the next refresh, not with every plan

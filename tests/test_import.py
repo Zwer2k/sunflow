@@ -57,7 +57,7 @@ def test_import(
     assert response.status_code == 200
     assert response.json()["config"] is config
     # Every table of the export is merged, also the empty ones
-    assert response.json()["imported"] == {"imported_sessions": 0, "plan_ahead": 0, "slots": 0, "soiling_ahead": 0}
+    assert response.json()["imported"] == {"heat_pump_samples": 0, "imported_sessions": 0, "plan_ahead": 0, "slots": 0, "soiling_ahead": 0}
     assert response.json()["imported_slots"] == 0
     stored = client.app.state.store.load()
     assert [d.name for d in stored.devices] == devices

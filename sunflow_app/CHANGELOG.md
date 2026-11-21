@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.80.6
+
+- Heat pumps (second part of the new flow temperature control): Sunflow reads the states of the Rotex/Daikin HPSU every minute – operating mode, mode of operation, HK function, bypass valve, room thermostat block and error code – and decides whether it heats validly (mode heating, mode of operation heating, bypass valve closed for 10 minutes, no after-run 10 minutes after hot water or defrosting, no block, no fault with an E code, the HPSU not limiting the flow itself, device reachable and compatible). Nothing is written to the heat pump.
+- Every 5 minutes the means with the states are recorded in the new table `heat_pump_samples` (flow, flow peak, return, setpoints, heat, outside, bypass valve, compressor starts and stops, rooms, reasons). Rows older than a year are deleted; the table is part of export and import. The recording is migrated with a copy `shadow.v9.db`.
+- The log notes unknown states, the start and end of a fault, the room thermostat block on and off and when the HPSU limits the flow itself (setback time, T-Vorlauf Nacht). `GET /api/v1/heat_pump/status` shows the current states.
+- House model: the heat output of the HPSU is now found through its manifest. Hours with hot water or defrosting are left out of learning, also with an own heat meter. The outside temperature can be chosen under Settings → Heat pump: automatic, the heat pump's sensor, the outdoor unit's sensor (TA2) or the own sensor.
+- Profile `esphome/rotex_hpsu_can` version 2 (optional role for TA2); devices added before show a note to check the roles.
+
 ## 0.80.5
 
 - Heat pumps (first part of the new flow temperature control): a Rotex/Daikin HPSU with the ESPHome component `daikin_rotex_can` is recognized by the manifest its firmware delivers (profile `esphome/rotex_hpsu_can`), not by entity names. Other ESPHome devices do not appear in the device search. Taking it over stores the device under its name in Home Assistant, its MAC address and the component. Nothing is controlled or written yet.

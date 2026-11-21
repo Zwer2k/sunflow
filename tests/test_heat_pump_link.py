@@ -26,7 +26,7 @@ NOW = datetime(2026, 11, 21, 12, tzinfo=UTC)
 class Setup:
     """A configured HPSU, its node, the manager and the journal."""
 
-    def __init__(self, tmp_path: Path, library: ProfileLibrary, profile_version: int = 1) -> None:
+    def __init__(self, tmp_path: Path, library: ProfileLibrary, profile_version: int = 2) -> None:
         self.tmp_path, self.library = tmp_path, library
         self.node = Node()
         self.client = FakeHA(self.node)
@@ -250,9 +250,9 @@ async def test_profile_version_noted_once(tmp_path: Path, library: ProfileLibrar
 
     noted = [n for n in hp.notes() if "Version" in n]
     assert noted == [
-        "Profil esphome/rotex_hpsu_can liegt in Version 1 vor, übernommen wurde Version 0 – bitte die Rollen in der Vorschau prüfen."
+        "Profil esphome/rotex_hpsu_can liegt in Version 2 vor, übernommen wurde Version 0 – bitte die Rollen in der Vorschau prüfen."
     ]
-    assert hp.status()["profile_version_noted"] == [0, 1]
+    assert hp.status()["profile_version_noted"] == [0, 2]
 
 
 async def test_removed_device_is_pruned(hp: Setup) -> None:
@@ -345,7 +345,7 @@ def test_summary_reports_profile_version(library: ProfileLibrary) -> None:
 
     summary = build_summary(SunflowConfig(devices=[device]), library.profiles)
 
-    assert any("Version 1 vor, übernommen wurde Version 0" in i.message for i in summary.issues if i.level == "warning")
+    assert any("Version 2 vor, übernommen wurde Version 0" in i.message for i in summary.issues if i.level == "warning")
 
 
 def _app(tmp_path: Path, library: ProfileLibrary, node: Node) -> tuple[Any, ConfigStore, ManifestManager]:
@@ -381,7 +381,7 @@ def test_add_device_stores_mac_and_component(tmp_path: Path, library: ProfileLib
     stored = store.load().devices[0]
     assert (stored.ha_device_id, stored.mac, stored.component) == (node.device_id, node.mac, "can")
     [device] = status["devices"]
-    assert (device["status"], device["usable"], device["profile_version"]) == ("compatible", True, {"configured": 1, "current": 1})
+    assert (device["status"], device["usable"], device["profile_version"]) == ("compatible", True, {"configured": 2, "current": 2})
     assert not [i for i in summary["issues"] if "HPSU" in i["message"] and i["level"] == "error"]
 
 
@@ -408,7 +408,7 @@ def test_status_api_reports_incompatible(tmp_path: Path, library: ProfileLibrary
     node.pages[1]["entities"] = [e for e in node.pages[1]["entities"] if e["key"] != "thermal_power"]
     app, store, manager = _app(tmp_path, library, node)
     config = store.load()
-    config.devices.append(DeviceConfig(id="hp", ha_device_id=node.device_id, profile=PROFILE, profile_version=1, name="HPSU CAN", mac=node.mac, component="can"))
+    config.devices.append(DeviceConfig(id="hp", ha_device_id=node.device_id, profile=PROFILE, profile_version=2, name="HPSU CAN", mac=node.mac, component="can"))
     store.save(config)
 
     with TestClient(app) as client:
