@@ -14,6 +14,8 @@ from pydantic import (
 )
 
 from sunflow.heat_pump.defaults import (
+    FLOW_LIMIT_HIGH_C,
+    FLOW_LIMIT_LOW_C,
     HEATING_SURFACE_DEFAULT,
     HEATING_SURFACES,
     ROOM_SETPOINT_DEFAULT_C,
@@ -284,6 +286,20 @@ class DeviceConfig(BaseModel):
     # again when its Home Assistant device id changed, and the component the manifest came from
     mac: str | None = None
     component: Literal["can", "uart"] | None = None
+    # Heat pumps: range of the set value (Max T-Vorlauf) the user allows (design/heat_pump.md, 8.3); None:
+    # the start limit of the heating surface type. Always narrowed to the entity's range in the manifest.
+    # flow_max_c is also the highest flow the screed may get.
+    flow_min_c: float | None = Field(default=None, ge=FLOW_LIMIT_LOW_C, le=FLOW_LIMIT_HIGH_C)
+    flow_max_c: float | None = Field(default=None, ge=FLOW_LIMIT_LOW_C, le=FLOW_LIMIT_HIGH_C)
+
+    @field_validator("flow_min_c", "flow_max_c", mode="before")
+    @classmethod
+    def _flow_limit(cls, value: object) -> object:
+        # A value that is no number or outside the allowed range counts as not set (the start limit), without
+        # an error: a broken limit must not stop Sunflow from starting
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and FLOW_LIMIT_LOW_C <= value <= FLOW_LIMIT_HIGH_C:
+            return value
+        return None
 
 
 class TariffConfig(BaseModel):

@@ -64,7 +64,7 @@ const WRITE_REASONS = () => ({
 const BLOCK_REASONS = () => ({
   room_warm: t("Raum deutlich über dem Ziel"),
   min_power: t("Mindestleistung über dem Bedarf"),
-  adopted: t("vorgefunden"),
+  foreign: t("nicht von Sunflow gesetzt"),
 });
 // Limits the flow target or the heat pump reached (8.3)
 const LIMITS = () => ({
@@ -137,6 +137,7 @@ class SunflowHeatPump extends LitElement {
     _houseModel: { state: true },
     _status: { state: true },
     _writes: { state: true },
+    _limitsEdit: { state: true },
     _climateBusy: { state: true },
     _error: { state: true },
     _busy: { state: true },
@@ -150,6 +151,8 @@ class SunflowHeatPump extends LitElement {
     this._houseModel = null;
     this._status = null;
     this._writes = {};
+    // Per heat pump the range of the set value being edited: { min, max } as typed
+    this._limitsEdit = {};
     this._climateBusy = false;
     this._timer = null;
     this._error = null;
@@ -351,8 +354,67 @@ class SunflowHeatPump extends LitElement {
               : t("Eingefroren: {reasons}", { reasons: state.frozen.map(frozenText).join(", ") })}</p>
             ${flow ? this._renderFlow(flow, one, tile) : nothing}
             ${flow?.guard ? this._renderGuard(flow.guard, this._writes[device.id], one, tile) : nothing}`}
+        ${device.flow_limits ? this._renderLimits(device, one) : nothing}
       </section>
     `;
+  }
+
+  /** Range of the set value (Max T-Vorlauf) per heat pump; empty: the heating surface type's start limit. */
+  _renderLimits(device, one) {
+    const limits = device.flow_limits;
+    const edit = this._limitsEdit[device.id];
+    const value = (key) => (edit ? edit[key] : toDisplay(limits[`${key}_c`], ""));
+    const set = (key, text) => (this._limitsEdit = { ...this._limitsEdit, [device.id]: { min: value("min"), max: value("max"), [key]: text } });
+    const entity = limits.entity_min_c != null || limits.entity_max_c != null
+      ? t("Die Wärmepumpe erlaubt {min}–{max} °C; enger gilt immer.", { min: one(limits.entity_min_c), max: one(limits.entity_max_c) })
+      : t("Den Bereich der Wärmepumpe kennt Sunflow noch nicht (Manifest).");
+    return html`
+      <fieldset class="group">
+        <legend>${t("Grenzen des Stellwerts")}</legend>
+        <div class="fields">
+          <label class="field narrow">
+            <span class="field-label">${t("Mindestens")}</span>
+            <span class="input-unit"><input inputmode="decimal" .value=${value("min")} placeholder=${toDisplay(limits.default_min_c, "")}
+              @input=${(e) => set("min", e.target.value)}> °C</span>
+          </label>
+          <label class="field narrow">
+            <span class="field-label">${t("Höchstens")}</span>
+            <span class="input-unit"><input inputmode="decimal" .value=${value("max")} placeholder=${toDisplay(limits.default_max_c, "")}
+              @input=${(e) => set("max", e.target.value)}> °C</span>
+          </label>
+        </div>
+        <p class="small muted">${t("Max T-Vorlauf, den Sunflow schreiben darf. Höchstens ist zugleich der höchste Vorlauf für Estrich bzw. Heizflächen. Leer: Startwert der Heizflächen ({min}–{max} °C). {entity}", { min: one(limits.default_min_c), max: one(limits.default_max_c), entity })}</p>
+        <p class="small muted">${t("Gilt jetzt: {min}–{max} °C", { min: one(limits.effective_min_c), max: one(limits.effective_max_c) })}</p>
+        ${edit
+          ? html`<div class="actions">
+              <button class="primary" ?disabled=${this._busy} @click=${() => this._saveLimits(device.id)}>${t("Speichern")}</button>
+              <button class="secondary" @click=${() => { const { [device.id]: _, ...rest } = this._limitsEdit; this._limitsEdit = rest; }}>${t("Abbrechen")}</button>
+            </div>`
+          : nothing}
+      </fieldset>
+    `;
+  }
+
+  async _saveLimits(deviceId) {
+    const edit = this._limitsEdit[deviceId];
+    const min = fromDisplay(edit.min, "");
+    const max = fromDisplay(edit.max, "");
+    if (min === undefined || max === undefined) {
+      this._error = t("Grenzen: bitte Zahlen eingeben.");
+      return;
+    }
+    this._busy = true;
+    try {
+      await api.setHeatPumpFlowLimits(deviceId, { min_c: min, max_c: max });
+      const { [deviceId]: _, ...rest } = this._limitsEdit;
+      this._limitsEdit = rest;
+      this._error = null;
+      await this._loadStatus();
+    } catch (err) {
+      this._error = t("Grenzen konnten nicht gespeichert werden: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+    }
   }
 
   /** Source, base or curve value, correction and flow target; shadow: computed, not written. */
@@ -407,12 +469,14 @@ class SunflowHeatPump extends LitElement {
       <div class="learned">
         <span class="field-label">${t("Stellwert und Schutz (Schatten)")}</span>
         <p class="small muted">${t("Sunflow rechnet aus, was es an die Wärmepumpe schreiben würde (Max T-Vorlauf und Raumthermostat-Sperre), schreibt aber nichts.")}</p>
-        ${guard.block ? html`<div class="alert warn" role="status">${t("Sunflow würde die Raumthermostat-Sperre setzen: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })}</div>` : nothing}
+        ${guard.block && guard.block_reason === "foreign"
+          ? html`<div class="alert warn" role="status">${t("Raumthermostat-Sperre aktiv, nicht von Sunflow gesetzt: Die Wärmepumpe heizt nicht. Sunflow hebt sie nicht auf – bitte selbst aufheben, wenn sie nicht gewollt ist.")}</div>`
+          : guard.block ? html`<div class="alert warn" role="status">${t("Sunflow würde die Raumthermostat-Sperre setzen: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })}</div>` : nothing}
         <div class="tiles">
           ${tile(t("Stellwert"), guard.setpoint_c == null ? "–" : `${one(guard.setpoint_c)} °C`, last ? t("würde schreiben {time}: {what}", { time: time(last.at), what: writeText(last) }) : t("würde noch nichts schreiben"))}
           ${tile(t("Vorlauf-Ziel in Grenzen"), guard.desired_c == null ? "–" : `${one(guard.desired_c)} °C`, t("Grenzen {min}–{max} °C", { min: one(guard.min_c), max: one(guard.max_c) }))}
           ${tile(t("Untergrenze Schutz"), guard.floor_c == null ? "–" : `${one(guard.floor_c)} °C`, GUARD_PHASES()[guard.phase] ?? guard.phase)}
-          ${tile(t("Sperre"), guard.block ? t("an") : t("aus"), guard.block_since ? t("seit {time}", { time: time(guard.block_since) }) : null)}
+          ${tile(t("Sperre"), guard.block ? (guard.block_reason === "foreign" ? t("an (nicht von Sunflow)") : t("an")) : t("aus"), guard.block_since ? t("seit {time}", { time: time(guard.block_since) }) : null)}
         </div>
         ${guard.inactive?.length
           ? html`<p class="small muted">${t("Würde nichts schreiben: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })}</p>`
@@ -465,7 +529,7 @@ class SunflowHeatPump extends LitElement {
           </tr>`)}
         </tbody>
       </table>
-      <p class="small muted">${t("Geplantes Budget (ab dem Aktivschalten): {normal} normale Schreibvorgänge und {emergency} für Start und Nachführen je Tag, höchstens {hour} je Stunde. Im Schatten gelten noch kein Mindestabstand und kein Budget; ob die Sperre mitzählt, ist offen.", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
+      <p class="small muted">${t("Geplantes Budget (ab dem Aktivschalten): {normal} normale Schreibvorgänge und {emergency} für Start und Nachführen je Tag, höchstens {hour} je Stunde. Im Schatten gelten noch kein Mindestabstand und kein Budget; die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
     `;
   }
 

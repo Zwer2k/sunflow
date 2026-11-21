@@ -6,13 +6,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sunflow.config.models import ClimateSettings, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.devices.profiles import manifest_id
-from sunflow.heat_pump.defaults import ROOM_SETPOINT_MAX_C, ROOM_SETPOINT_MIN_C
+from sunflow.heat_pump.defaults import FLOW_LIMIT_HIGH_C, FLOW_LIMIT_LOW_C, ROOM_SETPOINT_MAX_C, ROOM_SETPOINT_MIN_C
 from sunflow.heat_pump.guard import daily_counts
+from sunflow.heat_pump.limits import ControlSettings, setpoint_range, surface_range
 from sunflow.heat_pump.samples import records_heat_pump
 from sunflow.heat_pump.shadow import climate_status
 
@@ -35,6 +36,28 @@ def manifest_notes(request: Request) -> list[str]:
 
 def _recorder(request: Request) -> Any:
     return getattr(getattr(request.app.state, "runner", None), "heat_pump", None)
+
+
+def _manifest(request: Request, device: Any) -> dict[str, Any] | None:
+    """The manifest the device was last linked with (entity ranges); None before the first one."""
+    recorder = _recorder(request)
+    return recorder.manifest(device.id) if recorder is not None and hasattr(recorder, "manifest") else None
+
+
+def flow_limits(config: SunflowConfig, device: Any, profile: dict[str, Any], manifest: dict[str, Any] | None) -> dict[str, Any]:
+    """Range of the set value (8.3): the user's setting, the heating surface type's start limits, the
+    entity's range from the manifest and what applies."""
+    settings = ControlSettings.from_profile(profile, manifest, device.flow_min_c, device.flow_max_c)
+    surface = config.house.heating_surface
+    default_min, default_max = surface_range(surface)
+    low, high = setpoint_range(surface, settings)
+    return {
+        "min_c": device.flow_min_c, "max_c": device.flow_max_c,
+        "default_min_c": default_min, "default_max_c": default_max,
+        "entity_min_c": settings.entity_min, "entity_max_c": settings.entity_max,
+        "effective_min_c": low, "effective_max_c": high,
+        "allowed_min_c": FLOW_LIMIT_LOW_C, "allowed_max_c": FLOW_LIMIT_HIGH_C,
+    }
 
 
 def house_status(request: Request, config: SunflowConfig) -> dict[str, Any] | None:
@@ -82,7 +105,7 @@ async def heat_pump_status(request: Request) -> dict[str, Any]:
             | status.get(device.id, {"status": "pending", "usable": False, "problems": [], "manifest": None})
             # Program, activity, block, fault, whether it heats validly (section 4) and the shadow
             # flow control (section 8); None before the first sample
-            | {"state": states.get(device.id)}
+            | {"state": states.get(device.id), "flow_limits": flow_limits(config, device, profile, _manifest(request, device))}
         )
     return {"devices": devices, "notes": manifest_notes(request), "house": house_status(request, config)}
 
@@ -115,6 +138,41 @@ async def shadow_writes(request: Request, device_id: str, days: int = Query(defa
         "budget": {k: writes.get(k) for k in ("per_day", "emergency_per_day", "per_hour")},
         "shadow": True,
     }
+
+
+class FlowLimits(BaseModel):
+    """Range of the set value of one heat pump; None: the heating surface type's start limit."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    min_c: float | None = Field(default=None, ge=FLOW_LIMIT_LOW_C, le=FLOW_LIMIT_HIGH_C)
+    max_c: float | None = Field(default=None, ge=FLOW_LIMIT_LOW_C, le=FLOW_LIMIT_HIGH_C)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "FlowLimits":
+        if self.min_c is not None and self.max_c is not None and self.min_c >= self.max_c:
+            raise ValueError("min_c must be below max_c")
+        return self
+
+
+@router.put("/heat_pump/{device_id}/flow_limits")
+async def set_flow_limits(request: Request, device_id: str, body: FlowLimits) -> dict[str, Any]:
+    """Set the range of the set value (Max T-Vorlauf) of one heat pump; rounded to a tenth. Together with
+    the heating surface type's start limit for an empty side, the range must leave something."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    device = next((d for d in config.devices if d.id == device_id), None)
+    profile = _library(request).profiles.get(device.profile) if device else None
+    if device is None or profile is None or not records_heat_pump(profile):
+        raise HTTPException(status_code=404, detail="No heat pump with this id")
+    low = round(body.min_c, 1) if body.min_c is not None else None
+    high = round(body.max_c, 1) if body.max_c is not None else None
+    default_min, default_max = surface_range(config.house.heating_surface)
+    if (low if low is not None else default_min) >= (high if high is not None else default_max):
+        raise HTTPException(status_code=422, detail="The lower limit must be below the upper limit")
+    device.flow_min_c, device.flow_max_c = low, high
+    store.save(config)
+    return flow_limits(config, device, profile, _manifest(request, device))
 
 
 class ClimateUpdate(BaseModel):

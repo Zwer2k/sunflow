@@ -118,8 +118,10 @@ Schattenbetrieb einmal, die Korrektur bleibt.
 
 **Stellwert und Schutz (Schatten):** Aus dem Vorlauf-Ziel rechnet Sunflow den Stellwert (Max T-Vorlauf),
 den es schreiben würde, und die Raumthermostat-Sperre – angezeigt mit „würde schreiben“, nichts davon
-geht an die Wärmepumpe. Der Stellwert bleibt in den Grenzen des Heizflächentyps (Fußboden 25–40 °C,
-gemischt 25–50 °C, Heizkörper 30–55 °C) und im Bereich der Entity. Ein Vorlauf-Ziel, das mehr als 8 K
+geht an die Wärmepumpe. Der Stellwert bleibt in den **Grenzen des Stellwerts**, die je Wärmepumpe
+einstellbar sind (Mindestens/Höchstens; Höchstens ist zugleich der höchste Vorlauf für Estrich bzw.
+Heizflächen). Leer gilt der Startwert des Heizflächentyps (Fußboden 25–40 °C, gemischt 25–50 °C,
+Heizkörper 30–55 °C); der Bereich der Entity engt immer weiter ein. Ein Vorlauf-Ziel, das mehr als 8 K
 vom wirksamen Vorlauf-Soll (bzw. der Kennlinie) abweicht, würde nicht geschrieben (Eintrag im Journal).
 Erreicht das Vorlauf-Ziel eine Grenze oder die Wärmepumpe ihre Höchst- bzw. Mindestleistung, läuft die
 Korrektur nicht weiter darüber hinaus.
@@ -131,7 +133,10 @@ abschaltet); während Warmwasser den Stellwert für den Start danach vorbereiten
 bis der Vorlauf ruhig ist, und dann einmal absenken; im Betrieb nachführen, wenn der Vorlauf der
 Abschaltgrenze nahekommt. Wärme, die es nicht will (Raum 0,5 K über dem Raum-Soll, oder die
 Mindestleistung der Wärmepumpe liegt über dem Bedarf), würde es über die Raumthermostat-Sperre
-abschalten – jeder Zustand mindestens 20 Minuten. Die Schwankung des Vorlaufs im Betrieb, der Sprung nach
+abschalten – jeder Zustand mindestens 20 Minuten. Eine Raumthermostat-Sperre, die nicht Sunflow gesetzt
+hat (von Hand, eine Automation, ein anderer Regler), hebt Sunflow nicht auf: Sie wird im Bereich
+Wärmepumpe deutlich angezeigt und im Journal vermerkt, und Sunflow regelt erst wieder, wenn sie
+aufgehoben ist. Die Schwankung des Vorlaufs im Betrieb, der Sprung nach
 einem Start (normal, nach Warmwasser, nach Abtauen), die Zeit bis zur Ruhe und der Leistungsbereich der
 Wärmepumpe werden aus der Aufzeichnung gelernt; bis genug Daten da sind, gelten vorsichtige Startwerte.
 Schaltet der Kompressor ungewollt ab (Vorlauf 3 K über dem Soll ohne Sperre, Warmwasser oder Abtauen),
@@ -139,7 +144,8 @@ steht das im Journal, und der betroffene Wert wird sofort erhöht; ohne weitere 
 Wochen zurück. Die Tabelle **Schreibvorgänge je Tag** zählt für die letzten 7 Tage, was Sunflow
 geschrieben hätte (normal, Start, Nachführen, Sperre an/aus), und die ungewollten Abschaltungen – zum
 Vergleich mit dem geplanten Budget von 48 normalen und 24 Schreibvorgängen für Start und Nachführen je
-Tag. Mindestabstand und Budget gelten erst, wenn Sunflow aktiv schreibt.
+Tag. Mindestabstand und Budget gelten erst, wenn Sunflow aktiv schreibt. Die Raumthermostat-Sperre zählt
+nicht ins Budget: Die HPSU legt diesen Eingang nicht im EEPROM ab.
 
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der

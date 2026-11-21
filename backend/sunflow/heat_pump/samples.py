@@ -356,7 +356,7 @@ class HeatPumpRecorder:
             rooms=rooms,
             ventilation=aired,
             tv_peak_c=recording.minute_peak,
-            control=ControlSettings.from_profile(profile, recording.manifest),
+            control=ControlSettings.from_profile(profile, recording.manifest, device.flow_min_c, device.flow_max_c),
         )
         recording.minute_peak = None
         return minute, entities
@@ -458,6 +458,11 @@ class HeatPumpRecorder:
         """Events of the intervals not stored yet (shown with the stored ones)."""
         recording = self._recordings.get(device_id)
         return [e for events in (recording.events.values() if recording else []) for e in events]
+
+    def manifest(self, device_id: str) -> dict[str, Any] | None:
+        """The manifest the heat pump was last sampled with; None before."""
+        recording = self._recordings.get(device_id)
+        return recording.manifest if recording is not None else None
 
     def status(self) -> dict[str, dict[str, Any]]:
         """Per heat pump: the latest states and whether it heats validly."""

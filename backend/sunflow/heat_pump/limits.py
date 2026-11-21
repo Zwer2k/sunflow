@@ -1,7 +1,8 @@
 """Limits of the set value (design/heat_pump.md, 8.3) and the profile's parameters of the protection layer (8.4).
 
-- Range of the set value: the start limits of the heating surface type (HEATING_SURFACES), never
-  outside the written entity's own range (manifest min/max).
+- Range of the set value: the user's setting per heat pump (flow_min_c/flow_max_c), else the start limits
+  of the heating surface type (HEATING_SURFACES); never outside the written entity's own range
+  (manifest min/max).
 - Rounding to the entity's step (manifest), always the safe way where it protects (up).
 - Plausibility: a flow target further than PLAUSIBLE_BAND_K from the effective setpoint, and from the
   curve's value when the curve is used, is not written.
@@ -64,9 +65,14 @@ class ControlSettings:
     step: float = DEFAULT_SETPOINT_STEP_K
     entity_min: float | None = None
     entity_max: float | None = None
+    # The user's range of the set value (device setting); None: the heating surface type's start limit
+    user_min: float | None = None
+    user_max: float | None = None
 
     @classmethod
-    def from_profile(cls, profile: dict[str, Any], manifest: dict[str, Any] | None) -> "ControlSettings":
+    def from_profile(
+        cls, profile: dict[str, Any], manifest: dict[str, Any] | None, user_min: float | None = None, user_max: float | None = None,
+    ) -> "ControlSettings":
         """The profile's flow_control and the written entity of the strategy fixed; defaults where missing."""
         flow = profile.get("flow_control") or {}
         rules = flow.get("compressor_rules") or {}
@@ -91,6 +97,8 @@ class ControlSettings:
             step=step if step > 0 else DEFAULT_SETPOINT_STEP_K,
             entity_min=_optional((entity or {}).get("min")),
             entity_max=_optional((entity or {}).get("max")),
+            user_min=user_min,
+            user_max=user_max,
         )
 
     @property
@@ -99,10 +107,22 @@ class ControlSettings:
         return self.stop_margin - SHUTDOWN_RESOLUTION_K
 
 
-def setpoint_range(surface: str | None, settings: ControlSettings) -> tuple[float, float]:
-    """[min, max] of the set value: start limits of the heating surface type within the entity's range."""
+def surface_range(surface: str | None) -> tuple[float, float]:
+    """Start limits of the set value for a heating surface type (the default type for an unknown one)."""
     limits = HEATING_SURFACES.get(surface or "", HEATING_SURFACES[HEATING_SURFACE_DEFAULT])
-    low, high = limits["min_c"], limits["max_c"]
+    return limits["min_c"], limits["max_c"]
+
+
+def setpoint_range(surface: str | None, settings: ControlSettings) -> tuple[float, float]:
+    """[min, max] of the set value: the user's setting, else the start limits of the heating surface type;
+    within the entity's range. The upper bound protects the heating surfaces (screed): when the lower one
+    lies above it (e.g. a user maximum below the type's start minimum), the range collapses to the upper."""
+    low, high = surface_range(surface)
+    if settings.user_min is not None:
+        low = settings.user_min
+    if settings.user_max is not None:
+        high = settings.user_max
+    low = min(low, high)
     if settings.entity_min is not None:
         low = max(low, settings.entity_min)
     if settings.entity_max is not None:

@@ -102,6 +102,10 @@ FEED_HEAT_MIN_W = CURVE_HEAT_MIN_W
 # counts (rounding then still goes the safe way). A flow target further than PLAUSIBLE_BAND_K from the
 # effective setpoint (and from the curve's value, when the curve is used) is not plausible: not written.
 PLAUSIBLE_BAND_K = 8.0
+# Range a user setting of the set value limits (DeviceConfig.flow_min_c/flow_max_c) may name at all; within
+# it the entity's range from the manifest still narrows the setting
+FLOW_LIMIT_LOW_C = 15.0
+FLOW_LIMIT_HIGH_C = 70.0
 DEFAULT_SETPOINT_STEP_K = MAX_SETPOINT_STEP_K
 # Heat output range of the heat pump (kW): the profile's start values until learned from steady running
 # in heat_pump_samples (POWER_LEARN_DAYS, at least POWER_MIN_ROWS rows): the minimum is a low quantile of

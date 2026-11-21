@@ -604,9 +604,13 @@ Fußbodenheizung bis Schritt 3 (Heizflächentyp):
 
 Umsetzung (3, Teil 3, nur Schatten; `heat_pump/limits.py`, `heat_pump/learned.py`, Konstanten in
 `heat_pump/defaults.py`):
-- Stellwertbereich: Startgrenzen des Heizflächentyps aus `HEATING_SURFACES`, eingeengt auf `min`/`max` der
-  beschriebenen Entity im Manifest. Eine Nutzereinstellung je Wärmepumpe gibt es noch nicht (Teil 4 bzw.
-  offener Punkt 4). Rundung auf `step` der Entity (ohne Angabe die gröbste erlaubte Schrittweite 0,5 K):
+- Stellwertbereich: Nutzereinstellung je Wärmepumpe `flow_min_c`/`flow_max_c` (Gerät in `config.json`,
+  seit 0.80.11; `PUT /api/v1/heat_pump/<id>/flow_limits`, im Status `flow_limits`), eine leere Seite =
+  Startgrenze des Heizflächentyps aus `HEATING_SURFACES`; immer eingeengt auf `min`/`max` der
+  beschriebenen Entity im Manifest. `flow_max_c` ist zugleich der höchste Vorlauf für den Estrich und
+  schützt: liegt die Untergrenze darüber (z. B. nach Wechsel des Heizflächentyps), gilt die Obergrenze für
+  beide. Eingabe erlaubt 15–70 °C, auf Zehntel gerundet; min muss unter max liegen (auch mit dem Startwert
+  der leeren Seite), sonst 422. Rundung auf `step` der Entity (ohne Angabe die gröbste erlaubte Schrittweite 0,5 K):
   Vorlauf-Ziel zum nächsten Schritt, Schutzwerte aufwärts, alles höchstens bis zur Obergrenze.
 - Plausibilität: Bezug ist der aktuelle wirksame Vorlauf-Soll und, wenn die Quelle die Kennlinie ist,
   deren Wert; weicht V_Ziel von einem davon mehr als 8 K (`PLAUSIBLE_BAND_K`) ab, wird kein normaler
@@ -714,7 +718,14 @@ Sunflow zuletzt geschrieben hätte (virtuell, Start beim vorgefundenen Max T-Vor
 - **Sperre** (nur mit Rolle `heating_block`): an, wenn Raum-Ist ≥ Planziel + 0,5 K (`BLOCK_ROOM_ABOVE_K`,
   `room_warm`) oder wie oben `min_power`; aus bei `room_warm`, wenn Raum-Ist ≤ Planziel + 0,2 K, bei
   `min_power`, wenn ≤ Planziel − 0,2 K; ohne Raum-Ist aus. Jeder Zustand mindestens `min_duration` (20 min).
-  Eine vorgefundene Sperre (`adopted`) wird wie `room_warm` aufgehoben. Gesperrt: kein Stellwert.
+  Gesperrt: kein Stellwert.
+- **Fremde Sperre** (`foreign`, seit 0.80.11): Eine Sperre, die Sunflow nicht gesetzt hat (beim Start
+  vorgefunden oder später von Hand, durch eine Automation oder einen anderen Regler gesetzt), hebt Sunflow
+  nicht auf (8.6). Phase `blocked`, kein Stellwert, keine eigene Sperr-Entscheidung; Journal (Warnung)
+  einmal beim Erkennen, im Status `block_reason` = `foreign`, im UI deutlich als „nicht von Sunflow
+  gesetzt“. Hebt sie jemand anders auf, regelt Sunflow wieder; die Mindestdauer läuft ab dann. Im
+  Schatten ist jede echte Sperre fremd; ab Teil 4 ist eine Sperre, die Sunflow selbst geschrieben hat,
+  nicht fremd. Der frühere Wert `adopted` in `heat_pump_state.json` wird als `foreign` gelesen.
 - **Kein Schreiben** (Status `inactive`): Modus `off`, Strategie ≠ `fixed`, Gerät nicht nutzbar, Programm ≠
   Heizen, unbekannte Aktivität, Störung, Tv oder Max T-Vorlauf unbekannt.
 - **Ungewollte Abschaltung:** Kompressor an → aus, vorher Aktivität Heizen, nicht Warmwasser/Abtauen danach,
@@ -760,6 +771,8 @@ Berechnen ≠ Schreiben.
     Wirkung sonst noch nicht sieht.
 - **Budget** (`EepromGuard`): normal 48/Tag, Notkontingent zusätzlich 24/Tag nur für Schutzschritte
   (Vorbereiten vor Warmwasser-Ende, Nachführen, Start); Obergrenze je Stunde 6. Werte im Profil, einstellbar.
+  Die Raumthermostat-Sperre zählt nicht: die HPSU legt den Eingang nicht im EEPROM ab (15, Punkt 7); gegen
+  Takten wirkt die Mindestdauer je Zustand.
 - Taste „jetzt schreiben“ im UI überspringt den Mindestabstand (zählt gegen das Budget).
 - Kein Schreiben bei `hot_water`, `defrost`, `unknown`, BPV > 0 %, Programm ≠ heating, Gerät nicht
   erreichbar, ESP-Regelung aktiv (`supply_setpoint_regulated` > 0 → ESP regelt selbst → Hinweis,
@@ -780,6 +793,9 @@ Bewusst in Kauf genommen: Ist die Sperre `on`, wenn Sunflow ausfällt oder nicht
 HA aus, Steuerung abgeschaltet, Gerät inkompatibel), heizt die HPSU nicht, bis Sunflow wieder regelt oder
 der Nutzer die Sperre selbst aufhebt. Sunflow zeigt deshalb in der UI und im Journal an, wenn die Sperre
 aktiv ist.
+
+Eine Sperre, die Sunflow nicht selbst gesetzt hat, hebt es nie auf; es zeigt sie nur an (Status, UI,
+Journal) und regelt erst wieder, wenn sie aufgehoben ist (8.4, „Fremde Sperre“).
 
 ---
 
@@ -1062,7 +1078,8 @@ Nur CAN:
   - Gelerntes: Kennlinie (K, n, Spreizung, Güte), Hausmodell, Korrektur je Strategie, Sprung- und
     Schwankungswerte (`steady_swing`, `start_jump`, `start_settle`), Prognose-Korrektur.
   - Live: Tv, `tv_max`, Tr, BPV, wirksamer Soll, Vorlauf-Ziel, Stellwert geschrieben/ausstehend,
-    Raumthermostat-Sperre (deutlich sichtbar, wenn aktiv), „jetzt schreiben“. Seit 3, Teil 3 im Schatten:
+    Raumthermostat-Sperre (deutlich sichtbar, wenn aktiv; „nicht von Sunflow gesetzt“, wenn fremd),
+    „jetzt schreiben“. Seit 3, Teil 3 im Schatten:
     Stellwert und Sperre „würde schreiben“, Schutz-Untergrenze und Phase, Grenzen, gelernte Werte mit
     Herkunft, letzte geplante Schreibvorgänge und ungewollte Abschaltungen, Tabelle der
     Schreibvorgänge je Tag (normal, Start, Nachführen, Sperre an/aus, ungewollte Abschaltungen).
@@ -1109,13 +1126,34 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
 1. Manifest mit Seiten und `tv_max` auf echter Hardware testen (Manifest ohne Seiten bereits bestätigt).
 2. Sommer vs. Bereitschaft der HPSU im Detail (RoCon-Anleitung).
 3. Startwerte Budget (48 + 24) nach den ersten Wochen prüfen.
-4. Höchster Vorlauf für den Estrich (Nutzereinstellung, Standard?).
+4. Höchster Vorlauf für den Estrich (Nutzereinstellung, Standard?). **Geklärt, umgesetzt (0.80.11):**
+   Einstellung min/max des Stellwerts je Wärmepumpe (8.3), leer = Startgrenzen des Heizflächentyps
+   (`HEATING_SURFACES`), immer eingeengt auf `min`/`max` der Entity im Manifest; max ist zugleich der
+   höchste Vorlauf für den Estrich (Standard Fußboden 40 °C). Offen: Die CAN-Komponente meldet für
+   Max T-Vorlauf im Manifest 20–90 °C; begrenzt die HPSU selbst niedriger (laut Nutzer 40 °C), sollte das
+   Manifest diesen Bereich melden (Änderung an der Komponente, Abschnitt 12).
 5. Untergrenze je Raum ja/nein.
 6. S2-Entwurf nach Analyse.
 7. Raumthermostat-Eingang: liegt er in der HPSU im EEPROM? Davon hängt ab, ob die Sperre ins
-   Schreibbudget zählt.
+   Schreibbudget zählt. **Geklärt:** nein (Auskunft des Nutzers, HPSU). Der Eingang „Raum Thermostat“
+   (CAN-Komponente `room_therm`, Register `FA 06 78`) ist dafür gedacht, die HPSU von außen ein- bzw. bei
+   zu warmem Haus auszuschalten. Die Sperre zählt nicht ins Schreibbudget (8.5); gegen Takten bleibt die
+   Mindestdauer je Zustand (20 min).
 8. Wirkt Max T-Vorlauf während Warmwasser auf den Heizbetrieb? (Annahme: nein; Vorbereitung vor dem
-   Start nach Warmwasser hängt davon ab.)
+   Start nach Warmwasser hängt davon ab.) Beobachtung aus `heat_pump_samples`, solange noch andere Regler
+   Max T-Vorlauf ändern: Warmwasser-Episoden (aufeinanderfolgende Zeilen mit `activity` = `hot_water`),
+   darin `max_setpoint_c` mit dem Wert vor der Episode und innerhalb vergleichen; für Episoden mit
+   Änderung prüfen, ob Warmwasser weiterläuft (`activity`, `compressor`), ob der wirksame Soll
+   (`setpoint_c`) während Warmwasser mitgeht, und beim ersten Start danach (Ereignis `start` mit
+   `max_setpoint_c`/`setpoint_c`) ob der geänderte Wert gilt; dazu ungewollte Abschaltungen
+   (`unwanted_stop`) in den 40 min danach. Annahme bestätigt, wenn Warmwasser unbeeinflusst bleibt und der
+   Start danach den während Warmwasser gesetzten Wert nutzt. Dasselbe geht ohne `heat_pump_samples` aus der
+   HA-History (Betriebsart, Max T-Vorlauf, Vorlauf-Soll, Kompressor; etwa 10 Tage). **Stand: aus den Daten
+   nicht beantwortbar, wird in Teil 4 im aktiven Betrieb beobachtet (Abschnitt 16, 3.4, Todo)** – in der ausgewerteten History wurde Max T-Vorlauf während Warmwasser nie geändert
+   (die bisherigen Regler schreiben erst nach dem Ende). Nötig ist ein Test am Gerät (vom Nutzer): während
+   einer Warmwasser-Bereitung Max T-Vorlauf einmal ändern, z. B. um 3 K über den Wert vorher, und prüfen,
+   ob Warmwasser normal weiterläuft und ob der Kompressor beim Start danach mit dem neuen Wert läuft
+   (wirksamer Vorlauf-Soll, keine Abschaltung kurz nach dem Start).
 
 ## 16. Reihenfolge
 
@@ -1172,12 +1210,20 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
         Fußboden (Kp 1, Ti 6 h).
       - Stoßfreier Quellenwechsel im aktiven Betrieb (Basis ↔ Kennlinie, Hausmodell ↔ Wärme der letzten
         3 h): Korrektur so anpassen, dass V_Ziel nicht springt (Sprungschutz). Im Schatten bewusst nicht.
+      - **Todo (offener Punkt 8):** in den ersten Tagen des aktiven Betriebs per MCP (HA-History) und aus
+        `heat_pump_samples` prüfen, ob der während Warmwasser geschriebene Stellwert (Vorbereiten, 8.4)
+        beim Start danach gilt: Ereignisse `write` mit Phase `hot_water`, danach `start` mit
+        `max_setpoint_c`/`setpoint_c` und keine `unwanted_stop` kurz nach dem Start; Warmwasser läuft
+        dabei unverändert weiter. Ergebnis in Abschnitt 15, Punkt 8 eintragen; trifft die Annahme nicht
+        zu, die Vorbereitung auf die Zeit nach dem Warmwasser-Ende verlegen (Rückfrage beim Nutzer).
 
-   **Vor Teil 4** muss der Nutzer
-   - die offenen Punkte aus Abschnitt 15 geklärt haben: Hardware-Test (1), Raumthermostat-Eingang im
-     EEPROM (7), Max T-Vorlauf bei Warmwasser (8), höchster Vorlauf für den Estrich (4);
-   - die alten Regler entfernt haben: pyscript zum geregelten Vorlauf-Soll, pyscript `heat_control`,
-     ESP-Regelung `supply_setpoint_regulated` (Inbetriebnahme Schritt 0, Abschnitt 14).
+   Vorbereitung (0.80.11): fremd gesetzte Sperre wird nicht aufgehoben, nur angezeigt (8.4, 8.6);
+   Grenzen des Stellwerts je Wärmepumpe (8.3, Punkt 4); Sperre außerhalb des Budgets (8.5, Punkt 7);
+   Punkt 8 aus der HA-History nicht beantwortbar, wird in Teil 4 im aktiven Betrieb beobachtet (Todo oben).
+   Die alten Regler sind entfernt (Nutzer, Inbetriebnahme Schritt 0, Abschnitt 14).
+
+   **Vor Teil 4** offen: Hardware-Test (Abschnitt 15, Punkt 1; prüfbar per MCP). Geklärt sind
+   Raumthermostat-Eingang (7) und höchster Vorlauf für den Estrich (4); Punkt 8 folgt in Teil 4.
 4. Planung mit Raum-Soll + Spielraum (Vorheizen).
 5. UART-Begleiter, Paarung.
 6. S2.

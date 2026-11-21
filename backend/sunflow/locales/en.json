@@ -258,6 +258,7 @@
   "nach dem Start nach Abtauen": "after the start after defrost",
   "Schatten: Sunflow würde die Raumthermostat-Sperre setzen ({why}).": "Shadow: Sunflow would set the room thermostat block ({why}).",
   "Schatten: Sunflow würde die Raumthermostat-Sperre aufheben ({why}).": "Shadow: Sunflow would release the room thermostat block ({why}).",
+  "Raumthermostat-Sperre nicht von Sunflow gesetzt: Sunflow hebt sie nicht auf und regelt nicht, bis sie aufgehoben ist.": "Room thermostat block not set by Sunflow: Sunflow does not release it and does not control until it is released.",
   "im laufenden Betrieb": "while running",
   "Sprung beim Start": "Jump at the start",
   "Schwankung im Betrieb": "Swing while running",

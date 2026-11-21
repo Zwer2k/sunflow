@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.80.11
+
+- Heat pumps (still shadow operation): a room thermostat block Sunflow did not set – found on start or set later by hand, an automation or another controller – is no longer released. Sunflow shows it in Settings → Heat pump and notes it in the journal, writes nothing while it lasts and controls again once someone else has released it.
+- New setting per heat pump in Settings → Heat pump: **limits of the set value** (at least/at most Max T-Vorlauf). At most is also the highest flow for the screed. Empty, the start value of the heating surface type applies; the heat pump's own range always narrows it further.
+- The room thermostat block no longer counts as a write against the planned budget: the HPSU does not store it in its EEPROM.
+
 ## 0.80.10
 
 - Heat pumps (sixth part of the new flow temperature control, still shadow operation): Sunflow computes the set value (Max T-Vorlauf) it would write and the writes it would cause, with time, value and reason (normal, start, tracking, block on/off) – nothing is written to the heat pump. Limits: the range of the heating surface type (underfloor 25–40 °C, mixed 25–50 °C, radiators 30–55 °C) within the entity's range; a flow target more than 8 K from the effective setpoint (or the curve) would not be written; at a limit or at the heat pump's maximum/minimum output the correction does not move further beyond it.

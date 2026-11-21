@@ -18,6 +18,8 @@ Rules (8.4), with the learned values (learned.py; start values until there are e
   above the bound); when the minimum output exceeds the heat needed, the block instead.
 - Wanted off only by the block: the room well above its target, or minimum output above the need;
   each state of the block lasts at least its minimum duration.
+- A block Sunflow did not set (found on start, set by hand, automation or another controller) is not
+  released: phase blocked, journal, shown in status and UI, until someone else releases it (8.6).
 - Unwanted shutdown: the compressor stops in heating at Tv ≥ effective setpoint + 3 K without block,
   hot water or defrost → journal; the value concerned (jump of that start, else the swing) is raised.
 Limits (8.3): the set value stays within [min, max]; a flow target beyond the plausibility band is not
@@ -69,7 +71,10 @@ STOP_EVENT = "unwanted_stop"
 # Why Sunflow wants the heat pump off (block)
 ROOM_WARM = "room_warm"
 MIN_POWER = "min_power"
-ADOPTED = "adopted"
+# A block Sunflow did not set (found on start or set by someone else): never released by Sunflow (8.6)
+FOREIGN = "foreign"
+# Earlier name in heat_pump_state.json (0.80.10)
+_ADOPTED = "adopted"
 
 FLAT = timedelta(seconds=TV_FLAT_WINDOW_S)
 TRACK_LOOKBACK = timedelta(seconds=TRACK_LOOKBACK_S)
@@ -186,6 +191,8 @@ class Guard:
         self.block: bool | None = state.get("block") if isinstance(state.get("block"), bool) else None
         self.block_at = _time(state.get("block_at"))
         self.block_reason: str | None = state.get("block_reason") if isinstance(state.get("block_reason"), str) else None
+        if self.block_reason == _ADOPTED:
+            self.block_reason = FOREIGN
         before = state.get("before") if isinstance(state.get("before"), dict) else {}
         self.before: dict[str, float] = {k: v for k, v in before.items() if k in BUSY and isinstance(v, (int, float))}
         ended = state.get("ended") if isinstance(state.get("ended"), dict) else {}
@@ -267,8 +274,7 @@ class Guard:
         if self.written_c is None and (current := reading.values.get("max_flow_setpoint")) is not None:
             # Sunflow starts from what the heat pump has, without a write
             self.written_c = current
-        if self.block is None and reading.blocked is not None:
-            self.block, self.block_reason = reading.blocked, ADOPTED if reading.blocked else None
+        self._follow_foreign(reading, result, now)
 
         self._follow_activity(reading, now, tv)
         self._detect_stop(data, result, tv)
@@ -292,6 +298,23 @@ class Guard:
         self._prev_tv = tv
         self.last = result
         return result
+
+    def _follow_foreign(self, reading: Reading, result: GuardResult, now: datetime) -> None:
+        """A block Sunflow did not set is kept and only shown (status, UI, journal), never released (8.6).
+
+        In the shadow Sunflow writes nothing, so every real block is someone else's; once Sunflow writes
+        (16, step 3 part 4), a block it wrote itself is its own and not foreign.
+        """
+        if reading.blocked is None:
+            return
+        if reading.blocked and self.block_reason != FOREIGN:
+            self.block, self.block_at, self.block_reason = True, now, FOREIGN
+            result.notes.append((t("Raumthermostat-Sperre nicht von Sunflow gesetzt: Sunflow hebt sie nicht auf und regelt nicht, bis sie aufgehoben ist."), True))
+        elif not reading.blocked and self.block_reason == FOREIGN:
+            # Released by someone else; the minimum duration runs from here before Sunflow sets its own
+            self.block, self.block_at, self.block_reason = False, now, None
+        elif self.block is None:
+            self.block = False
 
     def _follow_activity(self, reading: Reading, now: datetime, tv: float | None) -> None:
         """Tv before hot water or defrost, and when they ended."""
@@ -455,7 +478,7 @@ class Guard:
 
     def _block(self, data: GuardInput, result: GuardResult) -> None:
         """Wanted off: the room well above its target sets the block; released after the minimum duration."""
-        if not data.settings.has_block:
+        if not data.settings.has_block or self.block_reason == FOREIGN:
             return
         now, room, plan = data.at, data.room_c, data.plan_c
         may_switch = self.block_at is None or now - self.block_at >= timedelta(seconds=data.settings.block_min_s)

@@ -3,6 +3,7 @@ runs of a heat pump: start from a pause, start after hot water, defrost, block o
 rising Tv, unwanted shutdowns; learned swing, jumps and heat output range; daily counts."""
 
 from datetime import UTC, datetime, timedelta
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -13,6 +14,7 @@ from fastapi.testclient import TestClient
 from heat_pump_node import joined
 import pytest
 from sunflow.api.heat_pump import router
+from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.heat_pump.correction import Correction
 from sunflow.heat_pump.defaults import BUMP_DECAY_K_PER_DAY, BUMP_EXTRA_K, JUMP_MIN_EVENTS, SWING_MIN_ROWS
@@ -198,12 +200,60 @@ def test_block_on_and_off_with_minimum_duration() -> None:
     assert notes[1].startswith("Schatten: Sunflow würde die Raumthermostat-Sperre aufheben")
 
 
-def test_block_found_on_is_released_when_heat_is_wanted() -> None:
-    """Someone else set the block: Sunflow would release it (the input is Sunflow's when it controls)."""
+def test_block_found_on_is_kept_and_shown() -> None:
+    """A block Sunflow did not set is not released, only shown (8.6); nothing written while it lasts."""
+    sim = Sim(written=30.0)
+    sim.room = 20.0
+    found = sim.run([27.0] * 30, compressor=False, activity="idle", blocked=True)
+
+    assert sim.writes() == []
+    assert all(r.phase == "blocked" for r in found)
+    assert (sim.guard.block, sim.guard.block_reason) == (True, "foreign")
+    notes = [(m, warn) for _, _, r in sim.results for m, warn in r.notes]
+    assert notes == [("Raumthermostat-Sperre nicht von Sunflow gesetzt: Sunflow hebt sie nicht auf und regelt nicht, bis sie aufgehoben ist.", True)]
+
+
+def test_block_set_by_someone_else_later_is_not_released() -> None:
+    """Set by hand while Sunflow controls (also over its own virtual block): kept until released outside."""
+    sim = Sim(written=30.0)
+    sim.room = 21.6
+    sim.minute(30.0)
+    assert sim.guard.block_reason == "room_warm"
+    sim.room = 20.0
+    during = sim.run([27.0] * 40, compressor=False, activity="idle", blocked=True)
+
+    assert sim.writes() == [("block_on", True)]
+    assert all(r.phase == "blocked" for r in during) and sim.guard.block_reason == "foreign"
+    # Released outside: Sunflow controls again, the start rule applies
+    after = sim.minute(27.0, compressor=False, activity="idle")
+    assert (sim.guard.block, sim.guard.block_reason) == (False, None)
+    assert after.phase == "idle" and sim.writes()[-1] == ("start", 30.1)
+
+
+def test_released_foreign_block_counts_for_the_minimum_duration() -> None:
+    """After someone else released it, Sunflow sets its own block only after the minimum duration."""
+    sim = Sim(written=30.0)
+    sim.minute(30.0, blocked=True)
+    sim.room = 21.6
+    # Released in the first of these minutes; 20 minutes from there
+    early = sim.run([30.0] * 20)
+    late = sim.minute(30.0)
+
+    assert all(not any(w["reason"] == "block_on" for w in r.writes) for r in early)
+    assert late.writes[0]["reason"] == "block_on" and sim.guard.block_reason == "room_warm"
+
+
+def test_foreign_block_in_state_file_and_old_name() -> None:
+    """Kept over a restart without a second journal entry; the earlier name "adopted" is read as foreign."""
     sim = Sim(written=30.0)
     sim.minute(27.0, compressor=False, activity="idle", blocked=True)
-
-    assert sim.writes()[:1] == [("block_off", False)]
+    again = Guard(sim.guard.as_dict())
+    assert again.block_reason == "foreign"
+    old = Guard({**sim.guard.as_dict(), "block_reason": "adopted"})
+    assert old.block_reason == "foreign"
+    sim.guard = old
+    sim.minute(27.0, compressor=False, activity="idle", blocked=True)
+    assert sim.notes() == sim.notes()[:1] and sim.writes() == []
 
 
 def test_no_block_without_the_input() -> None:
@@ -314,6 +364,27 @@ def test_entity_range_wins() -> None:
     assert setpoint_range("unknown", ControlSettings()) == (25.0, 40.0)
     assert clamp(45.0, 27.0, 38.0, 0.1) == 38.0
     assert round_up(30.01, 0.1) == 30.1 and round_up(30.0, 0.5) == 30.0 and round_up(30.1, 0.5) == 30.5
+
+
+def test_user_limits_within_the_entity_range() -> None:
+    """The user's range replaces the heating surface type's start limit; the entity's range still narrows it."""
+    assert setpoint_range("underfloor", ControlSettings(user_min=27.0, user_max=35.0)) == (27.0, 35.0)
+    # Only one side set: the other from the heating surface type
+    assert setpoint_range("radiator", ControlSettings(user_max=45.0)) == (30.0, 45.0)
+    assert setpoint_range("underfloor", ControlSettings(user_min=28.0, user_max=60.0, entity_min=20.0, entity_max=45.0)) == (28.0, 45.0)
+    # A maximum below the type's minimum (heating surface type changed later): the maximum protects, it wins
+    assert setpoint_range("radiator", ControlSettings(user_max=28.0)) == (28.0, 28.0)
+
+
+def test_user_maximum_caps_the_protection_layer() -> None:
+    """The start rule wants more than the screed may get: the set value stays at the user's maximum."""
+    sim = Sim(written=30.0, user_max=32.0)
+    sim.run([30.0] * 3)
+    sim.run([29.5, 29.0], compressor=False, activity="idle")
+
+    assert sim.writes() == [("start", 32.0)]
+    assert all(r.setpoint_c is None or r.setpoint_c <= 32.0 for _, _, r in sim.results)
+    assert sim.results[-1][2].limits == (25.0, 32.0)
 
 
 def test_implausible_target_is_not_written_and_noted_once() -> None:
@@ -487,6 +558,78 @@ async def test_recorder_notes_planned_writes(tmp_path: Path, library: Any) -> No
     assert answer["budget"] == {"per_day": 48, "emergency_per_day": 24, "per_hour": 6}
     # Nothing written to the heat pump: Max T-Vorlauf as it was
     assert rows[-1]["written_c"] is None
+
+
+def _limits_api(tmp_path: Path, library: Any, recorder: Any = None) -> tuple[TestClient, ConfigStore]:
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.state.profiles = library
+    app.state.store = ConfigStore(tmp_path / "config", lambda: library.profiles)
+    config = app.state.store.load()
+    config.devices = []
+    app.state.store.save(config)
+    app.state.runner = SimpleNamespace(heat_pump=recorder, shadow=None)
+    return TestClient(app), app.state.store
+
+
+async def test_flow_limits_setting(tmp_path: Path, library: Any) -> None:
+    """PUT /heat_pump/<id>/flow_limits stores the range; the status shows it with defaults and the entity range."""
+    from test_heat_pump_samples import Pump  # noqa: PLC0415
+
+    pump = Pump(tmp_path, library)
+    try:
+        await pump.minutes(NOW, 1)
+        client, store = _limits_api(tmp_path, library, pump.recorder)
+        config = store.load()
+        config.devices = pump.config.devices
+        store.save(config)
+
+        answer = client.put("/api/v1/heat_pump/hp/flow_limits", json={"min_c": 26.04, "max_c": 35.0}).json()
+        status = client.get("/api/v1/heat_pump/status").json()["devices"][0]["flow_limits"]
+        refused = [
+            client.put("/api/v1/heat_pump/hp/flow_limits", json=body).status_code
+            for body in ({"min_c": 35.0, "max_c": 30.0}, {"max_c": 24.0}, {"min_c": 41.0}, {"max_c": 80.0}, {"min_c": 30, "x": 1})
+        ]
+        missing = client.put("/api/v1/heat_pump/nope/flow_limits", json={}).status_code
+        cleared = client.put("/api/v1/heat_pump/hp/flow_limits", json={"min_c": None, "max_c": None}).json()
+    finally:
+        pump.store.close()
+
+    assert (answer["min_c"], answer["max_c"], answer["effective_min_c"], answer["effective_max_c"]) == (26.0, 35.0, 26.0, 35.0)
+    assert (status["default_min_c"], status["default_max_c"], status["entity_min_c"], status["entity_max_c"]) == (25.0, 40.0, 20.0, 90.0)
+    # Max below the default min, min above the default max, beyond the allowed range, unknown key
+    assert refused == [422, 422, 422, 422, 422] and missing == 404
+    assert (cleared["min_c"], cleared["max_c"], cleared["effective_min_c"], cleared["effective_max_c"]) == (None, None, 25.0, 40.0)
+    device = ConfigStore(tmp_path / "config", lambda: library.profiles).load().devices[0]
+    assert (device.flow_min_c, device.flow_max_c) == (None, None)
+
+
+@pytest.mark.parametrize("stored", [300, "x", True, 10.0])
+def test_broken_flow_limit_in_config_counts_as_not_set(tmp_path: Path, stored: Any) -> None:
+    """A hand-edited limit outside the allowed range does not stop loading; the start limit applies."""
+    store = ConfigStore(tmp_path)
+    store.save(SunflowConfig(devices=[DeviceConfig(id="hp", ha_device_id="x", profile=PROFILE, profile_version=2, name="n")]))
+    raw = json.loads((tmp_path / "config.json").read_text())
+    raw["devices"][0] |= {"flow_max_c": stored, "flow_min_c": 26.0}
+    (tmp_path / "config.json").write_text(json.dumps(raw))
+
+    device = ConfigStore(tmp_path).load().devices[0]
+    assert (device.flow_min_c, device.flow_max_c) == (26.0, None)
+
+
+async def test_recorder_uses_the_user_limits(tmp_path: Path, library: Any) -> None:
+    from test_heat_pump_samples import Pump  # noqa: PLC0415
+
+    pump = Pump(tmp_path, library)
+    pump.config.devices[0].flow_max_c = 33.0
+    pump.recorder.flow = FlowShadow(HeatPumpStateStore(tmp_path))
+    try:
+        await pump.minutes(NOW, 2)
+        guard = pump.recorder.status()["hp"]["flow"]["guard"]
+    finally:
+        pump.store.close()
+
+    assert (guard["min_c"], guard["max_c"]) == (25.0, 33.0)
 
 
 def test_state_survives_a_restart() -> None:
