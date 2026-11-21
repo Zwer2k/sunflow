@@ -10,14 +10,21 @@ b: kelvin per kWh of heat from the heat pump, the house's heat capacity is 1/b (
 c: kelvin per hour at full sun (S from 0 to 1, from the irradiance learning source);
 d: internal gains (people, devices) and heat that is not measured, in kelvin per hour.
 
-A weighted ridge regression on the recorder's hourly means; recent days weigh more. The last days
-are held out and simulated freely, a day at a time: the model counts as useful only where it beats
-"the temperature stays as it is".
+A weighted ridge regression on hourly rows; recent days weigh more. The last days are held out and
+simulated freely, a day at a time: the model counts as useful only where it beats "the temperature
+stays as it is".
+
+The hourly rows come from Home Assistant's recorder (hourly means, hours with hot water or defrost
+left out) until heat_pump_samples covers at least MIN_DAYS days of valid heating (design/heat_pump.md,
+9.3); then from the heat pump's 5 minute rows, without hours with hot water, defrost, after-run,
+ventilation or heating that was not valid. The switch happens only when the model from the samples
+is there and not worse in use than the one from Home Assistant, and it is kept (no jump back and forth).
 """
 
+import asyncio
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 import math
 from statistics import median
@@ -29,12 +36,15 @@ from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.devices.profiles import manifest_id
 from sunflow.devices.resolver import bind_roles, device_entities
 from sunflow.ha import HAClient
+from sunflow.heat_pump.curve import row_room
+from sunflow.heat_pump.defaults import HOUSE_SAMPLES_DAY_MIN_S, HOUSE_SAMPLES_HOUR_MIN_ROWS
 from sunflow.heat_pump.manifest import entities_by_key
 from sunflow.heat_pump.states import canonical, value_key
 from sunflow.planning.load_forecast import fetch_hourly_means
 
 if TYPE_CHECKING:
     from sunflow.devices.discovery import Snapshot
+    from sunflow.shadow.store import ShadowStore
 
 HISTORY_DAYS = 28
 MIN_DAYS = 7
@@ -295,6 +305,10 @@ async def _hourly(client: HAClient, entity_id: str | None, now: datetime) -> dic
     return {start: value for start, value in await fetch_hourly_means(client, entity_id, now, days=HISTORY_DAYS) if math.isfinite(value)}
 
 
+HA_HOURLY = "ha_hourly"
+SAMPLES = "heat_pump_samples"
+
+
 @dataclass(frozen=True, kw_only=True)
 class HouseData:
     """What the model is learned from, per hour, and where the heat came from."""
@@ -306,8 +320,15 @@ class HouseData:
     heat_source: str | None
     outside_entity: str | None
     sun_entity: str | None
-    # Hours left out because the heat pump made hot water or defrosted in them
+    # Hours left out because the heat pump made hot water or defrosted in them (from the samples also
+    # after-run, ventilation and heating that was not valid)
     excluded_hours: int = 0
+    # ha_hourly (Home Assistant's hourly means) or heat_pump_samples
+    source: str = HA_HOURLY
+    # Days of valid heating in heat_pump_samples (9.3), MIN_DAYS needed for the switch
+    coverage_days: int = 0
+    # Sun value of a bright hour: the model's sun (0-1) is relative to it
+    sun_bright: float | None = None
 
 
 async def house_data(
@@ -336,7 +357,8 @@ async def house_data(
         heat, heat_source = {s: max(w, 0.0) / 1000 for s, w in meter.items()}, "meter"
     else:
         heat, heat_source = await _heat(client, device, roles, outside, now)
-    sun = _relative(await _hourly(client, sun_entity, now))
+    sun_raw = await _hourly(client, sun_entity, now)
+    sun = _relative(sun_raw)
     busy = await _busy_hours(client, device, profiles, roles, snapshot, now)
     rows = [
         HourRow(start=start, inside=value, outside=outside[start], heat=heat.get(start) if heat_source else None,
@@ -348,6 +370,7 @@ async def house_data(
         rows=rows, per_room=per_room, inside=inside, heat_source=heat_source, outside_entity=outside_entity_id,
         sun_entity=sun_entity if sun else None,
         excluded_hours=sum(1 for start in inside if start in outside and start in busy),
+        sun_bright=_bright(sun_raw) if sun else None,
     )
 
 
@@ -429,15 +452,162 @@ async def _heat(
     return {s: max(w, 0.0) / 1000 * carnot_cop(outside[s]) for s, w in electric.items() if s in outside}, "estimated"
 
 
-def _relative(values: dict[datetime, float]) -> dict[datetime, float]:
-    """Sun from 0 to 1: lux and W/m² alike, against a bright hour of the period."""
+def _bright(values: dict[datetime, float]) -> float | None:
+    """A bright hour of the period (95th percentile); None without a positive one."""
     if not values:
-        return {}
+        return None
     ordered = sorted(values.values())
     bright = ordered[int(0.95 * (len(ordered) - 1))]
-    if bright <= 0:
+    return bright if bright > 0 else None
+
+
+def _relative(values: dict[datetime, float]) -> dict[datetime, float]:
+    """Sun from 0 to 1: lux and W/m² alike, against a bright hour of the period."""
+    if (bright := _bright(values)) is None:
         return {}
     return {s: min(max(v / bright, 0.0), 1.0) for s, v in values.items()}
+
+
+# From heat_pump_samples (9.3)
+
+# Activities whose hour is used: the heat pump heats (validly), pauses or is off
+CALM_ACTIVITIES = frozenset({"heating", "idle"})
+
+
+def _hour_left_out(row: dict[str, Any]) -> bool:
+    """A 5 minute row whose hour is left out: hot water, defrost, after-run, ventilation, fault, unknown
+    activity or heating that was not valid (its heat is not reliable)."""
+    flags = row.get("flags") or {}
+    activity = row.get("activity")
+    if activity not in CALM_ACTIVITIES or flags.get("after_run") or flags.get("ventilation") or flags.get("fault"):
+        return True
+    return activity == "heating" and flags.get("valid") is not True
+
+
+def _start_utc(row: dict[str, Any]) -> datetime | None:
+    start = row.get("start")
+    try:
+        start = datetime.fromisoformat(start) if isinstance(start, str) else start
+    except ValueError:
+        return None
+    return start.astimezone(UTC) if isinstance(start, datetime) else None
+
+
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+# The row giving an hour's room temperature starts at most this long after the hour
+HOUR_START_WITHIN = timedelta(minutes=10)
+
+
+def sample_hours(
+    rows: list[dict[str, Any]], weights: dict[str, float]
+) -> tuple[dict[datetime, dict[str, Any]], int, str | None]:
+    """Hourly values from 5 minute rows: per hour inside (room temperature at its start), outside and heat
+    (kWh, None if not measured) as means, the rooms; the hours left out (with enough rows); the heat
+    source most rows name."""
+    hours: dict[datetime, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if (start := _start_utc(row)) is not None:
+            hours[start.replace(minute=0, second=0, microsecond=0)].append(row)
+    result: dict[datetime, dict[str, Any]] = {}
+    excluded = 0
+    sources: list[str] = []
+    for hour, members in sorted(hours.items()):
+        if len(members) < HOUSE_SAMPLES_HOUR_MIN_ROWS:
+            continue
+        if any(_hour_left_out(row) for row in members):
+            excluded += 1
+            continue
+        # The model steps from the temperature at one hour's start to the next one's: the row at the start
+        # (a mean of the whole hour would smear the heat of neighbouring hours into each other)
+        first = min(members, key=lambda r: _start_utc(r) or hour)
+        inside = row_room(first, weights) if (_start_utc(first) or hour) - hour < HOUR_START_WITHIN else None
+        outside = _mean([float(row["outside_c"]) for row in members if isinstance(row.get("outside_c"), (int, float))])
+        if inside is None or outside is None:
+            continue
+        heats = [max(float(row["heat_w"]), 0.0) for row in members if isinstance(row.get("heat_w"), (int, float))]
+        sources += [row["heat_source"] for row in members if row.get("heat_source")]
+        rooms: dict[str, list[float]] = defaultdict(list)
+        for row in members:
+            for entity_id, value in (row.get("rooms") or {}).items():
+                if entity_id in weights and isinstance(value, (int, float)):
+                    rooms[entity_id].append(float(value))
+        result[hour] = {
+            "inside": inside,
+            "outside": outside,
+            "heat": sum(heats) / len(heats) / 1000 if len(heats) >= HOUSE_SAMPLES_HOUR_MIN_ROWS else None,
+            "rooms": {e: sum(v) / len(v) for e, v in rooms.items()},
+        }
+    source = max(set(sources), key=sources.count) if sources else None
+    return result, excluded, source
+
+
+def samples_house_data(rows: list[dict[str, Any]], config: SunflowConfig, ha: HouseData, coverage_days: int) -> HouseData:
+    """The house's hourly rows from heat_pump_samples; sun and the outside entity as from Home Assistant."""
+    weights = {room.entity_id: room.weight for room in config.house.rooms}
+    hours, excluded, heat_source = sample_hours(rows, weights)
+    sun = {r.start: r.sun for r in ha.rows if r.sun is not None}
+    per_room: dict[str, dict[datetime, float]] = {room.entity_id: {} for room in config.house.rooms}
+    for hour, values in hours.items():
+        for entity_id, value in values["rooms"].items():
+            per_room[entity_id][hour] = value
+    rows_out = [
+        HourRow(start=hour, inside=v["inside"], outside=v["outside"], heat=v["heat"],
+                sun=sun.get(hour) if ha.sun_entity else None)
+        for hour, v in sorted(hours.items())
+    ]
+    return HouseData(
+        rows=rows_out, per_room=per_room, inside={h: v["inside"] for h, v in hours.items()},
+        heat_source=heat_source if any(r.heat is not None for r in rows_out) else None,
+        outside_entity=ha.outside_entity, sun_entity=ha.sun_entity, excluded_hours=excluded,
+        source=SAMPLES, coverage_days=coverage_days, sun_bright=ha.sun_bright,
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class HouseLearning:
+    """The data the house was learned from and the model (None with too little data)."""
+
+    data: HouseData
+    model: HouseModel | None
+
+
+def choose_samples(samples: HouseModel | None, ha: HouseModel | None, kept: bool) -> bool:
+    """Learn from the samples: their model is there and, unless chosen before, not worse in use."""
+    if samples is None:
+        # Back to Home Assistant rather than showing nothing
+        return False
+    return kept or samples.useful or ha is None or not ha.useful
+
+
+async def learn_house(
+    client: HAClient,
+    config: SunflowConfig,
+    profiles: dict[str, dict[str, Any]],
+    now: datetime,
+    snapshot: "Snapshot | None" = None,
+    store: "ShadowStore | None" = None,
+    kept: bool = False,
+) -> HouseLearning:
+    """Learn the house from Home Assistant's hourly means, or from heat_pump_samples once they cover
+    MIN_DAYS days of valid heating (9.3); kept: the samples were chosen before."""
+    ha = await house_data(client, config, profiles, now, snapshot)
+    ha_model = fit(ha.rows, now)
+    device = heat_pump_device(config, profiles)
+    if store is None or device is None:
+        return HouseLearning(data=ha, model=ha_model)
+    coverage = await asyncio.to_thread(store.heat_pump_valid_days, device.id, HOUSE_SAMPLES_DAY_MIN_S)
+    ha = replace(ha, coverage_days=coverage)
+    if coverage < MIN_DAYS:
+        return HouseLearning(data=ha, model=ha_model)
+    rows = await asyncio.to_thread(store.heat_pump_samples, device.id, now - timedelta(days=HISTORY_DAYS))
+    samples = samples_house_data(rows, config, ha, coverage)
+    samples_model = fit(samples.rows, now)
+    if choose_samples(samples_model, ha_model, kept):
+        return HouseLearning(data=samples, model=samples_model)
+    return HouseLearning(data=ha, model=ha_model)
 
 
 def chart(model: HouseModel | None, rows: list[HourRow], days: int = 7) -> list[dict[str, Any]]:

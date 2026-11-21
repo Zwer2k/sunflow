@@ -163,6 +163,7 @@ def test_old_house_fields_survive(tmp_path: Path) -> None:
     # New fields are written with their default
     assert json.loads((tmp_path / "config.json").read_text())["house"] == old_house | {
         "outside_source": "auto", "climate": {"setpoint_c": 21.0, "mode": "heat"},
+        "heating_surface": "underfloor",
     }
 
 

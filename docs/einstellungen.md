@@ -98,13 +98,37 @@ Raumtemperaturen fehlen, gelüftet wird oder der Raum einem geänderten Raum-Sol
 24 Stunden). Im
 Schattenbetrieb wirkt sie nicht zurück und kann bis an ihre Grenze laufen.
 
+**Kennlinie (Schatten):** Aus den 5-Minuten-Werten lernt Sunflow stündlich, wie viel Wärme die
+Heizflächen abgeben: Q = K · (mittlere Wassertemperatur − Raum-Ist)^n, dazu die Spreizung (Vorlauf −
+Rücklauf) abhängig von der Wärme. n kommt aus dem **Heizflächentyp** (Fußboden 1,1, gemischt 1,2,
+Heizkörper 1,3), K und die Spreizung werden gelernt – nur aus gültigem Heizbetrieb mit seit mindestens
+15 Minuten laufendem Kompressor, ohne Nachlauf und ohne Lüften. Die letzten zwei Tage werden
+zurückgehalten: Die Kennlinie gilt erst als nutzbar, wenn sie dort den Vorlauf besser vorhersagt als
+„der Vorlauf bleibt“, ihre Werte plausibel sind und genug Daten vorliegen (mindestens 12 Stunden aus
+3 Tagen zum Lernen und 2 Stunden zum Prüfen). Angezeigt werden K, n, Spreizung, Güte und Datenumfang.
+
+Ist die Kennlinie nutzbar, ist das Vorlauf-Ziel = Kennlinie + Korrektur: der Vorlauf, mit dem die
+Heizflächen beim Raum-Soll die benötigte Wärme abgeben. Die benötigte Wärme kommt aus dem Hausmodell
+(sobald es nutzbar ist), sonst aus der mittleren Wärme der letzten 3 Stunden (Pausen des Kompressors
+zählen mit 0; Warmwasser, Abtauen, Nachlauf, Lüften und Sperre zählen nicht; mindestens 2 Stunden
+nötig). Diese Wärme entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt – die Kennlinie bildet
+dann nur den aktuellen Zustand nach, die Richtung gibt die Korrektur. Sonst gilt weiter Basis +
+Korrektur. Angezeigt wird, welche Quelle gerade gilt; wechselt sie, springt das Vorlauf-Ziel im
+Schattenbetrieb einmal, die Korrektur bleibt.
+
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
-Wärmepumpe). Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
+Wärmepumpe). Der **Heizflächentyp** (Fußbodenheizung, gemischt, Heizkörper; Standard Fußboden) gibt den
+Startwert der Kennlinie vor; nach einer Änderung wird sie neu bewertet, die gemessenen Daten bleiben
+erhalten. Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
 der Sensor der Wärmepumpe), der Außentemperatur-Sensor der Wärmepumpe, der Fühler ihres Außengeräts
 (HPSU: TA2) oder nur der eigene Sensor. Sunflow lernt daraus ein einfaches Wärmemodell des Hauses aus den
 Stundenwerten der letzten vier Wochen. Stunden, in denen die Wärmepumpe Warmwasser bereitet oder
-abgetaut hat, lässt es aus – deren Wärme ging nicht ins Haus:
+abgetaut hat, lässt es aus – deren Wärme ging nicht ins Haus. Die Stundenwerte kommen zuerst aus den
+Stundenmitteln von Home Assistant; sobald die Aufzeichnung der Wärmepumpe mindestens 7 Tage mit
+gültigem Heizbetrieb enthält (je Tag mindestens 1 Stunde), aus deren 5-Minuten-Werten – dann ohne
+Stunden mit Warmwasser, Abtauen, Nachlauf oder Lüften. Umgestellt wird erst, wenn das Modell daraus
+nicht schlechter ist; danach bleibt es dabei. Welche Quelle gilt, steht unter „Gelernt“:
 
 | Gelernt | Bedeutung |
 |---|---|

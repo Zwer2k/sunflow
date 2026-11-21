@@ -10,10 +10,10 @@ from sunflow.config.store import ConfigStore
 from sunflow.ha import HAError
 from sunflow.planning.house_model import (
     MIN_DAYS,
+    SAMPLES,
     chart,
-    fit,
     heat_pump_device,
-    house_data,
+    learn_house,
     restless_rooms,
 )
 
@@ -69,23 +69,32 @@ async def house_model(request: Request) -> dict[str, Any]:
     used = {"used": getattr(runner, "house_model", None) is not None}
     if cached and cached[0] == key and now - cached[1] < CACHE_FOR:
         return cached[2] | used
+    flow = getattr(getattr(runner, "heat_pump", None), "flow", None)
     try:
         snapshots = getattr(request.app.state, "snapshots", None)
         snapshot = await snapshots.get() if snapshots is not None else None
-        data = await house_data(request.app.state.ha, config, profiles, now, snapshot)
+        # The same choice of source as the runner (heat_pump_samples once chosen stays)
+        learned = await learn_house(
+            request.app.state.ha, config, profiles, now, snapshot, getattr(runner, "shadow", None),
+            kept=getattr(flow, "house_source", None) == SAMPLES,
+        )
     except HAError as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
+    data, model = learned.data, learned.model
     if data.outside_entity is None:
         result: dict[str, Any] = {"state": "no_outside"}
     else:
-        model = fit(data.rows, now)
         result = {
             "state": "learning" if model is None else "ready" if model.useful else "unsure",
             "days": model.days if model else len({r.start.date() for r in data.rows}),
             "min_days": MIN_DAYS,
+            # Where the hourly rows come from (9.3): ha_hourly until heat_pump_samples covers MIN_DAYS
+            # days of valid heating, then heat_pump_samples
+            "source": data.source,
+            "coverage_days": data.coverage_days,
             "heat_source": data.heat_source,
             "outside_entity": data.outside_entity,
-            # Hours with hot water or defrost, left out of learning
+            # Hours with hot water or defrost (from the samples also after-run, ventilation), left out
             "excluded_hours": data.excluded_hours,
             "sun": data.sun_entity is not None,
             "restless": restless_rooms(data.per_room, data.inside),

@@ -449,6 +449,24 @@ class ShadowStore:
                     row[column] = None
         return rows
 
+    def heat_pump_valid_days(self, device_id: str, min_seconds: float) -> int:
+        """Days (UTC) of the whole table with at least min_seconds of valid heating without ventilation.
+
+        Valid heating is flags.valid of a row (every minute valid, design/heat_pump.md section 4); a row
+        counts with its minutes. Rows whose flags are not readable JSON do not count.
+        """
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT substr(start, 1, 10), SUM(samples) FROM heat_pump_samples"
+                " WHERE device_id = ? AND CASE WHEN json_valid(flags) THEN"
+                " json_extract(flags, '$.valid') = 1"
+                " AND COALESCE(json_array_length(json_extract(flags, '$.ventilation')), 0) = 0"
+                " ELSE 0 END"
+                " GROUP BY substr(start, 1, 10)",
+                (device_id,),
+            ).fetchall()
+        return sum(1 for _, minutes in rows if (minutes or 0) * 60 >= min_seconds)
+
     def prune_heat_pump_samples(self, before: datetime, block: int = PRUNE_BLOCK) -> int:
         """Delete heat pump rows starting before before, a block at a time; returns how many."""
         removed = 0

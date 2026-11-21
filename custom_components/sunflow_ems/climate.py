@@ -56,6 +56,17 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(add))
 
 
+# Values of the learned heating curve shown as attribute
+CURVE_KEYS = (
+    "shadow", "state", "surface", "n", "k", "spread0_k", "spread_k_per_kw", "typical_heat_w",
+    "typical_overtemp_k", "typical_spread_k", "error_k", "baseline_k", "intervals", "days",
+)
+
+
+def _curve(curve: dict[str, Any] | None) -> dict[str, Any] | None:
+    return {k: curve.get(k) for k in CURVE_KEYS} if curve else None
+
+
 class SunflowHouseClimate(SunflowEntity, ClimateEntity):
     """Room setpoint and mode of the house."""
 
@@ -146,8 +157,18 @@ class SunflowHouseClimate(SunflowEntity, ClimateEntity):
             "flow_base_temperature": first.get("base_c"),
             "flow_correction": first.get("correction_k"),
             "flow_frozen": first.get("frozen"),
+            # Where the flow target starts from (base, house_model, heat_recent) and the curve's value
+            "flow_source": first.get("source"),
+            "flow_source_reason": first.get("source_reason"),
+            "flow_curve_temperature": first.get("curve_c"),
+            "flow_heat_needed": first.get("heat_needed_w"),
+            # The learned heating curve (shadow): K, n, spread, quality, amount of data
+            "heating_curve": _curve(first.get("curve")),
             "heat_pumps": {
-                p["name"]: {k: p["flow"].get(k) for k in ("target_c", "base_c", "correction_k", "frozen", "reason")}
+                p["name"]: {
+                    **{k: p["flow"].get(k) for k in ("target_c", "base_c", "correction_k", "frozen", "reason", "source", "curve_c")},
+                    "heating_curve": _curve(p["flow"].get("curve")),
+                }
                 for p in flows
             }
             if len(flows) > 1

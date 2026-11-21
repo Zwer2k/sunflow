@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.80.9
+
+- Heat pumps (fifth part of the new flow temperature control, still shadow operation): Sunflow learns the heating curve of the heating surfaces every hour from `heat_pump_samples` – K and the spread (flow − return) depending on the heat, with the exponent n from the new setting **heating surface type** (underfloor 1.1, mixed 1.2, radiators 1.3; default underfloor). Only intervals of valid heating with the compressor running for 15 minutes, without after-run and airing count. The curve is used once it has enough data, is plausible and predicts the flow on the last two days better than "the flow stays". Settings → Heat pump shows K, n, spread, quality and the amount of data, marked as shadow.
+- With a usable curve the flow target = curve + correction: the flow for the heat needed at the room setpoint, from the house model or, without one, the mean heat of the last 3 hours (at least 2 hours of valid heating). Otherwise base + correction as before. The source in use is shown in the UI and in the attributes of the thermostat "Haus" (with the learned curve); a change of source is noted in `heat_pump_samples` (events), the correction stays.
+- House model: once `heat_pump_samples` holds 7 days of valid heating, it learns from the heat pump's 5 minute values instead of Home Assistant's hourly means (without hours with hot water, defrost, after-run or airing), switching only when the model is not worse. The source is shown under Learned.
+- Changing the heating surface type re-evaluates the curve; the recorded data are kept.
+
 ## 0.80.8
 
 - Heat pumps (fourth part of the new flow temperature control, still shadow operation): Sunflow notices airing per room – the room falls by at least 0.3 K within 30 minutes. Until the room is flat again (at most 2 hours) it does not count for the room temperature, and the correction pauses. Settings → Heat pump shows rooms being aired and the airing of the last 24 hours.

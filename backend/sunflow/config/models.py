@@ -14,6 +14,8 @@ from pydantic import (
 )
 
 from sunflow.heat_pump.defaults import (
+    HEATING_SURFACE_DEFAULT,
+    HEATING_SURFACES,
     ROOM_SETPOINT_DEFAULT_C,
     ROOM_SETPOINT_MAX_C,
     ROOM_SETPOINT_MIN_C,
@@ -213,6 +215,14 @@ class HouseSettings(BaseModel):
     # source when set, else the heat pump's sensor; heat_pump_unit = the sensor of its outdoor unit
     outside_source: Literal["auto", "heat_pump", "heat_pump_unit", "learning_source"] = "auto"
     climate: ClimateSettings = Field(default_factory=ClimateSettings)
+    # Type of the heating surfaces (design/heat_pump.md, 8.1): start value of the heating curve's exponent
+    heating_surface: Literal["underfloor", "radiator", "mixed"] = HEATING_SURFACE_DEFAULT
+
+    @field_validator("heating_surface", mode="before")
+    @classmethod
+    def _known_surface(cls, value: object) -> object:
+        # A type of a newer version (or anything unreadable) counts as the default, without an error
+        return value if value in HEATING_SURFACES else HEATING_SURFACE_DEFAULT
 
 
 class ChargerSettings(BaseModel):

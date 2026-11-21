@@ -14,6 +14,30 @@ const OUTSIDE_SOURCES = () => ({
   heat_pump_unit: t("Wärmepumpe: Außengerät (TA2)"),
   learning_source: t("eigener Sensor (Lernquelle)"),
 });
+// Type of the heating surfaces (house.heating_surface): start value of the heating curve's exponent n
+const SURFACES = () => ({
+  underfloor: t("Fußbodenheizung"),
+  mixed: t("gemischt (Fußboden und Heizkörper)"),
+  radiator: t("Heizkörper"),
+});
+// Where the flow target starts from (design/heat_pump.md, 8.1)
+const FLOW_SOURCES = () => ({
+  base: t("Basis"),
+  house_model: t("Kennlinie mit Wärme aus dem Hausmodell"),
+  heat_recent: t("Kennlinie mit Wärme der letzten 3 h"),
+});
+/** Why the flow target uses the base, in words. */
+function sourceReasonText(reason) {
+  return {
+    no_curve: t("noch keine Kennlinie"),
+    curve_learning: t("Kennlinie lernt noch (zu wenig Daten)"),
+    curve_implausible: t("Kennlinie nicht plausibel"),
+    curve_unsure: t("Kennlinie sagt den Vorlauf nicht besser voraus als „Vorlauf bleibt“"),
+    curve_stale: t("Heizflächentyp geändert, Kennlinie wird neu bewertet"),
+    no_heat: t("benötigte Wärme unbekannt (kein Hausmodell, weniger als 2 h gültiger Heizbetrieb in den letzten 3 h)"),
+    heat_low: t("benötigte Wärme zu klein"),
+  }[reason] ?? reason;
+}
 // Status of the latest values; refreshed while the view is open
 const STATUS_EVERY_MS = 60_000;
 // Canonical states (design/heat_pump.md, section 4)
@@ -264,20 +288,67 @@ class SunflowHeatPump extends LitElement {
     `;
   }
 
-  /** Base, correction and flow target; shadow: computed, not written. */
+  /** Source, base or curve value, correction and flow target; shadow: computed, not written. */
   _renderFlow(flow, one, tile) {
     const signed = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${decimal(Math.abs(v).toFixed(1))} K`);
+    const source = flow.source ?? "base";
+    const curve = source !== "base";
+    const targetHelp = flow.reason === "no_base"
+      ? t("noch kein wirksamer Vorlauf-Soll aus gültigem Heizbetrieb")
+      : curve ? t("Kennlinie + Korrektur") : t("Basis + Korrektur");
+    const kw = (w) => decimal((w / 1000).toFixed(2));
     return html`
       <div class="learned">
         <span class="field-label">${t("Vorlauf-Ziel (Schatten)")}</span>
         <div class="tiles">
-          ${tile(t("Vorlauf-Ziel"), flow.target_c == null ? "–" : `${one(flow.target_c)} °C`, flow.reason === "no_base" ? t("noch kein wirksamer Vorlauf-Soll aus gültigem Heizbetrieb") : t("Basis + Korrektur"))}
-          ${tile(t("Basis"), flow.base_c == null ? "–" : `${one(flow.base_c)} °C`, t("wirksamer Vorlauf-Soll im gültigen Heizbetrieb"))}
+          ${tile(t("Vorlauf-Ziel"), flow.target_c == null ? "–" : `${one(flow.target_c)} °C`, targetHelp)}
+          ${tile(t("Quelle"), FLOW_SOURCES()[source] ?? source, curve ? null : sourceReasonText(flow.source_reason))}
+          ${curve
+            ? tile(t("Kennlinie"), `${one(flow.curve_c)} °C`, t("für {kw} kW bei Raum-Soll", { kw: kw(flow.heat_needed_w) }))
+            : nothing}
+          ${tile(t("Basis"), flow.base_c == null ? "–" : `${one(flow.base_c)} °C`, curve ? t("wirksamer Vorlauf-Soll, gilt ohne Kennlinie") : t("wirksamer Vorlauf-Soll im gültigen Heizbetrieb"))}
           ${tile(t("Korrektur"), signed(flow.correction_k), t("aus Raum-Ist und Raum-Soll, höchstens ± {limit} K", { limit: decimal(String(flow.parameters.limit_k)) }))}
         </div>
+        ${source === "heat_recent"
+          ? html`<p class="small muted">${t("Die Wärme der letzten 3 h entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt: Die Kennlinie bildet nur den aktuellen Zustand nach, die Richtung gibt die Korrektur vor.")}</p>`
+          : nothing}
+        <p class="small muted">${t("Wechselt die Quelle, springt das Vorlauf-Ziel im Schattenbetrieb einmal; die Korrektur bleibt.")}</p>
         <p class="small muted">${flow.frozen.length
           ? t("Korrektur angehalten: {reasons}", { reasons: flow.frozen.map(frozenText).join(", ") })
           : t("Korrektur läuft.")} ${t("Im Schattenbetrieb wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Aktivschalten beginnt sie bei 0.")}</p>
+      </div>
+      ${this._renderCurve(flow.curve, flow.surface, tile)}
+    `;
+  }
+
+  /** The learned heating curve (shadow): K, n, spread, quality and the data it rests on. */
+  _renderCurve(curve, surface, tile) {
+    if (!curve) {
+      return html`<div class="learned"><span class="field-label">${t("Kennlinie (Schatten)")}</span>
+        <p class="small muted">${t("Noch nicht berechnet.")}</p></div>`;
+    }
+    const two = (v) => (v == null ? "–" : decimal(Number(v).toFixed(2)));
+    const one = (v) => (v == null ? "–" : decimal(Number(v).toFixed(1)));
+    const state = {
+      ready: t("nutzbar"),
+      learning: t("lernt noch (zu wenig Daten)"),
+      implausible: t("nicht plausibel"),
+      unsure: t("nicht besser als „Vorlauf bleibt“"),
+    }[curve.state] ?? curve.state;
+    const stale = surface && curve.surface !== surface;
+    return html`
+      <div class="learned">
+        <span class="field-label">${t("Kennlinie (Schatten)")}</span>
+        <p class="small ${curve.state === "ready" && !stale ? "muted" : "warn-text"}">${t("Wärmeabgabe der Heizflächen Q = K · (Tw − T_Raum)^n: {state}", { state })}</p>
+        ${stale ? html`<p class="small warn-text">${t("Heizflächentyp geändert: Die Kennlinie wird neu bewertet, die gemessenen Daten bleiben erhalten.")}</p>` : nothing}
+        <div class="tiles">
+          ${tile("K", curve.k == null ? "–" : `${decimal(Number(curve.k).toFixed(0))} W/K^n`, t("gelernt"))}
+          ${tile("n", decimal(String(curve.n)), SURFACES()[curve.surface] ?? curve.surface)}
+          ${tile(t("Spreizung"), `${one(curve.typical_spread_k)} K`, t("bei {kw} kW (typisch); {s0} K + {s1} K je kW", { kw: curve.typical_heat_w == null ? "–" : decimal((curve.typical_heat_w / 1000).toFixed(1)), s0: two(curve.spread0_k), s1: two(curve.spread_k_per_kw) }))}
+          ${tile(t("Güte"), curve.error_k == null ? "–" : `± ${two(curve.error_k)} K`, curve.baseline_k == null ? t("Vorlauf auf zurückgehaltenen Tagen") : t("„Vorlauf bleibt“ läge bei ± {k} K", { k: two(curve.baseline_k) }))}
+          ${tile(t("Datenumfang"), t("{count} Intervalle", { count: curve.intervals }), t("{days} Tage, davon {held} Intervalle zum Prüfen; nötig {min} Intervalle aus {min_days} Tagen", { days: curve.days, held: curve.held, min: curve.min_intervals, min_days: curve.min_days }))}
+        </div>
+        <p class="small muted">${t("Gelernt nur aus gültigem Heizbetrieb mit laufendem Kompressor, ohne Nachlauf und ohne Lüften; stündlich neu berechnet.")}</p>
       </div>
     `;
   }
@@ -320,6 +391,16 @@ class SunflowHeatPump extends LitElement {
                 @change=${(e) => set({ heat_entity: e.detail.value || null })}></sf-picker>
               <span class="small muted">${t("Wärmeleistung in W, z. B. vom Wärmemengenzähler der Heizung. Ohne Angabe nimmt Sunflow die Wärme der Wärmepumpe.")}</span>
             </div>
+            <label class="field">
+              <span class="field-label">${t("Heizflächen")}</span>
+              <select @change=${(e) => set({ heating_surface: e.target.value })}>
+                ${Object.entries(SURFACES()).map(([value, label]) => html`<option value=${value} ?selected=${(house.heating_surface ?? "underfloor") === value}>${label}</option>`)}
+              </select>
+              <span class="small muted">${t("Bestimmt den Startwert der Kennlinie (Exponent n: Fußboden 1,1, gemischt 1,2, Heizkörper 1,3).")}</span>
+              ${this._houseEdit && (this._houseEdit.heating_surface ?? "underfloor") !== (this._house.heating_surface ?? "underfloor")
+                ? html`<span class="small warn-text">${t("Nach dem Speichern wird die Kennlinie neu bewertet; die gemessenen Daten bleiben erhalten.")}</span>`
+                : nothing}
+            </label>
             <label class="field">
               <span class="field-label">${t("Außentemperatur")}</span>
               <select @change=${(e) => set({ outside_source: e.target.value })}>
@@ -364,7 +445,7 @@ class SunflowHeatPump extends LitElement {
       error: t("Nicht verfügbar: {error}", { error: result.error ?? "" }),
       learning: t("Lernt noch: {days} von {min} Tagen mit Raum- und Außentemperatur.", { days: result.days ?? 0, min: result.min_days ?? 7 }),
     };
-    if (messages[result.state]) return html`<p class="small muted">${messages[result.state]}</p>`;
+    if (messages[result.state]) return html`<p class="small muted">${messages[result.state]}</p>${this._renderHouseSource(result)}`;
     const m = result.model;
     const heat = {
       meter: t("Wärme vom gewählten Sensor"),
@@ -391,8 +472,11 @@ class SunflowHeatPump extends LitElement {
           ${m.sun_k_per_h != null ? tile(t("Sonne"), `${m.sun_k_per_h >= 0 ? "+" : ""}${one(m.sun_k_per_h)} K/h`, t("bei voller Sonne")) : nothing}
           ${m.error_k != null ? tile(t("Vorhersage über 24 h"), `± ${one(m.error_k)} K`, t("„bleibt gleich“ läge bei ± {k} K", { k: one(m.baseline_k) })) : nothing}
         </div>
+        ${this._renderHouseSource(result)}
         ${result.excluded_hours
-          ? html`<p class="small muted">${t("{hours} Stunden mit Warmwasser oder Abtauen sind ausgelassen: deren Wärme ging nicht ins Haus.", { hours: result.excluded_hours })}</p>`
+          ? html`<p class="small muted">${result.source === "heat_pump_samples"
+            ? t("{hours} Stunden mit Warmwasser, Abtauen, Nachlauf oder Lüften sind ausgelassen.", { hours: result.excluded_hours })
+            : t("{hours} Stunden mit Warmwasser oder Abtauen sind ausgelassen: deren Wärme ging nicht ins Haus.", { hours: result.excluded_hours })}</p>`
           : nothing}
         ${result.restless?.length
           ? html`<p class="small warn-text">${t("Auffällig unruhig – vielleicht Sonne, Heizkörper oder Fenster am Sensor: {rooms}. Ein geringeres Gewicht oder ein anderer Sensor hilft.", { rooms: result.restless.map(name).join(", ") })}</p>`
@@ -418,6 +502,14 @@ class SunflowHeatPump extends LitElement {
           : nothing}
       </div>
     `;
+  }
+
+  /** Where the house model's hours come from: Home Assistant until the heat pump's samples cover enough days. */
+  _renderHouseSource(result) {
+    if (!result.source) return nothing;
+    return html`<p class="small muted">${result.source === "heat_pump_samples"
+      ? t("Quelle: Messwerte der Wärmepumpe (5 min, {days} Tage gültiger Heizbetrieb).", { days: result.coverage_days })
+      : t("Quelle: Stundenmittel aus Home Assistant. Umstellung auf die Messwerte der Wärmepumpe ab {min} Tagen gültigem Heizbetrieb (bisher {days}).", { min: result.min_days ?? 7, days: result.coverage_days ?? 0 })}</p>`;
   }
 
   static styles = css`

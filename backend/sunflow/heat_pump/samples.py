@@ -4,7 +4,8 @@ Design/heat_pump.md, sections 4, 9.1 and 10: one row per heat pump and 5 minutes
 heat_pump_samples of shadow.db. The peak of the flow temperature (tv_max, published every 30 s)
 and compressor starts and stops come from state_changed events, so none is lost between two
 samples. Rooms being aired (6.2) are taken from the shadow control each minute and noted per row
-in flags.ventilation. Unknown states, faults, the room thermostat block and the heat pump limiting the flow
+in flags.ventilation, changes of the flow target's source (8.1) in events. The heating curve of each
+heat pump is learned from the table every hour (9.2). Unknown states, faults, the room thermostat block and the heat pump limiting the flow
 itself are noted once per change in the journal. Reads only; nothing is written to a device.
 """
 
@@ -25,6 +26,8 @@ from sunflow.i18n import t
 from sunflow.planning.house_model import outside_entity
 from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
 
+from .curve import Curve, learn as learn_curve
+from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, FEED_HEAT_WINDOW_S
 from .shadow import FlowShadow
 from .states import UNKNOWN, Evaluation, HeatingTracker, Reading, StateSettings, canonical, read, value_key
 
@@ -32,6 +35,7 @@ _LOGGER = logging.getLogger(__name__)
 
 INTERVAL = timedelta(minutes=5)
 PRUNE_EVERY = timedelta(days=1)
+CURVE_REFRESH = timedelta(seconds=CURVE_REFRESH_S)
 JOURNAL_ACTION = "heat_pump"
 # Column -> role of the numeric 5 minute means
 NUMERIC = {
@@ -133,6 +137,7 @@ class HeatPumpRecorder:
         self._pruned_at: datetime | None = None
         # Shadow control (room correction, flow target) computed from each minute's samples
         self.flow: FlowShadow | None = None
+        self._curve_task: asyncio.Task[None] | None = None
 
     # Events between the samples
 
@@ -221,6 +226,13 @@ class HeatPumpRecorder:
             minute, entities = self._sample(config, device, profile, recording, snapshot, now, aired)
             watched |= {entity_id: (device.id, role) for role, entity_id in entities.items() if role in EVENT_ROLES and entity_id}
             sampled[device.id] = (device, minute)
+            if self.flow is not None and not self.flow.recent(device.id).seeded:
+                # After a start the heat of the last hours comes from the table, then from the minutes
+                since = now - timedelta(seconds=FEED_HEAT_WINDOW_S) - INTERVAL
+                try:
+                    self.flow.recent(device.id).seed(await asyncio.to_thread(self._store.heat_pump_samples, device.id, since), now)
+                except Exception:
+                    _LOGGER.exception("Reading the recent heat failed")
             if minute is not None:
                 recording.minutes.append(minute)
                 recording.last = minute
@@ -232,6 +244,12 @@ class HeatPumpRecorder:
             except Exception:
                 # The recording goes on without the shadow control
                 _LOGGER.exception("Shadow flow control failed")
+            events, self.flow.source_events = self.flow.source_events, []
+            for device_id, event in events:
+                if (recording := self._recordings.get(device_id)) is not None:
+                    recording.events.setdefault(interval_start(now), []).append(event)
+            if self._curve_task is None or self._curve_task.done():
+                self._curve_task = asyncio.create_task(self.learn_curves(config, now))
         if rows:
             await asyncio.to_thread(self._store.store_heat_pump_samples, rows)
         if self._pruned_at is None or now - self._pruned_at >= PRUNE_EVERY:
@@ -239,6 +257,35 @@ class HeatPumpRecorder:
             removed = await asyncio.to_thread(self._store.prune_heat_pump_samples, now - HEAT_PUMP_KEEP)
             if removed:
                 _LOGGER.info("Removed %s heat pump samples older than a year", removed)
+
+    # Heating curve (9.2)
+
+    @staticmethod
+    def curve_key(config: SunflowConfig) -> str:
+        """What a curve depends on besides the table: the heating surface type and the room weights."""
+        rooms = ",".join(f"{r.entity_id}={r.weight}" for r in sorted(config.house.rooms, key=lambda r: r.entity_id))
+        return f"{config.house.heating_surface}|{rooms}"
+
+    async def learn_curves(self, config: SunflowConfig, now: datetime) -> None:
+        """Learn the curve of every heat pump from the table, every CURVE_REFRESH or when the type or rooms changed."""
+        if self.flow is None:
+            return
+        key = self.curve_key(config)
+        weights = {room.entity_id: room.weight for room in config.house.rooms}
+        for device_id in list(self._recordings):
+            current: Curve | None = self.flow.curves.get(device_id)
+            if current is not None and current.key == key and timedelta(0) <= now - current.computed_at < CURVE_REFRESH:
+                continue
+            try:
+                rows = await asyncio.to_thread(self._store.heat_pump_samples, device_id, now - timedelta(days=CURVE_HISTORY_DAYS))
+                curve = await asyncio.to_thread(learn_curve, rows, weights, config.house.heating_surface, now, key)
+            except Exception:
+                # Tried again with the next tick
+                _LOGGER.exception("Learning the heating curve failed")
+                return
+            if (current is None or current.state != curve.state) and (recording := self._recordings.get(device_id)):
+                _LOGGER.info("%s: heating curve %s (%s intervals)", recording.name, curve.state, curve.intervals)
+            self.flow.set_curve(device_id, curve)
 
     def _sample(
         self,

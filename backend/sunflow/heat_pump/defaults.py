@@ -48,3 +48,57 @@ VENT_FLAT_WINDOW_S = 30 * 60
 VENT_MAX_S = 2 * 3600
 VENT_RECENT_KEEP_S = 24 * 3600
 VENT_RECENT_MAX = 20
+
+# Type of the heating surfaces (8.1, setting house.heating_surface): start value of the exponent n of
+# the heating curve Q = K·(Tw − T_room)^n and the start limits of the set value (8.3, used from step 3
+# part 3 on). n is not learned (9.2: optional; kept at the start value of the type).
+HEATING_SURFACE_DEFAULT = "underfloor"
+HEATING_SURFACES: dict[str, dict[str, float]] = {
+    "underfloor": {"n": 1.1, "min_c": 25.0, "max_c": 40.0},
+    "mixed": {"n": 1.2, "min_c": 25.0, "max_c": 50.0},
+    "radiator": {"n": 1.3, "min_c": 30.0, "max_c": 55.0},
+}
+
+
+def curve_exponent(surface: str | None) -> float:
+    """Start value of n for a heating surface type; the default type for an unknown one."""
+    return HEATING_SURFACES.get(surface or "", HEATING_SURFACES[HEATING_SURFACE_DEFAULT])["n"]
+
+
+# Heating curve (9.2), learned from heat_pump_samples every CURVE_REFRESH: rows of the last
+# CURVE_HISTORY_DAYS weighted with a half-life; the last CURVE_HOLDOUT_DAYS are held out for the
+# quality. An interval counts when it is valid heating (section 4, no after-run), nobody aired, at
+# least CURVE_MIN_ROW_SAMPLES minutes, the compressor ran through it and CURVE_RUN_BEFORE_S before,
+# the room temperature is known and the heat plausible (CURVE_HEAT_*_W, mean water temperature at
+# least CURVE_DT_MIN_K above the room).
+CURVE_REFRESH_S = 3600
+CURVE_HISTORY_DAYS = 28
+CURVE_HALF_LIFE_DAYS = 14
+CURVE_HOLDOUT_DAYS = 2
+CURVE_RIDGE = 0.001
+CURVE_MIN_ROW_SAMPLES = 4
+CURVE_COMPRESSOR_FULL = 0.99
+CURVE_RUN_BEFORE_S = 15 * 60
+CURVE_HEAT_MIN_W = 200.0
+CURVE_HEAT_MAX_W = 30_000.0
+CURVE_DT_MIN_K = 0.5
+# Too little data: fewer training intervals or days, or fewer held out intervals
+CURVE_MIN_INTERVALS = 144
+CURVE_MIN_DAYS = 3
+CURVE_MIN_HELD = 24
+# Plausible: mean water temperature above the room at the median heat, spread at the median heat
+CURVE_OVERTEMP_RANGE_K = (1.0, 40.0)
+CURVE_SPREAD_RANGE_K = (0.0, 15.0)
+
+# Heat needed now without a house model (8.1): mean heat of the last FEED_HEAT_WINDOW from the minutes
+# of valid heating, compressor pauses as 0; with fewer than FEED_HEAT_MIN counted minutes, or a mean
+# not above FEED_HEAT_MIN_W, there is no feedforward (source base).
+FEED_HEAT_WINDOW_S = 3 * 3600
+FEED_HEAT_MIN_S = 2 * 3600
+FEED_HEAT_MIN_W = CURVE_HEAT_MIN_W
+
+# House model from heat_pump_samples (9.3): a day counts for the coverage when it holds at least
+# HOUSE_SAMPLES_DAY_MIN_S of valid heating without ventilation; an hour is used with at least
+# HOUSE_SAMPLES_HOUR_MIN_ROWS of its 5 minute rows.
+HOUSE_SAMPLES_DAY_MIN_S = 3600
+HOUSE_SAMPLES_HOUR_MIN_ROWS = 10

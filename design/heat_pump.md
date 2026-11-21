@@ -3,7 +3,8 @@
 Stand: 21.11.2026 · Status: Spezifikation; ESP-Teil (Manifest, `tv_max`, Zehntel für Max/Min T-Vorlauf;
 Abschnitt 3, 12) umgesetzt; Sunflow: Altlösung entfernt (Abschnitt 16, 2a), Datenhaltung (2b), Manifest,
 Kompatibilität und Profil (2c, Teil 1), Zustände und Datensammlung (2c, Teil 2a), climate-Entity und
-Schattenbetrieb mit Korrektur ohne Kennlinie (2c, Teil 2b), Lüft-Erkennung (3, Teil 1) umgesetzt, Rest offen
+Schattenbetrieb mit Korrektur ohne Kennlinie (2c, Teil 2b), Lüft-Erkennung (3, Teil 1), Kennlinie,
+Vorsteuerung und Hausmodell aus `heat_pump_samples` (3, Teil 2) umgesetzt, Rest offen
 
 Sunflow regelt den Vorlauf-Sollwert einer Luft-Wasser-Wärmepumpe so, dass das Haus den eingestellten
 Raum-Soll hält – selbstlernend, ohne die Wärmepumpe in Fehlbetrieb zu treiben – und nutzt einen
@@ -515,13 +516,36 @@ Wärmeabgabe der Heizflächen:
 
 `Q = K · (Tw − T_Raum)^n` mit `Tw = (Tv + Tr)/2`, Spreizung `s = Tv − Tr`
 
-- `n` je Heizflächentyp vorgegeben: Fußbodenheizung 1,1 · Heizkörper 1,3 · gemischt 1,2 (Einstellung).
+- `n` je Heizflächentyp vorgegeben: Fußbodenheizung 1,1 · Heizkörper 1,3 · gemischt 1,2 (Einstellung
+  `house.heating_surface` in `config.json`: `underfloor`/`radiator`/`mixed`, Standard `underfloor`;
+  fehlt das Feld oder ist der Wert unbekannt, z. B. aus einer neueren Version, gilt der Standard ohne
+  Fehler). `n` ist der Startwert der Kennlinie und wird nicht gelernt (9.2). Startwerte je Typ zusammen
+  mit den Startgrenzen des Stellwerts (8.3; Fußboden 25/40 °C, gemischt 25/50 °C, Heizkörper 30/55 °C)
+  an einer Stelle: `HEATING_SURFACES` in `heat_pump/defaults.py`. Ändert der Nutzer den Typ, wird die
+  Kennlinie sofort neu bewertet; die Daten in `heat_pump_samples` bleiben, Hinweis im UI.
 - `K` gelernt (Abschnitt 9). Spreizung `s` gelernt als Funktion der Leistung (einfaches Modell, z. B.
   linear in Q).
-- Benötigte Wärme `Q*`: aus der Planung, sonst aus dem Hausmodell
-  `Q* = (a/b)·(Planziel − T_außen) − Gewinne`; ohne Hausmodell aus der Kennlinie im Gleichgewicht.
+- Benötigte Wärme `Q*`: aus der Planung (ab Schritt 4), sonst aus dem Hausmodell
+  `Q* = (a·(Planziel − T_außen) − d − c·S)/b` (Gewinne: innere `d`, Sonne `c·S`); ohne nutzbares
+  Hausmodell die mittlere abgegebene Wärme der letzten 3 h (Gleichgewicht, Quelle `heat_recent`).
   `T_außen` ist für den aktuellen Slot die gemessene Außentemperatur (Abschnitt 7), nicht die Prognose.
-- Vorlauf-Ziel: `V_Ziel = Planziel + (Q*/K)^(1/n) + s(Q*)/2`.
+- Vorlauf-Ziel: `V_Ziel = Planziel + (Q*/K)^(1/n) + s(Q*)/2 + Korrektur`.
+- **Rangfolge der Quellen** (Status `source`): `house_model` (Hausmodell nutzbar, Außentemperatur
+  gemessen), sonst `heat_recent`, sonst `base` (V_Ziel = Basis + Korrektur, unten). `base` gilt auch, wenn
+  die Kennlinie nicht nutzbar ist (zu wenig Daten, nicht plausibel, nicht besser als „Vorlauf bleibt“,
+  Heizflächentyp geändert) oder `Q*` ≤ 200 W (`FEED_HEAT_MIN_W`, auch `Q*` ≤ 0); der Grund steht in
+  Status und UI (`source_reason`).
+- `heat_recent`: Mittel der Minutenwerte im gültigen Heizbetrieb der letzten 3 h (`FEED_HEAT_WINDOW_S`),
+  Kompressor-Pausen (Aktivität Bereitschaft im Programm Heizen, sonst nichts eingefroren) mit 0.
+  Minuten mit Warmwasser, Abtauen, Nachlauf, Lüften oder Sperre zählen weder als Wärme noch als Zeit.
+  Weniger als 2 h gezählte Minuten (`FEED_HEAT_MIN_S`) → `base`. Nach einem Neustart aus den Zeilen von
+  `heat_pump_samples` der letzten 3 h vorbelegt. **Zirkularität:** Diese Wärme entsteht aus dem Vorlauf,
+  den die HPSU gerade fährt; die Vorsteuerung bildet damit nur den aktuellen Zustand nach, die Richtung
+  kommt allein aus der Korrektur.
+- Quellenwechsel: Die Korrektur bleibt unverändert (sie gilt je Strategie, nicht je Quelle); im Schatten
+  springt V_Ziel dabei einmal, ohne Sprungschutz. Der Wechsel steht mit alter und neuer Quelle in
+  `heat_pump_samples` (`events`, `kind: flow_source`, `from`, `to`), nicht im Journal; das UI zeigt
+  Quelle, Basis- bzw. Kennlinienwert und Korrektur getrennt. Umsetzung `heat_pump/feedforward.py`.
 - Ohne gelernte Kennlinie (Start): V_Ziel = zuletzt wirksamer Vorlauf-Soll; nur die Korrektur bewegt ihn.
   Umsetzung (2c, Teil 2b, `heat_pump/shadow.py`): V_Ziel = Basis + Korrektur. Solange Sunflow nicht
   schreibt (Schatten, Modus `off`), ist die Basis laufend der wirksame Vorlauf-Soll, übernommen nur bei
@@ -721,6 +745,26 @@ aktiv ist.
 - Nutzung erst, wenn Gütemaß besser als „Vorlauf bleibt“ und Parameter plausibel.
 - Gemeinsam für alle Strategien (Physik der Heizflächen).
 
+Umsetzung (3, Teil 2, `heat_pump/curve.py`, Konstanten `CURVE_*` in `heat_pump/defaults.py`):
+- Intervalle aus den letzten 28 Tagen: `flags.valid`, kein `after_run`, kein `ventilation`, ≥ 4
+  Minutenwerte, Kompressor im Intervall und 15 min davor durchgehend an (drei vorige Zeilen mit
+  `compressor` ≥ 0,99), Raum-Ist aus `rooms` mit den Gewichten der konfigurierten Räume, Wärme 200 W bis
+  30 kW, mittlere Wassertemperatur ≥ 0,5 K über Raum-Ist. Alles andere fällt heraus, zählt nicht als 0.
+- `n` bleibt der Startwert des Heizflächentyps (nicht gelernt). `K` aus `Q = K·x`, `x = (Tw − T)^n`;
+  Spreizung `s = s0 + s1·Q` (Q in kW, Konstante unbestraft); Ridge 0,001 relativ zur Spalte.
+- Gütemaß: Fit ohne die letzten 2 Tage; auf diesen sagt die Kennlinie Tv aus gemessener Wärme und
+  Raum-Ist voraus (RMSE); „Vorlauf bleibt“ = Tv des ersten Intervalls je Tag.
+- Zustand: `learning` (weniger als 144 Lern-Intervalle, 3 Lern-Tage oder 24 Prüf-Intervalle),
+  `implausible` (bei der mittleren Wärme Übertemperatur außerhalb 1–40 K oder Spreizung außerhalb
+  0–15 K), `unsure` (nicht besser als „Vorlauf bleibt“), `ready` (nutzbar).
+- Neu gerechnet stündlich und sofort bei geändertem Heizflächentyp oder geänderten Räumen/Gewichten; Ergebnis
+  nur als Cache in `heat_pump_state.json` (`devices.<id>.curve`, Feld `format`; unlesbar oder anderes
+  Format → neu rechnen).
+- Anzeige (gekennzeichnet als Schatten) im UI und in den Attributen der climate-Entity „Haus“
+  (`heating_curve`, `flow_source`): K, n, Spreizung, Güte, Datenumfang; Status
+  `GET /api/v1/heat_pump/status` (`state.flow.curve`, `source`, `source_reason`, `curve_c`,
+  `heat_needed_w`).
+
 ### 9.3 Hausmodell
 
 - Bestehendes 1R1C-Modell (`planning/house_model.py`) bleibt; Wärme aus den 5-min-Daten statt nur aus
@@ -740,7 +784,21 @@ aktiv ist.
   Wärmequellen (ein eigener Zähler misst das Warmwasser meist mit). Ohne Wärmepumpen-Gerät ist keine
   Aktivität bekannt, dann wird nichts ausgelassen; Stunden vor Beginn der History bleiben drin. Quelle
   sind die Stundenmittel, bis `heat_pump_samples` mindestens `MIN_DAYS` (7 Tage) gültigen Heizbetrieb
-  abdeckt (Umstellung offen, Abschnitt 16, Schritt 3).
+  abdeckt (umgesetzt in 3, Teil 2, unten).
+
+Umstellung auf `heat_pump_samples` (3, Teil 2, `planning/house_model.py`, `learn_house`):
+- Abdeckung: Tage (UTC) der ganzen Tabelle mit mindestens 1 h gültigem Heizbetrieb ohne Lüften
+  (`HOUSE_SAMPLES_DAY_MIN_S`). Ab 7 Tagen werden die Stunden aus den 5-min-Zeilen der letzten 28 Tage
+  gebildet: mindestens 10 von 12 Zeilen; Raum-Ist = Wert der Zeile zu Beginn der Stunde (das Modell
+  rechnet von Stundenbeginn zu Stundenbeginn), Außentemperatur und Wärme als Mittel. Eine Stunde fällt
+  heraus bei Warmwasser, Abtauen, Nachlauf, Lüften, Störung, unbekannter Aktivität oder Heizen ohne
+  gültigen Heizbetrieb; Pausen und Sommer/Bereitschaft (Wärme 0) bleiben drin. Sonne weiter aus HA.
+- Ohne Sprung in der Anzeige: umgestellt wird erst, wenn das Modell aus den Messwerten zustande kommt
+  und nicht schlechter ist (nutzbar, oder das aus HA ist es auch nicht); danach bleibt es dabei
+  (`house.model_source` in `heat_pump_state.json`). Kommt aus den Messwerten kein Modell zustande (z. B.
+  lange Lücke), gilt wieder HA statt einer leeren Anzeige.
+- Das UI zeigt unter „Gelernt“ die Quelle (Stundenmittel aus HA bzw. Messwerte der Wärmepumpe) und die
+  Abdeckung; `GET /api/v1/house/model` liefert `source` und `coverage_days`.
 
 **Außentemperatur** (Hausmodell und `outside_c`), Einstellung `house.outside_source`: `auto` (eigener
 Sensor aus den Lernquellen, falls gesetzt, sonst Rolle `outside_temperature` der Wärmepumpe),
@@ -785,16 +843,20 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
     und Max T-Vorlauf), `flags` (`valid` nur, wenn jede Minute gültig war; `frozen`: Gründe;
     `after_run`: Nachlauf `hot_water`/`defrost`/`unknown`; `blocked`, `fault`, `self_limited`;
     `ventilation`: in einer Minute des Intervalls gelüftete Räume, sortierte Liste der Entities, leer
-    ohne Lüften; fehlt in älteren Zeilen → leer).
+    ohne Lüften; fehlt in älteren Zeilen → leer). In `events` zusätzlich der Quellenwechsel des
+    Vorlauf-Ziels (8.1): `{"at", "kind": "flow_source", "from", "to"}` (ab 3, Teil 2).
 - Aufräumen: Zeilen älter als 1 Jahr löschen (im Runner einmal täglich, Blöcke zu 5000 Zeilen).
 - Lernen zurücksetzen: Zeilen des Geräts löschen und `heat_pump_state.json`-Eintrag verwerfen.
 - Export/Import: `heat_pump_samples` wird beim Import übernommen (in `IMPORT_TABLES` eintragen); der
   Import führt alle Tabellen zusammen, siehe `datenhaltung.md` („Export/Import“).
 - `heat_pump_state.json` (klein, verwerfbar; umgesetzt in 2c, Teil 2b, `heat_pump/state_store.py`):
   `house` (zuletzt gesehener Raum-Soll, laufende Soll-Änderung `settling`, Lüften `ventilation` mit
-  `active` und `recent`, 6.2) und je Gerät `base_c`,
-  `base_at`, `corrections` je Strategie; unbekannte Schlüssel werden ignoriert, geschrieben nur bei
+  `active` und `recent`, 6.2, Quelle des Hausmodells `model_source`, 9.3) und je Gerät `base_c`,
+  `base_at`, `corrections` je Strategie, `source` (zuletzt genutzte Quelle des Vorlauf-Ziels, 8.1) und
+  `curve` (Cache der Kennlinie, 9.2); unbekannte Schlüssel werden ignoriert, geschrieben nur bei
   Änderung, atomar. Im Export enthalten, beim Import nicht übernommen.
+- `config.json`: `house.heating_surface` (Heizflächentyp, 8.1; additiv ohne Migration, Standard
+  `underfloor`).
 
 ---
 
@@ -902,7 +964,9 @@ Nur CAN:
 
 - `sunflow_ems`:
   - `climate`-Entity „Haus“: Raum-Soll (einstellbar), Raum-Ist, Modus; Attribute Planziel und Grund
-    (z. B. „Vorheizen wegen PV“), Vorlauf-Ziel, Stellwert geschrieben/ausstehend.
+    (z. B. „Vorheizen wegen PV“), Vorlauf-Ziel, Stellwert geschrieben/ausstehend; seit 3, Teil 2 auch
+    Quelle des Vorlauf-Ziels (`flow_source`, `flow_source_reason`, `flow_curve_temperature`,
+    `flow_heat_needed`) und die gelernte Kennlinie (`heating_curve`, mit `shadow: true`).
   - Sensoren „Vorlauf-Ziel“, „Stellwert“ und „Schreibvorgänge heute“.
 - Sunflow-UI, Bereich Wärmepumpe:
   - Gerät: CAN, ggf. UART-Begleiter, Paarung (Name, Bereich, MAC); erkannte Strategie (aus
@@ -998,12 +1062,20 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       `heat_pump_samples` umstellen**, sobald die Tabelle mindestens `MIN_DAYS` (7 Tage) gültigen
       Heizbetrieb (Abschnitt 4) abdeckt – Wärme nur aus gültigen Heiz-Intervallen, ohne Warmwasser,
       Abtauen und Lüft-Intervalle (9.3). Bis dahin Stundenmittel aus HA mit ausgelassenen Warmwasser- und
-      Abtau-Stunden (umgesetzt in 2c, Teil 2a). Weiterhin Schatten.
+      Abtau-Stunden (umgesetzt in 2c, Teil 2a). Weiterhin Schatten. **Umgesetzt (0.80.9):**
+      `heat_pump/curve.py`, `heat_pump/feedforward.py` (Rangfolge Hausmodell → Wärme der letzten 3 h →
+      Basis), Einstellung `house.heating_surface`, Umstellung des Hausmodells (`learn_house`), Anzeige im
+      UI und in den Attributen; Tests `tests/test_heat_pump_curve.py` (synthetische Daten über mehrere
+      Tage, Rauschen, zu wenig Daten, Umschalten des Hausmodells).
    3. **Grenzen** (8.3) und **Schutzschicht** (8.4: Schaltregeln mit gelernten Sprung- und
       Schwankungswerten, Raumthermostat-Sperre) – weiterhin nur im Schatten: Stellwert und Sperre werden
       berechnet und angezeigt, nicht geschrieben.
    4. **Schreiblogik** (8.5) mit Budget (`EepromGuard`), HA-Sensoren (13), Übernahme mit eingefrorener
-      Basis und Korrektur 0 (8.1, 8.2) – erst damit schreibt Sunflow aktiv.
+      Basis und Korrektur 0 (8.1, 8.2) – erst damit schreibt Sunflow aktiv. Dazu:
+      - Ti der Korrektur je Heizflächentyp (Fußboden 6 h, gemischt 4 h, Heizkörper 2 h); bis dahin fest
+        Fußboden (Kp 1, Ti 6 h).
+      - Stoßfreier Quellenwechsel im aktiven Betrieb (Basis ↔ Kennlinie, Hausmodell ↔ Wärme der letzten
+        3 h): Korrektur so anpassen, dass V_Ziel nicht springt (Sprungschutz). Im Schatten bewusst nicht.
 
    **Vor Teil 4** muss der Nutzer
    - die offenen Punkte aus Abschnitt 15 geklärt haben: Hardware-Test (1), Raumthermostat-Eingang im

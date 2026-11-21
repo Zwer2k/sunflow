@@ -97,13 +97,35 @@ out the difference between room temperature and setpoint (at most ± 3 K; it doe
 being aired or the room is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
 may run to its limit.
 
+**Heating curve (shadow):** from the 5 minute values Sunflow learns every hour how much heat the heating
+surfaces give off: Q = K · (mean water temperature − room temperature)^n, plus the spread (flow −
+return) depending on the heat. n comes from the **heating surface type** (underfloor 1.1, mixed 1.2,
+radiators 1.3); K and the spread are learned – only from valid heating with the compressor running for
+at least 15 minutes, without after-run and without airing. The last two days are held back: the curve
+counts as usable only when it predicts the flow there better than "the flow stays", its values are
+plausible and there is enough data (at least 12 hours from 3 days for learning and 2 hours for checking).
+K, n, spread, quality and amount of data are shown.
+
+With a usable curve the flow target = curve + correction: the flow at which the heating surfaces give
+off the heat needed at the room setpoint. The heat needed comes from the house model (once it is
+usable), else from the mean heat of the last 3 hours (compressor pauses count as 0; hot water, defrost,
+after-run, airing and the block do not count; at least 2 hours needed). That heat comes from the flow the
+heat pump runs now – the curve then only follows the current state, the direction comes from the
+correction. Otherwise base + correction still applies. The source in use is shown; when it changes, the
+flow target jumps once in shadow operation, the correction stays.
+
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
 optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
+The **heating surface type** (underfloor heating, mixed, radiators; default underfloor) sets the start
+value of the heating curve; after a change the curve is evaluated anew, the measured data are kept.
 The **outside temperature** can be chosen: automatic (own sensor under learning sources, else the heat
 pump's sensor), the heat pump's outside temperature sensor, the sensor of its outdoor unit (HPSU: TA2)
 or only the own sensor. From the hourly values of the last four weeks Sunflow learns a simple thermal
 model of the house. Hours in which the heat pump made hot water or defrosted are left out – their heat
-did not go into the house:
+did not go into the house. The hourly values first come from Home Assistant's hourly means; once the
+heat pump's recording holds at least 7 days of valid heating (at least 1 hour each), from its 5 minute
+values – then without hours with hot water, defrost, after-run or airing. The switch happens only when
+the model from them is not worse; after that it stays. The source in use is shown under "Learned":
 
 | Learned | Meaning |
 |---|---|

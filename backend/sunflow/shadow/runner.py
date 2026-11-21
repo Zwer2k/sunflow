@@ -26,7 +26,8 @@ from sunflow.devices.site import (
     site_status,
 )
 from sunflow.ha import HAClient, HAError
-from sunflow.planning.house_model import HouseModel, fit as fit_house, house_data
+from sunflow.heat_pump.feedforward import HouseContext
+from sunflow.planning.house_model import SAMPLES, HouseModel, learn_house
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import (
@@ -832,6 +833,8 @@ class ShadowRunner:
         """The rooms changed: the old model no longer applies, learn anew with the next plan."""
         self._house_at = None
         self.house_model = None
+        if (flow := self.flow_shadow) is not None:
+            flow.house = None
 
     def learn_house(self) -> None:
         """Learn the house in the background when rooms are set and the model is old."""
@@ -848,15 +851,34 @@ class ShadowRunner:
         now = datetime.now(UTC)
         try:
             snapshot = await self.snapshots.get() if self.snapshots else None
-            data = await house_data(self._client, self._store.load(), self._library.profiles, now, snapshot)
-            model = fit_house(data.rows, now)
+            flow = self.flow_shadow
+            learned = await learn_house(
+                self._client, self._store.load(), self._library.profiles, now, snapshot, self.shadow,
+                kept=flow is not None and flow.house_source == SAMPLES,
+            )
+            model, data = learned.model, learned.data
         except Exception as err:
             # Tried again with the next refresh, not with every plan
             _LOGGER.warning("Learning the house failed: %s", err, exc_info=not isinstance(err, HAError))
-            model = None
+            model, data = None, None
         self._house_at = now
         # Used only while it predicts better than "the temperature stays"
         self.house_model = model if model is not None and model.useful else None
+        if (flow := self.flow_shadow) is not None:
+            if data is not None:
+                if data.source != flow.house_source:
+                    _LOGGER.info("House model learned from %s", data.source)
+                flow.house_source = data.source
+            flow.house = (
+                HouseContext(model=self.house_model, sun_entity=data.sun_entity, sun_bright=data.sun_bright)
+                if self.house_model is not None and data is not None
+                else None
+            )
+
+    @property
+    def flow_shadow(self) -> Any:
+        """The shadow flow control of the heat pump recording (FlowShadow), if there is one."""
+        return getattr(self.heat_pump, "flow", None)
 
     async def _replan(self, start: datetime) -> None:
         await i18n.update_language(self._client, self._store.load().display.language)

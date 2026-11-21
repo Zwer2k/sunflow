@@ -1,10 +1,15 @@
 """Shadow operation of the flow temperature control (design/heat_pump.md, 8.1, 8.2, 16 step 2c part 2b).
 
-Without a heating curve the flow target is the base plus the room correction:
+Without a usable heating curve the flow target is the base plus the room correction:
     V_Ziel = base + correction
 The base is the effective flow setpoint of the heat pump, taken over only while it heats validly
 (section 4); outside that the last such value counts. Without one there is no flow target ("no_base").
-The target room temperature is the room setpoint (planning follows in step 4).
+With a usable curve (step 3 part 2, feedforward.py) the flow target is the curve's flow for the heat
+the house needs plus the same correction:
+    V_Ziel = target + (Q*/K)^(1/n) + s(Q*)/2 + correction
+The correction belongs to the strategy, not to the source: a change of the source leaves it as it is
+(in shadow the flow target jumps once; noted in heat_pump_samples). The target room temperature is
+the room setpoint (planning follows in step 4).
 
 Shadow: everything is computed, stored and shown, nothing is written to a heat pump. As Sunflow does
 not act, the correction has no effect back and may run to its limit; it is marked as shadow and starts
@@ -16,13 +21,15 @@ correction takes the new value as reference instead of a step, so that alone cau
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import logging
+import math
 from typing import TYPE_CHECKING, Any
 
 from sunflow.config.models import DeviceConfig, SunflowConfig
 
 from .correction import Correction, SetpointWatch, Settling
+from .curve import Curve
 from .defaults import (
     CORRECTION_KP,
     CORRECTION_LIMIT_K,
@@ -33,6 +40,7 @@ from .defaults import (
     ROOM_SETPOINT_MIN_C,
     ROOM_SETPOINT_STEP_C,
 )
+from .feedforward import BASE, Feed, HouseContext, RecentHeat, feedforward, house_heat_w
 from .rooms import RoomTemperature, StateReader, reported_times, room_temperature
 from .state_store import HeatPumpStateStore
 from .states import UNKNOWN
@@ -54,6 +62,15 @@ def _time(text: Any) -> datetime | None:
         return None
 
 
+def _number(text: Any) -> float | None:
+    """A state as a number (sun sensor); None when unavailable or not a number."""
+    try:
+        value = float(text)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
 def _float(value: Any) -> float | None:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
@@ -69,6 +86,8 @@ class FlowState:
     target_c: float | None
     frozen: tuple[str, ...]
     reason: str | None
+    feed: Feed | None = None
+    recent_s: float = 0.0
 
 
 class FlowShadow:
@@ -93,8 +112,37 @@ class FlowShadow:
         self.flows: dict[str, FlowState] = {}
         self._config: SunflowConfig | None = None
         self._observed_at: datetime | None = None
+        # Learned heating curves per heat pump (from the cache until learned anew) and the house model
+        self.curves: dict[str, Curve] = {}
+        for device_id, stored in store.devices.items():
+            if (curve := Curve.from_dict(stored.get("curve"))) is not None:
+                self.curves[device_id] = curve
+        self.house: HouseContext | None = None
+        # Where the house model learns from: heat_pump_samples once chosen (kept, no jump back)
+        self.house_source: str | None = house.get("model_source") if isinstance(house.get("model_source"), str) else None
+        self._recent: dict[str, RecentHeat] = {}
+        # Source changes of this tick: (device id, event) for heat_pump_samples
+        self.source_events: list[tuple[str, dict[str, Any]]] = []
         # The rooms the room temperature is made of changed with the last observation
         self._rooms_changed = False
+
+    def set_curve(self, device_id: str, curve: Curve) -> None:
+        """A newly learned curve; kept as cache with the next save."""
+        self.curves[device_id] = curve
+        self._store.devices.setdefault(device_id, {})["curve"] = curve.as_dict()
+
+    def recent(self, device_id: str) -> RecentHeat:
+        """Heat of the last hours of one heat pump (source heat_recent)."""
+        return self._recent.setdefault(device_id, RecentHeat())
+
+    def _feed(self, config: SunflowConfig, device_id: str, minute: "Minute", states: dict[str, dict[str, Any]], now: datetime) -> tuple[Feed, float]:
+        target = config.house.climate.setpoint_c
+        sun = None
+        if self.house is not None and self.house.sun_entity:
+            sun = _number((states.get(self.house.sun_entity) or {}).get("state"))
+        house_w = house_heat_w(self.house, target, minute.outside_c, sun)
+        recent_w, seconds = self.recent(device_id).mean(now)
+        return feedforward(self.curves.get(device_id), target, house_w, recent_w, config.house.heating_surface), seconds
 
     def _correction(self, device_id: str, strategy: str) -> Correction:
         key = (device_id, strategy)
@@ -147,7 +195,7 @@ class FlowShadow:
         setpoint = config.house.climate.setpoint_c
         settling = self.watch.update(setpoint, room.value_c, now)
         flows: dict[str, FlowState] = {}
-        for device_id, (_device, minute) in minutes.items():
+        for device_id, (device, minute) in minutes.items():
             stored = self._store.devices.setdefault(device_id, {})
             base, base_at = _float(stored.get("base_c")), _time(stored.get("base_at"))
             if minute is None:
@@ -161,6 +209,16 @@ class FlowShadow:
                 )
                 continue
             reading, evaluation = minute.reading, minute.evaluation
+            self.recent(device_id).add(minute, bool(self.aired))
+            feed, recent_s = self._feed(config, device_id, minute, states, now)
+            previous = stored.get("source")
+            if previous != feed.source:
+                if isinstance(previous, str):
+                    self.source_events.append(
+                        (device_id, {"at": now.astimezone(UTC).isoformat(), "kind": "flow_source", "from": previous, "to": feed.source})
+                    )
+                    _LOGGER.info("%s: flow target now from %s (was %s)", device.name, feed.source, previous)
+                stored["source"] = feed.source
             effective = reading.values.get("flow_setpoint")
             if evaluation.valid and effective is not None:
                 base, base_at = effective, now
@@ -189,19 +247,23 @@ class FlowShadow:
                     correction.step(room.value_c, setpoint, now)
                 correction_k = correction.value_k
                 stored.setdefault("corrections", {})[strategy] = round(correction.value_k, 4)
-            target = base + correction_k if base is not None and correction_k is not None else None
-            reason = "no_base" if base is None else "strategy_unknown" if correction_k is None else None
+            start = feed.curve_c if feed.source != BASE else base
+            target = start + correction_k if start is not None and correction_k is not None else None
+            reason = "no_base" if start is None else "strategy_unknown" if correction_k is None else None
             flows[device_id] = FlowState(
                 strategy=strategy, base_c=base, base_at=base_at, correction_k=correction_k, target_c=target,
-                frozen=tuple(sorted(set(frozen))), reason=reason,
+                frozen=tuple(sorted(set(frozen))), reason=reason, feed=feed, recent_s=recent_s,
             )
         self.flows = flows
         for gone in set(self._store.devices) - set(minutes):
             del self._store.devices[gone]
+            self.curves.pop(gone, None)
+            self._recent.pop(gone, None)
         self._store.house = {
             "setpoint_c": self.watch.last_c,
             "settling": self.watch.settling.as_dict() if self.watch.settling else None,
             "ventilation": self.ventilation.as_dict(),
+            "model_source": self.house_source,
         }
         self._store.save()
 
@@ -225,6 +287,15 @@ class FlowShadow:
             "target_c": round(flow.target_c, 2) if flow.target_c is not None else None,
             "frozen": list(flow.frozen),
             "reason": flow.reason,
+            # Feedforward (8.1): source of the flow target (base, house_model, heat_recent), why the base,
+            # heat needed and the curve's flow for it; the learned curve (shadow)
+            "source": flow.feed.source if flow.feed else BASE,
+            "source_reason": flow.feed.reason if flow.feed else None,
+            "heat_needed_w": round(flow.feed.heat_w) if flow.feed and flow.feed.heat_w is not None else None,
+            "curve_c": round(flow.feed.curve_c, 2) if flow.feed and flow.feed.curve_c is not None else None,
+            "heat_recent_s": round(flow.recent_s),
+            "curve": curve.status() if (curve := self.curves.get(device_id)) is not None else None,
+            "surface": self._config.house.heating_surface if self._config else None,
             "parameters": {
                 "kp": CORRECTION_KP, "ti_h": CORRECTION_TI_H, "deadband_k": ROOM_DEADBAND_K, "limit_k": CORRECTION_LIMIT_K,
             },
