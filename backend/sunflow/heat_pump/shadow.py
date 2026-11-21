@@ -9,6 +9,10 @@ The target room temperature is the room setpoint (planning follows in step 4).
 Shadow: everything is computed, stored and shown, nothing is written to a heat pump. As Sunflow does
 not act, the correction has no effect back and may run to its limit; it is marked as shadow and starts
 at 0 when Sunflow takes over (step 3), with the base frozen then.
+
+Ventilation (6.2): a room being aired does not count for the room temperature, and the correction is
+frozen meanwhile. When rooms leave or join the room temperature (aired, stale, missing), the
+correction takes the new value as reference instead of a step, so that alone causes no jump.
 """
 
 from dataclasses import dataclass
@@ -32,6 +36,7 @@ from .defaults import (
 from .rooms import RoomTemperature, StateReader, reported_times, room_temperature
 from .state_store import HeatPumpStateStore
 from .states import UNKNOWN
+from .ventilation import VentilationWatch
 
 if TYPE_CHECKING:
     from .samples import Minute
@@ -81,9 +86,15 @@ class FlowShadow:
         self._reported: dict[str, datetime | None] = {}
         self._reported_at: datetime | None = None
         self._reported_key: tuple[Any, ...] | None = None
+        self.ventilation = VentilationWatch(house.get("ventilation"))
+        # Rooms being aired at the last observation
+        self.aired: tuple[str, ...] = ()
         self.room: RoomTemperature | None = None
         self.flows: dict[str, FlowState] = {}
         self._config: SunflowConfig | None = None
+        self._observed_at: datetime | None = None
+        # The rooms the room temperature is made of changed with the last observation
+        self._rooms_changed = False
 
     def _correction(self, device_id: str, strategy: str) -> Correction:
         key = (device_id, strategy)
@@ -109,6 +120,19 @@ class FlowShadow:
             result[entity_id] = max(fetched, updated) if fetched is not None and updated is not None else fetched
         return result
 
+    async def observe(self, config: SunflowConfig, states: dict[str, dict[str, Any]], now: datetime) -> tuple[str, ...]:
+        """Ventilation and room temperature of this minute (once per minute); the rooms being aired."""
+        if self._observed_at == now:
+            return self.aired
+        self._config = config
+        reported = await self._reported_times(config, states, now)
+        self.aired = self.ventilation.update((room.entity_id for room in config.house.rooms), states, now)
+        before = self.room
+        self.room = room_temperature(config.house.rooms, states, reported, now, self.aired)
+        self._rooms_changed = before is not None and before.used != self.room.used
+        self._observed_at = now
+        return self.aired
+
     async def tick(
         self,
         config: SunflowConfig,
@@ -117,9 +141,9 @@ class FlowShadow:
         now: datetime,
     ) -> None:
         """One step: room temperature, setpoint change, then base, correction and target per heat pump."""
-        self._config = config
-        reported = await self._reported_times(config, states, now)
-        self.room = room = room_temperature(config.house.rooms, states, reported, now)
+        await self.observe(config, states, now)
+        room = self.room
+        assert room is not None
         setpoint = config.house.climate.setpoint_c
         settling = self.watch.update(setpoint, room.value_c, now)
         flows: dict[str, FlowState] = {}
@@ -142,7 +166,9 @@ class FlowShadow:
                 base, base_at = effective, now
                 stored["base_c"], stored["base_at"] = base, now.isoformat()
             frozen = list(evaluation.frozen)
-            if room.value_c is None:
+            if self.aired:
+                frozen.append("ventilation")
+            elif room.value_c is None:
                 frozen.append("rooms_missing")
             if settling is not None:
                 frozen.append("setpoint_change")
@@ -158,6 +184,8 @@ class FlowShadow:
                 if frozen or room.value_c is None:
                     correction.hold(room.value_c, now)
                 else:
+                    if self._rooms_changed:
+                        correction.rebase(room.value_c)
                     correction.step(room.value_c, setpoint, now)
                 correction_k = correction.value_k
                 stored.setdefault("corrections", {})[strategy] = round(correction.value_k, 4)
@@ -173,6 +201,7 @@ class FlowShadow:
         self._store.house = {
             "setpoint_c": self.watch.last_c,
             "settling": self.watch.settling.as_dict() if self.watch.settling else None,
+            "ventilation": self.ventilation.as_dict(),
         }
         self._store.save()
 
@@ -180,7 +209,7 @@ class FlowShadow:
 
     def house_status(self, config: SunflowConfig | None = None) -> dict[str, Any]:
         """Room setpoint, mode and room temperature for the climate entity and the UI."""
-        return climate_status(config or self._config, self.room, self.watch.settling)
+        return climate_status(config or self._config, self.room, self.watch.settling, self.ventilation)
 
     def flow_status(self, device_id: str) -> dict[str, Any] | None:
         """Base, correction and flow target of one heat pump (shadow: nothing is written)."""
@@ -202,8 +231,13 @@ class FlowShadow:
         }
 
 
-def climate_status(config: SunflowConfig | None, room: RoomTemperature | None, settling: Settling | None) -> dict[str, Any]:
-    """Room setpoint, its range, mode, room temperature and a setpoint change being followed."""
+def climate_status(
+    config: SunflowConfig | None,
+    room: RoomTemperature | None,
+    settling: Settling | None,
+    ventilation: VentilationWatch | None = None,
+) -> dict[str, Any]:
+    """Room setpoint, its range, mode, room temperature, a setpoint change being followed, ventilation."""
     climate = config.house.climate if config is not None else None
     return {
         "setpoint_c": climate.setpoint_c if climate else None,
@@ -215,6 +249,10 @@ def climate_status(config: SunflowConfig | None, room: RoomTemperature | None, s
         "rooms_used": list(room.used) if room else [],
         "rooms_missing": list(room.missing) if room else [],
         "rooms_stale": list(room.stale) if room else [],
+        "rooms_ventilated": list(room.ventilated) if room else [],
+        # Ventilation (6.2): rooms being aired and events that ended within the last 24 h, newest first
+        "ventilation": [e.as_dict() for e in ventilation.active.values()] if ventilation else [],
+        "ventilation_recent": [e.as_dict() for e in reversed(ventilation.recent)] if ventilation else [],
         # Planning follows in step 4: the plan target is the setpoint
         "plan_target_c": climate.setpoint_c if climate else None,
         "settling": settling.as_dict() if settling else None,

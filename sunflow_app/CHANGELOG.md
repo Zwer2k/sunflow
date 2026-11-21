@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.80.8
+
+- Heat pumps (fourth part of the new flow temperature control, still shadow operation): Sunflow notices airing per room – the room falls by at least 0.3 K within 30 minutes. Until the room is flat again (at most 2 hours) it does not count for the room temperature, and the correction pauses. Settings → Heat pump shows rooms being aired and the airing of the last 24 hours.
+- When a room leaves or rejoins the room temperature (aired, unavailable, no report for 2 hours), the correction no longer jumps.
+- The recording `heat_pump_samples` notes aired rooms per 5 minutes (`flags.ventilation`).
+
 ## 0.80.7
 
 - Heat pumps (third part of the new flow temperature control, shadow operation): new thermostat "Haus" in the Sunflow integration with room setpoint (18–27 °C, step 0.5 °C, via automations to 0.1 °C), room temperature and mode heat/off; also under Settings → Heat pump. The setpoint starts at the former comfort minimum (if it lies in the range, else 21 °C); the previous configuration stays as `config.v5.json`.

@@ -82,14 +82,19 @@ it, but writes nothing to the heat pump.
 the thermostat "Haus" in Home Assistant. Next to it the room temperature (weighted mean of the rooms; a
 room does not count while its sensor is unavailable or has not reported for more than 2 hours).
 
+**Airing:** when a room falls by at least 0.3 K within 30 minutes, Sunflow notices airing. Until the
+room is steady again (changed by at most 0.1 K for 30 minutes), at most 2 hours, it does not count for
+the room temperature and the correction pauses. Rooms being aired and the airing of the last 24 hours
+are shown.
+
 **Heat pump:** per device connection and compatibility, program, activity, strategy (HK function),
 bypass valve, flow, return, effective flow setpoint and Max T-Vorlauf, an active room thermostat block or
 a fault clearly highlighted, and whether the heat pump heats validly – otherwise why not (e.g. hot water,
 after-run, bypass valve). Below it the **flow target** = base + correction: the base is the effective
 flow setpoint from valid heating (outside it the last such value counts). The correction slowly evens
 out the difference between room temperature and setpoint (at most ± 3 K; it does not grow within
-± 0.2 K). It pauses while the heat pump does not heat validly, room temperatures are missing or the room
-is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
+± 0.2 K). It pauses while the heat pump does not heat validly, room temperatures are missing, a room is
+being aired or the room is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
 may run to its limit.
 
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and

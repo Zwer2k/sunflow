@@ -2,7 +2,7 @@ import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import "../components/picker.js";
-import { decimal, t } from "../lib/i18n.js";
+import { decimal, locale, t } from "../lib/i18n.js";
 import { lineChart, SERIES_COLORS } from "../components/charts.js";
 
 // Room temperature at which the cooling rate is shown (api/house.py)
@@ -44,6 +44,7 @@ function frozenText(reason) {
     setpoint_missing: t("Vorlauf-Soll unbekannt"),
     self_limited: t("Wärmepumpe begrenzt den Vorlauf selbst"),
     rooms_missing: t("keine aktuellen Raumtemperaturen"),
+    ventilation: t("Lüften erkannt"),
     setpoint_change: t("Raum-Soll geändert, Raum folgt noch"),
     strategy_unknown: t("Strategie unbekannt"),
     no_sample: t("keine Messwerte"),
@@ -175,16 +176,38 @@ class SunflowHeatPump extends LitElement {
           <div class="tile">
             <div class="small muted">${t("Raum-Ist")}</div>
             <div class="value">${one(house.room_c)} °C</div>
-            <div class="small muted">${t("aus {used} von {total} Räumen", { used: house.rooms_used.length, total: house.rooms_used.length + house.rooms_missing.length + house.rooms_stale.length })}</div>
+            <div class="small muted">${t("aus {used} von {total} Räumen", { used: house.rooms_used.length, total: house.rooms_used.length + house.rooms_missing.length + house.rooms_stale.length + (house.rooms_ventilated ?? []).length })}</div>
           </div>
         </div>
         ${house.rooms_stale.length || house.rooms_missing.length
           ? html`<p class="small warn-text">${t("Nicht berücksichtigt (nicht verfügbar oder seit über 2 h keine Meldung): {rooms}", { rooms: [...house.rooms_missing, ...house.rooms_stale].map((e) => this._roomName(e)).join(", ") })}</p>`
           : nothing}
+        ${this._renderVentilation(house, one)}
         ${settling
           ? html`<p class="small muted">${t("Raum-Soll geändert auf {target} °C: Die Korrektur wartet, bis der Raum ihn erreicht (höchstens 24 h).", { target: one(settling.target_c) })}</p>`
           : nothing}
       </section>
+    `;
+  }
+
+  /** Rooms being aired now (left out of room temperature and correction) and events of the last 24 h. */
+  _renderVentilation(house, one) {
+    const active = house.ventilation ?? [];
+    const recent = house.ventilation_recent ?? [];
+    if (!active.length && !recent.length) return nothing;
+    const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+    const drop = (e) => decimal(Number(e.drop_k).toFixed(1));
+    return html`
+      ${active.length
+        ? html`<p class="small warn-text">${t("Lüften erkannt, Raum zählt vorerst nicht und die Korrektur wartet (höchstens 2 h): {rooms}", {
+          rooms: active.map((e) => t("{room} seit {time} ({from} → {low} °C)", { room: this._roomName(e.entity_id), time: time(e.since), from: one(e.start_c), low: one(e.low_c) })).join(", "),
+        })}</p>`
+        : nothing}
+      ${recent.length
+        ? html`<p class="small muted">${t("Lüften in den letzten 24 h: {events}", {
+          events: recent.map((e) => t("{room} {from}–{until} (−{drop} K)", { room: this._roomName(e.entity_id), from: time(e.since), until: time(e.until), drop: drop(e) })).join(", "),
+        })}</p>`
+        : nothing}
     `;
   }
 

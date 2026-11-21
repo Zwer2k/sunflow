@@ -1,4 +1,4 @@
-"""Fixed values of the flow temperature control (design/heat_pump.md, 3.6, 6.3, 8.2 and 8.5)."""
+"""Fixed values of the flow temperature control (design/heat_pump.md, 3.6, 6.2, 6.3, 8.2 and 8.5)."""
 
 # Deadband of writing (8.5): a new set value is written only when it differs by more than this from the
 # written one. A profile may override it in flow_control.writes.deadband.
@@ -34,3 +34,17 @@ CORRECTION_MAX_STEP_S = 30 * 60
 # changes do not count
 SETPOINT_SETTLE_MAX_S = 24 * 3600
 SETPOINT_CHANGE_MIN_K = 0.1
+
+# Ventilation (6.2), per room: an event starts when the room falls by at least VENT_DROP_K within
+# VENT_DROP_WINDOW (the value before counts as long as the sensor showed it; 0.3 K in 30 min is the
+# slope of -0.6 K/h). It ends when the room is flat again - changed by at most VENT_FLAT_K over
+# VENT_FLAT_WINDOW - at the latest after VENT_MAX. Meanwhile the room does not count for the room
+# temperature and the correction is frozen. Ended events are shown for VENT_RECENT_KEEP, at most
+# VENT_RECENT_MAX of them.
+VENT_DROP_K = 0.3
+VENT_DROP_WINDOW_S = 30 * 60
+VENT_FLAT_K = 0.1
+VENT_FLAT_WINDOW_S = 30 * 60
+VENT_MAX_S = 2 * 3600
+VENT_RECENT_KEEP_S = 24 * 3600
+VENT_RECENT_MAX = 20

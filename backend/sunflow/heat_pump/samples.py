@@ -3,7 +3,8 @@
 Design/heat_pump.md, sections 4, 9.1 and 10: one row per heat pump and 5 minutes in the table
 heat_pump_samples of shadow.db. The peak of the flow temperature (tv_max, published every 30 s)
 and compressor starts and stops come from state_changed events, so none is lost between two
-samples. Unknown states, faults, the room thermostat block and the heat pump limiting the flow
+samples. Rooms being aired (6.2) are taken from the shadow control each minute and noted per row
+in flags.ventilation. Unknown states, faults, the room thermostat block and the heat pump limiting the flow
 itself are noted once per change in the journal. Reads only; nothing is written to a device.
 """
 
@@ -82,6 +83,8 @@ class Minute:
     heat_source: str | None
     outside_c: float | None
     rooms: dict[str, float]
+    # Rooms being aired in this minute (6.2)
+    ventilation: tuple[str, ...] = ()
 
 
 @dataclass(kw_only=True)
@@ -187,6 +190,13 @@ class HeatPumpRecorder:
             del self._recordings[gone]
         rows: list[dict[str, Any]] = []
         watched: dict[str, tuple[str, str]] = {}
+        aired: tuple[str, ...] = ()
+        if self.flow is not None:
+            try:
+                aired = await self.flow.observe(config, snapshot.states, now)
+            except Exception:
+                # The recording goes on without it
+                _LOGGER.exception("Ventilation detection failed")
         sampled: dict[str, tuple[DeviceConfig, Minute | None]] = {}
         for device in devices:
             profile = profiles[device.profile]
@@ -208,7 +218,7 @@ class HeatPumpRecorder:
                 recording.peaks = {k: v for k, v in recording.peaks.items() if k >= interval}
                 recording.events = {k: v for k, v in recording.events.items() if k >= interval}
             recording.interval = interval
-            minute, entities = self._sample(config, device, profile, recording, snapshot, now)
+            minute, entities = self._sample(config, device, profile, recording, snapshot, now, aired)
             watched |= {entity_id: (device.id, role) for role, entity_id in entities.items() if role in EVENT_ROLES and entity_id}
             sampled[device.id] = (device, minute)
             if minute is not None:
@@ -231,7 +241,14 @@ class HeatPumpRecorder:
                 _LOGGER.info("Removed %s heat pump samples older than a year", removed)
 
     def _sample(
-        self, config: SunflowConfig, device: DeviceConfig, profile: dict[str, Any], recording: Recording, snapshot: Snapshot, now: datetime
+        self,
+        config: SunflowConfig,
+        device: DeviceConfig,
+        profile: dict[str, Any],
+        recording: Recording,
+        snapshot: Snapshot,
+        now: datetime,
+        aired: tuple[str, ...] = (),
     ) -> tuple[Minute | None, dict[str, str | None]]:
         found = (snapshot.manifests.get(device.ha_device_id) or {}).get(manifest_id(profile) or "")
         recording.manifest = found.manifest if found else None
@@ -265,6 +282,7 @@ class HeatPumpRecorder:
             heat_source=source,
             outside_c=_number(snapshot.states.get(recording.outside_entity)) if recording.outside_entity else None,
             rooms=rooms,
+            ventilation=aired,
         )
         return minute, entities
 
@@ -314,6 +332,8 @@ class HeatPumpRecorder:
                 "blocked": any(m.reading.blocked for m in minutes),
                 "fault": any(m.reading.fault for m in minutes),
                 "self_limited": any(m.evaluation.self_limited for m in minutes),
+                # Rooms aired in any minute (6.2); such intervals are left out of learning the heating curve
+                "ventilation": sorted({r for m in minutes for r in m.ventilation}),
             },
         }
         return row

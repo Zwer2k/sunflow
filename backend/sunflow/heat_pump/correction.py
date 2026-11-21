@@ -48,6 +48,11 @@ class Correction:
         """Frozen: the room's changes until now are dropped."""
         self._room, self._at = room_c, now
 
+    def rebase(self, room_c: float | None) -> None:
+        """The room temperature is made of other rooms now (one left out or back): new reference, no step."""
+        if self._room is not None:
+            self._room = room_c
+
     def step(self, room_c: float, target_c: float, now: datetime) -> bool:
         """One step if the room changed or the longest step passed; True if a step was taken."""
         if self._room is None or self._at is None:

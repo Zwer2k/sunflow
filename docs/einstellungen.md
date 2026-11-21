@@ -82,6 +82,11 @@ ihn an, schreibt aber nichts an die Wärmepumpe.
 wie das Thermostat „Haus“ in Home Assistant. Daneben das Raum-Ist (gewichtetes Mittel der Räume; ein Raum
 zählt nicht, wenn sein Sensor nicht verfügbar ist oder seit über 2 Stunden nichts gemeldet hat).
 
+**Lüften:** Fällt ein Raum innerhalb von 30 Minuten um mindestens 0,3 K, erkennt Sunflow Lüften. Bis der
+Raum wieder gleichmäßig ist (30 Minuten lang höchstens 0,1 K Änderung), höchstens 2 Stunden, zählt er
+nicht für das Raum-Ist, und die Korrektur hält an. Angezeigt werden gerade gelüftete Räume und das
+Lüften der letzten 24 Stunden.
+
 **Wärmepumpe:** je Gerät Verbindung und Kompatibilität, Programm, Aktivität, Strategie (HK-Funktion),
 Bypass-Ventil, Vorlauf, Rücklauf, wirksamer Vorlauf-Soll und Max T-Vorlauf, eine aktive
 Raumthermostat-Sperre oder Störung deutlich hervorgehoben, und ob die Wärmepumpe gültig heizt – sonst
@@ -89,7 +94,8 @@ der Grund (z. B. Warmwasser, Nachlauf, Bypass-Ventil). Darunter das **Vorlauf-Zi
 Korrektur: Die Basis ist der wirksame Vorlauf-Soll aus gültigem Heizbetrieb (außerhalb gilt der letzte
 solche Wert). Die Korrektur gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens
 ± 3 K; unter ± 0,2 K Abweichung wächst sie nicht). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
-Raumtemperaturen fehlen oder der Raum einem geänderten Raum-Soll noch folgt (höchstens 24 Stunden). Im
+Raumtemperaturen fehlen, gelüftet wird oder der Raum einem geänderten Raum-Soll noch folgt (höchstens
+24 Stunden). Im
 Schattenbetrieb wirkt sie nicht zurück und kann bis an ihre Grenze laufen.
 
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)

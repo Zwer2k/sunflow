@@ -9,7 +9,7 @@ later the ventilation detection and the house model.
 """
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
@@ -53,7 +53,8 @@ async def reported_times(client: StateReader, entity_ids: Iterable[str]) -> dict
     return dict(zip(ids, await asyncio.gather(*(one(e) for e in ids)), strict=True))
 
 
-def _celsius(state: dict[str, Any] | None) -> float | None:
+def celsius(state: dict[str, Any] | None) -> float | None:
+    """The temperature a room sensor shows in °C; None if unavailable or no number."""
     if not state or state.get("state") in UNAVAILABLE_STATES:
         return None
     unit = (state.get("attributes") or {}).get("unit_of_measurement") or "°C"
@@ -67,9 +68,10 @@ class RoomTemperature:
 
     value_c: float | None
     used: tuple[str, ...] = ()
-    # Rooms left out: unavailable or no number; not reported for too long
+    # Rooms left out: unavailable or no number; not reported for too long; being aired
     missing: tuple[str, ...] = ()
     stale: tuple[str, ...] = ()
+    ventilated: tuple[str, ...] = ()
 
 
 def room_temperature(
@@ -77,23 +79,29 @@ def room_temperature(
     states: dict[str, dict[str, Any]],
     reported: dict[str, datetime | None],
     now: datetime,
+    ventilated: Collection[str] = (),
 ) -> RoomTemperature:
-    """Weighted mean of the rooms that are available and reported recently enough."""
+    """Weighted mean of the rooms that are available, reported recently enough and are not being aired."""
     total = weight = 0.0
     used: list[str] = []
     missing: list[str] = []
     stale: list[str] = []
+    aired: list[str] = []
     for room in rooms:
-        value = _celsius(states.get(room.entity_id))
+        value = celsius(states.get(room.entity_id))
         if value is None:
             missing.append(room.entity_id)
             continue
         if (at := reported.get(room.entity_id)) is not None and now - at > ROOM_STALE_AFTER:
             stale.append(room.entity_id)
             continue
+        if room.entity_id in ventilated:
+            aired.append(room.entity_id)
+            continue
         total += value * room.weight
         weight += room.weight
         used.append(room.entity_id)
     return RoomTemperature(
-        value_c=total / weight if weight > 0 else None, used=tuple(used), missing=tuple(missing), stale=tuple(stale)
+        value_c=total / weight if weight > 0 else None, used=tuple(used), missing=tuple(missing), stale=tuple(stale),
+        ventilated=tuple(aired),
     )

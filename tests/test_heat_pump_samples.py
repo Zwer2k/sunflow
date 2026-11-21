@@ -122,7 +122,7 @@ async def test_five_minute_row(pump: Pump) -> None:
     assert row["rooms"] == {"sensor.wohnzimmer": 21.0}
     [event] = row["events"]
     assert (event["kind"], event["tv_c"], event["tv_max_c"], event["setpoint_c"]) == ("stop", 30.0, 31.7, 31.0)
-    assert row["flags"] == {"valid": True, "frozen": [], "after_run": [], "blocked": False, "fault": False, "self_limited": False}
+    assert row["flags"] == {"valid": True, "frozen": [], "after_run": [], "blocked": False, "fault": False, "self_limited": False, "ventilation": []}
     assert pump.recorder.status()["hp"]["valid"]
 
 
