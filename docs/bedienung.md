@@ -141,7 +141,7 @@ dauerhaft. Nach jeder Änderung plant Sunflow sofort neu.
 
 ![Planung](images/plan.png)
 
-Bis jetzt stehen gemessene Werte, danach die Prognose und der Plan.
+Links von „jetzt“ stehen gemessene Werte, rechts die Prognose und der Plan.
 
 - **Kopfzeile**: geplante Steuerung jetzt (und was tatsächlich passiert), erwartete Ersparnis
   gegenüber reinem Eigenverbrauch – aufgeteilt in Strom, Ersatzheizung (falls eingestellt) und den

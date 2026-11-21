@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.8
+
+- Plan: previous caption restored.
+
 ## 0.80.7
 
 - Plan: clearer caption (measured values up to now, forecast and plan after it).

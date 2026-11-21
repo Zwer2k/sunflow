@@ -134,7 +134,7 @@ Sunflow replans immediately after every change.
 
 ![Planning](../images/en/plan.png)
 
-Up to now it shows measured values, after that forecast and plan.
+Left of "now" are measured values, right of it forecast and plan.
 
 - **Header**: planned action now (and what actually happens), expected savings compared to plain
   self-consumption – split into electricity, backup heating (if set) and the value of what is left
