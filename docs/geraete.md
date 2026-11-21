@@ -117,7 +117,7 @@ lädt dafür im Modus „Min+PV“. Wirkt nur, solange Sunflow die Wallbox steue
 
 | Gerät | Anbindung | Profil | Messen | Steuern | Voraussetzungen | Messen geprüft |
 |---|---|---|---|---|---|---|
-| Rotex/Daikin HPSU | ESPHome mit der Komponente `daikin_rotex_can` (CAN-Bus) | `esphome/rotex_hpsu_can` | Vorlauf, Vorlauf-Spitze, Rücklauf, wirksamer Vorlauf-Soll, Wärmeleistung, Außentemperatur, Betriebsmodus, Betriebsart, Bypass-Ventil, Kompressor, Fehlercode | noch nicht (Vorlaufregelung folgt) | Firmware mit Manifest und `tv_max` | 🧪 |
+| Rotex/Daikin HPSU | ESPHome mit der Komponente `daikin_rotex_can` (CAN-Bus) | `esphome/rotex_hpsu_can` | Vorlauf, Vorlauf-Spitze, Rücklauf, wirksamer Vorlauf-Soll, Wärmeleistung, Außentemperatur, Betriebsmodus, Betriebsart, Bypass-Ventil, Kompressor, Fehlercode | Schattenbetrieb: Vorlauf-Ziel berechnet, nichts geschrieben | Firmware mit Manifest und `tv_max` | 🧪 |
 
 Sunflow erkennt die HPSU nicht an Entitätsnamen – die sind in ESPHome frei wählbar und übersetzt –,
 sondern am **Manifest**, das die Komponente als ESPHome-Aktion (`…_rotex_can_manifest`) mitliefert.
@@ -151,7 +151,10 @@ speichert Sunflow das Home-Assistant-Gerät, dessen MAC-Adresse und die Komponen
   länger als 5 Minuten, z. B. T-Vorlauf Nacht) und das Gerät ist erreichbar und kompatibel. Nur dann
   wird später geregelt und gelernt. Das Protokoll nennt unbekannte Zustände, Beginn und Ende einer
   Störung, die Sperre an und aus und den Beginn einer Begrenzung durch die HPSU; den aktuellen Stand
-  zeigt `GET /api/v1/heat_pump/status`. Sunflow schreibt dabei nichts.
+  zeigt `GET /api/v1/heat_pump/status` und Einstellungen → Wärmepumpe. Sunflow schreibt dabei nichts.
+- **Schattenbetrieb:** Aus Raum-Soll (Thermostat „Haus“) und Raum-Ist berechnet Sunflow ein
+  Vorlauf-Ziel (wirksamer Vorlauf-Soll + Korrektur) und zeigt es an (Einstellungen → Wärmepumpe,
+  Attribute des Thermostats); an die Wärmepumpe geschrieben wird noch nichts.
 
 Den UART-Knoten (`daikin_rotex_uart`) als Begleiter und die Vorlaufregelung unterstützt Sunflow in
 einem späteren Schritt.

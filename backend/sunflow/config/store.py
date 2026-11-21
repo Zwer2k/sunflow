@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from sunflow.heat_pump.defaults import ROOM_SETPOINT_DEFAULT_C, ROOM_SETPOINT_MAX_C, ROOM_SETPOINT_MIN_C
 from sunflow.i18n import t
 
 from .models import CONFIG_VERSION, DeviceConfig, FlexSettings, SunflowConfig, VehicleDetection
@@ -146,6 +147,27 @@ def _old_heat_pumps_removed(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+def _room_setpoint_from_comfort(raw: dict[str, Any]) -> dict[str, Any]:
+    """The room setpoint starts at the former comfort minimum when that lies in its range.
+
+    The former fields (comfort band, night setback, reference room) stay in the file for older versions.
+    """
+    house = raw.get("house")
+    if not isinstance(house, dict):
+        return raw
+    climate = house.get("climate")
+    if isinstance(climate, dict) and "setpoint_c" in climate:
+        return raw
+    comfort = house.get("comfort_min")
+    usable = (
+        isinstance(comfort, (int, float))
+        and not isinstance(comfort, bool)
+        and ROOM_SETPOINT_MIN_C <= comfort <= ROOM_SETPOINT_MAX_C
+    )
+    house["climate"] = {**(climate if isinstance(climate, dict) else {}), "setpoint_c": float(comfort) if usable else ROOM_SETPOINT_DEFAULT_C}
+    return raw
+
+
 # Version n -> n + 1 on the raw JSON, before validation. Steps only ever get added:
 # a step that renames or restructures a field goes here instead of a silent default
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
@@ -153,6 +175,7 @@ MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     2: _relations_out_of_devices,
     3: _cards_with_settings,
     4: _old_heat_pumps_removed,
+    5: _room_setpoint_from_comfort,
 }
 # A configuration of a newer Sunflow can hold values this one does not know
 MAX_REPAIRS = 20

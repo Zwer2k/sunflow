@@ -34,6 +34,8 @@ from sunflow.ha import HAClient, HAError
 from sunflow.heat_pump.link import ManifestManager
 from sunflow.heat_pump.manifest_store import ManifestStore
 from sunflow.heat_pump.samples import HeatPumpRecorder
+from sunflow.heat_pump.shadow import FlowShadow
+from sunflow.heat_pump.state_store import HeatPumpStateStore
 from sunflow.i18n import t
 from sunflow.integration_link import announce, integration_token, running_peer
 from sunflow.mcp_key import McpKey
@@ -177,6 +179,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.runner.heat_pump = HeatPumpRecorder(
             shadow, lambda: app.state.profiles.profiles, app.state.manifests.usable, app.state.controller.journal
         )
+        app.state.runner.heat_pump.flow = FlowShadow(HeatPumpStateStore(settings.data_dir), app.state.ha)
         app.state.snapshots.add_state_listener(app.state.runner.heat_pump.on_state_changed)
         app.state.runner.counters = EnergyCounters(settings.data_dir)
         app.state.loads = OneTimeLoads(settings.data_dir)

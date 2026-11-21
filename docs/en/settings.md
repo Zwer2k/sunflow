@@ -75,8 +75,22 @@ Per wallbox:
 
 ## Heat pump
 
-The heat pump control is being rebuilt; until then Sunflow does not control a heat pump. The area
-holds the house Sunflow learns from.
+The heat pump control runs in **shadow operation**: Sunflow computes the flow temperature and shows
+it, but writes nothing to the heat pump.
+
+**Room setpoint:** the room temperature Sunflow is to keep (18–27 °C) and the mode heat/off; the same as
+the thermostat "Haus" in Home Assistant. Next to it the room temperature (weighted mean of the rooms; a
+room does not count while its sensor is unavailable or has not reported for more than 2 hours).
+
+**Heat pump:** per device connection and compatibility, program, activity, strategy (HK function),
+bypass valve, flow, return, effective flow setpoint and Max T-Vorlauf, an active room thermostat block or
+a fault clearly highlighted, and whether the heat pump heats validly – otherwise why not (e.g. hot water,
+after-run, bypass valve). Below it the **flow target** = base + correction: the base is the effective
+flow setpoint from valid heating (outside it the last such value counts). The correction slowly evens
+out the difference between room temperature and setpoint (at most ± 3 K; it does not grow within
+± 0.2 K). It pauses while the heat pump does not heat validly, room temperatures are missing or the room
+is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
+may run to its limit.
 
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
 optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).

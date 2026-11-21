@@ -34,9 +34,11 @@ async def get_house(request: Request) -> dict[str, Any]:
 
 @router.put("/config/house")
 async def set_house(request: Request, body: HouseSettings) -> dict[str, Any]:
-    """Choose the rooms and the heat meter."""
+    """Choose the rooms and the heat meter; the room setpoint is kept (changed by PUT /house/climate)."""
     store: ConfigStore = request.app.state.store
     config = store.load()
+    # A setpoint changed in Home Assistant while the page was open must not be overwritten
+    body.climate = config.house.climate
     config.house = body
     store.save(config)
     request.app.state.house_model = None

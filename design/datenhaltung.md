@@ -10,10 +10,10 @@ Rückweg auf eine ältere Version (z. B. Wechsel zwischen Sunflow und Sunflow Ed
 
 | Datei | Format | Version | Migration |
 |---|---|---|---|
-| `config.json` | JSON (pydantic) | Feld `version`, `CONFIG_VERSION` | `config/store.py`: `MIGRATIONS` je Schritt, Original bleibt als `config.v<n>.json`; neuere Konfiguration: unbekannte/ungültige Felder auf Standard (`_repaired`); atomar mit `fsync` |
+| `config.json` | JSON (pydantic) | Feld `version`, `CONFIG_VERSION` | `config/store.py`: `MIGRATIONS` je Schritt, Original bleibt als `config.v<n>.json`; neuere Konfiguration: unbekannte/ungültige Felder auf Standard (`_repaired`); atomar mit `fsync`; Version 6: `house.climate` (Raum-Soll aus `comfort_min`) |
 | `shadow.db` | SQLite | `PRAGMA user_version`, `SCHEMA_VERSION` | `shadow/store.py`: `SCHEMA_STEPS` je Version, `migrate()` beim Start, vorher Kopie `shadow.v<n>.db` (Regel 7); neuere Datenbank bleibt unberührt. Version 10: Tabelle `heat_pump_samples` (5-min-Werte der Wärmepumpe, 1 Jahr, `heat_pump.md` Abschnitt 10) |
 | `eeprom_writes.json` | JSON | – | nur Tageszähler, verwerfbar |
-| `heat_pump_state.json` (geplant, `heat_pump.md`) | JSON | – | Laufzeit-Zustand, verwerfbar |
+| `heat_pump_state.json` | JSON | Feld `format` (1) | Laufzeit-Zustand der Vorlaufregelung (Raum-Soll zuletzt gesehen, laufende Soll-Änderung, je Gerät Basis und Korrektur je Strategie); verwerfbar, unbekannte Schlüssel werden ignoriert, geschrieben nur bei Änderung, atomar mit `fsync`; im Export, nicht im Import (`heat_pump.md` 10) |
 | `heat_pump_manifests.json` | JSON | Feld `format` (1) | zuletzt geladenes Manifest je Gerät (Manifest, Hash, Ladezeit, `sw_version`, bereits gemeldete Hinweise); verwerfbar: fehlt oder ist sie kaputt, gilt das nächste Laden als neu; unbekannte Schlüssel werden ignoriert; geschrieben nur bei Änderung, atomar mit `fsync`; Einträge entfernter Geräte fallen beim Laden weg; nicht im Export (`heat_pump.md` 3.6) |
 
 Export/Import (`api/system.py`): ein Export einer älteren Version wird beim Import migriert, Spalten einer

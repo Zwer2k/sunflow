@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.80.7
+
+- Heat pumps (third part of the new flow temperature control, shadow operation): new thermostat "Haus" in the Sunflow integration with room setpoint (18–27 °C, step 0.5 °C, via automations to 0.1 °C), room temperature and mode heat/off; also under Settings → Heat pump. The setpoint starts at the former comfort minimum (if it lies in the range, else 21 °C); the previous configuration stays as `config.v5.json`.
+- Sunflow computes a flow target for each heat pump: the effective flow setpoint from valid heating plus a slow room correction (at most ± 3 K). Nothing is written to the heat pump yet. The correction pauses while the heat pump does not heat validly, room temperatures are missing or the room still follows a changed setpoint (at most 24 hours). A room counts only while its sensor reported within the last 2 hours.
+- Settings → Heat pump now shows per device connection, program, activity, strategy, bypass valve, flow and return, setpoints, room thermostat block, fault, whether it heats validly or why not, and the flow target with base and correction.
+- The export now contains `heat_pump_state.json`.
+
 ## 0.80.6
 
 - Heat pumps (second part of the new flow temperature control): Sunflow reads the states of the Rotex/Daikin HPSU every minute – operating mode, mode of operation, HK function, bypass valve, room thermostat block and error code – and decides whether it heats validly (mode heating, mode of operation heating, bypass valve closed for 10 minutes, no after-run 10 minutes after hot water or defrosting, no block, no fault with an E code, the HPSU not limiting the flow itself, device reachable and compatible). Nothing is written to the heat pump.

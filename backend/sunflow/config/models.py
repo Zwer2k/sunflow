@@ -13,10 +13,16 @@ from pydantic import (
     model_validator,
 )
 
+from sunflow.heat_pump.defaults import (
+    ROOM_SETPOINT_DEFAULT_C,
+    ROOM_SETPOINT_MAX_C,
+    ROOM_SETPOINT_MIN_C,
+    ROOM_SETPOINT_RESOLUTION_C,
+)
 from sunflow.i18n import t
 
 # Raised with every change that needs a migration step (see store.MIGRATIONS)
-CONFIG_VERSION = 5
+CONFIG_VERSION = 6
 
 
 class RoleOverride(BaseModel):
@@ -176,8 +182,26 @@ class Room(BaseModel):
     weight: float = Field(default=1.0, gt=0, le=1000)
 
 
+class ClimateSettings(BaseModel):
+    """The climate entity "Haus": room setpoint and mode (design/heat_pump.md, 6.3).
+
+    Mode off: Sunflow writes nothing to the heat pump, but goes on computing and showing.
+    """
+
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+
+    setpoint_c: float = Field(default=ROOM_SETPOINT_DEFAULT_C, ge=ROOM_SETPOINT_MIN_C, le=ROOM_SETPOINT_MAX_C)
+    mode: Literal["heat", "off"] = "heat"
+
+    @field_validator("setpoint_c")
+    @classmethod
+    def _resolution(cls, value: float) -> float:
+        # Stored to 0.1 K (automations may set any value in the range)
+        return round(round(value / ROOM_SETPOINT_RESOLUTION_C) * ROOM_SETPOINT_RESOLUTION_C, 1)
+
+
 class HouseSettings(BaseModel):
-    """The rooms Sunflow learns the house from."""
+    """The rooms Sunflow learns the house from, and the room setpoint."""
 
     # Fields of other versions (e.g. the former comfort band) survive saving
     model_config = ConfigDict(extra="allow", allow_inf_nan=False)
@@ -188,6 +212,7 @@ class HouseSettings(BaseModel):
     # Outside temperature of the house model and the heat pump recording: auto = the learning
     # source when set, else the heat pump's sensor; heat_pump_unit = the sensor of its outdoor unit
     outside_source: Literal["auto", "heat_pump", "heat_pump_unit", "learning_source"] = "auto"
+    climate: ClimateSettings = Field(default_factory=ClimateSettings)
 
 
 class ChargerSettings(BaseModel):

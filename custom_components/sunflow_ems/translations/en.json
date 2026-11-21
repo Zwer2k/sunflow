@@ -160,6 +160,11 @@
       "plan": {
         "name": "Plan"
       }
+    },
+    "climate": {
+      "house": {
+        "name": "House"
+      }
     }
   },
   "services": {
@@ -270,6 +275,11 @@
     "app_unreachable": {
       "title": "Sunflow App not reachable",
       "description": "The Sunflow App has not answered for {minutes} minutes. The devices Sunflow controlled were handed back to their own logic. Check the App in Settings → Apps."
+    }
+  },
+  "exceptions": {
+    "setpoint_out_of_range": {
+      "message": "The room setpoint must lie between {min} and {max} °C."
     }
   }
 }

@@ -28,7 +28,7 @@ const ENTRIES = [
   ["vehicles", "12-V-Batterie schützen", "12v starterbatterie bordnetz 12 volt"],
   ["charging", "Laden", "wallbox laden fahrzeug zuordnung karte rfid"],
   ["heat_pump", "Wärmepumpe", "wärmepumpe heat pump wp"],
-  ["heat_pump", "Haus", "haus house raum räume raumtemperatur abkühlung auskühlen wärmemodell wärmemengenzähler"],
+  ["heat_pump", "Haus", "haus house raum räume raum-soll raumsoll sollwert thermostat setpoint vorlauf-ziel korrektur raumtemperatur abkühlung auskühlen wärmemodell wärmemengenzähler"],
   ["charging", "Karte an der Wallbox", "rfid karte chip fahrzeug erkennen"],
   ["charging", "Ziel-Ladestand", "soc ziel prozent ladeziel target"],
   ["charging", "Fertig bis (täglich)", "abfahrt uhrzeit bereit deadline morgens"],

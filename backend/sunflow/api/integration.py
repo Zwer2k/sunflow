@@ -14,6 +14,7 @@ from sunflow.i18n import N_, number, t
 from sunflow.planning.one_time import OneTimeLoad, OneTimeLoads
 
 from .common import _replan
+from .heat_pump import house_status
 
 router = APIRouter()
 _LOGGER = logging.getLogger(__name__)
@@ -241,8 +242,9 @@ async def replan(request: Request) -> dict[str, Any]:
 async def get_integration_state(request: Request) -> dict[str, Any]:
     """State for the Sunflow integration's entities."""
     runner = request.app.state.runner
+    config = request.app.state.store.load()
     return integration_state(
-        request.app.state.store.load(),
+        config,
         runner.latest,
         runner.status.last_plan,
         runner.last_sample,
@@ -250,4 +252,7 @@ async def get_integration_state(request: Request) -> dict[str, Any]:
         datetime.now(UTC),
         runner.status.last_error,
         getattr(request.app.state, "loads", None),
-    )
+    ) | {
+        # Climate entity "Haus" (design/heat_pump.md, 6.3, 13); None: no rooms and no heat pump
+        "house": house_status(request, config),
+    }

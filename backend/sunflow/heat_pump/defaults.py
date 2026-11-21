@@ -1,4 +1,4 @@
-"""Fixed values of the flow temperature control (design/heat_pump.md, 3.6 and 8.5)."""
+"""Fixed values of the flow temperature control (design/heat_pump.md, 3.6, 6.3, 8.2 and 8.5)."""
 
 # Deadband of writing (8.5): a new set value is written only when it differs by more than this from the
 # written one. A profile may override it in flow_control.writes.deadband.
@@ -13,3 +13,24 @@ SELF_LIMIT_AFTER_S = 5 * 60
 # Fallbacks when a profile leaves them out (section 11)
 SETTLE_AFTER_BYPASS_S = 10 * 60
 FROZEN_AFTER_S = 10 * 60
+
+# Room setpoint of the climate entity "Haus" (6.3): range, default, step of the entity and the
+# resolution Sunflow stores. Not heating is mode off, not a low setpoint; values outside are refused.
+ROOM_SETPOINT_MIN_C = 18.0
+ROOM_SETPOINT_MAX_C = 27.0
+ROOM_SETPOINT_DEFAULT_C = 21.0
+ROOM_SETPOINT_STEP_C = 0.5
+ROOM_SETPOINT_RESOLUTION_C = 0.1
+
+# Room correction (8.2) without a heating curve, fixed for underfloor heating until step 3:
+# proportional part on the room temperature, integral time, deadband of the integral part (also of
+# the setpoint change), limit of the correction and the longest time step counted after a gap
+CORRECTION_KP = 1.0
+CORRECTION_TI_H = 6.0
+ROOM_DEADBAND_K = 0.2
+CORRECTION_LIMIT_K = 3.0
+CORRECTION_MAX_STEP_S = 30 * 60
+# Setpoint change (8.2): frozen until the room reached the new target, at most this long; smaller
+# changes do not count
+SETPOINT_SETTLE_MAX_S = 24 * 3600
+SETPOINT_CHANGE_MIN_K = 0.1

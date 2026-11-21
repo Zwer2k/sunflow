@@ -151,7 +151,8 @@ async def export_data(request: Request) -> Response:
             runner.shadow.backup_to(copy)
             with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
                 archive.write(copy, "shadow.db")
-                for name in ("config.json", "eeprom_writes.json", JOURNAL_FILE):
+                # heat_pump_state.json: for analysis only, not imported (discardable, design/heat_pump.md 10)
+                for name in ("config.json", "eeprom_writes.json", JOURNAL_FILE, "heat_pump_state.json"):
                     if (data_dir / name).exists():
                         archive.write(data_dir / name, name)
                 if latest is not None:

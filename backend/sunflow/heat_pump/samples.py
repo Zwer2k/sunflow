@@ -24,6 +24,7 @@ from sunflow.i18n import t
 from sunflow.planning.house_model import outside_entity
 from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
 
+from .shadow import FlowShadow
 from .states import UNKNOWN, Evaluation, HeatingTracker, Reading, StateSettings, canonical, read, value_key
 
 _LOGGER = logging.getLogger(__name__)
@@ -127,6 +128,8 @@ class HeatPumpRecorder:
         # entity_id -> (device id, role) of the roles followed between the samples
         self._watched: dict[str, tuple[str, str]] = {}
         self._pruned_at: datetime | None = None
+        # Shadow control (room correction, flow target) computed from each minute's samples
+        self.flow: FlowShadow | None = None
 
     # Events between the samples
 
@@ -184,6 +187,7 @@ class HeatPumpRecorder:
             del self._recordings[gone]
         rows: list[dict[str, Any]] = []
         watched: dict[str, tuple[str, str]] = {}
+        sampled: dict[str, tuple[DeviceConfig, Minute | None]] = {}
         for device in devices:
             profile = profiles[device.profile]
             recording = self._recordings.get(device.id)
@@ -206,11 +210,18 @@ class HeatPumpRecorder:
             recording.interval = interval
             minute, entities = self._sample(config, device, profile, recording, snapshot, now)
             watched |= {entity_id: (device.id, role) for role, entity_id in entities.items() if role in EVENT_ROLES and entity_id}
+            sampled[device.id] = (device, minute)
             if minute is not None:
                 recording.minutes.append(minute)
                 recording.last = minute
                 self._note(device, recording, minute, now)
         self._watched = watched
+        if self.flow is not None:
+            try:
+                await self.flow.tick(config, snapshot.states, sampled, now)
+            except Exception:
+                # The recording goes on without the shadow control
+                _LOGGER.exception("Shadow flow control failed")
         if rows:
             await asyncio.to_thread(self._store.store_heat_pump_samples, rows)
         if self._pruned_at is None or now - self._pruned_at >= PRUNE_EVERY:
@@ -373,5 +384,11 @@ class HeatPumpRecorder:
                 "heat_source": last.heat_source,
                 "outside_entity": recording.outside_entity,
                 "unknown": reading.unknown,
+                "values": {
+                    role: reading.values.get(role)
+                    for role in ("flow_temperature", "flow_temperature_max", "return_temperature", "flow_setpoint", "max_flow_setpoint")
+                },
+                # Base, correction and flow target (shadow, section 8)
+                "flow": self.flow.flow_status(device_id) if self.flow is not None else None,
             }
         return result

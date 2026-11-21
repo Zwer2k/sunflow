@@ -2,7 +2,8 @@
 
 Stand: 21.11.2026 · Status: Spezifikation; ESP-Teil (Manifest, `tv_max`, Zehntel für Max/Min T-Vorlauf;
 Abschnitt 3, 12) umgesetzt; Sunflow: Altlösung entfernt (Abschnitt 16, 2a), Datenhaltung (2b), Manifest,
-Kompatibilität und Profil (2c, Teil 1), Zustände und Datensammlung (2c, Teil 2a) umgesetzt, Rest offen
+Kompatibilität und Profil (2c, Teil 1), Zustände und Datensammlung (2c, Teil 2a), climate-Entity und
+Schattenbetrieb mit Korrektur ohne Kennlinie (2c, Teil 2b) umgesetzt, Rest offen
 
 Sunflow regelt den Vorlauf-Sollwert einer Luft-Wasser-Wärmepumpe so, dass das Haus den eingestellten
 Raum-Soll hält – selbstlernend, ohne die Wärmepumpe in Fehlbetrieb zu treiben – und nutzt einen
@@ -408,6 +409,14 @@ Profil allgemein: `setpoint_kind: direct` (echter Sollwert; HPSU „Fest“) ode
 - Unruhige Räume (`restless_rooms`) werden für die Korrektur geringer gewichtet.
 - Optional später: Untergrenze je Raum (kältester Raum darf sie nicht unterschreiten).
 - Sensoren melden teils nur alle ~15 min; die Logik muss damit auskommen.
+- Ein Raum zählt nicht, wenn sein Sensor `unavailable` ist oder seit mehr als 2 h (`ROOM_STALE_AFTER`)
+  nichts gemeldet hat. Maßgeblich ist `last_reported` (auch bei unverändertem Wert), das Sunflow vor
+  jedem Schritt der Korrektur – bei geändertem Raumwert, sonst spätestens alle 30 min – je Raumsensor
+  einzeln über REST (`GET /api/states/<entity_id>`) liest; die über `state_changed` geführten Zustände
+  kennen eine erneute Meldung nicht, und `state_reported` lässt sich nicht nach Entities filtern. Fehlt
+  `last_reported` oder schlägt die Abfrage fehl, gibt es kein Veraltet-Kriterium (nie auf
+  `last_updated` zurückfallen, sonst fiele ein stabiler Raum heraus). Umsetzung `heat_pump/rooms.py`
+  (`reported_times`, `room_temperature`), gedacht auch für Lüft-Erkennung und Hausmodell.
 
 ### 6.2 Lüft-Erkennung
 
@@ -427,6 +436,15 @@ Stunden.
 
 - **Raum-Soll**: eingestellt, nicht gelernt. Bereitgestellt als `climate`-Entity „Haus“ in `sunflow_ems`
   (Soll, Ist = Raum-Ist, Modus heat/off) und im Sunflow-UI. Sunflow speichert den Wert, HA spiegelt ihn.
+  Bereich 18–27 °C, Standard 21,0 (`ROOM_SETPOINT_*` in `heat_pump/defaults.py`, gilt für Modell,
+  Entity und Migration); Schrittweite der Entity 0,5 °C, über `climate.set_temperature` auf 0,1 °C
+  genau (Sunflow rundet auf 0,1). Werte außerhalb werden abgelehnt, nicht begrenzt. Wer nicht heizen
+  will, nutzt den Modus `off`, keinen niedrigen Soll; den Frostschutz übernimmt die Wärmepumpe.
+  Gespeichert in `config.json` unter `house.climate` (`setpoint_c`, `mode`); Migration 5 → 6:
+  `setpoint_c` = `comfort_min`, wenn das eine Zahl in 18–27 ist, sonst 21,0; die alten Felder bleiben
+  liegen. Schnelle Folgeänderungen aus HA fasst die Entity zusammen (2 s), gespeichert wird der letzte
+  Wert (`PUT /api/v1/house/climate`). Die Entity gibt es, sobald Räume oder eine Wärmepumpe
+  eingerichtet sind.
   Nachtabsenkung o. Ä. über HA-Zeitpläne/Automationen auf diese Entity. Modus `off`: Sunflow schreibt
   nichts (wie Steuerung aus, 8.6), rechnet und zeigt aber weiter an (wie Schattenbetrieb).
 - **Spielraum**: „Vorheizen bis +x K“ (Start 1,0 K) und „Absenken bis −y K“ (Start 0 K). Abweichung vom
@@ -486,6 +504,12 @@ Wärmeabgabe der Heizflächen:
   `T_außen` ist für den aktuellen Slot die gemessene Außentemperatur (Abschnitt 7), nicht die Prognose.
 - Vorlauf-Ziel: `V_Ziel = Planziel + (Q*/K)^(1/n) + s(Q*)/2`.
 - Ohne gelernte Kennlinie (Start): V_Ziel = zuletzt wirksamer Vorlauf-Soll; nur die Korrektur bewegt ihn.
+  Umsetzung (2c, Teil 2b, `heat_pump/shadow.py`): V_Ziel = Basis + Korrektur. Solange Sunflow nicht
+  schreibt (Schatten, Modus `off`), ist die Basis laufend der wirksame Vorlauf-Soll, übernommen nur bei
+  gültigem Heizbetrieb (Abschnitt 4); sonst gilt der letzte solche Wert (in `heat_pump_state.json`,
+  übersteht einen Neustart). Ohne einen solchen Wert kein V_Ziel, Grund `no_base`.
+  **Schritt 3:** Beim Übernehmen wird die Basis eingefroren und die Korrektur auf 0 gesetzt; V_Ziel
+  springt dadurch nicht.
 
 ### 8.2 Raum-Korrektur
 
@@ -498,6 +522,28 @@ PI auf Raum-Ist gegen Planziel, addiert auf V_Ziel.
   Lüft-Ereignis, Soll-Änderung bis Raum-Ist das neue Ziel erreicht hat, fehlenden Raumdaten, Stellwert an
   einer Grenze.
 - Integralanteil wird je Strategie gespeichert.
+
+Umsetzung (2c, Teil 2b, `heat_pump/correction.py`, Konstanten in `heat_pump/defaults.py`), fest für
+Fußbodenheizung bis Schritt 3 (Heizflächentyp):
+- Inkrementell: ΔKorrektur = Kp/Ti · e · Δt − Kp · ΔRaum-Ist, e = Planziel − Raum-Ist (Planziel =
+  Raum-Soll bis Schritt 4); Kp = 1,0 K Vorlauf je K Raum, Ti = 6 h. Der I-Teil wirkt nur außerhalb der
+  Totzone ±0,2 K. Begrenzung ±3 K: ein Inkrement, das darüber hinausführt, wird abgeschnitten.
+- Ein Schritt wird gerechnet, sobald sich das Raum-Ist ändert, spätestens 30 min nach dem letzten mit
+  dem letzten Raum-Ist (dann nur I-Teil); Δt höchstens 30 min, auch nach einer Lücke.
+- Eingefroren (kein gültiger Heizbetrieb, Soll-Änderung, keine Raumdaten `rooms_missing`, Strategie
+  unbekannt): weder I- noch P-Inkrement; was Raum-Ist in der Pause tut, wird verworfen, nicht
+  nachgeholt (kein Sprung beim Wiederaufnehmen). Nach einem Neustart dient der erste Wert als Bezug.
+  Ein Strategiewechsel beginnt die Korrektur der neuen Strategie ebenso ohne Sprung.
+- Soll-Änderung (≥ 0,1 K, im Minutentakt aus der Konfiguration erkannt, egal ob über HA, UI oder API):
+  eingefroren, bis Raum-Ist das neue Ziel bis auf die Totzone erreicht (Anheben: Ist ≥ Soll − 0,2;
+  Absenken: Ist ≤ Soll + 0,2), höchstens 24 h; liegt Raum-Ist schon in der Totzone, wird nicht
+  eingefroren. Eine neue Änderung während des Wartens gilt ab dann mit neuem Ziel, neuer Richtung und
+  neuer Frist. Frist abgelaufen: Korrektur läuft weiter, ein Log-Eintrag. Status `setpoint_change` mit
+  Ziel und Richtung, kein Journal. Zustand in `heat_pump_state.json`.
+- „Stellwert an einer Grenze“ greift erst mit dem Schreiben (Schritt 3).
+- Schattenbetrieb: Die Korrektur wird gerechnet, gespeichert und angezeigt (gekennzeichnet als
+  Schatten), wirkt aber nicht zurück und läuft deshalb leicht an eine Grenze. **Schritt 3:** Beim
+  Wechsel auf aktiv beginnt sie bei 0, nicht mit dem Schattenwert.
 
 ### 8.3 Grenzen
 
@@ -722,7 +768,10 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
 - Lernen zurücksetzen: Zeilen des Geräts löschen und `heat_pump_state.json`-Eintrag verwerfen.
 - Export/Import: `heat_pump_samples` wird beim Import übernommen (in `IMPORT_TABLES` eintragen); der
   Import führt alle Tabellen zusammen, siehe `datenhaltung.md` („Export/Import“).
-- `heat_pump_state.json` (klein, verwerfbar) zusätzlich in den Export aufnehmen.
+- `heat_pump_state.json` (klein, verwerfbar; umgesetzt in 2c, Teil 2b, `heat_pump/state_store.py`):
+  `house` (zuletzt gesehener Raum-Soll, laufende Soll-Änderung `settling`) und je Gerät `base_c`,
+  `base_at`, `corrections` je Strategie; unbekannte Schlüssel werden ignoriert, geschrieben nur bei
+  Änderung, atomar. Im Export enthalten, beim Import nicht übernommen.
 
 ---
 
@@ -913,14 +962,20 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       schreiben. Teil 2a (umgesetzt, 0.80.6): Zustände und gültiger Heizbetrieb (Abschnitt 4),
       Datensammlung (`heat_pump_samples` in `shadow.db`, Aufräumen nach 1 Jahr, Import), Wärmequelle
       und Außentemperatur für das Hausmodell (9.3, Profil Version 2), Zustände in
-      `GET /api/v1/heat_pump/status`; nichts schreiben. Teil 2b: climate-Entity, Schattenbetrieb mit
-      einfacher Regelung (Korrektur ohne Kennlinie), Anzeige der Zustände im UI.
-3. Kennlinie lernen, Vorsteuerung, Schutzschicht (Schaltregeln mit gelernten Sprungwerten,
+      `GET /api/v1/heat_pump/status`; nichts schreiben. Teil 2b (umgesetzt, 0.80.7): climate-Entity
+      „Haus“ (6.3, Migration 5 → 6), Schattenbetrieb mit Korrektur ohne Kennlinie (8.1, 8.2), Raum-Ist
+      mit Veraltet-Kriterium (6.1), Anzeige der Zustände, Live-Werte und des Vorlauf-Ziels im UI;
+      nichts schreiben.
+3. **Vor dem Aktivschalten:** Lüft-Erkennung nach 6.2, je Raum, mit `flags.ventilation` in
+   `heat_pump_samples` (neuer JSON-Schlüssel, `datenhaltung.md` Regel 4) und Anzeige im UI. Aktiv
+   schreiben darf Sunflow erst, wenn sie umgesetzt ist.
+   Kennlinie lernen, Vorsteuerung, Schutzschicht (Schaltregeln mit gelernten Sprungwerten,
    Raumthermostat-Sperre), Schreiblogik, Budget → aktiv. Dazu (offen, frühestens hier, weil die
    Kennlinie ohnehin aus `heat_pump_samples` lernt): Hausmodell auf `heat_pump_samples` umstellen,
    sobald die Tabelle mindestens `MIN_DAYS` (7 Tage) gültigen Heizbetrieb (Abschnitt 4) abdeckt – Wärme
    nur aus gültigen Heiz-Intervallen, ohne Warmwasser, Abtauen und Lüft-Intervalle (9.3). Bis dahin
    Stundenmittel aus HA mit ausgelassenen Warmwasser- und Abtau-Stunden (umgesetzt in 2c, Teil 2a).
+   Beim Aktivschalten: Basis einfrieren, Korrektur auf 0 (8.1, 8.2).
 4. Planung mit Raum-Soll + Spielraum (Vorheizen).
 5. UART-Begleiter, Paarung.
 6. S2.
