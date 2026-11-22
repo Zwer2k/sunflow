@@ -12,7 +12,13 @@ from sunflow.config.models import ClimateSettings, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.devices.profiles import manifest_id
 from sunflow.heat_pump.budget import BudgetLimits
-from sunflow.heat_pump.defaults import FLOW_LIMIT_HIGH_C, FLOW_LIMIT_LOW_C, ROOM_SETPOINT_MAX_C, ROOM_SETPOINT_MIN_C
+from sunflow.heat_pump.defaults import (
+    FLOW_LIMIT_HIGH_C,
+    FLOW_LIMIT_LOW_C,
+    ROOM_MARGIN_MAX_K,
+    ROOM_SETPOINT_MAX_C,
+    ROOM_SETPOINT_MIN_C,
+)
 from sunflow.heat_pump.guard import daily_counts
 from sunflow.heat_pump.limits import ControlSettings, setpoint_range, surface_range
 from sunflow.heat_pump.samples import records_heat_pump
@@ -255,23 +261,26 @@ async def set_flow_limits(request: Request, device_id: str, body: FlowLimits) ->
 
 
 class ClimateUpdate(BaseModel):
-    """A change of the climate entity "Haus": setpoint and/or mode; values outside the range are refused."""
+    """A change of the climate entity "Haus": setpoint, mode and/or the planning's margin around the setpoint
+    (preheat_k up, lower_k down; design/heat_pump.md 6.3); values outside the range are refused."""
 
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     setpoint_c: float | None = Field(default=None, ge=ROOM_SETPOINT_MIN_C, le=ROOM_SETPOINT_MAX_C)
     mode: Literal["heat", "off"] | None = None
+    preheat_k: float | None = Field(default=None, ge=0.0, le=ROOM_MARGIN_MAX_K)
+    lower_k: float | None = Field(default=None, ge=0.0, le=ROOM_MARGIN_MAX_K)
 
 
 @router.get("/house/climate")
 async def get_climate(request: Request) -> dict[str, Any]:
-    """Room setpoint and mode."""
+    """Room setpoint, mode and the planning's margin around the setpoint."""
     return request.app.state.store.load().house.climate.model_dump()
 
 
 @router.put("/house/climate")
 async def set_climate(request: Request, body: ClimateUpdate) -> dict[str, Any]:
-    """Change the room setpoint (stored to 0.1 K) or the mode; saved at once, also across restarts."""
+    """Change the room setpoint, the margin (both stored to 0.1 K) or the mode; saved at once, also across restarts."""
     store: ConfigStore = request.app.state.store
     config = store.load()
     current = config.house.climate

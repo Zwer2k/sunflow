@@ -9,6 +9,7 @@ from pydantic import (
     ConfigDict,
     Field,
     PrivateAttr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -28,6 +29,9 @@ from sunflow.heat_pump.defaults import (
     FLOW_LIMIT_LOW_C,
     HEATING_SURFACE_DEFAULT,
     HEATING_SURFACES,
+    ROOM_LOWER_DEFAULT_K,
+    ROOM_MARGIN_MAX_K,
+    ROOM_PREHEAT_DEFAULT_K,
     ROOM_SETPOINT_DEFAULT_C,
     ROOM_SETPOINT_MAX_C,
     ROOM_SETPOINT_MIN_C,
@@ -206,12 +210,25 @@ class ClimateSettings(BaseModel):
 
     setpoint_c: float = Field(default=ROOM_SETPOINT_DEFAULT_C, ge=ROOM_SETPOINT_MIN_C, le=ROOM_SETPOINT_MAX_C)
     mode: Literal["heat", "off"] = "heat"
+    # Margin of the planning (6.3, step 4): preheat up to setpoint + preheat_k, lower down to setpoint - lower_k
+    preheat_k: float = Field(default=ROOM_PREHEAT_DEFAULT_K, ge=0.0, le=ROOM_MARGIN_MAX_K)
+    lower_k: float = Field(default=ROOM_LOWER_DEFAULT_K, ge=0.0, le=ROOM_MARGIN_MAX_K)
 
-    @field_validator("setpoint_c")
+    @field_validator("setpoint_c", "preheat_k", "lower_k")
     @classmethod
     def _resolution(cls, value: float) -> float:
         # Stored to 0.1 K (automations may set any value in the range)
         return round(round(value / ROOM_SETPOINT_RESOLUTION_C) * ROOM_SETPOINT_RESOLUTION_C, 1)
+
+    @field_validator("preheat_k", "lower_k", mode="before")
+    @classmethod
+    def _known_margin(cls, value: object, info: ValidationInfo) -> object:
+        # Added without a migration: missing, no number or outside the range (older or newer version,
+        # edited by hand) counts as the start value, without an error; the API checks its input itself
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and 0.0 <= value <= ROOM_MARGIN_MAX_K
+        if ok:
+            return value
+        return ROOM_PREHEAT_DEFAULT_K if info.field_name == "preheat_k" else ROOM_LOWER_DEFAULT_K
 
 
 # A setting outside its range or no number counts as its start value (no error on loading)

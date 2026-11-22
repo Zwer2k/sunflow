@@ -298,6 +298,7 @@ class SunflowHeatPump extends LitElement {
               @change=${(e) => this._setClimate({ setpoint_c: Number(e.target.value) })}> °C</span>
             <span class="small muted">${t("{min} bis {max} °C", { min: one(house.min_c), max: one(house.max_c) })}</span>
           </label>
+          ${this._renderMargin(house, one)}
           ${this._renderOperation(house)}
           <div class="tile">
             <div class="small muted">${t("Raum-Ist")}</div>
@@ -305,6 +306,9 @@ class SunflowHeatPump extends LitElement {
             <div class="small muted">${t("aus {used} von {total} Räumen", { used: house.rooms_used.length, total: house.rooms_used.length + house.rooms_missing.length + house.rooms_stale.length + (house.rooms_ventilated ?? []).length })}</div>
           </div>
         </div>
+        ${house.preheat_k != null
+          ? html`<p class="small muted">${t("Spielraum der Planung: Bei PV-Überschuss oder günstigem Strom darf Sunflow das Haus bis zu so viel über den Raum-Soll heizen bzw. es bei teurem Strom so weit darunter fallen lassen. Ohne Ersparnis bleibt es beim Raum-Soll. Die Planung nutzt den Spielraum in einer der nächsten Versionen.")}</p>`
+          : nothing}
         ${house.rooms_stale.length || house.rooms_missing.length
           ? html`<p class="small warn-text">${t("Nicht berücksichtigt (nicht verfügbar oder seit über 2 h keine Meldung): {rooms}", { rooms: [...house.rooms_missing, ...house.rooms_stale].map((e) => this._roomName(e)).join(", ") })}</p>`
           : nothing}
@@ -313,6 +317,27 @@ class SunflowHeatPump extends LitElement {
           ? html`<p class="small muted">${t("Raum-Soll geändert auf {target} °C: Die Korrektur wartet, bis der Raum ihn erreicht (höchstens 24 h).", { target: one(settling.target_c) })}</p>`
           : nothing}
       </section>
+    `;
+  }
+
+  /** Margin of the planning around the room setpoint (design/heat_pump.md 6.3): preheat up to +x, lower
+   * down to -y. Stored with the setpoint; the planning uses it from step 4 part 2. */
+  _renderMargin(house, one) {
+    if (house.preheat_k == null || house.lower_k == null) return nothing;
+    const max = house.margin_max_k ?? 3;
+    const step = house.margin_step_k ?? 0.1;
+    const field = (key, label, help) => html`
+      <label class="field">
+        <span class="field-label">${label}</span>
+        <span class="input-unit"><input type="number" inputmode="decimal" min="0" max=${max} step=${step}
+          .value=${String(house[key])} ?disabled=${this._climateBusy}
+          @change=${(e) => this._setClimate({ [key]: Number(e.target.value) })}> K</span>
+        <span class="small muted">${help}</span>
+      </label>`;
+    const setpoint = Number(house.setpoint_c);
+    return html`
+      ${field("preheat_k", t("Vorheizen bis"), t("= {temp} °C (0 bis {max} K)", { temp: one(setpoint + Number(house.preheat_k)), max: one(max) }))}
+      ${field("lower_k", t("Absenken bis"), t("= {temp} °C (0 bis {max} K)", { temp: one(setpoint - Number(house.lower_k)), max: one(max) }))}
     `;
   }
 

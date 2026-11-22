@@ -1,11 +1,11 @@
 # Entwurf: Vorlaufregelung für Wärmepumpen in Sunflow
 
-Stand: 21.11.2026 · Status: Spezifikation; ESP-Teil (Manifest, `tv_max`, Zehntel für Max/Min T-Vorlauf;
+Stand: 22.11.2026 · Status: Spezifikation; ESP-Teil (Manifest, `tv_max`, Zehntel für Max/Min T-Vorlauf;
 Abschnitt 3, 12) umgesetzt; Sunflow: Altlösung entfernt (Abschnitt 16, 2a), Datenhaltung (2b), Manifest,
 Kompatibilität und Profil (2c, Teil 1), Zustände und Datensammlung (2c, Teil 2a), climate-Entity und
 Schattenbetrieb mit Korrektur ohne Kennlinie (2c, Teil 2b), Lüft-Erkennung (3, Teil 1), Kennlinie,
-Vorsteuerung und Hausmodell aus `heat_pump_samples` (3, Teil 2), Grenzen und Schutzschicht im Schatten (3, Teil 3)
-umgesetzt, Rest offen
+Vorsteuerung und Hausmodell aus `heat_pump_samples` (3, Teil 2), Grenzen und Schutzschicht im Schatten (3, Teil 3),
+Schreiben (3, Teil 4), Spielraum (4, Teil 4.1) umgesetzt, Rest offen
 
 Sunflow regelt den Vorlauf-Sollwert einer Luft-Wasser-Wärmepumpe so, dass das Haus den eingestellten
 Raum-Soll hält – selbstlernend, ohne die Wärmepumpe in Fehlbetrieb zu treiben – und nutzt einen
@@ -495,6 +495,13 @@ Umsetzung (3, Teil 1; umgestellt 0.80.21, `heat_pump/ventilation.py`, Startwerte
   nichts (wie Steuerung aus, 8.6), rechnet und zeigt aber weiter an (wie Schattenbetrieb).
 - **Spielraum**: „Vorheizen bis +x K“ (Start 1,0 K) und „Absenken bis −y K“ (Start 0 K). Abweichung vom
   Soll kostet in der Planung → ohne Ersparnis bleibt Sunflow auf dem Soll.
+  Umsetzung (4, Teil 4.1): gespeichert mit dem Raum-Soll in `house.climate` als `preheat_k` (x) und
+  `lower_k` (y), je 0–3 K (`ROOM_MARGIN_*` in `heat_pump/defaults.py`), auf 0,1 K gerundet; additiv ohne
+  Migration – fehlt ein Feld oder ist es ungültig (keine Zahl, außerhalb des Bereichs), gilt der Startwert
+  ohne Fehler. Ändern über `PUT /api/v1/house/climate` (Teiländerung wie Soll und Modus; Werte außerhalb
+  werden dort abgelehnt) und im Sunflow-UI beim Raum-Soll; nicht über die climate-Entity (HA kennt kein
+  Band zum Einstellen). Status `GET /api/v1/heat_pump/status` (`house.preheat_k`, `lower_k`, Bereich
+  `margin_max_k`). Wirkung erst mit der Planung (4.2).
 - Attribute der climate-Entity: aktuelles Planziel, Grund („Vorheizen wegen PV“), Vorlauf-Ziel,
   geschriebener/ausstehender Stellwert.
 - Entfällt: `comfort_min`, `comfort_max`, `night_min`, `night_start`, `night_end`, `reference` in
@@ -513,6 +520,20 @@ Umsetzung (3, Teil 1; umgestellt 0.80.21, `heat_pump/ventilation.py`, Startwerte
 - Neuplanung: regulär alle 15 min und **sofort** bei Raum-Soll-Änderung (Laufzeit ~0,1 s).
 - Ohne nutzbares Hausmodell (< 7 Tage, nicht plausibel): Planziel = Raum-Soll, Wärme = 0 → Regler
   arbeitet nur mit Kennlinie + Korrektur.
+
+**Entscheidungen zu Schritt 4 (Nutzer, 22.11.):**
+- Kosten der Abweichung vom Soll innerhalb des Spielraums: 0,05 € je K und Stunde, nach oben und unten
+  gleich (Konstante in `heat_pump/defaults.py`, nicht einstellbar). Außerhalb des Bands wie bisher: darunter
+  sehr teuer (praktisch hart), darüber teuer, aber möglich (Sonne kann das Haus darüber treiben).
+- Wärmepumpe aus der Lastprognose: wie in der früheren Anbindung über das Modell – Strom, um den Soll zu
+  halten = Hausmodell-Wärme / COP, je Slot höchstens 70 % der prognostizierten Hauslast; im Vergleich ohne
+  Sunflow wieder addiert.
+- Modus: Nur bei „Lernen + Regeln“ plant der Batterie- und Verbrauchsplan mit der Wärmepumpe. Bei „Nur
+  Lernen“ bleibt er wie ohne Raumheizung (die Wärmepumpe steckt in der Lastprognose); der Vorheiz-Plan wird
+  in einer eigenen zweiten Rechnung nur für Anzeige und Schatten ermittelt („würde vorheizen“). Bei Aus kein
+  Vorheiz-Plan, Planziel = Soll.
+- Mehrere Wärmepumpen: geplant wird ein Haus mit der ersten Wärmepumpe (wie die climate-Attribute); weitere
+  laufen ohne Plan (Planziel = Soll).
 
 **Außentemperatur – gemessen für jetzt, Prognose für später:**
 
@@ -1636,6 +1657,20 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    Bereich von Max T-Vorlauf gegen die eigene Grenze der HPSU (Punkt 9). Vor dem Einschalten Inbetriebnahme
    Schritt 0 (Abschnitt 14) erneut prüfen: kein anderer Regler darf Max T-Vorlauf oder den
    Raumthermostat-Eingang schreiben.
-4. Planung mit Raum-Soll + Spielraum (Vorheizen).
+4. **Planung mit Raum-Soll + Spielraum (Vorheizen)**, in vier Teilen (vom Nutzer freigegeben 22.11.), je
+   einzeln getestet und committet; Entscheidungen in Abschnitt 7.
+   1. **Spielraum** (6.3): Einstellung `house.climate.preheat_k`/`lower_k`, API, UI beim Raum-Soll, Doku;
+      noch ohne Wirkung. **Umgesetzt (0.80.23).**
+   2. **Planung anbinden** (7): `ThermalLoad` neu angebunden (Band [Soll − y, Soll + x], neue weiche Kosten
+      für die Abweichung vom Soll im MILP), nur mit nutzbarem Hausmodell und Programm Heizen; COP Carnot;
+      Wärmepumpe aus der Lastprognose über das Modell (höchstens 70 %); Ausgabe je Slot Planziel und Wärme;
+      Neuplanung sofort bei Soll- oder Spielraum-Änderung; bei „Nur Lernen“ eigene zweite Rechnung nur zur
+      Anzeige; Anzeige im Plan.
+   3. **Planziel an den Regler** (8.1, 8.2): Korrektur gegen das Planziel des laufenden Slots; `Q*` aus der
+      Planung als neue erste Quelle `plan` (vor `house_model`), mit Sprungschutz wie die anderen Quellen;
+      Änderungen des Planziels frieren die Korrektur nicht ein (nur eine Soll-Änderung); climate-Attribute
+      Planziel und Grund („Vorheizen wegen PV“, „… günstiger Strom“).
+   4. **Prognose-Korrektur der Außentemperatur** (7): Abweichung Prognose ↔ Messung nach Tageszeit und
+      Vorlaufzeit lernen und die Prognose der Planung damit korrigieren; Anzeige unter „Gelernt“.
 5. UART-Begleiter, Paarung.
 6. S2.

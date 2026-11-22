@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.23
+
+- Heat pumps: new setting **margin** with the room setpoint in Settings → Heat pump: "Vorheizen bis" (preheat up to, start +1.0 K) and "Absenken bis" (lower down to, start 0 K), each 0–3 K. It tells the planning how far it may heat above the room setpoint with PV surplus or cheap electricity, or let the house fall below it when electricity is dear. Stored only for now; the planning uses it in one of the next versions.
+
 ## 0.80.22
 
 - Heat pumps: one **mode** at the top of Settings → Heat pump instead of mode heat/off and the separate switch "Aktives Schreiben": **Aus** (Sunflow neither controls nor learns and records no heat pump measurements – saves space, what was learned is kept), **Nur Lernen** (default, formerly "shadow": records, learns, shows what it would write, writes nothing) and **Lernen + Regeln** (writes to the heat pump; switched on only here, with confirmation). In the thermostat "Haus" in Home Assistant, off is "Aus" and heat returns to the level chosen last. The word "Schatten" is gone from the heat pump pages and the journal.

@@ -36,6 +36,13 @@ ROOM_SETPOINT_MAX_C = 27.0
 ROOM_SETPOINT_DEFAULT_C = 21.0
 ROOM_SETPOINT_STEP_C = 0.5
 ROOM_SETPOINT_RESOLUTION_C = 0.1
+# Margin of the planning around the room setpoint (6.3, step 4): preheat up to +PREHEAT, lower down to
+# -LOWER; each in 0..ROOM_MARGIN_MAX_K, stored to ROOM_SETPOINT_RESOLUTION_C. A missing or broken value
+# counts as its start value (no error on loading); the API refuses values outside.
+ROOM_PREHEAT_DEFAULT_K = 1.0
+ROOM_LOWER_DEFAULT_K = 0.0
+ROOM_MARGIN_MAX_K = 3.0
+ROOM_MARGIN_STEP_K = 0.1
 
 # Room correction (8.2): proportional part on the room temperature (the same for every heating surface
 # type), integral time of the default type (each type's own in HEATING_SURFACES, ti_h), deadband of the

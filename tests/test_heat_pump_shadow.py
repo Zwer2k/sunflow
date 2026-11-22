@@ -452,7 +452,7 @@ def test_setpoint_stored_to_a_tenth_and_survives_a_restart(tmp_path: Path, libra
     client.put("/api/v1/house/climate", json={"mode": "off"})
     client.put("/api/v1/house/climate", json={"setpoint_c": 21.26})
 
-    assert answer == {"setpoint_c": 21.3, "mode": "heat"}
+    assert answer == {"setpoint_c": 21.3, "mode": "heat", "preheat_k": 1.0, "lower_k": 0.0}
     # A new store reads the file as after a restart
     climate = ConfigStore(tmp_path).load().house.climate
     assert (climate.setpoint_c, climate.mode) == (21.3, "off")
@@ -496,6 +496,59 @@ def test_climate_model_rounds_and_refuses() -> None:
     assert ClimateSettings(setpoint_c=21.26).setpoint_c == 21.3
     with pytest.raises(ValueError):
         ClimateSettings(setpoint_c=17.9)
+
+
+# Margin of the planning (6.3, step 4 part 1)
+
+
+def test_margin_stored_to_a_tenth_with_the_setpoint(tmp_path: Path, library: Any) -> None:
+    client, _ = _api(tmp_path, library)
+
+    answer = client.put("/api/v1/house/climate", json={"preheat_k": 1.54, "lower_k": 0.5}).json()
+    client.put("/api/v1/house/climate", json={"setpoint_c": 20.0})
+
+    assert answer == {"setpoint_c": 21.0, "mode": "heat", "preheat_k": 1.5, "lower_k": 0.5}
+    climate = ConfigStore(tmp_path).load().house.climate
+    assert (climate.setpoint_c, climate.preheat_k, climate.lower_k) == (20.0, 1.5, 0.5)
+
+
+@pytest.mark.parametrize("body", [{"preheat_k": -0.1}, {"preheat_k": 3.1}, {"lower_k": 3.5}, {"lower_k": "x"}])
+def test_margin_outside_the_range_refused(tmp_path: Path, library: Any, body: dict[str, Any]) -> None:
+    client, store = _api(tmp_path, library)
+
+    assert client.put("/api/v1/house/climate", json=body).status_code == 422
+    climate = store.load().house.climate
+    assert (climate.preheat_k, climate.lower_k) == (1.0, 0.0)
+
+
+@pytest.mark.parametrize(("stored", "expected"), [
+    ({}, (1.0, 0.0)),
+    ({"preheat_k": 2.0, "lower_k": 1.0}, (2.0, 1.0)),
+    ({"preheat_k": 9, "lower_k": -1}, (1.0, 0.0)),
+    ({"preheat_k": "warm", "lower_k": None}, (1.0, 0.0)),
+    ({"preheat_k": True, "lower_k": 0.26}, (1.0, 0.3)),
+])
+def test_margin_without_migration(tmp_path: Path, stored: dict[str, Any], expected: tuple[float, float]) -> None:
+    # Missing or broken values (older or newer version, edited by hand) load as the start values, no error
+    (tmp_path / "config.json").write_text(json.dumps({
+        "version": 6, "house": {"rooms": [{"entity_id": ROOM}], "climate": {"setpoint_c": 21.5, **stored}},
+    }))
+
+    climate = ConfigStore(tmp_path).load().house.climate
+
+    assert (climate.preheat_k, climate.lower_k) == expected
+    assert climate.setpoint_c == 21.5
+
+
+def test_status_has_the_margin(tmp_path: Path, library: Any) -> None:
+    client, _ = _api(tmp_path, library)
+    client.put("/api/v1/house/climate", json={"preheat_k": 0.5})
+
+    house = client.get("/api/v1/integration/state").json()["house"]
+
+    assert {k: house[k] for k in ("preheat_k", "lower_k", "margin_max_k", "margin_step_k")} == {
+        "preheat_k": 0.5, "lower_k": 0.0, "margin_max_k": 3.0, "margin_step_k": 0.1,
+    }
 
 
 # Migration 5 -> 6

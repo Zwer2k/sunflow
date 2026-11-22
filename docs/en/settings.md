@@ -106,6 +106,13 @@ room does not count while its sensor is unavailable or its device has not report
 another reading of the same device counts as well, e.g. the humidity, as some integrations do not report an
 unchanged temperature again).
 
+**Margin (preheat up to / lower down to):** how far the planning may depart from the room setpoint, each
+0–3 K (start: preheat up to +1.0 K, lower down to 0 K). With PV surplus or cheap electricity Sunflow may heat
+the house up to setpoint + preheat and let it fall to setpoint − lower when electricity is dear; every
+departure costs something in the planning, so without a saving it stays at the room setpoint. Stored with the
+room setpoint; the planning uses the margin in one of the next versions, until then it has no effect. Set
+only in Sunflow, not in the thermostat "Haus".
+
 **Fast change (airing, cooking …):** when a room changes by at least 0.8 K within 20 minutes – down as
 when airing or up as when cooking – it does not count for the room temperature for now and the correction
 pauses. The thresholds are in kelvin, whether a sensor reports in steps of 0.1, 0.3 or 0.5 K; a single step

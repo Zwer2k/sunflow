@@ -107,6 +107,13 @@ zählt nicht, wenn sein Sensor nicht verfügbar ist oder sein Gerät seit über 
 zählt auch eine andere Messung desselben Geräts, z. B. die Luftfeuchte, weil manche Integrationen eine
 unveränderte Temperatur nicht neu melden).
 
+**Spielraum (Vorheizen bis / Absenken bis):** wie weit die Planung vom Raum-Soll abweichen darf, je 0–3 K
+(Start: Vorheizen bis +1,0 K, Absenken bis 0 K). Bei PV-Überschuss oder günstigem Strom darf Sunflow das Haus
+bis Raum-Soll + Vorheizen heizen und es bei teurem Strom bis Raum-Soll − Absenken fallen lassen; jede
+Abweichung kostet in der Planung etwas, ohne Ersparnis bleibt es beim Raum-Soll. Gespeichert mit dem
+Raum-Soll; die Planung nutzt den Spielraum in einer der nächsten Versionen, bis dahin hat er keine Wirkung.
+Nur in Sunflow einstellbar, nicht im Thermostat „Haus“.
+
 **Schnelle Änderung (Lüften, Kochen …):** Ändert sich ein Raum innerhalb von 20 Minuten um mindestens
 0,8 K – nach unten wie beim Lüften oder nach oben wie beim Kochen –, zählt er vorerst nicht für das
 Raum-Ist, und die Korrektur hält an. Die Schwellen gelten in Kelvin, unabhängig davon, ob ein Sensor in

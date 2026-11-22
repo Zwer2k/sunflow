@@ -162,7 +162,7 @@ def test_old_house_fields_survive(tmp_path: Path) -> None:
     assert [(r.entity_id, r.weight) for r in config.house.rooms] == [("sensor.a", 2.0), ("sensor.b", 1.0)]
     # New fields are written with their default
     assert json.loads((tmp_path / "config.json").read_text())["house"] == old_house | {
-        "outside_source": "auto", "climate": {"setpoint_c": 21.0, "mode": "heat"},
+        "outside_source": "auto", "climate": {"setpoint_c": 21.0, "mode": "heat", "preheat_k": 1.0, "lower_k": 0.0},
         "heating_surface": "underfloor",
         "fast_change": {"start_k": 0.8, "start_min": 20, "settle_k": 0.5, "settle_min": 30, "max_h": 2.0},
     }
