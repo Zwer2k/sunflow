@@ -77,13 +77,13 @@ sensors "Prognose heute" (today), "Prognose Rest heute" (rest of today), "Progno
 | Strategie (strategy) | Balanced, Absorb PV, Self-sufficiency, Battery use |
 | Neu planen (replan) | button |
 | Plan (calendar) | charging, heating, grid charging and curtailment windows, one-off loads |
-| Haus (house, thermostat) | room setpoint (18–27 °C, step 0.5 °C; via `climate.set_temperature` to 0.1 °C), room temperature and mode heat/off; only with rooms or a heat pump. Attributes: plan target, flow target, base and correction, set value written/pending (`setpoint_written`, `setpoint_written_at`, `setpoint_pending`, `setpoint_pending_at`, `setpoint_pending_reason`, `setpoint_held`) and `mode` (`shadow`: computed, not written; `active`: Sunflow writes) |
+| Haus (house, thermostat) | room setpoint (18–27 °C, step 0.5 °C; via `climate.set_temperature` to 0.1 °C), room temperature and mode heat/off; only with rooms or a heat pump. Attributes: plan target, flow target, base and correction, set value written/pending (`setpoint_written`, `setpoint_written_at`, `setpoint_pending`, `setpoint_pending_at`, `setpoint_pending_reason`, `setpoint_held`) and `mode` (`shadow`: mode "learning only", computed, not written; `active`: "learning + control", Sunflow writes); heat/off is "off" or the level chosen last (learning only or learning + control) |
 | *heat pump* flow target | flow Sunflow aims at (°C) |
-| *heat pump* setpoint | Max T-Vorlauf written last (°C), in shadow operation the virtually written one; a foreign change is taken over (reason `foreign`). Attributes: `pending` (value waiting), `pending_at` (due at), `pending_reason`, `written_at`, `written_reason`, `held` (why held back: `spacing` minimum spacing, `budget`, `block` room thermostat block, `esp_regulation`) |
-| *heat pump* writes today | writes of the set value since midnight (Home Assistant's time zone), virtual in the shadow; history only, no long-term statistics |
+| *heat pump* setpoint | Max T-Vorlauf written last (°C), with "learning only" the value Sunflow would have written; a foreign change is taken over (reason `foreign`). Attributes: `pending` (value waiting), `pending_at` (due at), `pending_reason`, `written_at`, `written_reason`, `held` (why held back: `spacing` minimum spacing, `budget`, `block` room thermostat block, `esp_regulation`) |
+| *heat pump* writes today | writes of the set value since midnight (Home Assistant's time zone), what Sunflow would write with "learning only"; history only, no long-term statistics |
 
-The three sensors per heat pump carry the attribute `mode` (`shadow` | `active`) and, in the shadow, a
-ghost icon; switching to active changes only attribute and icon, not name or entity id. Without a known
+The three sensors per heat pump carry the attribute `mode` (`shadow` | `active`) and, with "learning only",
+a ghost icon; switching to "learning + control" changes only attribute and icon, not name or entity id. Without a known
 value they are "unknown", never 0 – "writes today" after a restart until Sunflow has counted the earlier
 writes again and read the time zone. When the heat pump is removed in Sunflow, its sensors go too. For
 evaluations over a longer time use the records in Sunflow, not Home Assistant's statistics. The attribute

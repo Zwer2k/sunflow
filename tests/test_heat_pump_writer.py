@@ -259,7 +259,7 @@ def test_write_now_lapses_when_writing_is_not_active() -> None:
     outcome = run.minute(31.0)
 
     assert outcome.write is None and outcome.manual_result["reason"] == "not_active"
-    assert run.notes == ["„Jetzt schreiben“ verfallen: Schreiben nicht aktiv (Schatten)."]
+    assert run.notes == ["„Jetzt schreiben“ verfallen: Regeln nicht eingeschaltet (nur Lernen)."]
 
 
 def test_write_now_does_not_skip_the_budget() -> None:

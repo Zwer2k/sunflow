@@ -377,6 +377,9 @@ class FlowShadow:
                 frozen.append("rooms_missing")
             if settling is not None:
                 frozen.append("setpoint_change")
+            if config.house.climate.mode == "off":
+                # Mode off ("Aus"): the correction does not learn either
+                frozen.append("mode_off")
             strategy = reading.strategy
             if strategy == UNKNOWN:
                 frozen.append("strategy_unknown")
@@ -458,13 +461,13 @@ class FlowShadow:
             stored["active"] = on
             if on:
                 self.notes.append((device_id, t(
-                    "Aktives Schreiben eingeschaltet: Sunflow schreibt ab jetzt Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe."
+                    "Lernen + Regeln eingeschaltet: Sunflow schreibt ab jetzt Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe."
                 ), True))
             else:
                 kept = self.guard(device_id).release()
                 self.adopt_check(device_id).reset()
                 self.writer(device_id).pending = None
-                message = t("Aktives Schreiben ausgeschaltet: Sunflow rechnet wieder nur im Schatten. Max T-Vorlauf bleibt, wie zuletzt geschrieben (nichts zurückgestellt).")
+                message = t("Regeln ausgeschaltet: Sunflow lernt nur noch. Max T-Vorlauf bleibt, wie zuletzt geschrieben (nichts zurückgestellt).")
                 if kept:
                     message = t("{message} Die Raumthermostat-Sperre bleibt gesetzt: die Wärmepumpe heizt nicht, bis sie aufgehoben wird.", message=message)
                 self.notes.append((device_id, message, True))

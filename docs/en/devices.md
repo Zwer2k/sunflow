@@ -115,7 +115,7 @@ this. Only effective while Sunflow controls the wallbox.
 
 | Device | Connection | Profile | Measures | Control | Requirements | Measuring tested |
 |---|---|---|---|---|---|---|
-| Rotex/Daikin HPSU | ESPHome with the component `daikin_rotex_can` (CAN bus) | `esphome/rotex_hpsu_can` | Flow, flow peak, return, effective flow setpoint, heat output, outside temperature, operating mode, mode of operation, bypass valve, compressor, error code | shadow operation: flow target computed, nothing written | Firmware with manifest and `tv_max` | 🧪 |
+| Rotex/Daikin HPSU | ESPHome with the component `daikin_rotex_can` (CAN bus) | `esphome/rotex_hpsu_can` | Flow, flow peak, return, effective flow setpoint, heat output, outside temperature, operating mode, mode of operation, bypass valve, compressor, error code | "learning only": flow target computed; "learning + control": Max T-Vorlauf and room thermostat block | Firmware with manifest and `tv_max` | 🧪 |
 
 Sunflow does not recognize the HPSU by entity names – they are free and translated in ESPHome –
 but by the **manifest** the component delivers as an ESPHome action (`…_rotex_can_manifest`).
@@ -149,9 +149,10 @@ Sunflow stores the Home Assistant device, its MAC address and the component (CAN
   learn later. The log names unknown states, the start and end of a fault, the block on and off and
   the start of the HPSU limiting the flow; `GET /api/v1/heat_pump/status` shows the current state.
   Sunflow writes nothing; Settings → Heat pump shows the state as well.
-- **Shadow operation:** From the room setpoint (thermostat "Haus") and the room temperature Sunflow
-  computes a flow target (effective flow setpoint + correction) and shows it (Settings → Heat pump,
-  attributes of the thermostat); nothing is written to the heat pump yet.
+- **Mode off / learning only / learning + control:** From the room setpoint (thermostat "Haus") and the
+  room temperature Sunflow computes a flow target and shows it (Settings → Heat pump, attributes of the
+  thermostat). With "learning only" (default) nothing is written to the heat pump; "learning + control"
+  switches writing on (Settings → Heat pump); with "off" Sunflow neither learns nor records.
 
 The UART node (`daikin_rotex_uart`) as a companion and the flow control follow in a later step.
 

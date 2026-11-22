@@ -71,7 +71,7 @@ const WRITE_REASONS = () => ({
 const HELD = () => ({
   spacing: t("Mindestabstand"),
   budget: t("Budget erschöpft"),
-  not_active: t("Schreiben nicht aktiv (Schatten)"),
+  not_active: t("Regeln nicht eingeschaltet (nur Lernen)"),
   nothing_pending: t("kein ausstehender Wert"),
   inactive: t("kein gültiger Zustand zum Schreiben"),
 });
@@ -144,6 +144,7 @@ function frozenText(reason) {
     setpoint_change: t("Raum-Soll geändert, Raum folgt noch"),
     strategy_unknown: t("Strategie unbekannt"),
     no_sample: t("keine Messwerte"),
+    mode_off: t("Modus Aus"),
   }[reason];
   if (fixed) return fixed;
   if (reason.startsWith("program_")) return t("Programm: {state}", { state: PROGRAMS()[reason.slice(8)] ?? reason.slice(8) });
@@ -269,7 +270,7 @@ class SunflowHeatPump extends LitElement {
     return html`
       <div class="heading">
         <h1>${t("Wärmepumpe")}</h1>
-        <p class="muted small">${t("Schattenbetrieb: Sunflow rechnet den Vorlauf aus und zeigt ihn an, schreibt aber nichts an die Wärmepumpe.")}</p>
+        <p class="muted small">${t("Sunflow lernt aus den Messwerten, wie das Haus auf die Heizung reagiert, und regelt den Vorlauf, wenn du es einschaltest (Modus).")}</p>
       </div>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
       ${this._renderClimate()}
@@ -288,7 +289,7 @@ class SunflowHeatPump extends LitElement {
     return html`
       <section class="device">
         <span class="device-title">${t("Raum-Soll")}</span>
-        <p class="small muted">${t("Auch als Thermostat „Haus“ in Home Assistant, z. B. für Zeitpläne. Wer nicht heizen will, stellt den Modus auf Aus.")}</p>
+        <p class="small muted">${t("Auch als Thermostat „Haus“ in Home Assistant, z. B. für Zeitpläne. Aus dort entspricht Aus hier; Heizen dort kehrt zu „Nur Lernen“ bzw. „Lernen + Regeln“ zurück, je nachdem, was zuletzt galt. „Lernen + Regeln“ wird nur hier eingeschaltet.")}</p>
         <div class="fields">
           <label class="field">
             <span class="field-label">${t("Raum-Soll")}</span>
@@ -297,13 +298,7 @@ class SunflowHeatPump extends LitElement {
               @change=${(e) => this._setClimate({ setpoint_c: Number(e.target.value) })}> °C</span>
             <span class="small muted">${t("{min} bis {max} °C", { min: one(house.min_c), max: one(house.max_c) })}</span>
           </label>
-          <label class="field">
-            <span class="field-label">${t("Modus")}</span>
-            <select ?disabled=${this._climateBusy} @change=${(e) => this._setClimate({ mode: e.target.value })}>
-              <option value="heat" ?selected=${house.mode === "heat"}>${t("Heizen")}</option>
-              <option value="off" ?selected=${house.mode === "off"}>${t("Aus (Sunflow schreibt nichts)")}</option>
-            </select>
-          </label>
+          ${this._renderOperation(house)}
           <div class="tile">
             <div class="small muted">${t("Raum-Ist")}</div>
             <div class="value">${one(house.room_c)} °C</div>
@@ -348,6 +343,64 @@ class SunflowHeatPump extends LitElement {
         })}</p>`
         : nothing}
     `;
+  }
+
+  /** Mode: off, learning only, learning + control - the climate mode and the switch of every heat pump
+   * (design/heat_pump.md 16 step 3). */
+  _renderOperation(house) {
+    const pumps = (this._status?.devices ?? []).filter((d) => d.writing);
+    const current = house.mode === "off" ? "off" : pumps.some((d) => d.writing.active) ? "control" : "learn";
+    // Learning + control needs at least one heat pump that may be switched on
+    const refused = pumps.length && !pumps.some((d) => d.writing.active || d.writing.refused == null)
+      ? pumps.map((d) => WRITING_REFUSED()[d.writing.refused] ?? d.writing.refused).join(", ")
+      : pumps.length ? null : t("keine Wärmepumpe");
+    const help = {
+      off: t("Sunflow regelt nicht, lernt nicht und zeichnet keine Messwerte der Wärmepumpe auf; das Gelernte bleibt erhalten."),
+      learn: t("Sunflow zeichnet auf und lernt, zeigt an, was es schreiben würde, schreibt aber nichts an die Wärmepumpe."),
+      control: t("Sunflow schreibt Max T-Vorlauf (EEPROM, im Budget) und die Raumthermostat-Sperre, wenn die Regeln es verlangen. Zurückschalten stellt nichts zurück: Max T-Vorlauf und eine gesetzte Sperre bleiben stehen."),
+    }[current];
+    return html`
+      <label class="field">
+        <span class="field-label">${t("Modus")}</span>
+        <select ?disabled=${this._climateBusy || this._busy} @change=${(e) => this._setOperation(e.target.value, current, pumps, e.target)}>
+          <option value="off" ?selected=${current === "off"}>${t("Aus")}</option>
+          <option value="learn" ?selected=${current === "learn"}>${t("Nur Lernen")}</option>
+          <option value="control" ?selected=${current === "control"} ?disabled=${refused != null && current !== "control"}>${t("Lernen + Regeln")}</option>
+        </select>
+        <span class="small muted">${help}</span>
+        ${refused != null && current !== "control"
+          ? html`<span class="small warn-text">${t("„Lernen + Regeln“ nicht möglich: {reason}", { reason: refused })}</span>`
+          : nothing}
+      </label>
+    `;
+  }
+
+  /** Switch the mode. Order keeps it safe: the switch of the heat pumps first, then the climate mode. */
+  async _setOperation(value, current, pumps, select) {
+    if (value === current) return;
+    if (value === "control" && !(await confirmDialog({
+      title: t("„Lernen + Regeln“ einschalten?"),
+      text: t("Sunflow schreibt dann Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe. Andere Regler, die diese Werte schreiben, vorher abschalten. Zurückschalten stellt nichts zurück."),
+      confirm: t("Einschalten"),
+    }))) {
+      select.value = current;
+      return;
+    }
+    this._busy = true;
+    try {
+      if (value === "control") {
+        for (const d of pumps.filter((p) => !p.writing.active && p.writing.refused == null)) await api.setHeatPumpWriting(d.id, true);
+      } else if (value === "learn") {
+        for (const d of pumps.filter((p) => p.writing.active)) await api.setHeatPumpWriting(d.id, false);
+      }
+      await api.setClimate({ mode: value === "off" ? "off" : "heat" });
+      this._error = null;
+    } catch (err) {
+      this._error = t("Modus nicht umgeschaltet: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+      await this._loadStatus();
+    }
   }
 
   _roomName(entityId) {
@@ -396,7 +449,7 @@ class SunflowHeatPump extends LitElement {
               ${tile(t("Vorlauf-Soll (wirksam)"), `${one(values.flow_setpoint)} °C`, t("Max T-Vorlauf {value} °C", { value: one(values.max_flow_setpoint) }))}
             </div>
             <p class="small ${state.valid ? "muted" : "warn-text"}">${state.valid
-              ? t("Gültiger Heizbetrieb: Sunflow rechnet die Korrektur und lernt.")
+              ? (this._status?.house?.mode === "off" ? t("Gültiger Heizbetrieb; Modus Aus: Sunflow lernt nicht.") : t("Gültiger Heizbetrieb: Sunflow rechnet die Korrektur und lernt."))
               : t("Eingefroren: {reasons}", { reasons: state.frozen.map(frozenText).join(", ") })}</p>
             ${flow ? this._renderFlow(flow, one, tile) : nothing}
             ${flow?.guard ? this._renderGuard(device.id, flow.guard, this._writes[device.id], one, tile) : nothing}`}
@@ -406,48 +459,19 @@ class SunflowHeatPump extends LitElement {
     `;
   }
 
-  /** The switch: Sunflow writes to the heat pump for real (default off, design/heat_pump.md 16 step 3 part 4.7). */
+  /** Whether Sunflow controls this heat pump (mode "Lernen + Regeln") or why it cannot. */
   _renderWriting(device) {
     const writing = device.writing;
-    const refused = writing.refused;
+    const off = this._status?.house?.mode === "off";
+    const text = off ? t("Modus Aus: Sunflow regelt nicht und lernt nicht.")
+      : writing.active ? t("Lernen + Regeln: Sunflow schreibt an diese Wärmepumpe.")
+      : t("Nur Lernen: Sunflow schreibt nichts an diese Wärmepumpe.");
     return html`
-      <fieldset class="group">
-        <legend>${t("Aktives Schreiben")}</legend>
-        <label class="inline">
-          <input type="checkbox" .checked=${writing.active} ?disabled=${this._busy || (!writing.active && refused != null)}
-            @change=${(e) => this._setWriting(device, e.target.checked, e.target)}>
-          ${t("Sunflow schreibt an die Wärmepumpe")}
-        </label>
-        <p class="small muted">${writing.active
-          ? t("An: Sunflow schreibt Max T-Vorlauf (EEPROM, im Budget) und die Raumthermostat-Sperre, wenn die Regeln es verlangen. Ausschalten stellt nichts zurück: Max T-Vorlauf und eine gesetzte Sperre bleiben stehen.")
-          : t("Aus (Standard): Schattenbetrieb – Sunflow rechnet und zeigt an, schreibt aber nichts. Beim Einschalten übernimmt Sunflow mit eingefrorener Basis und Korrektur 0 und schreibt erst, wenn die Regeln es verlangen.")}</p>
-        ${!writing.active && refused != null
-          ? html`<p class="small warn-text">${t("Einschalten nicht möglich: {reason}", { reason: WRITING_REFUSED()[refused] ?? refused })}</p>`
-          : nothing}
-      </fieldset>
+      <p class="small muted">${text}</p>
+      ${!writing.active && writing.refused != null
+        ? html`<p class="small warn-text">${t("„Lernen + Regeln“ nicht möglich: {reason}", { reason: WRITING_REFUSED()[writing.refused] ?? writing.refused })}</p>`
+        : nothing}
     `;
-  }
-
-  async _setWriting(device, active, input) {
-    if (active && !(await confirmDialog({
-      title: t("Aktives Schreiben für „{name}“ einschalten?", { name: device.name }),
-      text: t("Sunflow schreibt dann Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe. Andere Regler, die diese Werte schreiben, vorher abschalten. Ausschalten stellt nichts zurück."),
-      confirm: t("Einschalten"),
-    }))) {
-      input.checked = false;
-      return;
-    }
-    this._busy = true;
-    try {
-      await api.setHeatPumpWriting(device.id, active);
-      this._error = null;
-      await this._loadStatus();
-    } catch (err) {
-      input.checked = !active;
-      this._error = t("Aktives Schreiben nicht umgeschaltet: {error}", { error: err.message });
-    } finally {
-      this._busy = false;
-    }
   }
 
   /** Range of the set value (Max T-Vorlauf) per heat pump; empty: the heating surface type's start limit. */
@@ -532,7 +556,7 @@ class SunflowHeatPump extends LitElement {
     const kw = (w) => decimal((w / 1000).toFixed(2));
     return html`
       <div class="learned">
-        <span class="field-label">${flow.shadow === false ? t("Vorlauf-Ziel") : t("Vorlauf-Ziel (Schatten)")}</span>
+        <span class="field-label">${flow.shadow === false ? t("Vorlauf-Ziel") : t("Vorlauf-Ziel (nur Lernen)")}</span>
         <div class="tiles">
           ${tile(t("Vorlauf-Ziel"), flow.target_c == null ? "–" : `${one(flow.target_c)} °C`, targetHelp)}
           ${tile(t("Quelle"), FLOW_SOURCES()[source] ?? source, curve ? null : sourceReasonText(flow.source_reason))}
@@ -547,12 +571,12 @@ class SunflowHeatPump extends LitElement {
           : nothing}
         <p class="small muted">${flow.shadow === false
           ? t("Wechselt die Quelle, verschiebt Sunflow die Korrektur, damit das Vorlauf-Ziel nicht springt (innerhalb ±3 K).")
-          : t("Wechselt die Quelle, springt das Vorlauf-Ziel im Schattenbetrieb einmal; die Korrektur bleibt.")}</p>
+          : t("Wechselt die Quelle, springt das Vorlauf-Ziel bei „Nur Lernen“ einmal; die Korrektur bleibt.")}</p>
         <p class="small muted">${flow.frozen.length
           ? t("Korrektur angehalten: {reasons}", { reasons: flow.frozen.map(frozenText).join(", ") })
           : t("Korrektur läuft.")} ${flow.shadow === false
-          ? t("Die Basis ist seit dem Aktivschalten eingefroren; die Korrektur hat dort bei 0 begonnen.")
-          : t("Im Schattenbetrieb wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Aktivschalten beginnt sie bei 0.")}</p>
+          ? t("Die Basis ist seit dem Einschalten von „Lernen + Regeln“ eingefroren; die Korrektur hat dort bei 0 begonnen.")
+          : t("Bei „Nur Lernen“ wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; bei „Lernen + Regeln“ beginnt sie bei 0.")}</p>
         ${(flow.limited ?? []).length
           ? html`<p class="small warn-text">${t("An einer Grenze, die Korrektur läuft nicht weiter darüber hinaus: {limits}", { limits: flow.limited.map((l) => LIMITS()[l] ?? l).join(", ") })}</p>`
           : nothing}
@@ -589,7 +613,7 @@ class SunflowHeatPump extends LitElement {
     const budget = guard.budget;
     return html`
       <div class="learned">
-        <span class="field-label">${shadow ? t("Stellwert und Schutz (Schatten)") : t("Stellwert und Schutz")}</span>
+        <span class="field-label">${shadow ? t("Stellwert und Schutz (nur Lernen)") : t("Stellwert und Schutz")}</span>
         <p class="small muted">${shadow
           ? t("Sunflow rechnet aus, was es an die Wärmepumpe schreiben würde (Max T-Vorlauf und Raumthermostat-Sperre), schreibt aber nichts.")
           : t("Sunflow schreibt Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe.")}</p>
@@ -612,7 +636,7 @@ class SunflowHeatPump extends LitElement {
           ${tile(t("Sperre"), guard.block ? (guard.block_reason === "foreign" ? t("an (nicht von Sunflow)") : t("an")) : t("aus"), guard.block_since ? t("seit {time}", { time: time(guard.block_since) }) : null)}
           ${budget
             ? tile(
-              shadow ? t("Budget heute (virtuell)") : t("Budget heute"),
+              shadow ? t("Budget heute (nur Lernen)") : t("Budget heute"),
               `${budget.used_today}/${budget.per_day}`,
               t("Notkontingent übrig {emergency} von {emergency_per_day}, letzte Stunde {hour}/{per_hour}", { emergency: budget.emergency_left, emergency_per_day: budget.emergency_per_day, hour: budget.used_hour, per_hour: budget.per_hour }),
             )
@@ -684,14 +708,14 @@ class SunflowHeatPump extends LitElement {
           </tr>`)}
         </tbody>
       </table>
-      <p class="small muted">${t("Budget: {normal} Schreibvorgänge je Tag, dazu {emergency} nur für Schutzschritte (Start, Nachführen), höchstens {hour} je Stunde; der Tag folgt der Zeitzone von Home Assistant. Im Schatten zählt Sunflow virtuell, mit Mindestabstand und Budget. Ist das Budget erschöpft, wartet ein normaler Wert; statt eines Schutzschritts würde die Raumthermostat-Sperre gesetzt. Die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
+      <p class="small muted">${t("Budget: {normal} Schreibvorgänge je Tag, dazu {emergency} nur für Schutzschritte (Start, Nachführen), höchstens {hour} je Stunde; der Tag folgt der Zeitzone von Home Assistant. Bei „Nur Lernen“ zählt Sunflow, was es schreiben würde, mit Mindestabstand und Budget. Ist das Budget erschöpft, wartet ein normaler Wert; statt eines Schutzschritts würde die Raumthermostat-Sperre gesetzt. Die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
     `;
   }
 
   /** The learned heating curve (shadow): K, n, spread, quality and the data it rests on. */
   _renderCurve(curve, surface, tile) {
     if (!curve) {
-      return html`<div class="learned"><span class="field-label">${t("Kennlinie (Schatten)")}</span>
+      return html`<div class="learned"><span class="field-label">${t("Kennlinie")}</span>
         <p class="small muted">${t("Noch nicht berechnet.")}</p></div>`;
     }
     const two = (v) => (v == null ? "–" : decimal(Number(v).toFixed(2)));
@@ -705,7 +729,7 @@ class SunflowHeatPump extends LitElement {
     const stale = surface && curve.surface !== surface;
     return html`
       <div class="learned">
-        <span class="field-label">${t("Kennlinie (Schatten)")}</span>
+        <span class="field-label">${t("Kennlinie")}</span>
         <p class="small ${curve.state === "ready" && !stale ? "muted" : "warn-text"}">${t("Wärmeabgabe der Heizflächen Q = K · (Tw − T_Raum)^n: {state}", { state })}</p>
         ${stale ? html`<p class="small warn-text">${t("Heizflächentyp geändert: Die Kennlinie wird neu bewertet, die gemessenen Daten bleiben erhalten.")}</p>` : nothing}
         <div class="tiles">

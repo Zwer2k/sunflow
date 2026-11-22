@@ -1252,6 +1252,19 @@ Nur CAN:
     Schreiben) mit „wird geschrieben …“ und dem Ergebnis, wenn er verfallen ist.
   - Journal: Schreibvorgänge mit Grund, ungewollte Abschaltungen, fremde Schreiber, Sperre an/aus.
 - Schattenbetrieb: alles wird berechnet und angezeigt, nichts geschrieben.
+- **Modus (seit 0.80.22, Nutzer-Entscheidung):** eine Auswahl oben beim Raum-Soll statt Modus Heizen/Aus
+  und eigenem Schalter „Aktives Schreiben“ je Wärmepumpe. Für Nutzer heißt der Schattenbetrieb „Nur
+  Lernen“; intern (Code, gespeicherte Daten, HA-Attribut `mode` = `shadow`/`active`) bleiben die Namen.
+  | Auswahl | gespeichert | zeichnet auf (`heat_pump_samples`) | lernt | regelt |
+  |---|---|---|---|---|
+  | Aus | `climate.mode` = `off` | nein (Zeilen verworfen) | nein (Korrektur eingefroren `mode_off`, Kennlinie/gelernte Werte nicht neu, Hausmodell bleibt, keine Erhöhung nach Abschaltung) | nein |
+  | Nur Lernen | `heat`, `flow_active` aus | ja | ja | nein, zeigt „würde schreiben“ |
+  | Lernen + Regeln | `heat`, `flow_active` an (alle Wärmepumpen, die es dürfen) | ja | ja | ja |
+  Reihenfolge beim Umschalten: erst `flow_active` je Wärmepumpe, dann `climate.mode`. Lernen + Regeln nur
+  in Sunflow mit Bestätigung und den Voraussetzungen von 4.7; im HA-Thermostat schaltet Aus `climate.mode`
+  auf `off` (Schalter bleibt), Heizen zurück auf die zuletzt gültige Stufe. Nach Aus übernimmt Sunflow wie
+  beim Einschalten (4.7). Das Hausmodell wird nach einem Neustart bei Aus einmal gelernt (es liegt nur im
+  Speicher), danach nicht aufgefrischt.
 
 ---
 
@@ -1598,6 +1611,10 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
             (Schatten), nicht mit der HPSU-Nachbildung.
         12. Einschalten prüft nicht, ob andere Regler Max T-Vorlauf oder die Sperre schreiben (Inbetriebnahme
             Schritt 0); das meldet erst die Erkennung fremder Schreiber.
+      - **Modus in einer Auswahl (0.80.22):** Aus / Nur Lernen / Lernen + Regeln statt Modus und Schalter,
+        Aus ohne Aufzeichnung und Lernen (Abschnitt 13). Tests `test_heat_pump_samples.py`
+        (`test_mode_off_records_and_learns_nothing`), `test_heat_pump_guard.py`
+        (`test_mode_off_learns_nothing_from_a_shutdown`).
       - **Später:** veraltetes climate-Attribut `shadow` entfernen (seit 0.80.17 ersetzt durch `mode`), mit
         Hinweis im CHANGELOG und in der Doku; vorher prüfen, dass Karten und Automationen `mode` nutzen.
       - **Todo (offener Punkt 8):** in den ersten Tagen des aktiven Betriebs per MCP (HA-History) und aus

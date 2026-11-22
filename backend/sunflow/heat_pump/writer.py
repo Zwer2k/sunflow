@@ -108,7 +108,7 @@ def reason_text(reason: str, manual: bool = False) -> str:
 def lapse_text(reason: str) -> str:
     """Why a "write now" lapsed, for the journal."""
     return {
-        NOT_ACTIVE: t("Schreiben nicht aktiv (Schatten)"),
+        NOT_ACTIVE: t("Regeln nicht eingeschaltet (nur Lernen)"),
         NOTHING_PENDING: t("kein ausstehender Wert"),
         INACTIVE: t("kein gültiger Zustand zum Schreiben"),
         BUDGET: t("Budget erschöpft"),
@@ -217,7 +217,7 @@ def budget_text(limit: str, limits: Any, shadow: bool) -> str:
         message = t("Höchstens {n} Schreibvorgänge je Stunde erreicht: Werte warten, Raumthermostat-Sperre statt Schutzschritt.", n=limits.per_hour)
     else:
         message = t("Budget erschöpft")
-    return t("Schatten: {message}", message=message) if shadow else message
+    return t("Nur Lernen: {message}", message=message) if shadow else message
 
 
 def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bool = False, budget: Budget | None = None) -> "GuardResult":
@@ -250,7 +250,7 @@ def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bo
                 writer.pending = pending = None
             elif guard.budget_unprotected(data):
                 message = t("Schutzschritt wegen des Budgets nicht möglich, die Raumthermostat-Sperre ebenfalls nicht (keine Sperre oder ihre Mindestdauer): die Wärmepumpe kann abschalten.")
-                result.notes.append((t("Schatten: {message}", message=message) if not active else message, True))
+                result.notes.append((t("Nur Lernen: {message}", message=message) if not active else message, True))
         limit = outcome.pending.budget if outcome.pending is not None else None
         if isinstance(budget, WriteBudget) and limit is not None and budget.notice(limit, data.at):
             result.notes.append((budget_text(limit, budget.limits, not active), True))

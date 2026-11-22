@@ -202,8 +202,8 @@ def test_block_on_and_off_with_minimum_duration() -> None:
     assert sim.writes() == [("block_on", True), ("block_off", False), ("start", 30.1)]
     assert restart.phase == "idle"
     notes = sim.notes()
-    assert notes[0].startswith("Schatten: Sunflow würde die Raumthermostat-Sperre setzen (Raum 21,6 °C, 0,6 K über dem Ziel")
-    assert notes[1].startswith("Schatten: Sunflow würde die Raumthermostat-Sperre aufheben")
+    assert notes[0].startswith("Nur Lernen: Sunflow würde die Raumthermostat-Sperre setzen (Raum 21,6 °C, 0,6 K über dem Ziel")
+    assert notes[1].startswith("Nur Lernen: Sunflow würde die Raumthermostat-Sperre aufheben")
 
 
 def test_block_found_on_is_kept_and_shown() -> None:
@@ -314,6 +314,17 @@ def test_unwanted_shutdown_in_running_operation_raises_the_swing() -> None:
     assert later.steady_swing == pytest.approx(3.6 - 10 * BUMP_DECAY_K_PER_DAY, abs=0.01)
     assert values(sim.settings, None, sim.guard.bumps, sim.now + timedelta(days=60)).steady_swing == 0.5
     assert sim.notes()[0].startswith("Ungewollte Abschaltung des Kompressors im laufenden Betrieb: Vorlauf 33,1 °C")
+
+
+def test_mode_off_learns_nothing_from_a_shutdown() -> None:
+    """Mode off ("Aus"): a stop at the shutdown limit raises no jump or swing."""
+    sim = Sim(written=30.0)
+    sim.mode = "off"
+    sim.run([30.0] * 9)
+    sim.minute(30.0, peak=33.1)
+    sim.minute(30.2, compressor=False, activity="idle")
+
+    assert sim.events("unwanted_stop") == [] and sim.guard.bumps == {}
 
 
 def test_unwanted_shutdown_during_a_start_raises_its_jump() -> None:
@@ -565,7 +576,7 @@ async def test_recorder_notes_planned_writes(tmp_path: Path, library: Any, monke
     assert all(w["shadow"] for w in writes)
     assert (status["shadow"], status["block"], status["block_reason"], status["setpoint_c"]) == (True, True, "room_warm", 31.1)
     assert status["values"]["steady_swing"] == 0.5
-    assert any(n.startswith("Schatten: Sunflow würde die Raumthermostat-Sperre setzen") for n in pump.notes())
+    assert any(n.startswith("Nur Lernen: Sunflow würde die Raumthermostat-Sperre setzen") for n in pump.notes())
     today = answer["days"][0]
     assert (today["start"], today["block_on"], today["setpoint"]) == (1, 1, 1)
     assert answer["budget"] == {"per_day": 48, "emergency_per_day": 24, "per_hour": 6}

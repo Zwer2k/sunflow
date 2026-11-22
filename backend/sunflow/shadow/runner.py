@@ -844,6 +844,9 @@ class ShadowRunner:
             return
         if self._house_task is not None and not self._house_task.done():
             return
+        if self.house_model is not None and self._store.load().house.climate.mode == "off":
+            # Mode off ("Aus", 16 step 3): the learned model stays as it is; learned once after a restart
+            return
         if self._house_at is None or now - self._house_at > HOUSE_REFRESH:
             self._house_task = asyncio.create_task(self._learn_house())
 

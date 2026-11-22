@@ -231,7 +231,7 @@ async def test_switching_on_freezes_the_base_and_starts_the_correction_at_0(tmp_
     # The guard starts from the real Max T-Vorlauf, without time or reason; nothing needed, nothing written
     assert (taken["setpoint"]["written_c"], taken["setpoint"]["written_at"], taken["setpoint"]["written_reason"]) == (31.0, None, None)
     assert plant.ha.calls == []
-    assert any("Aktives Schreiben eingeschaltet" in n for n in plant.notes)
+    assert any("Lernen + Regeln eingeschaltet" in n for n in plant.notes)
     assert any("Basis 31,0 °C eingefroren, Korrektur 0" in n for n in plant.notes)
     # Frozen: the effective setpoint changes (by someone else), the base stays
     plant.hpsu.max_setpoint = 32.0
@@ -410,7 +410,7 @@ async def test_switching_off_resets_nothing(tmp_path: Path) -> None:
     assert plant.hpsu.blocked
     assert plant.flow.guard("hp").block_reason == FOREIGN
     assert status["setpoint"]["mode"] == "shadow"
-    assert any("Aktives Schreiben ausgeschaltet" in n and "Sperre bleibt gesetzt" in n for n in plant.notes)
+    assert any("Regeln ausgeschaltet" in n and "Sperre bleibt gesetzt" in n for n in plant.notes)
     assert isinstance(plant.flow.budget("hp").log, VirtualLog)
     assert HeatPumpStateStore(tmp_path).devices["hp"]["active"] is False
 

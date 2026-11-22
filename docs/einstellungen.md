@@ -75,26 +75,33 @@ Je Wallbox:
 
 ## Wärmepumpe
 
-Die Regelung der Wärmepumpe läuft im **Schattenbetrieb**: Sunflow rechnet den Vorlauf aus und zeigt
-ihn an, schreibt aber nichts an die Wärmepumpe – bis Sie je Wärmepumpe **Aktives Schreiben** einschalten.
+**Modus** (oben beim Raum-Soll), drei Stufen:
 
-**Aktives Schreiben** (je Wärmepumpe, Standard aus): Eingeschaltet schreibt Sunflow den Stellwert
-(Max T-Vorlauf, im EEPROM der Wärmepumpe, im Budget) und die Raumthermostat-Sperre an die Wärmepumpe.
-Einschalten geht nur, wenn die Wärmepumpe kompatibel und erreichbar ist, Messwerte da sind, die HK-Funktion
-auf Fest steht und die ESP-Regelung aus ist; vorher andere Regler abschalten, die diese Werte schreiben.
-Beim Einschalten übernimmt Sunflow, ohne etwas zu schreiben: Die Basis wird eingefroren, die Korrektur
-beginnt bei 0, Stellwert und Sperre gelten so, wie die Wärmepumpe sie gerade hat (eine fremde Sperre
-bleibt fremd). Geschrieben wird erst, wenn die Regeln es verlangen; jeder Schreibvorgang steht mit Grund im
-Journal. Schlägt ein Schreibvorgang fehl, nimmt Sunflow ihn zurück (Journal) und versucht es wieder, wenn
-die Regeln es verlangen. Etwa eine Minute nach dem Schreiben prüft Sunflow, ob die Wärmepumpe den Wert
-übernommen hat: zeigt sie ihn nicht, geht Sunflow vom angezeigten Wert aus; bleibt der wirksame
-Vorlauf-Soll im Heizbetrieb darunter, begrenzt die Wärmepumpe selbst (z. B. T-Vorlauf Tag) – dann die
-Obergrenze des Stellwerts höchstens auf diesen Wert stellen (beides Warnung im Journal). Im Modus Aus
-schreibt Sunflow nichts; danach übernimmt es wieder wie beim Einschalten. **Ausschalten** stellt nichts
-zurück: Max T-Vorlauf bleibt, wie zuletzt geschrieben, eine von Sunflow gesetzte Sperre bleibt gesetzt
-(die Wärmepumpe heizt dann nicht, bis sie aufgehoben wird); Sunflow rechnet wieder im Schatten.
+- **Aus:** Sunflow regelt nicht, lernt nicht und zeichnet keine Messwerte der Wärmepumpe auf (spart Platz,
+  z. B. im Sommer). Das Gelernte (Kennlinie, Hausmodell, Sprungwerte, Korrektur) bleibt erhalten; danach
+  lernt Sunflow mit den älteren Daten weiter.
+- **Nur Lernen** (Standard): Sunflow zeichnet auf, lernt und zeigt an, was es schreiben würde, schreibt aber
+  nichts an die Wärmepumpe.
+- **Lernen + Regeln:** Sunflow schreibt den Stellwert (Max T-Vorlauf, im EEPROM der Wärmepumpe, im Budget)
+  und die Raumthermostat-Sperre an die Wärmepumpe.
 
-**Raum-Soll:** die Raumtemperatur, die Sunflow halten soll (18–27 °C), und der Modus Heizen/Aus; dasselbe
+Dasselbe Thermostat „Haus“ in Home Assistant kennt nur Heizen/Aus: Aus dort ist **Aus**, Heizen dort kehrt
+zu der Stufe zurück, die zuletzt galt (Nur Lernen oder Lernen + Regeln). **Lernen + Regeln** wird nur in
+Sunflow eingeschaltet, mit Bestätigung, und geht nur, wenn die Wärmepumpe kompatibel und erreichbar ist,
+Messwerte da sind, die HK-Funktion auf Fest steht und die ESP-Regelung aus ist; vorher andere Regler
+abschalten, die diese Werte schreiben. Beim Einschalten übernimmt Sunflow, ohne etwas zu schreiben: Die
+Basis wird eingefroren, die Korrektur beginnt bei 0, Stellwert und Sperre gelten so, wie die Wärmepumpe sie
+gerade hat (eine fremde Sperre bleibt fremd). Geschrieben wird erst, wenn die Regeln es verlangen; jeder
+Schreibvorgang steht mit Grund im Journal. Schlägt ein Schreibvorgang fehl, nimmt Sunflow ihn zurück
+(Journal) und versucht es wieder, wenn die Regeln es verlangen. Etwa eine Minute nach dem Schreiben prüft
+Sunflow, ob die Wärmepumpe den Wert übernommen hat: zeigt sie ihn nicht, geht Sunflow vom angezeigten Wert
+aus; bleibt der wirksame Vorlauf-Soll im Heizbetrieb darunter, begrenzt die Wärmepumpe selbst (z. B.
+T-Vorlauf Tag) – dann die Obergrenze des Stellwerts höchstens auf diesen Wert stellen (beides Warnung im
+Journal). Nach **Aus** übernimmt Sunflow wieder wie beim Einschalten. **Zurückschalten** stellt nichts
+zurück: Max T-Vorlauf bleibt, wie zuletzt geschrieben, eine von Sunflow gesetzte Sperre bleibt gesetzt (die
+Wärmepumpe heizt dann nicht, bis sie aufgehoben wird).
+
+**Raum-Soll:** die Raumtemperatur, die Sunflow halten soll (18–27 °C), und der Modus; dasselbe
 wie das Thermostat „Haus“ in Home Assistant. Daneben das Raum-Ist (gewichtetes Mittel der Räume; ein Raum
 zählt nicht, wenn sein Sensor nicht verfügbar ist oder sein Gerät seit über 2 Stunden nichts gemeldet hat – es
 zählt auch eine andere Messung desselben Geräts, z. B. die Luftfeuchte, weil manche Integrationen eine
@@ -120,9 +127,9 @@ solche Wert). Die Korrektur gleicht die Abweichung des Raum-Ist vom Raum-Soll la
 (Nachstellzeit: Fußboden 6 h, gemischt 4 h, Heizkörper 2 h). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
 Raumtemperaturen fehlen, ein Raum sich schnell ändert (Lüften, Kochen) oder der Raum einem geänderten Raum-Soll noch folgt (höchstens
 24 Stunden). Im
-Schattenbetrieb wirkt sie nicht zurück und kann bis an ihre Grenze laufen.
+Modus „Nur Lernen“ wirkt sie nicht zurück und kann bis an ihre Grenze laufen; im Modus Aus lernt sie nicht.
 
-**Kennlinie (Schatten):** Aus den 5-Minuten-Werten lernt Sunflow stündlich, wie viel Wärme die
+**Kennlinie:** Aus den 5-Minuten-Werten lernt Sunflow stündlich, wie viel Wärme die
 Heizflächen abgeben: Q = K · (mittlere Wassertemperatur − Raum-Ist)^n, dazu die Spreizung (Vorlauf −
 Rücklauf) abhängig von der Wärme. n kommt aus dem **Heizflächentyp** (Fußboden 1,1, gemischt 1,2,
 Heizkörper 1,3), K und die Spreizung werden gelernt – nur aus gültigem Heizbetrieb mit seit mindestens
@@ -138,11 +145,11 @@ zählen mit 0; Warmwasser, Abtauen, Nachlauf, schnelle Änderungen und Sperre z�
 nötig). Diese Wärme entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt – die Kennlinie bildet
 dann nur den aktuellen Zustand nach, die Richtung gibt die Korrektur. Sonst gilt weiter Basis +
 Korrektur. Angezeigt wird, welche Quelle gerade gilt; wechselt sie, springt das Vorlauf-Ziel im
-Schattenbetrieb einmal, die Korrektur bleibt. Schreibt Sunflow aktiv, verschiebt es bei einem solchen
+Modus „Nur Lernen“ einmal, die Korrektur bleibt. Bei „Lernen + Regeln“ verschiebt es bei einem solchen
 Wechsel die Korrektur, damit das Vorlauf-Ziel nicht springt (innerhalb ihrer Grenze von ±3 K; ein Rest
 bleibt als Sprung und steht im Journal).
 
-**Stellwert und Schutz (Schatten):** Aus dem Vorlauf-Ziel rechnet Sunflow den Stellwert (Max T-Vorlauf),
+**Stellwert und Schutz (bei „Nur Lernen“: würde schreiben):** Aus dem Vorlauf-Ziel rechnet Sunflow den Stellwert (Max T-Vorlauf),
 den es schreiben würde, und die Raumthermostat-Sperre – angezeigt mit „würde schreiben“, nichts davon
 geht an die Wärmepumpe. Der Stellwert bleibt in den **Grenzen des Stellwerts**, die je Wärmepumpe
 einstellbar sind (Mindestens/Höchstens; Höchstens ist zugleich der höchste Vorlauf für Estrich bzw.
@@ -170,12 +177,12 @@ steht das im Journal, und der betroffene Wert wird sofort erhöht; ohne weitere 
 Wochen zurück. Die Tabelle **Schreibvorgänge je Tag** zählt für die letzten 7 Tage, was Sunflow
 geschrieben hätte (normal, Start, Nachführen, Sperre an/aus), und die ungewollten Abschaltungen – zum
 Vergleich mit dem geplanten Budget von 48 normalen und 24 Schreibvorgängen für Start und Nachführen je
-Tag. Schon im Schatten gilt dabei der **Mindestabstand** zwischen zwei Schreibvorgängen auf den Stellwert
+Tag. Schon bei „Nur Lernen“ gilt dabei der **Mindestabstand** zwischen zwei Schreibvorgängen auf den Stellwert
 (aus dem Geräteprofil, bei der HPSU 5 Minuten, für Schutzschritte – Start und Nachführen – 2 Minuten): Die
 erste Änderung nach einer Ruhepause geht sofort hinaus, weitere Änderungen in dieser Zeit merkt Sunflow
 nur, und nach Ablauf schreibt es den letzten Wert, falls er noch abweicht (ein normaler Wert um mehr als
 0,5 K, ein Schutzschritt bei jeder Anhebung). Ein wartender Wert wird als „ausstehend … würde um …
-geschrieben“ angezeigt. Ebenso gilt schon im Schatten das **Budget** (aus dem Geräteprofil, bei der HPSU
+geschrieben“ angezeigt. Ebenso gilt schon bei „Nur Lernen“ das **Budget** (aus dem Geräteprofil, bei der HPSU
 48 Schreibvorgänge je Tag, dazu 24 nur für Schutzschritte, höchstens 6 in jeder Stunde; der Tag folgt der
 Zeitzone von Home Assistant): Sunflow zählt dafür virtuell aus den aufgezeichneten Schreibvorgängen, der
 Zähler für echte EEPROM-Schreibvorgänge bleibt unberührt; bei aktivem Schreiben zählen die echten
@@ -184,9 +191,9 @@ normaler Wert („ausstehend … wartet: Tagesbudget erschöpft“) bis zum näc
 über das Notkontingent weiter. Ist auch dieses erschöpft oder die Höchstzahl je Stunde erreicht, würde
 Sunflow statt des Schutzschritts die Raumthermostat-Sperre setzen und sie aufheben, sobald wieder ein
 Schutzschritt geschrieben werden darf (frühestens nach ihrer Mindestdauer). Das Journal vermerkt jede Art
-der Erschöpfung einmal am Tag. Die Kachel **Budget heute** (im Schatten „virtuell“) zeigt den Verbrauch des Tages, das
+der Erschöpfung einmal am Tag. Die Kachel **Budget heute** (bei „Nur Lernen“ gezählt, was Sunflow schreiben würde) zeigt den Verbrauch des Tages, das
 übrige Notkontingent und die letzte Stunde. Die Taste **Jetzt schreiben** überspringt den Mindestabstand
-für den ausstehenden Wert (nicht das Budget) und wird im Schattenbetrieb noch nicht angeboten. Die
+für den ausstehenden Wert (nicht das Budget) und wird bei „Nur Lernen“ nicht angeboten. Die
 Raumthermostat-Sperre zählt nicht ins Budget und nicht zum Mindestabstand: Die HPSU legt diesen Eingang
 nicht im EEPROM ab; gegen Takten gilt ihre Mindestdauer.
 
@@ -194,10 +201,10 @@ nicht im EEPROM ab; gegen Takten gilt ihre Mindestdauer.
 (Automation, Skript, ESP-Regelung, von Hand), meldet Sunflow das als Warnung im Journal – einmal, solange
 solche Änderungen aufeinander folgen; weitere zählt es nur. Erst 24 Stunden nach der letzten Änderung gilt
 das als beendet (Eintrag im Journal); bis dahin nennt auch die Zusammenfassung der Einrichtung die
-Wärmepumpe. Sunflow geht danach vom neuen Wert aus (im Schatten auch für die virtuellen Schreibvorgänge)
+Wärmepumpe. Sunflow geht danach vom neuen Wert aus (bei „Nur Lernen“ auch für die gedachten Schreibvorgänge)
 und wartet den Mindestabstand ab, bevor es selbst wieder schreibt; fremde Änderungen zählen nicht in sein
 Budget. Ist die **ESP-Regelung** der CAN-Komponente aktiv („Vorlauf Soll Geregelt“ über 0), regelt die
-Komponente Max T-Vorlauf selbst: Sunflow schreibt dann nichts (im Schatten „Würde nichts schreiben: ESP-Regelung aktiv“),
+Komponente Max T-Vorlauf selbst: Sunflow schreibt dann nichts (bei „Nur Lernen“ „Würde nichts schreiben: ESP-Regelung aktiv“),
 meldet das im Journal und in der Zusammenfassung und regelt wieder, sobald der Wert in ESPHome auf 0 steht.
 
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)

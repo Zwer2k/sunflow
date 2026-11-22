@@ -79,13 +79,13 @@ Je Prognose gibt es zusätzlich die Sensoren „Prognose heute“, „Prognose R
 | Strategie | Ausgewogen, PV aufnehmen, Autarkie, Speichernutzung |
 | Neu planen | Taste |
 | Plan (Kalender) | Lade-, Heiz-, Netzlade- und Abregelfenster, einmalige Lasten |
-| Haus (Thermostat) | Raum-Soll (18–27 °C, Schritt 0,5 °C; über `climate.set_temperature` auf 0,1 °C genau), Raum-Ist und Modus Heizen/Aus; nur mit Räumen oder Wärmepumpe. Attribute: Planziel, Vorlauf-Ziel, Basis und Korrektur, Stellwert geschrieben/ausstehend (`setpoint_written`, `setpoint_written_at`, `setpoint_pending`, `setpoint_pending_at`, `setpoint_pending_reason`, `setpoint_held`) und `mode` (`shadow`: berechnet, nicht geschrieben; `active`: Sunflow schreibt) |
+| Haus (Thermostat) | Raum-Soll (18–27 °C, Schritt 0,5 °C; über `climate.set_temperature` auf 0,1 °C genau), Raum-Ist und Modus Heizen/Aus; nur mit Räumen oder Wärmepumpe. Attribute: Planziel, Vorlauf-Ziel, Basis und Korrektur, Stellwert geschrieben/ausstehend (`setpoint_written`, `setpoint_written_at`, `setpoint_pending`, `setpoint_pending_at`, `setpoint_pending_reason`, `setpoint_held`) und `mode` (`shadow`: Modus „Nur Lernen“, berechnet, nicht geschrieben; `active`: „Lernen + Regeln“, Sunflow schreibt); Heizen/Aus entspricht „Aus“ bzw. der zuletzt gewählten Stufe (Nur Lernen oder Lernen + Regeln) |
 | *Wärmepumpe* Vorlauf-Ziel | Vorlauf, den Sunflow anstrebt (°C) |
-| *Wärmepumpe* Stellwert | zuletzt geschriebener Max T-Vorlauf (°C), im Schattenbetrieb der virtuell geschriebene; eine fremde Änderung wird übernommen (Grund `foreign`). Attribute: `pending` (ausstehender Wert), `pending_at` (fällig um), `pending_reason`, `written_at`, `written_reason`, `held` (warum zurückgehalten: `spacing` Mindestabstand, `budget`, `block` Raumthermostat-Sperre, `esp_regulation`) |
-| *Wärmepumpe* Schreibvorgänge heute | Schreibvorgänge auf den Stellwert seit Mitternacht (Zeitzone von Home Assistant), im Schatten virtuell; nur Verlauf, keine Langzeitstatistik |
+| *Wärmepumpe* Stellwert | zuletzt geschriebener Max T-Vorlauf (°C), bei „Nur Lernen“ der Wert, den Sunflow geschrieben hätte; eine fremde Änderung wird übernommen (Grund `foreign`). Attribute: `pending` (ausstehender Wert), `pending_at` (fällig um), `pending_reason`, `written_at`, `written_reason`, `held` (warum zurückgehalten: `spacing` Mindestabstand, `budget`, `block` Raumthermostat-Sperre, `esp_regulation`) |
+| *Wärmepumpe* Schreibvorgänge heute | Schreibvorgänge auf den Stellwert seit Mitternacht (Zeitzone von Home Assistant), bei „Nur Lernen“ gedacht; nur Verlauf, keine Langzeitstatistik |
 
-Die drei Sensoren je Wärmepumpe tragen das Attribut `mode` (`shadow` | `active`) und im Schatten das
-Symbol eines Geistes; beim Aktivschalten ändern sich nur Attribut und Symbol, nicht Name oder Entity-ID.
+Die drei Sensoren je Wärmepumpe tragen das Attribut `mode` (`shadow` | `active`) und bei „Nur Lernen“
+das Symbol eines Geistes; beim Einschalten von „Lernen + Regeln“ ändern sich nur Attribut und Symbol, nicht Name oder Entity-ID.
 Ohne bekannten Wert stehen sie auf „unbekannt“, nie auf 0 – „Schreibvorgänge heute“ nach einem Neustart,
 bis Sunflow die bisherigen Schreibvorgänge neu gezählt und die Zeitzone gelesen hat. Wird die Wärmepumpe
 in Sunflow entfernt, verschwinden ihre Sensoren. Für Auswertungen über längere Zeit dienen die

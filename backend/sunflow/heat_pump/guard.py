@@ -416,7 +416,8 @@ class Guard:
     def _detect_stop(self, data: GuardInput, result: GuardResult, tv: float | None) -> None:
         """An unwanted shutdown: the compressor stopped in heating at Tv ≥ setpoint + stop margin."""
         reading, now = data.reading, data.at
-        if not (self._compressor is True and reading.compressor is False):
+        if not (self._compressor is True and reading.compressor is False) or data.mode == "off":
+            # Mode off ("Aus"): nothing is learned, also no raised jump or swing
             return
         if self._activity != HEATING or reading.activity in BUSY or reading.blocked or self._effective is None:
             return
@@ -645,8 +646,8 @@ class Guard:
             message = (t("Raumthermostat-Sperre gesetzt ({why}).", why=why) if on
                        else t("Raumthermostat-Sperre aufgehoben ({why}).", why=why))
         else:
-            message = (t("Schatten: Sunflow würde die Raumthermostat-Sperre setzen ({why}).", why=why) if on
-                       else t("Schatten: Sunflow würde die Raumthermostat-Sperre aufheben ({why}).", why=why))
+            message = (t("Nur Lernen: Sunflow würde die Raumthermostat-Sperre setzen ({why}).", why=why) if on
+                       else t("Nur Lernen: Sunflow würde die Raumthermostat-Sperre aufheben ({why}).", why=why))
         result.notes.append((message, False))
         result.write_notes.append((event, (message, False)))
 

@@ -148,7 +148,7 @@ def test_normal_value_waits_without_a_time_once_the_budget_is_used_up() -> None:
     assert (pending.value_c, pending.held, pending.budget, pending.due_at) == (33.0, "budget", "day", None)
     # Journal once per day, marked as shadow
     budget_notes = [n for n in sim.notes() if "Schreibbudget für heute erschöpft" in n]
-    assert budget_notes == ["Schatten: Schreibbudget für heute erschöpft (2 Schreibvorgänge): normale Werte erst morgen wieder, Schutzschritte über das Notkontingent."]
+    assert budget_notes == ["Nur Lernen: Schreibbudget für heute erschöpft (2 Schreibvorgänge): normale Werte erst morgen wieder, Schutzschritte über das Notkontingent."]
 
 
 def _pause(sim: Sim) -> None:
@@ -176,8 +176,8 @@ def test_block_instead_of_a_protection_step_when_the_emergency_quota_is_used_up(
     last = sim.results[-1][2]
     assert last.phase == "blocked" and last.pending is None
     notes = sim.notes()
-    assert "Schatten: Sunflow würde die Raumthermostat-Sperre setzen (Schreibbudget erschöpft)." in notes
-    assert any(n.startswith("Schatten: Notkontingent für heute erschöpft (1 Schreibvorgänge zusätzlich)") for n in notes)
+    assert "Nur Lernen: Sunflow würde die Raumthermostat-Sperre setzen (Schreibbudget erschöpft)." in notes
+    assert any(n.startswith("Nur Lernen: Notkontingent für heute erschöpft (1 Schreibvorgänge zusätzlich)") for n in notes)
 
 
 def test_budget_block_released_once_a_protection_step_may_be_written() -> None:
@@ -207,7 +207,7 @@ def test_without_a_block_the_protection_step_waits_and_is_noted_once() -> None:
     assert sim.writes() == []
     assert sim.results[-1][2].pending.held == "budget"
     unprotected = [n for n in sim.notes() if "Schutzschritt wegen des Budgets nicht möglich" in n]
-    assert len(unprotected) == 1 and unprotected[0].startswith("Schatten: ")
+    assert len(unprotected) == 1 and unprotected[0].startswith("Nur Lernen: ")
 
 
 def test_a_foreign_block_is_not_taken_over_by_the_budget() -> None:

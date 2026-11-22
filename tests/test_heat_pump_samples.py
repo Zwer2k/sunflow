@@ -268,3 +268,36 @@ async def test_status_api_shows_the_states(pump: Pump, library: ProfileLibrary, 
     state = device["state"]
     assert (state["program"], state["activity"], state["strategy"], state["blocked"], state["fault"]) == ("heating", "heating", "fixed", True, False)
     assert (state["valid"], state["frozen"]) == (False, ["blocked"])
+
+
+# Mode off ("Aus", 16 step 3): nothing recorded, nothing learned
+
+
+async def test_mode_off_records_and_learns_nothing(tmp_path: Path, library: ProfileLibrary) -> None:
+    from sunflow.heat_pump.shadow import FlowShadow  # noqa: PLC0415
+    from sunflow.heat_pump.state_store import HeatPumpStateStore  # noqa: PLC0415
+
+    pump = Pump(tmp_path, library)
+    pump.recorder.flow = FlowShadow(HeatPumpStateStore(tmp_path))
+    try:
+        await pump.minutes(NOW, 6)
+        assert len(pump.rows()) == 1
+        pump.config.house.climate.mode = "off"
+        # The room well below the setpoint: the correction would move
+        pump.extra["sensor.wohnzimmer"] = pump._state("19.0", "°C")
+        await pump.minutes(NOW + 6 * MIN, 20)
+        rows = pump.rows()
+        flow = pump.recorder.status()["hp"]["flow"]
+        task = pump.recorder._curve_task
+        # Back to heat: recorded again
+        pump.config.house.climate.mode = "heat"
+        await pump.minutes(NOW + 26 * MIN, 10)
+        again = pump.rows()
+    finally:
+        pump.store.close()
+
+    # The interval that ended while off is dropped with its events; none recorded meanwhile
+    assert len(rows) == 1
+    assert "mode_off" in flow["frozen"] and flow["correction_k"] == 0.0
+    assert task is None or task.done()
+    assert len(again) > 1

@@ -83,6 +83,11 @@ def _time(text: Any) -> datetime | None:
         return None
 
 
+def off(config: SunflowConfig) -> bool:
+    """Mode off ("Aus"): Sunflow neither controls nor learns, and records no heat pump samples."""
+    return config.house.climate.mode == "off"
+
+
 @dataclass(frozen=True, kw_only=True)
 class Minute:
     """One sample of a heat pump."""
@@ -257,8 +262,8 @@ class HeatPumpRecorder:
                 # tried again next minute when the table cannot be read
                 log = self.flow.budget(device.id).log
                 try:
-                    rows = await asyncio.to_thread(self._store.heat_pump_samples, device.id, now - BUDGET_KEEP - INTERVAL)
-                    log.seed([e for row in rows for e in row.get("events") or []] + self.pending_events(device.id), now)
+                    stored = await asyncio.to_thread(self._store.heat_pump_samples, device.id, now - BUDGET_KEEP - INTERVAL)
+                    log.seed([e for row in stored for e in row.get("events") or []] + self.pending_events(device.id), now)
                 except Exception:
                     _LOGGER.exception("Reading the writes of today failed")
             if minute is not None:
@@ -286,8 +291,12 @@ class HeatPumpRecorder:
             for device_id, message, warn in notes:
                 if (device := next((d for d in devices if d.id == device_id), None)) is not None:
                     self._journal(device, message, now, warn=warn)
-            if self._curve_task is None or self._curve_task.done():
+            if (self._curve_task is None or self._curve_task.done()) and not off(config):
                 self._curve_task = asyncio.create_task(self.learn_curves(config, now))
+        if off(config):
+            # Mode off (16 step 3, "Aus"): nothing recorded, nothing learned; the rows of intervals that
+            # ended meanwhile (with their events) are dropped
+            rows = []
         if rows:
             await asyncio.to_thread(self._store.store_heat_pump_samples, rows)
         if self._pruned_at is None or now - self._pruned_at >= PRUNE_EVERY:

@@ -117,7 +117,7 @@ lädt dafür im Modus „Min+PV“. Wirkt nur, solange Sunflow die Wallbox steue
 
 | Gerät | Anbindung | Profil | Messen | Steuern | Voraussetzungen | Messen geprüft |
 |---|---|---|---|---|---|---|
-| Rotex/Daikin HPSU | ESPHome mit der Komponente `daikin_rotex_can` (CAN-Bus) | `esphome/rotex_hpsu_can` | Vorlauf, Vorlauf-Spitze, Rücklauf, wirksamer Vorlauf-Soll, Wärmeleistung, Außentemperatur, Betriebsmodus, Betriebsart, Bypass-Ventil, Kompressor, Fehlercode | Schattenbetrieb: Vorlauf-Ziel berechnet, nichts geschrieben | Firmware mit Manifest und `tv_max` | 🧪 |
+| Rotex/Daikin HPSU | ESPHome mit der Komponente `daikin_rotex_can` (CAN-Bus) | `esphome/rotex_hpsu_can` | Vorlauf, Vorlauf-Spitze, Rücklauf, wirksamer Vorlauf-Soll, Wärmeleistung, Außentemperatur, Betriebsmodus, Betriebsart, Bypass-Ventil, Kompressor, Fehlercode | „Nur Lernen“: Vorlauf-Ziel berechnet; „Lernen + Regeln“: Max T-Vorlauf und Raumthermostat-Sperre | Firmware mit Manifest und `tv_max` | 🧪 |
 
 Sunflow erkennt die HPSU nicht an Entitätsnamen – die sind in ESPHome frei wählbar und übersetzt –,
 sondern am **Manifest**, das die Komponente als ESPHome-Aktion (`…_rotex_can_manifest`) mitliefert.
@@ -153,9 +153,10 @@ speichert Sunflow das Home-Assistant-Gerät, dessen MAC-Adresse und die Komponen
   wird später geregelt und gelernt. Das Protokoll nennt unbekannte Zustände, Beginn und Ende einer
   Störung, die Sperre an und aus und den Beginn einer Begrenzung durch die HPSU; den aktuellen Stand
   zeigt `GET /api/v1/heat_pump/status` und Einstellungen → Wärmepumpe. Sunflow schreibt dabei nichts.
-- **Schattenbetrieb:** Aus Raum-Soll (Thermostat „Haus“) und Raum-Ist berechnet Sunflow ein
-  Vorlauf-Ziel (wirksamer Vorlauf-Soll + Korrektur) und zeigt es an (Einstellungen → Wärmepumpe,
-  Attribute des Thermostats); an die Wärmepumpe geschrieben wird noch nichts.
+- **Modus Aus / Nur Lernen / Lernen + Regeln:** Aus Raum-Soll (Thermostat „Haus“) und Raum-Ist berechnet
+  Sunflow ein Vorlauf-Ziel und zeigt es an (Einstellungen → Wärmepumpe, Attribute des Thermostats). Bei
+  „Nur Lernen“ (Standard) wird nichts an die Wärmepumpe geschrieben; „Lernen + Regeln“ schaltet das
+  Schreiben ein (Einstellungen → Wärmepumpe); bei „Aus“ lernt und zeichnet Sunflow nichts auf.
 
 Den UART-Knoten (`daikin_rotex_uart`) als Begleiter und die Vorlaufregelung unterstützt Sunflow in
 einem späteren Schritt.

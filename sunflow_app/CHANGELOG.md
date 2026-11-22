@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.22
+
+- Heat pumps: one **mode** at the top of Settings → Heat pump instead of mode heat/off and the separate switch "Aktives Schreiben": **Aus** (Sunflow neither controls nor learns and records no heat pump measurements – saves space, what was learned is kept), **Nur Lernen** (default, formerly "shadow": records, learns, shows what it would write, writes nothing) and **Lernen + Regeln** (writes to the heat pump; switched on only here, with confirmation). In the thermostat "Haus" in Home Assistant, off is "Aus" and heat returns to the level chosen last. The word "Schatten" is gone from the heat pump pages and the journal.
+- Each start no longer writes the heat pump rows of the last day again (they were read for the budget and stored once more).
+
 ## 0.80.21
 
 - Heat pumps: instead of airing alone Sunflow now detects **fast changes** of a room in both directions – airing (down) and cooking or an oven (up). The thresholds are in kelvin and no longer depend on how finely a sensor reports: a change of at least 0.8 K within 20 minutes starts it (before 0.3 K in 30 minutes, so every single step of a sensor reporting in 0.3 K counted as airing, e.g. the kitchen cooling after cooking). It is over once the room moves by at most 0.5 K in 30 minutes (the fast part of the recovery), at the latest after 2 hours (before: 0.1 K in 30 minutes). Afterwards the room counts again with what it is still below or above – after airing, walls and furniture lack heat for hours, which the heating is to replace. All five values can be set in Settings → Heat pump with the rooms. The display says "fast change" with the direction of the change.

@@ -75,12 +75,19 @@ Per wallbox:
 
 ## Heat pump
 
-The heat pump control runs in **shadow operation**: Sunflow computes the flow temperature and shows
-it, but writes nothing to the heat pump – until you switch on **writing to the heat pump** per heat pump.
+**Mode** (at the top with the room setpoint), three levels:
 
-**Writing to the heat pump** (per heat pump, default off): switched on, Sunflow writes the set value (Max
-T-Vorlauf, stored in the heat pump's EEPROM, within the budget) and the room thermostat block to the heat
-pump. It can be switched on only when the heat pump is compatible and reachable, values are there, the
+- **Off:** Sunflow does not control, does not learn and records no measurements of the heat pump (saves
+  space, e.g. in summer). What it learned (heating curve, house model, jumps, correction) is kept; afterwards
+  Sunflow goes on learning with the older data.
+- **Learning only** (default): Sunflow records, learns and shows what it would write, but writes nothing to
+  the heat pump.
+- **Learning + control:** Sunflow writes the set value (Max T-Vorlauf, stored in the heat pump's EEPROM,
+  within the budget) and the room thermostat block to the heat pump.
+
+The thermostat "Haus" in Home Assistant knows only heat/off: off there is **Off**, heat there returns to the
+level that applied last (learning only or learning + control). **Learning + control** is switched on only in
+Sunflow, with a confirmation, and only when the heat pump is compatible and reachable, values are there, the
 heating circuit function is fixed and the ESP regulation is off; switch off other controllers writing these
 values first. When switched on, Sunflow takes over without writing anything: the base is frozen, the
 correction starts at 0, set value and block count as the heat pump has them (a block set by someone else
@@ -89,11 +96,11 @@ reason. A write that fails is taken back (journal) and tried again when the rule
 after a write Sunflow checks that the heat pump took the value over: if it does not show it, Sunflow goes on
 from the value shown; if the effective flow setpoint stays below it while heating, the heat pump limits it
 itself (e.g. flow temperature day) – then set the upper limit of the set value to that value at most (both a
-warning in the journal). In mode off Sunflow writes nothing; afterwards it takes over again as when switched
-on. **Switching off** resets nothing: Max T-Vorlauf stays as last written, a block Sunflow set stays set (the
-heat pump then does not heat until it is released); Sunflow computes in the shadow again.
+warning in the journal). After **Off** Sunflow takes over again as when switched on. **Switching back**
+resets nothing: Max T-Vorlauf stays as last written, a block Sunflow set stays set (the heat pump then does
+not heat until it is released).
 
-**Room setpoint:** the room temperature Sunflow is to keep (18–27 °C) and the mode heat/off; the same as
+**Room setpoint:** the room temperature Sunflow is to keep (18–27 °C) and the mode; the same as
 the thermostat "Haus" in Home Assistant. Next to it the room temperature (weighted mean of the rooms; a
 room does not count while its sensor is unavailable or its device has not reported for more than 2 hours –
 another reading of the same device counts as well, e.g. the humidity, as some integrations do not report an
@@ -116,10 +123,10 @@ flow setpoint from valid heating (outside it the last such value counts). The co
 out the difference between room temperature and setpoint (at most ± 3 K; it does not grow within
 ± 0.2 K); how slowly depends on the heating surface type (integral time: underfloor 6 h, mixed 4 h,
 radiators 2 h). It pauses while the heat pump does not heat validly, room temperatures are missing, a room
-changes fast (airing, cooking) or the room is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
+changes fast (airing, cooking) or the room is still following a changed setpoint (at most 24 hours). In mode "learning only" it has no effect back and
 may run to its limit.
 
-**Heating curve (shadow):** from the 5 minute values Sunflow learns every hour how much heat the heating
+**Heating curve:** from the 5 minute values Sunflow learns every hour how much heat the heating
 surfaces give off: Q = K · (mean water temperature − room temperature)^n, plus the spread (flow −
 return) depending on the heat. n comes from the **heating surface type** (underfloor 1.1, mixed 1.2,
 radiators 1.3); K and the spread are learned – only from valid heating with the compressor running for
@@ -134,11 +141,11 @@ usable), else from the mean heat of the last 3 hours (compressor pauses count as
 after-run, fast changes and the block do not count; at least 2 hours needed). That heat comes from the flow the
 heat pump runs now – the curve then only follows the current state, the direction comes from the
 correction. Otherwise base + correction still applies. The source in use is shown; when it changes, the
-flow target jumps once in shadow operation, the correction stays. Once Sunflow writes for real, it shifts
+flow target jumps once in mode "learning only", the correction stays. With "learning + control", it shifts
 the correction at such a change so the flow target does not jump (within the correction's limit of ±3 K;
 a rest stays as a jump and is noted in the journal).
 
-**Set value and protection (shadow):** From the flow target Sunflow computes the set value (Max
+**Set value and protection (with "learning only": would write):** From the flow target Sunflow computes the set value (Max
 T-Vorlauf) it would write and the room thermostat block – shown as "would write", none of it goes to the
 heat pump. The set value stays within the **limits of the set value**, which can be set per heat pump
 (at least/at most; at most is also the highest flow for the screed or heating surfaces). Empty, the
@@ -165,11 +172,11 @@ block, hot water or defrost), the journal says so and the value concerned is rai
 further incidents it goes back over weeks. The table **Writes per day** counts for the last 7 days what
 Sunflow would have written (normal, start, tracking, block on/off) and the unwanted shutdowns – to
 compare with the planned budget of 48 normal writes and 24 for start and tracking per day. The **minimum
-spacing** between two writes of the set value already applies in shadow (from the device profile, for the
+spacing** between two writes of the set value already applies with "learning only" (from the device profile, for the
 HPSU 5 minutes, for protection steps – start and tracking – 2 minutes): the first change after a calm
 spell goes out at once, further changes within that time are only kept, and once it has passed Sunflow
 writes the latest value if it still differs (a normal value by more than 0.5 K, a protection step with any
-raise). A waiting value is shown as "pending … would be written at …". The **budget** applies in shadow
+raise). A waiting value is shown as "pending … would be written at …". The **budget** applies with "learning only"
 as well (from the device profile, for the HPSU 48 writes per day, plus 24 only for protection steps, at
 most 6 in any hour; the day follows Home Assistant's time zone): Sunflow counts virtually from the
 recorded writes, the counter of real EEPROM writes stays untouched; writing for real, the real writes in
@@ -178,9 +185,9 @@ normal value waits ("pending … waits: daily budget used up") until the next da
 from the emergency quota. When that is used up too or the hourly limit is reached, Sunflow would set the
 room thermostat block instead of the protection step and release it once a protection step may be
 written again (at the earliest after its minimum duration). The journal notes each kind of exhaustion
-once a day. The tile **Budget today** ("virtual" in the shadow) shows the day's use, the emergency quota left and the
+once a day. The tile **Budget today** (with "learning only" counting what Sunflow would write) shows the day's use, the emergency quota left and the
 last hour. The button **Write now** skips the spacing for the pending value (not the budget) and is not
-offered in shadow operation yet. The room thermostat block counts neither against the
+offered with "learning only". The room thermostat block counts neither against the
 budget nor for the spacing: the HPSU does not store this input in its EEPROM; its minimum duration
 prevents cycling.
 
@@ -188,10 +195,10 @@ prevents cycling.
 (automation, script, ESP regulation, by hand), Sunflow reports it as a warning in the journal – once while
 such changes follow each other; further ones it only counts. It counts as over only 24 hours after the
 last change (journal entry); until then the setup summary names the heat pump as well. Sunflow assumes the
-new value from then on (in shadow also for the virtual writes) and waits for the minimum spacing before
+new value from then on (with "learning only" also for the writes it would make) and waits for the minimum spacing before
 writing again itself; foreign changes do not count against its budget. While the **ESP regulation** of the
 CAN component is active ("Vorlauf Soll Geregelt" above 0), the component regulates Max T-Vorlauf itself:
-Sunflow then writes nothing (in shadow "Would write nothing: ESP regulation active"), reports it in the journal and the
+Sunflow then writes nothing (with "learning only" "Would write nothing: ESP regulation active"), reports it in the journal and the
 summary, and controls again once the value is set to 0 in ESPHome.
 
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
