@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sunflow.analysis.unit_history import module_day
+from sunflow.analysis.battery_module_history import module_day
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.devices.battery_modules import battery_modules
 from sunflow.devices.discovery import Snapshot

@@ -33,6 +33,7 @@ export default {
   "Batterie: {count} Module anzeigen": "Battery: show {count} modules",
   "Ansicht": "View",
   "Tagesverlauf": "Daily profile",
+  "Tag": "Day",
   "Tag davor": "Previous day",
   "Tag danach": "Next day",
   "Farbskala": "Colour scale",

@@ -5,7 +5,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from sunflow.analysis.unit_history import day_window, module_day
+from sunflow.analysis.battery_module_history import module_day
+from sunflow.analysis.day_series import day_window
 from sunflow.devices.battery_modules import battery_modules
 from sunflow.ha import HAError
 from sunflow.i18n import t

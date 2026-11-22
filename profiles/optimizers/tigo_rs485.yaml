@@ -1,7 +1,6 @@
 # Tigo TS4 optimizers read from the CCA–TAP bus (github.com/Zwer2k/ha-tigo-rs485).
 # Their label set in that integration places them: "A1" is string A, module 1.
-unit: tigo_rs485/optimizer
-kind: optimizer
+profile: tigo_rs485/optimizer
 name: Tigo
 url: https://github.com/Zwer2k/ha-tigo-rs485
 match:

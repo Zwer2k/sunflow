@@ -1,9 +1,8 @@
-"""Values of units (optimizers, battery modules) over a day from Home Assistant's statistics."""
+"""Means per slot over a local day from Home Assistant's statistics (or recorded states)."""
 
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
 
-from sunflow.devices.optimizers import Optimizer
 from sunflow.devices.state_history import state_means
 from sunflow.ha import HAClient, HAError
 
@@ -86,43 +85,3 @@ def combine(series: list[list[float | None]], how: str) -> list[float | None]:
         else:
             combined.append((max if how == "max" else min)(known) if known else None)
     return combined
-
-
-async def optimizer_day(
-    client: HAClient, optimizers: list[Optimizer], start: datetime, end: datetime, step: timedelta
-) -> list[dict[str, Any]]:
-    """Power per slot and energy of each optimizer with a power entity."""
-    entities = {o.id: o.entities["power"] for o in optimizers if "power" in o.entities}
-    means = await slot_means(client, list(entities.values()), start, end, step)
-    days = []
-    for optimizer_id, entity_id in entities.items():
-        values = [None if v is None else max(v, 0.0) for v in means[entity_id]]
-        days.append({"id": optimizer_id, "power": values, "energy_wh": energy_wh(values, step)})
-    return days
-
-
-async def module_day(
-    client: HAClient, modules: list[dict[str, Any]], start: datetime, end: datetime, step: timedelta
-) -> list[dict[str, Any]]:
-    """Per battery module: SoC, current, highest temperature and cell voltage spread per slot, where it has them."""
-    wanted = ("soc", "current", "temperature_max", "cell_voltage_max", "cell_voltage_min")
-    means = await slot_means(
-        client, [e for m in modules for k in wanted for e in m["entities"].get(k, [])], start, end, step
-    )
-    days = []
-    for module in modules:
-        def series(key: str, entities: dict[str, list[str]] = module["entities"]) -> list[list[float | None]]:
-            return [means[e] for e in entities.get(key, [])]
-
-        day: dict[str, Any] = {"id": module["id"]}
-        if values := series("soc"):
-            day["soc"] = values[0]
-        if values := series("current"):
-            day["current"] = values[0]
-        if values := series("temperature_max"):
-            day["temperature_max"] = combine(values, "max")
-        if (high := series("cell_voltage_max")) and (low := series("cell_voltage_min")):
-            spread = combine([high[0], low[0]], "difference")
-            day["cell_spread_mv"] = [None if v is None else round(v * 1000, 1) for v in spread]
-        days.append(day)
-    return days

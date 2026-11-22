@@ -1,7 +1,6 @@
 # Sofar BTS battery modules (BTS 5K) read by solax_modbus: one HA device per module.
 # Alarm, protection, fault and balancing need a solax_modbus with the extended battery data.
-unit: solax_modbus/sofar_bts
-kind: battery_module
+profile: solax_modbus/sofar_bts
 name: Sofar BTS
 match:
   integration: solax_modbus

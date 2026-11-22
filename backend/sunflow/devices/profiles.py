@@ -12,8 +12,9 @@ import yaml
 
 _LOGGER = logging.getLogger(__name__)
 
-# Below the profiles folder; its files follow schema/unit.schema.json
-UNITS_DIR = "units"
+# Folders below the profiles folder that hold no device profiles, with their schema files
+OPTIMIZERS_DIR = "optimizers"
+BATTERY_MODULES_DIR = "battery_modules"
 
 
 BATTERY_ACTIONS = ("auto", "hold", "force_charge", "force_discharge", "limit_charge", "limit_discharge")
@@ -79,13 +80,11 @@ class ProfileLibrary:
     """All valid profiles plus the files that failed to load."""
 
     profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
-    # Units below devices (optimizers, battery modules) by their id, from profiles/units/
-    units: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # PV module optimizers by profile id (profiles/optimizers/)
+    optimizers: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Battery modules by profile id (profiles/battery_modules/)
+    battery_modules: dict[str, dict[str, Any]] = field(default_factory=dict)
     errors: list[ProfileError] = field(default_factory=list)
-
-    def units_of(self, kind: str) -> list[dict[str, Any]]:
-        """Return the unit profiles of one kind."""
-        return [u for u in self.units.values() if u["kind"] == kind]
 
     @property
     def integrations(self) -> set[str]:
@@ -109,52 +108,50 @@ def load_schema(schema_dir: Path) -> dict[str, Any]:
     return json.loads((schema_dir / "profile.schema.json").read_text())
 
 
-def load_unit_schema(schema_dir: Path) -> dict[str, Any]:
-    """Load the JSON schema of unit profiles."""
-    return json.loads((schema_dir / "unit.schema.json").read_text())
-
-
 def _schema_problems(validator: jsonschema.Draft202012Validator, data: Any) -> str | None:
     problems = sorted(validator.iter_errors(data), key=lambda e: e.path)
     return "; ".join(f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {e.message}" for e in problems) or None
 
 
-def _load_units(units_dir: Path, schema: dict[str, Any], library: ProfileLibrary) -> None:
+def _load_sub_device_profiles(
+    folder: Path, schema: dict[str, Any], target: dict[str, dict[str, Any]], errors: list[ProfileError]
+) -> None:
+    """Optimizer or battery module profiles: the schema plus checks it cannot express."""
     validator = jsonschema.Draft202012Validator(schema)
-    for path in sorted(units_dir.rglob("*.yaml")):
+    for path in sorted(folder.rglob("*.yaml")):
         try:
             data = yaml.safe_load(path.read_text())
         except yaml.YAMLError as err:
-            library.errors.append(ProfileError(path=path, message=str(err)))
+            errors.append(ProfileError(path=path, message=str(err)))
             continue
         if message := _schema_problems(validator, data):
-            library.errors.append(ProfileError(path=path, message=message))
+            errors.append(ProfileError(path=path, message=message))
             continue
         if "label_position" in data:
             try:
                 pattern = re.compile(data["label_position"])
             except re.error as err:
-                library.errors.append(ProfileError(path=path, message=f"label_position: {err}"))
+                errors.append(ProfileError(path=path, message=f"label_position: {err}"))
                 continue
             if pattern.groups != 2:
-                library.errors.append(ProfileError(path=path, message="label_position needs two groups (string, module)"))
+                errors.append(ProfileError(path=path, message="label_position needs two groups (string, module)"))
                 continue
         if missing := sorted(set(data["required"]) - set(data["values"])):
-            library.errors.append(ProfileError(path=path, message=f"required names no value: {', '.join(missing)}"))
+            errors.append(ProfileError(path=path, message=f"required names no value: {', '.join(missing)}"))
             continue
-        if data["unit"] in library.units:
-            library.errors.append(ProfileError(path=path, message=f"Duplicate unit {data['unit']}"))
+        if data["profile"] in target:
+            errors.append(ProfileError(path=path, message=f"Duplicate profile {data['profile']}"))
             continue
-        library.units[data["unit"]] = data
+        target[data["profile"]] = data
 
 
-def load_profiles(profiles_dir: Path, schema: dict[str, Any], unit_schema: dict[str, Any] | None = None) -> ProfileLibrary:
-    """Load and validate all profiles below profiles_dir; with unit_schema also the units in its units/ folder."""
+def load_profiles(profiles_dir: Path, schema: dict[str, Any], schema_dir: Path | None = None) -> ProfileLibrary:
+    """Load and validate all device profiles below profiles_dir; with schema_dir also optimizers and battery modules."""
     library = ProfileLibrary()
     validator = jsonschema.Draft202012Validator(schema)
-    units_dir = profiles_dir / UNITS_DIR
+    other = (profiles_dir / OPTIMIZERS_DIR, profiles_dir / BATTERY_MODULES_DIR)
     for path in sorted(profiles_dir.rglob("*.yaml")):
-        if path.is_relative_to(units_dir):
+        if any(path.is_relative_to(folder) for folder in other):
             continue
         try:
             data = yaml.safe_load(path.read_text())
@@ -177,8 +174,13 @@ def load_profiles(profiles_dir: Path, schema: dict[str, Any], unit_schema: dict[
             )
             continue
         library.profiles[data["profile"]] = data
-    if unit_schema is not None:
-        _load_units(units_dir, unit_schema, library)
+    if schema_dir is not None:
+        for folder, schema_file, target in (
+            (OPTIMIZERS_DIR, "optimizer.schema.json", library.optimizers),
+            (BATTERY_MODULES_DIR, "battery_module.schema.json", library.battery_modules),
+        ):
+            sub_schema = json.loads((schema_dir / schema_file).read_text())
+            _load_sub_device_profiles(profiles_dir / folder, sub_schema, target, library.errors)
 
     for error in library.errors:
         _LOGGER.error("Invalid profile %s: %s", error.path, error.message)

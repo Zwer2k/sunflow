@@ -1,7 +1,6 @@
 # Huawei SUN2000 optimizers: sub-devices of their inverter (which has values of the same names).
 # The string an optimizer hangs on is not exposed: with one string in use it is that one.
-unit: huawei_solar/optimizer
-kind: optimizer
+profile: huawei_solar/optimizer
 name: Huawei
 match:
   integration: huawei_solar

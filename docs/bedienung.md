@@ -70,7 +70,7 @@ stehen, solange sie höchstens 60 % des Bildschirms brauchen:
     über einen Tag. Auseinanderlaufende Ladestände zeigen ein Ungleichgewicht, eine wachsende
     Zellspreizung eine schwache Zelle oder fehlendes Balancing.
 
-  Welche Speicher Werte je Modul liefern, beschreiben die Unit-Profile (siehe
+  Welche Speicher Werte je Modul liefern, beschreiben die Modul-Profile (siehe
   [Geräte](geraete.md#ein-gerät-fehlt-oder-ist-geprüft)); heute Sofar BTS über solax_modbus.
   Werte, die eine Integration nicht hat, fehlen einfach.
 - **Wallbox** zeigt Ladeleistung und Ladestand des erkannten Autos.

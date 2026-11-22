@@ -68,7 +68,7 @@ as they take at most 60 % of the screen:
     module over a day. Drifting states of charge show an imbalance, a growing cell spread a weak
     cell or missing balancing.
 
-  Which batteries report values per module is described by the unit profiles (see
+  Which batteries report values per module is described by the battery module profiles (see
   [Devices](devices.md)); today Sofar BTS via solax_modbus. Values an integration does not have
   are simply left out.
 - **Wallbox** shows charging power and the state of charge of the detected car.

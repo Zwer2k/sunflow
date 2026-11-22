@@ -1,7 +1,9 @@
-"""Units below devices (module optimizers, battery modules) as described by the profiles in profiles/units/.
+"""Home Assistant devices that a profile describes by their entities (optimizers, battery modules).
 
-A unit is a Home Assistant device of the unit profile's integration that has the required
-values; each value is the entity whose unique_id ends with the profile's key.
+A technical helper: optimizers and battery modules have profiles of their own; both name the
+integration, how its devices are recognised and which entity gives which value. A device
+counts when it has the required values; each value is the entity whose unique_id ends with
+the profile's key.
 """
 
 from dataclasses import dataclass, field
@@ -16,11 +18,11 @@ AGGREGATES = {"max": max, "min": min, "mean": fmean}
 
 
 @dataclass(kw_only=True)
-class Unit:
-    """One unit with the entities of its values (several for an aggregated value)."""
+class SubDevice:
+    """One device with the entities of its values (several for an aggregated value)."""
 
     id: str
-    unit: str
+    profile: str
     name: str
     parent: str | None
     entities: dict[str, list[str]]
@@ -44,8 +46,8 @@ def device_name(profile: dict[str, Any], device: dict[str, Any]) -> str:
     return name.removeprefix(strip).strip() if strip else name
 
 
-def find_units(snapshot: Snapshot, profiles: list[dict[str, Any]]) -> list[Unit]:
-    """All devices that are units of one of the profiles, with the entities of their values."""
+def find_sub_devices(snapshot: Snapshot, profiles: list[dict[str, Any]]) -> list[SubDevice]:
+    """All devices that match one of the profiles, with the entities of their values."""
     by_device: dict[str, list[dict[str, Any]]] = {}
     for entity in snapshot.entities:
         if entity.get("device_id") and not entity.get("disabled_by"):
@@ -71,8 +73,8 @@ def find_units(snapshot: Snapshot, profiles: list[dict[str, Any]]) -> list[Unit]
                     entities[value] = [e["entity_id"] for e in (matches if isinstance(spec, dict) else matches[:1])]
             if all(v in entities for v in profile["required"]):
                 found.append(
-                    Unit(
-                        id=device["id"], unit=profile["unit"], name=device_name(profile, device),
+                    SubDevice(
+                        id=device["id"], profile=profile["profile"], name=device_name(profile, device),
                         parent=device.get("via_device_id"), entities=entities,
                         entry_ids=list(device.get("config_entries", [])),
                     )
@@ -81,12 +83,12 @@ def find_units(snapshot: Snapshot, profiles: list[dict[str, Any]]) -> list[Unit]
     return found
 
 
-def unit_values(
-    unit: Unit, profile: dict[str, Any], snapshot: Snapshot, units: dict[str, str | None]
+def current_values(
+    device: SubDevice, profile: dict[str, Any], snapshot: Snapshot, units: dict[str, str | None]
 ) -> dict[str, float | None]:
-    """Current values of a unit in the given units (None: as the entity reports); aggregated ones combined."""
+    """Current values of a device in the given units (None: as the entity reports); aggregated ones combined."""
     values: dict[str, float | None] = {}
-    for key, entity_ids in unit.entities.items():
+    for key, entity_ids in device.entities.items():
         readings = []
         for entity_id in entity_ids:
             state = snapshot.states.get(entity_id)

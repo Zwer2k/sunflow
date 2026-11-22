@@ -1,7 +1,7 @@
 """PV module optimizers: found in Home Assistant, assigned to strings and placed on the roof.
 
-Which integrations provide optimizers and how is described by the unit profiles of kind
-"optimizer" (profiles/units/). Only optimizers of integrations taken over under "Geräte" count.
+Which integrations provide optimizers and how is described by the optimizer profiles
+(profiles/optimizers/). Only optimizers of integrations taken over under "Geräte" count.
 
 Optimizers that are sub-devices of their inverter hang on one of its strings; which one is
 not known unless only one string is in use. Optimizers of an integration of their own hang on
@@ -17,10 +17,7 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import ProfileLibrary
 from sunflow.devices.resolver import normalize, preview
 from sunflow.devices.site import pv_strings
-from sunflow.devices.units import find_units, natural_key
-
-KIND = "optimizer"
-
+from sunflow.devices.sub_devices import find_sub_devices, natural_key
 
 VALUE_UNITS = {
     "power": "W",
@@ -58,18 +55,18 @@ class Optimizer:
 
 
 def sources(library: ProfileLibrary) -> dict[str, dict[str, Any]]:
-    """The unit profiles of optimizers by id."""
-    return {u["unit"]: u for u in library.units_of(KIND)}
+    """The optimizer profiles by id."""
+    return library.optimizers
 
 
 def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[Optimizer]:
     """All optimizers Home Assistant knows, with the entities of their values."""
     found = [
         Optimizer(
-            id=u.id, source=u.unit, name=u.name, label=u.name, parent=u.parent,
-            entities={k: ids[0] for k, ids in u.entities.items()}, entry_ids=u.entry_ids,
+            id=d.id, source=d.profile, name=d.name, label=d.name, parent=d.parent,
+            entities={k: ids[0] for k, ids in d.entities.items()}, entry_ids=d.entry_ids,
         )
-        for u in find_units(snapshot, library.units_of(KIND))
+        for d in find_sub_devices(snapshot, list(library.optimizers.values()))
     ]
     return sorted(found, key=lambda o: (o.source, natural_key(o.label)))
 

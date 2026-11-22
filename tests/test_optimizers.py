@@ -12,12 +12,12 @@ from sunflow.config.models import (
 )
 from sunflow.devices import optimizers as module
 from sunflow.devices.discovery import Snapshot
-from sunflow.devices.profiles import load_profiles, load_schema, load_unit_schema
+from sunflow.devices.profiles import load_profiles, load_schema
 
 HUAWEI_KEYS = ("output_power", "input_voltage", "input_current", "output_voltage", "output_current", "temperature", "accumulated_energy_yield")
 TIGO_KEYS = ("power", "voltage_in", "current", "voltage_out", "temperature", "pwm", "energy_today", "energy_total")
 REPO = Path(__file__).resolve().parents[1]
-LIBRARY = load_profiles(REPO / "profiles", load_schema(REPO / "schema"), load_unit_schema(REPO / "schema"))
+LIBRARY = load_profiles(REPO / "profiles", load_schema(REPO / "schema"), REPO / "schema")
 HUAWEI = "huawei-entry"
 TIGO = "tigo-entry"
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.12
+
+- Optimizers and battery modules now have separate profile formats: profiles/optimizers/ (schema optimizer.schema.json) and profiles/battery_modules/ (schema battery_module.schema.json) instead of the shared profiles/units/. No change in behaviour.
+
 ## 0.80.11
 
 - Battery modules: if a battery reports values per module, the Live view shows the number of modules at the battery and a click opens them – now as a tower with state of charge, voltage, current, temperature, cell spread, SOH, cycles and capacity to choose from, marking a state of charge far from the others and reported alarms, protections and faults; and a daily profile of state of charge, current, temperature and cell spread per module. Described by unit profiles like the optimizers; Sofar BTS (solax_modbus) is the first.

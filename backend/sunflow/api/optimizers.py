@@ -7,7 +7,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from sunflow.analysis.unit_history import day_window, optimizer_day
+from sunflow.analysis.day_series import day_window
+from sunflow.analysis.optimizer_history import optimizer_day
 from sunflow.config.models import OptimizerSettings
 from sunflow.devices.optimizers import (
     VALUE_UNITS,
