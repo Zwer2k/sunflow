@@ -4,6 +4,7 @@ import { poll } from "../lib/poll.js";
 import { formatPower } from "../lib/format.js";
 import { OPTIMIZER_VALUES } from "./roof.js";
 import "./roof.js";
+import "./optimizer-history.js";
 import { t, tn } from "../lib/i18n.js";
 import { toggleSheet } from "../lib/display-toggles.js";
 
@@ -32,6 +33,7 @@ class SunflowOptimizerView extends LitElement {
     _data: { state: true },
     _error: { state: true },
     _visible: { state: true },
+    _tab: { state: true },
   };
 
   constructor() {
@@ -39,6 +41,7 @@ class SunflowOptimizerView extends LitElement {
     this._data = null;
     this._error = null;
     this._visible = readVisible();
+    this._tab = "live";
   }
 
   connectedCallback() {
@@ -102,6 +105,18 @@ class SunflowOptimizerView extends LitElement {
             ? html`<p class="muted">${t("Diesem String sind keine Optimierer zugeordnet.")}</p>`
             : nothing}
           ${mine.length
+            ? html`<div class="segmented" role="tablist" aria-label=${t("Ansicht")}>
+                ${[["live", t("Jetzt")], ["day", t("Tagesverlauf")]].map(([key, label]) => html`<button role="tab"
+                  aria-selected=${this._tab === key ? "true" : "false"} class=${this._tab === key ? "on" : ""}
+                  @click=${() => (this._tab = key)}>${label}</button>`)}
+              </div>`
+            : nothing}
+          ${mine.length && this._tab === "day"
+            ? html`<sf-optimizer-history .string=${this.string} .optimizers=${mine}
+                .breaks=${this._data.layouts?.[this.string]?.row_breaks ?? []}
+                .colBreaks=${this._data.layouts?.[this.string]?.col_breaks ?? []}></sf-optimizer-history>`
+            : nothing}
+          ${mine.length && this._tab === "live"
             ? html`
                 <p class="small muted">${tn(mine.length, "{count} Optimierer", { count: mine.length })}${powers.length
                   ? ` · ${t("zusammen {total}", { total: formatPower(powers.reduce((a, b) => a + b, 0))})} · ${t("{min} bis {max}", { min: formatPower(Math.min(...powers)), max: formatPower(Math.max(...powers)) })}`
@@ -147,6 +162,12 @@ class SunflowOptimizerView extends LitElement {
     }
     .chip.on { background: var(--sf-primary-bg); color: var(--sf-primary-text); border-color: var(--sf-primary); }
     .chip input { margin: 0; }
+    .segmented { display: flex; align-self: flex-start; gap: 2px; background: var(--sf-subtle); padding: 3px; border-radius: 9px; }
+    .segmented button {
+      min-height: 32px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent;
+      cursor: pointer; font: inherit; font-size: 13px; color: var(--sf-muted);
+    }
+    .segmented button.on { background: var(--sf-surface); color: var(--sf-text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
     .actions { display: flex; justify-content: flex-end; }
     .link { border: 0; background: transparent; color: var(--sf-primary); cursor: pointer; font: inherit; font-size: 14px; padding: 6px 0; }
   `];

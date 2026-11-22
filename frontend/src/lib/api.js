@@ -143,6 +143,8 @@ export const api = {
   integrationSettings: () => request("GET", "/config/integration"),
   display: () => request("GET", "/config/display"),
   optimizers: () => request("GET", "/optimizers"),
+  optimizerHistory: (string, day = null) =>
+    request("GET", `/optimizers/history?${new URLSearchParams({ string, ...(day ? { day } : {}) })}`),
   setOptimizers: (body) => request("PUT", "/config/optimizers", body),
   useOptimizers: (entryId, used) => request("PUT", `/config/optimizers/entries/${encodeURIComponent(entryId)}`, { used }),
   setDisplay: (body) => request("PUT", "/config/display", body),

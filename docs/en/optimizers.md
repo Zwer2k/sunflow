@@ -16,6 +16,25 @@ modules lying sideways at the bottom). "Edit assignment and layout …" leads th
 
 <img src="../images/en/live-optimizers-mobile.png" alt="Optimizers on a phone" width="300">
 
+### Daily profile
+
+The **Daily profile** tab shows the modules' power over a day; ‹ › or the date field go to earlier
+days. The values come from Home Assistant's statistics: in 5-minute steps for the last 10 days,
+hourly before that.
+
+- **Chart**: the median of all modules as a line; the band reaches from the weakest to the
+  strongest module. A wide band means the modules deliver different amounts.
+- **Heatmap**: one row per module in roof order, time of day to the right. **relative** colours by
+  the share of the best module at the same time. Clouds hit all modules alike and so drop out;
+  what remains is down to the module: shading moves as a light patch diagonally through the rows,
+  a weak or dirty module is lighter all day. The scale is stretched at the top so that 80–90 %
+  already stand out. **Watts** colours by power. Where parts of the roof are set apart by
+  separators, Sunflow compares only within one part, as other orientations would otherwise look
+  like shading.
+- On the right: each module's daily yield in kWh and its deviation from the median.
+- Moving over the heatmap shows the values and highlights the module in the chart; tapping sets
+  the time for the roof below. The slider shows the roof at any time of the day.
+
 ## Sources
 
 | Manufacturer | Integration | Values | Assignment to the string |

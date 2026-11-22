@@ -1,11 +1,13 @@
 """Optimizers of the PV strings: values for the roof view, assignment and layout in the setup."""
 
 from dataclasses import asdict
-from typing import Any
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from sunflow.analysis.optimizer_history import day_step, optimizer_day
 from sunflow.config.models import OptimizerSettings
 from sunflow.devices.optimizers import (
     SOURCES,
@@ -15,8 +17,10 @@ from sunflow.devices.optimizers import (
     tigo_plant,
     used_entries,
 )
+from sunflow.ha import HAError
+from sunflow.i18n import t
 
-from .common import _library, _snapshot
+from .common import _library, _local_tz, _snapshot
 
 router = APIRouter()
 
@@ -40,6 +44,34 @@ async def get_optimizers(request: Request) -> dict[str, Any]:
         "tigo_plant": tigo_plant(config, strings, found),
         "tigo_plant_chosen": config.optimizer_settings.tigo_plant,
         "layouts": {k: v.model_dump() for k, v in config.optimizer_settings.layouts.items()},
+    }
+
+
+@router.get("/optimizers/history")
+async def get_optimizer_history(
+    request: Request, string: Annotated[str, Query(min_length=1)], day: date | None = None
+) -> dict[str, Any]:
+    """Power of the optimizers of one string over a local day (default today), up to now."""
+    tz = await _local_tz(request)
+    now = datetime.now(UTC)
+    day = day or now.astimezone(tz).date()
+    start = datetime.combine(day, time(), tz).astimezone(UTC)
+    if start > now:
+        raise HTTPException(status_code=422, detail=t("Dieser Tag liegt in der Zukunft"))
+    end = datetime.combine(day + timedelta(days=1), time(), tz).astimezone(UTC)
+    step = day_step(start, now)
+    config = request.app.state.store.load()
+    found, _ = optimizers(config, _library(request).profiles, await _snapshot(request))
+    try:
+        days = await optimizer_day(request.app.state.ha, [o for o in found if o.string == string], start, end, step)
+    except HAError as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    return {
+        "day": day.isoformat(),
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "step_minutes": int(step.total_seconds() // 60),
+        "optimizers": days,
     }
 
 

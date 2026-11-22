@@ -17,6 +17,25 @@ dorthin.
 
 <img src="images/live-optimizers-mobile.png" alt="Optimierer auf dem Handy" width="300">
 
+### Tagesverlauf
+
+Der Reiter **Tagesverlauf** zeigt die Leistung der Module über einen Tag, mit ‹ › oder dem
+Datumsfeld auch frühere Tage. Die Werte kommen aus den Statistiken von Home Assistant: für die
+letzten 10 Tage in 5-Minuten-Schritten, davor stündlich.
+
+- **Diagramm**: der Median aller Module als Linie, das Band reicht vom schwächsten bis zum
+  stärksten Modul. Ein breites Band heißt: die Module liefern unterschiedlich viel.
+- **Heatmap**: eine Zeile je Modul in der Reihenfolge auf dem Dach, nach rechts die Uhrzeit.
+  **relativ** färbt nach dem Anteil am besten Modul zur selben Zeit. Wolken treffen alle Module
+  gleich und fallen dadurch heraus; was bleibt, liegt am Modul: Verschattung wandert als heller
+  Fleck schräg durch die Zeilen, ein schwaches oder verschmutztes Modul ist den ganzen Tag heller.
+  Die Skala ist oben gestreckt, damit schon 80–90 % auffallen. **Watt** färbt nach der Leistung.
+  Sind Dachteile durch Trenner abgesetzt, vergleicht Sunflow nur innerhalb eines Dachteils, weil
+  andere Ausrichtungen sonst als Verschattung erschienen.
+- Rechts stehen der Tagesertrag je Modul in kWh und die Abweichung vom Median.
+- Über die Heatmap fahren zeigt die Werte und hebt das Modul im Diagramm hervor; Antippen setzt
+  die Uhrzeit für das Dach darunter. Der Schieber zeigt das Dach zu jeder Uhrzeit des Tages.
+
 ## Quellen
 
 | Hersteller | Integration | Werte | Zuordnung zum String |

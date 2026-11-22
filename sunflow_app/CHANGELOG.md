@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.9
+
+Optimizers: new Daily profile tab with a heatmap per module (relative to the best module, so shading and weak modules stand out), the string's median with min–max band, daily yield per module and the roof at any time of the day.
+
 ## 0.80.8
 
 - Plan: previous caption restored.
