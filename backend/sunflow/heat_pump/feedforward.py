@@ -13,8 +13,10 @@ Q* is the heat the house needs now; its source in this order:
 3. base: no feedforward, V_Ziel = base + correction (as without a curve), also when the curve is not
    usable (too little data, not plausible, not better than "the flow stays") or Q* is not above
    FEED_HEAT_MIN_W.
-A change of the source is only shown (and noted in heat_pump_samples); in shadow there is no guard
-against the jump it causes.
+A change of the source is shown and noted in heat_pump_samples. In the shadow the flow target jumps
+once (no guard against it, by design); while Sunflow writes for real (step 3 part 4.5) the correction
+is shifted by old − new start value so the flow target does not jump (source_shift), within the
+correction's limit; a rest stays as a jump and is noted in the journal.
 """
 
 from collections import deque
@@ -23,7 +25,12 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from .curve import Curve
-from .defaults import FEED_HEAT_MIN_S, FEED_HEAT_MIN_W, FEED_HEAT_WINDOW_S
+from .defaults import (
+    CORRECTION_LIMIT_K,
+    FEED_HEAT_MIN_S,
+    FEED_HEAT_MIN_W,
+    FEED_HEAT_WINDOW_S,
+)
 
 if TYPE_CHECKING:
     from sunflow.planning.house_model import HouseModel
@@ -143,3 +150,15 @@ def feedforward(
     if heat <= FEED_HEAT_MIN_W:
         return Feed(source=BASE, reason="heat_low", heat_w=heat, curve_c=None)
     return Feed(source=source, reason=None, heat_w=heat, curve_c=curve.flow_c(target_c, heat))
+
+
+def source_shift(old_c: float, new_c: float, correction_k: float, limit_k: float = CORRECTION_LIMIT_K) -> tuple[float, float]:
+    """Jump protection at a source change: (shift of the correction, rest of the jump of the flow target).
+
+    The correction moves by old − new start value so that start + correction stays; the corrected value
+    is kept within ±limit_k, what does not fit stays as a jump (new target − old target).
+    """
+    wanted = correction_k + (old_c - new_c)
+    shifted = max(-limit_k, min(limit_k, wanted))
+    shift = shifted - correction_k
+    return shift, (new_c - old_c) + shift

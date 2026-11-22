@@ -115,7 +115,9 @@ zählen mit 0; Warmwasser, Abtauen, Nachlauf, Lüften und Sperre zählen nicht; 
 nötig). Diese Wärme entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt – die Kennlinie bildet
 dann nur den aktuellen Zustand nach, die Richtung gibt die Korrektur. Sonst gilt weiter Basis +
 Korrektur. Angezeigt wird, welche Quelle gerade gilt; wechselt sie, springt das Vorlauf-Ziel im
-Schattenbetrieb einmal, die Korrektur bleibt.
+Schattenbetrieb einmal, die Korrektur bleibt. Schreibt Sunflow aktiv, verschiebt es bei einem solchen
+Wechsel die Korrektur, damit das Vorlauf-Ziel nicht springt (innerhalb ihrer Grenze von ±3 K; ein Rest
+bleibt als Sprung und steht im Journal).
 
 **Stellwert und Schutz (Schatten):** Aus dem Vorlauf-Ziel rechnet Sunflow den Stellwert (Max T-Vorlauf),
 den es schreiben würde, und die Raumthermostat-Sperre – angezeigt mit „würde schreiben“, nichts davon

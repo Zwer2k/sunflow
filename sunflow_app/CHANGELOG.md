@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.16
+
+- Heat pumps (still shadow operation, no effect yet): preparation for active writing – when the source of the flow target changes (house model, heat of the last 3 hours, base) while Sunflow writes for real, Sunflow shifts the room correction so the flow target does not jump (within ±3 K; a rest is noted in the journal). In the shadow the flow target still jumps once, as before. The change of the source is recorded in `heat_pump_samples` with the size of the jump.
+
 ## 0.80.15
 
 - Heat pumps (still shadow operation): foreign writers are reported – a change of Max T-Vorlauf not made by Sunflow (automation, script, ESP regulation, by hand) is a warning in the journal once per episode (it ends 24 hours after the last change) and is named in the setup summary meanwhile; Sunflow then assumes the new value and waits for the minimum spacing before writing again. While the ESP regulation of the CAN component is active ("Vorlauf Soll Geregelt" above 0), Sunflow writes nothing and says so in the journal and the summary. Device profile Rotex HPSU CAN version 3 (optional role for the ESP regulation; not configured is not reported as missing).

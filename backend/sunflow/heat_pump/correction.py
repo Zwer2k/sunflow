@@ -55,6 +55,13 @@ class Correction:
         if self._room is not None:
             self._room = room_c
 
+    def shift(self, shift_k: float) -> None:
+        """Move the correction by shift_k (jump protection at a source change, 8.1), within its limit.
+
+        The room reference stays: the shift is no step of the controller.
+        """
+        self.value_k = max(-CORRECTION_LIMIT_K, min(CORRECTION_LIMIT_K, self.value_k + shift_k))
+
     def step(
         self, room_c: float, target_c: float, now: datetime, block_up: bool = False, block_down: bool = False,
         ti_h: float = CORRECTION_TI_H,

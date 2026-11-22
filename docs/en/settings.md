@@ -113,7 +113,9 @@ usable), else from the mean heat of the last 3 hours (compressor pauses count as
 after-run, airing and the block do not count; at least 2 hours needed). That heat comes from the flow the
 heat pump runs now – the curve then only follows the current state, the direction comes from the
 correction. Otherwise base + correction still applies. The source in use is shown; when it changes, the
-flow target jumps once in shadow operation, the correction stays.
+flow target jumps once in shadow operation, the correction stays. Once Sunflow writes for real, it shifts
+the correction at such a change so the flow target does not jump (within the correction's limit of ±3 K;
+a rest stays as a jump and is noted in the journal).
 
 **Set value and protection (shadow):** From the flow target Sunflow computes the set value (Max
 T-Vorlauf) it would write and the room thermostat block – shown as "would write", none of it goes to the

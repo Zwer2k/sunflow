@@ -46,6 +46,12 @@ CORRECTION_TI_H = 6.0
 ROOM_DEADBAND_K = 0.2
 CORRECTION_LIMIT_K = 3.0
 CORRECTION_MAX_STEP_S = 30 * 60
+# Jump protection at a change of the feedforward source (8.1, step 3 part 4.5, only while Sunflow writes for
+# real): the correction is shifted by old − new start value (within its limit). The old start value counts
+# only if computed at most SOURCE_SHIFT_MAX_AGE_S before (else no protection, journal); a rest of the jump
+# above SOURCE_JUMP_NOTE_K is noted in the journal.
+SOURCE_SHIFT_MAX_AGE_S = CORRECTION_MAX_STEP_S
+SOURCE_JUMP_NOTE_K = 0.05
 # Setpoint change (8.2): frozen until the room reached the new target, at most this long; smaller
 # changes do not count
 SETPOINT_SETTLE_MAX_S = 24 * 3600

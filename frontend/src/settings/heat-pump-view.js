@@ -477,7 +477,9 @@ class SunflowHeatPump extends LitElement {
         ${source === "heat_recent"
           ? html`<p class="small muted">${t("Die Wärme der letzten 3 h entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt: Die Kennlinie bildet nur den aktuellen Zustand nach, die Richtung gibt die Korrektur vor.")}</p>`
           : nothing}
-        <p class="small muted">${t("Wechselt die Quelle, springt das Vorlauf-Ziel im Schattenbetrieb einmal; die Korrektur bleibt.")}</p>
+        <p class="small muted">${flow.shadow === false
+          ? t("Wechselt die Quelle, verschiebt Sunflow die Korrektur, damit das Vorlauf-Ziel nicht springt (innerhalb ±3 K).")
+          : t("Wechselt die Quelle, springt das Vorlauf-Ziel im Schattenbetrieb einmal; die Korrektur bleibt.")}</p>
         <p class="small muted">${flow.frozen.length
           ? t("Korrektur angehalten: {reasons}", { reasons: flow.frozen.map(frozenText).join(", ") })
           : t("Korrektur läuft.")} ${t("Im Schattenbetrieb wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Aktivschalten beginnt sie bei 0.")}</p>

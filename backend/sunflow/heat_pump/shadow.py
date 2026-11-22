@@ -7,9 +7,11 @@ The base is the effective flow setpoint of the heat pump, taken over only while 
 With a usable curve (step 3 part 2, feedforward.py) the flow target is the curve's flow for the heat
 the house needs plus the same correction:
     V_Ziel = target + (Q*/K)^(1/n) + s(Q*)/2 + correction
-The correction belongs to the strategy, not to the source: a change of the source leaves it as it is
-(in shadow the flow target jumps once; noted in heat_pump_samples). The target room temperature is
-the room setpoint (planning follows in step 4).
+The correction belongs to the strategy, not to the source: in the shadow a change of the source leaves
+it as it is and the flow target jumps once (noted in heat_pump_samples). While Sunflow writes for real
+(step 3 part 4.5, switched on in part 4.7) the correction is shifted by old − new start value at a source
+change, within its limit, so the flow target does not jump; a rest is noted in the journal. The target
+room temperature is the room setpoint (planning follows in step 4).
 
 Shadow: everything is computed, stored and shown, nothing is written to a heat pump. As Sunflow does
 not act, the correction has no effect back and may run to its limit; it is marked as shadow and starts
@@ -41,7 +43,7 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from sunflow.config.models import DeviceConfig, SunflowConfig
-from sunflow.i18n import t
+from sunflow.i18n import number, t
 
 from .budget import WriteBudget
 from .correction import Correction, SetpointWatch, Settling
@@ -54,9 +56,11 @@ from .defaults import (
     ROOM_SETPOINT_MAX_C,
     ROOM_SETPOINT_MIN_C,
     ROOM_SETPOINT_STEP_C,
+    SOURCE_JUMP_NOTE_K,
+    SOURCE_SHIFT_MAX_AGE_S,
     correction_ti_h,
 )
-from .feedforward import BASE, Feed, HouseContext, RecentHeat, feedforward, house_heat_w
+from .feedforward import BASE, HEAT_RECENT, HOUSE_MODEL, Feed, HouseContext, RecentHeat, feedforward, house_heat_w, source_shift
 from .guard import Guard, GuardInput, GuardResult
 from .learned import Learned, values as guard_values
 from .limits import ControlSettings
@@ -75,6 +79,19 @@ _LOGGER = logging.getLogger(__name__)
 REPORTED_EVERY = timedelta(seconds=CORRECTION_MAX_STEP_S)
 # Home Assistant's time zone (local day of the write budget) is read again this often
 TIMEZONE_EVERY = timedelta(hours=1)
+# The start value of the old source counts for the jump protection only this long (8.1)
+SOURCE_SHIFT_MAX_AGE = timedelta(seconds=SOURCE_SHIFT_MAX_AGE_S)
+
+
+def source_text(source: str) -> str:
+    """The feedforward source for the journal."""
+    if source == HOUSE_MODEL:
+        return t("Hausmodell")
+    if source == HEAT_RECENT:
+        return t("Wärme der letzten 3 h")
+    if source == BASE:
+        return t("Basis")
+    return source
 
 
 def _time(text: Any) -> datetime | None:
@@ -302,13 +319,8 @@ class FlowShadow:
             self.recent(device_id).add(minute, bool(self.aired))
             feed, recent_s = self._feed(config, device_id, minute, states, now)
             previous = stored.get("source")
-            if previous != feed.source:
-                if isinstance(previous, str):
-                    self.source_events.append(
-                        (device_id, {"at": now.astimezone(UTC).isoformat(), "kind": "flow_source", "from": previous, "to": feed.source})
-                    )
-                    _LOGGER.info("%s: flow target now from %s (was %s)", device.name, feed.source, previous)
-                stored["source"] = feed.source
+            source_changed = isinstance(previous, str) and previous != feed.source
+            stored["source"] = feed.source
             effective = reading.values.get("flow_setpoint")
             if evaluation.valid and effective is not None:
                 base, base_at = effective, now
@@ -345,6 +357,14 @@ class FlowShadow:
                 correction_k = correction.value_k
                 stored.setdefault("corrections", {})[strategy] = round(correction.value_k, 4)
             start = feed.curve_c if feed.source != BASE else base
+            if source_changed:
+                assert isinstance(previous, str)
+                shift_k = self._source_change(device_id, device, previous, feed.source, start, strategy, now)
+                if correction_k is not None and shift_k:
+                    correction_k = self._correction(device_id, strategy).value_k
+                    stored.setdefault("corrections", {})[strategy] = round(correction_k, 4)
+            if start is not None:
+                stored["start_c"], stored["start_at"] = start, now.isoformat()
             target = start + correction_k if start is not None and correction_k is not None else None
             reason = "no_base" if start is None else "strategy_unknown" if correction_k is None else None
             result = self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now)
@@ -372,6 +392,51 @@ class FlowShadow:
             "model_source": self.house_source,
         }
         self._store.save()
+
+    def _source_change(
+        self, device_id: str, device: DeviceConfig, old: str, new: str, start: float | None, strategy: str, now: datetime,
+    ) -> float:
+        """A change of the feedforward source (8.1): event in heat_pump_samples, jump protection when active.
+
+        In the shadow the flow target jumps once, by design (no shift). While Sunflow writes for real
+        (step 3 part 4.5, switched on in 4.7) the correction of the strategy is shifted by old − new start
+        value, within its limit; the rest of the jump is noted in the journal, as is a change without
+        protection (old start value unknown or too old). Returns the shift of the correction (K).
+        """
+        stored = self._store.devices.setdefault(device_id, {})
+        active = self.writing_active(device_id)
+        old_c, old_at = _float(stored.get("start_c")), _time(stored.get("start_at"))
+        known = old_c is not None and old_at is not None and timedelta(0) <= now - old_at <= SOURCE_SHIFT_MAX_AGE
+        event: dict[str, Any] = {"at": now.astimezone(UTC).isoformat(), "kind": "flow_source", "from": old, "to": new, "shadow": not active}
+        if known and start is not None:
+            assert old_c is not None
+            event["jump_k"] = round(start - old_c, 3)
+        _LOGGER.info("%s: flow target now from %s (was %s)", device.name, new, old)
+        shift = 0.0
+        if active:
+            correction = self._correction(device_id, strategy) if strategy != UNKNOWN else None
+            if known and start is not None and correction is not None:
+                assert old_c is not None
+                shift, rest = source_shift(old_c, start, correction.value_k)
+                correction.shift(shift)
+                event["shift_k"], event["rest_k"] = round(shift, 3), round(rest, 3)
+                if abs(rest) > SOURCE_JUMP_NOTE_K:
+                    self.notes.append((device_id, t(
+                        "Quelle des Vorlauf-Ziels gewechselt ({old} → {new}): Die Korrektur reicht nicht ganz für den Ausgleich, das Vorlauf-Ziel springt um {rest} K.",
+                        old=source_text(old), new=source_text(new), rest=("+" if rest > 0 else "") + number(rest),
+                    ), False))
+                event["protected"] = True
+            elif start is not None and correction is not None:
+                event["protected"] = False
+                self.notes.append((device_id, t(
+                    "Quelle des Vorlauf-Ziels gewechselt ({old} → {new}) ohne Sprungschutz: kein aktueller Wert der bisherigen Quelle.",
+                    old=source_text(old), new=source_text(new),
+                ), False))
+            else:
+                event["protected"] = False
+        stored["source_change"] = event
+        self.source_events.append((device_id, event))
+        return shift
 
     def _guard_step(
         self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",
@@ -452,6 +517,9 @@ class FlowShadow:
             "heat_needed_w": round(flow.feed.heat_w) if flow.feed and flow.feed.heat_w is not None else None,
             "curve_c": round(flow.feed.curve_c, 2) if flow.feed and flow.feed.curve_c is not None else None,
             "heat_recent_s": round(flow.recent_s),
+            # The last change of the source (8.1): from, to, jump of the start value, shift of the correction
+            # and rest of the jump (only while writing for real), shadow
+            "source_change": (self._store.devices.get(device_id) or {}).get("source_change"),
             "curve": curve.status() if (curve := self.curves.get(device_id)) is not None else None,
             "surface": surface,
             "parameters": {

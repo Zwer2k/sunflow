@@ -547,6 +547,19 @@ Wärmeabgabe der Heizflächen:
   springt V_Ziel dabei einmal, ohne Sprungschutz. Der Wechsel steht mit alter und neuer Quelle in
   `heat_pump_samples` (`events`, `kind: flow_source`, `from`, `to`), nicht im Journal; das UI zeigt
   Quelle, Basis- bzw. Kennlinienwert und Korrektur getrennt. Umsetzung `heat_pump/feedforward.py`.
+- **Sprungschutz beim Quellenwechsel** (3, Teil 4.5; wirkt nur bei aktivem Schreiben, das erst Teil 4.7
+  einschaltet – bis dahin nur in der Simulation getestet): Startwert = Kennlinienwert bzw. Basis. Beim
+  Wechsel wird die Korrektur der aktuellen Strategie um alter − neuer Startwert verschoben (nach dem
+  normalen Schritt der Korrektur in dieser Minute), sodass V_Ziel bleibt; die verschobene Korrektur bleibt
+  in ±3 K (`CORRECTION_LIMIT_K`), der Rest bleibt als Sprung (`source_shift` in `heat_pump/feedforward.py`).
+  Der Raum-Bezug der Korrektur bleibt (kein P-Schritt). Der alte Startwert ist der zuletzt berechnete
+  (`start_c`/`start_at` je Gerät in `heat_pump_state.json`, übersteht einen Neustart) und gilt nur, wenn er
+  höchstens 30 min alt ist (`SOURCE_SHIFT_MAX_AGE_S`); sonst kein Sprungschutz. Journal (aktiv): Rest über
+  0,05 K (`SOURCE_JUMP_NOTE_K`) mit Größe des Sprungs, ebenso ein Wechsel ohne Sprungschutz (alter Wert
+  unbekannt oder zu alt); ohne V_Ziel (keine Basis, Strategie unbekannt) nichts. Im Schatten keine
+  Verschiebung und kein Journal. Ereignis `flow_source` zusätzlich mit `shadow`, `jump_k` (neuer − alter
+  Startwert, wenn bekannt) und aktiv `protected`, `shift_k`, `rest_k` (Abschnitt 10); der letzte Wechsel im
+  Status als `source_change`. Tests `tests/test_heat_pump_source_shift.py`.
 - Ohne gelernte Kennlinie (Start): V_Ziel = zuletzt wirksamer Vorlauf-Soll; nur die Korrektur bewegt ihn.
   Umsetzung (2c, Teil 2b, `heat_pump/shadow.py`): V_Ziel = Basis + Korrektur. Solange Sunflow nicht
   schreibt (Schatten, Modus `off`), ist die Basis laufend der wirksame Vorlauf-Soll, übernommen nur bei
@@ -1027,7 +1040,9 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
     `after_run`: Nachlauf `hot_water`/`defrost`/`unknown`; `blocked`, `fault`, `self_limited`;
     `ventilation`: in einer Minute des Intervalls gelüftete Räume, sortierte Liste der Entities, leer
     ohne Lüften; fehlt in älteren Zeilen → leer). In `events` zusätzlich der Quellenwechsel des
-    Vorlauf-Ziels (8.1): `{"at", "kind": "flow_source", "from", "to"}` (ab 3, Teil 2). Ab 3, Teil 3 (8.4,
+    Vorlauf-Ziels (8.1): `{"at", "kind": "flow_source", "from", "to"}` (ab 3, Teil 2; ab 3, Teil 4.5 dazu
+    `shadow`, `jump_k` = neuer − alter Startwert, wenn der alte bekannt ist, und bei aktivem Schreiben
+    `protected`, `shift_k`, `rest_k`). Ab 3, Teil 3 (8.4,
     im Schatten mit `shadow: true`): geplante Schreibvorgänge `{"at", "kind": "write", "reason"
     (normal/start/track/block_on/block_off), "value_c", "from_c" bzw. "block", "block_reason", "phase"}`,
     Starts `{"at", "kind": "start_jump", "start_kind", "start_at", "ref_c", "peak_c", "jump_k", "settle_s"}`
@@ -1302,6 +1317,13 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    Manifest (Abschnitt 12) hilft nicht: `min`/`max` dort sind fest beim Kompilieren, die HPSU-Grenze ist
    eine Einstellung. Vorher am Gerät bestätigen (Nutzer), dass „Max Temp Heizung“ der begrenzende Wert ist
    (z. B. Max T-Vorlauf kurz über die Grenze setzen und den wirksamen Vorlauf-Soll ansehen).
+10. **Quellenwechsel vor dem Aktivschalten beobachten** (Beobachtung, keine Entscheidung). Seit 3, Teil 4.5
+    trägt jedes Ereignis `flow_source` auch im Schatten `jump_k` (Sprung des Startwerts). Vor 4.7 aus
+    `heat_pump_samples` prüfen, wie oft die Quelle wechselt (z. B. `heat_recent` ↔ `base` an der 2-h-Schwelle)
+    und wie groß die Sprünge sind: Häufiges Hin und Her verschiebt die Korrektur aktiv jedes Mal (hin und
+    zurück hebt sich auf, außer an der Grenze ±3 K); Sprünge über 3 K zeigen, dass der Rest als Sprung bleibt
+    und die Schutzschicht ihn abfangen muss. Fällt das auf, vor 4.7 mit dem Nutzer klären (z. B. Hysterese
+    beim Wechsel der Quelle).
 
 ## 16. Reihenfolge
 
@@ -1394,6 +1416,12 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       5. **Sprungschutz beim Quellenwechsel** (8.1) für den aktiven Betrieb: Korrektur um alt − neu
          verschieben, damit V_Ziel nicht springt (in der Begrenzung ±3 K, Rest bleibt als Sprung, Journal).
          Im Schatten bewusst nicht; getestet in der Simulation.
+         **Umgesetzt (0.80.16):** `source_shift` (`heat_pump/feedforward.py`), `Correction.shift`,
+         `FlowShadow._source_change`; alter Startwert `start_c`/`start_at` in `heat_pump_state.json` (höchstens
+         30 min alt, sonst kein Schutz, Journal), Ereignis `flow_source` mit `jump_k` und aktiv `shift_k`/
+         `rest_k`/`protected`, Status `source_change`, UI-Hinweis je nach Schatten/aktiv. Wirkt erst mit 4.7
+         (`writing_active` bis dahin überall falsch); die Tests `tests/test_heat_pump_source_shift.py` setzen
+         `FlowShadow.active` als Simulation.
       6. **HA-Sensoren** (13): „Vorlauf-Ziel“, „Stellwert“ (Attribute geschrieben/ausstehend, Zeit, Grund,
          `shadow`), „Schreibvorgänge heute“; climate-Attribute Stellwert geschrieben/ausstehend und Schalter
          (nur Anzeige). Im Schatten gekennzeichnet.
@@ -1403,6 +1431,7 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
          nicht fremd, Prüfung des Übernommenen (wirksamer Soll nach `adopt_delay`), Journal bei Ein/Aus;
          Ausschalten, Modus `off`, Ausfall: nichts zurückstellen (8.6), danach wieder Schatten.
          Die Erkennung eigener Änderungen (4.4) braucht dann `Guard.record_write(shadow=False)`.
+         Der Sprungschutz beim Quellenwechsel (4.5) greift mit `writing_active` ohne weiteres Zutun.
          Voraussetzungen zum Einschalten: Gerät kompatibel, Strategie `fixed`, keine ESP-Regelung, Punkt 9
          entschieden. Simulation nach Abschnitt 14 (HPSU-Nachbildung) als Abnahme. Das erste Schreiben an
          der Wärmepumpe nur mit Freigabe des Nutzers.

@@ -569,6 +569,7 @@ export default {
   "wirksamer Vorlauf-Soll, gilt ohne Kennlinie": "effective flow setpoint, used without heating curve",
   "Die Wärme der letzten 3 h entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt: Die Kennlinie bildet nur den aktuellen Zustand nach, die Richtung gibt die Korrektur vor.": "The heat of the last 3 h comes from the flow the heat pump runs now: the heating curve only follows the current state, the direction comes from the correction.",
   "Wechselt die Quelle, springt das Vorlauf-Ziel im Schattenbetrieb einmal; die Korrektur bleibt.": "When the source changes, the flow target jumps once in shadow operation; the correction stays.",
+  "Wechselt die Quelle, verschiebt Sunflow die Korrektur, damit das Vorlauf-Ziel nicht springt (innerhalb ±3 K).": "When the source changes, Sunflow shifts the correction so the flow target does not jump (within ±3 K).",
   "Kennlinie (Schatten)": "Heating curve (shadow)",
   "Noch nicht berechnet.": "Not computed yet.",
   "nutzbar": "usable",
