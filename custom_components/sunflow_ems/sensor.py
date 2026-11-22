@@ -1,4 +1,5 @@
-"""Sensors: key figures of each PV forecast, energy and power of each PV string."""
+"""Sensors: key figures of each PV forecast, energy and power of each PV string, and per heat pump its flow
+target, set value and writes today (design/heat_pump.md, 13)."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,8 +12,9 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
+from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -270,6 +272,7 @@ async def async_setup_entry(
         lambda d: [SunflowDeviceActionSensor(data.state, entry, d)],
         async_add_entities,
     )
+    add_heat_pump_sensors(hass, entry, data.state, async_add_entities)
     add_per_item(
         entry,
         data.state,
@@ -445,3 +448,151 @@ class SunflowConsumerSensor(SunflowEntity, SensorEntity):
             k: consumer.get(k)
             for k in ("level", "target", "unit", "vehicle", "need_wh", "reason")
         }
+
+
+# Heat pumps (design/heat_pump.md, 13, step 3 part 4.6). One mark of shadow or active: the attribute mode.
+SHADOW = "shadow"
+ACTIVE = "active"
+ICON_SHADOW = "mdi:ghost-outline"
+HEAT_PUMP_SENSORS = ("flow_target", "setpoint", "writes_today")
+ICONS_ACTIVE = {"flow_target": "mdi:thermometer-water", "setpoint": "mdi:thermometer-water", "writes_today": "mdi:counter"}
+# Attributes of the set value: the App's key → attribute
+SETPOINT_ATTRIBUTES = {
+    "pending_c": "pending",
+    "pending_at": "pending_at",
+    "pending_reason": "pending_reason",
+    "written_at": "written_at",
+    "written_reason": "written_reason",
+    "held": "held",
+}
+
+
+def heat_pumps(data: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+    """The heat pumps of the App's state; None when the state does not say (then nothing is removed)."""
+    if not isinstance(data, dict) or "house" not in data:
+        return None
+    house = data.get("house")
+    return [p for p in (house.get("heat_pumps") or []) if isinstance(p, dict) and "id" in p] if isinstance(house, dict) else []
+
+
+def add_heat_pump_sensors(
+    hass: HomeAssistant,
+    entry: SunflowConfigEntry,
+    coordinator: SunflowCoordinator,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """The sensors of every heat pump, also of ones appearing later; removed with the heat pump in Sunflow."""
+    added: dict[str, list[SunflowHeatPumpSensor]] = {}
+
+    @callback
+    def sync() -> None:
+        pumps = heat_pumps(coordinator.data)
+        if pumps is None or not coordinator.last_update_success:
+            return
+        ids = {p["id"] for p in pumps}
+        new = [
+            SunflowHeatPumpSensor(coordinator, entry, p, key)
+            for p in pumps
+            if p["id"] not in added
+            for key in HEAT_PUMP_SENSORS
+        ]
+        for sensor in new:
+            added.setdefault(sensor.heat_pump_id, []).append(sensor)
+        if new:
+            async_add_entities(new)
+        registry = er.async_get(hass)
+        for gone in set(added) - ids:
+            for sensor in added.pop(gone):
+                if sensor.entity_id and registry.async_get(sensor.entity_id) is not None:
+                    registry.async_remove(sensor.entity_id)
+        # Left in the registry from an earlier run (heat pump removed while Home Assistant was off)
+        for reg in er.async_entries_for_config_entry(registry, entry.entry_id):
+            pump_id = heat_pump_of(entry, reg.unique_id) if reg.domain == "sensor" else None
+            if pump_id is not None and pump_id not in ids:
+                registry.async_remove(reg.entity_id)
+
+    sync()
+    entry.async_on_unload(coordinator.async_add_listener(sync))
+
+
+def heat_pump_of(entry: SunflowConfigEntry, unique_id: str) -> str | None:
+    """The heat pump a sensor of this entry belongs to; None for other entities."""
+    prefix = f"{entry.entry_id}_heat_pump_"
+    if not unique_id.startswith(prefix):
+        return None
+    rest = unique_id[len(prefix):]
+    for key in HEAT_PUMP_SENSORS:
+        if rest.endswith(f"_{key}") and len(rest) > len(key) + 1:
+            return rest[: -len(key) - 1]
+    return None
+
+
+class SunflowHeatPumpSensor(SunflowEntity, SensorEntity):
+    """Flow target, set value (written, in the shadow the virtual one) or writes today of one heat pump."""
+
+    def __init__(
+        self,
+        coordinator: SunflowCoordinator,
+        entry: SunflowConfigEntry,
+        heat_pump: dict[str, Any],
+        key: str,
+    ) -> None:
+        """Initialize; the unique id from Sunflow's id of the heat pump, not its name, so entity ids and
+        history stay when it is renamed."""
+        super().__init__(coordinator, entry, f"heat_pump_{heat_pump['id']}_{key}", {"name": heat_pump.get("name") or heat_pump["id"]})
+        self.heat_pump_id: str = heat_pump["id"]
+        self._key = key
+        self._attr_translation_key = f"heat_pump_{key}"
+        if key == "writes_today":
+            # A count going back to 0 each day: history only, no long-term statistics
+            self._attr_suggested_display_precision = 0
+        else:
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+            self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+            self._attr_suggested_display_precision = 1
+
+    @property
+    def _pump(self) -> dict[str, Any] | None:
+        return next((p for p in heat_pumps(self.state_data) or [] if p["id"] == self.heat_pump_id), None)
+
+    @property
+    def _flow(self) -> dict[str, Any]:
+        return (self._pump or {}).get("flow") or {}
+
+    @property
+    def _setpoint(self) -> dict[str, Any]:
+        return self._flow.get("setpoint") or {}
+
+    @property
+    def _mode(self) -> str:
+        """Shadow until Sunflow writes to the heat pump for real."""
+        return ACTIVE if self._setpoint.get("mode") == ACTIVE else SHADOW
+
+    @property
+    def available(self) -> bool:
+        """Unavailable while the App does not report the heat pump."""
+        return super().available and self._pump is not None
+
+    @property
+    def native_value(self) -> float | int | None:
+        """The value from the App; unknown without one (never 0 instead)."""
+        if self._key == "flow_target":
+            return self._flow.get("target_c")
+        if self._key == "setpoint":
+            return self._setpoint.get("written_c")
+        return self._setpoint.get("writes_today")
+
+    @property
+    def icon(self) -> str:
+        """The ghost in the shadow; the name stays the same when Sunflow writes for real."""
+        return ICON_SHADOW if self._mode == SHADOW else ICONS_ACTIVE[self._key]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """mode, and for the set value what is pending, when it was written and why, what holds it back."""
+        attributes: dict[str, Any] = {"mode": self._mode}
+        if self._key == "setpoint":
+            setpoint = self._setpoint
+            attributes |= {name: setpoint.get(key) for key, name in SETPOINT_ATTRIBUTES.items()}
+        return attributes

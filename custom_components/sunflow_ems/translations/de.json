@@ -110,6 +110,15 @@
       },
       "next_load": {
         "name": "Nächste einmalige Last"
+      },
+      "heat_pump_flow_target": {
+        "name": "{name} Vorlauf-Ziel"
+      },
+      "heat_pump_setpoint": {
+        "name": "{name} Stellwert"
+      },
+      "heat_pump_writes_today": {
+        "name": "{name} Schreibvorgänge heute"
       }
     },
     "binary_sensor": {

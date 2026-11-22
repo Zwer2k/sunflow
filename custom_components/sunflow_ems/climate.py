@@ -3,7 +3,8 @@
 Sunflow stores setpoint and mode; this entity mirrors them. Changes in quick succession (e.g. an
 automation stepping the setpoint) are sent once, with the last value. Mode off: Sunflow writes
 nothing to the heat pump but keeps computing. For now Sunflow runs in shadow operation: the flow
-target is computed and shown in the attributes, nothing is written.
+target is computed and shown in the attributes, nothing is written. The attribute mode (shadow | active)
+says which; shadow (true/false) is the older mark, set from the same source (deprecated, use mode).
 """
 
 import logging
@@ -65,6 +66,33 @@ CURVE_KEYS = (
 
 def _curve(curve: dict[str, Any] | None) -> dict[str, Any] | None:
     return {k: curve.get(k) for k in CURVE_KEYS} if curve else None
+
+
+SHADOW = "shadow"
+ACTIVE = "active"
+# The set value of a heat pump (step 3 part 4.6): the App's key → attribute (prefixed setpoint_ for the
+# first heat pump, plain under heat_pumps)
+SETPOINT_KEYS = {
+    "written_c": "written",
+    "written_at": "written_at",
+    "pending_c": "pending",
+    "pending_at": "pending_at",
+    "pending_reason": "pending_reason",
+    "held": "held",
+}
+
+
+def _mode(flow: dict[str, Any] | None, house: dict[str, Any]) -> str:
+    """Shadow or active: from the heat pump's set value; without one from the house (shadow by default)."""
+    setpoint = (flow or {}).get("setpoint")
+    if isinstance(setpoint, dict) and setpoint.get("mode") in (SHADOW, ACTIVE):
+        return setpoint["mode"]
+    return SHADOW if house.get("shadow", True) else ACTIVE
+
+
+def _setpoint(flow: dict[str, Any] | None) -> dict[str, Any]:
+    setpoint = (flow or {}).get("setpoint") or {}
+    return {name: setpoint.get(key) for key, name in SETPOINT_KEYS.items()}
 
 
 class SunflowHouseClimate(SunflowEntity, ClimateEntity):
@@ -147,11 +175,14 @@ class SunflowHouseClimate(SunflowEntity, ClimateEntity):
         pumps = house.get("heat_pumps") or []
         flows = [p for p in pumps if p.get("flow")]
         first = flows[0]["flow"] if flows else {}
+        mode = _mode(first, house)
         return {
             "plan_target_temperature": house.get("plan_target_c"),
             # Planning follows: the plan target is the setpoint
             "reason": "setpoint",
-            "shadow": house.get("shadow", True),
+            # One mark (shadow | active); shadow is the older one, deprecated, never different from mode
+            "mode": mode,
+            "shadow": mode == SHADOW,
             "setpoint_change": house.get("settling"),
             "flow_target_temperature": first.get("target_c"),
             "flow_base_temperature": first.get("base_c"),
@@ -164,10 +195,15 @@ class SunflowHouseClimate(SunflowEntity, ClimateEntity):
             "flow_heat_needed": first.get("heat_needed_w"),
             # The learned heating curve (shadow): K, n, spread, quality, amount of data
             "heating_curve": _curve(first.get("curve")),
+            # The set value (written, in the shadow the virtual one; pending with time and reason; held: why
+            # it waits or nothing is written) - display only, the switch to write for real follows in 4.7
+            **{f"setpoint_{name}": value for name, value in _setpoint(first).items()},
             "heat_pumps": {
                 p["name"]: {
                     **{k: p["flow"].get(k) for k in ("target_c", "base_c", "correction_k", "frozen", "reason", "source", "curve_c")},
                     "heating_curve": _curve(p["flow"].get("curve")),
+                    **_setpoint(p["flow"]),
+                    "mode": _mode(p["flow"], house),
                 }
                 for p in flows
             }

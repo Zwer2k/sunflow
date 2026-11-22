@@ -250,3 +250,96 @@ async def test_no_climate_without_house(hass: HomeAssistant, aioclient_mock: Aio
     await _setup(hass, aioclient_mock, {**STATE, "house": None})
 
     assert hass.states.get("climate.sunflow_house") is None
+
+
+SETPOINT = {
+    "mode": "shadow", "written_c": 32.0, "written_at": "2026-11-22T10:00:00+00:00", "written_reason": "normal",
+    "pending_c": 31.0, "pending_at": "2026-11-22T10:05:00+00:00", "pending_reason": "normal", "held": "spacing",
+    "held_budget": None, "writes_today": 3,
+}
+
+
+def _house(setpoint: dict[str, Any] | None, pumps: int = 1) -> dict[str, Any]:
+    flow = {**HOUSE["heat_pumps"][0]["flow"], "setpoint": setpoint}
+    names = [("hp", "HPSU"), ("hp2", "Werkstatt")][:pumps]
+    return {**HOUSE, "heat_pumps": [{**HOUSE["heat_pumps"][0], "id": i, "name": n, "flow": flow} for i, n in names]}
+
+
+async def test_heat_pump_sensors(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    """Flow target, set value and writes today per heat pump; in the shadow marked by mode and the ghost icon."""
+    from homeassistant.helpers import entity_registry as er
+
+    await _setup(hass, aioclient_mock, {**STATE, "house": _house(SETPOINT)})
+
+    target = hass.states.get("sensor.sunflow_hpsu_flow_target")
+    setpoint = hass.states.get("sensor.sunflow_hpsu_setpoint")
+    writes = hass.states.get("sensor.sunflow_hpsu_writes_today")
+    assert (target.state, target.attributes["unit_of_measurement"], target.attributes["device_class"]) == ("31.4", "°C", "temperature")
+    assert target.attributes["state_class"] == "measurement"
+    assert setpoint.state == "32.0" and setpoint.attributes["state_class"] == "measurement"
+    assert {k: setpoint.attributes[k] for k in ("mode", "pending", "pending_at", "pending_reason", "written_at", "written_reason", "held")} == {
+        "mode": "shadow", "pending": 31.0, "pending_at": "2026-11-22T10:05:00+00:00", "pending_reason": "normal",
+        "written_at": "2026-11-22T10:00:00+00:00", "written_reason": "normal", "held": "spacing",
+    }
+    assert "shadow" not in setpoint.attributes
+    # A count going back to 0 each day: no unit, no state class (history only)
+    assert writes.state == "3" and "state_class" not in writes.attributes and "unit_of_measurement" not in writes.attributes
+    assert all(s.attributes["icon"] == "mdi:ghost-outline" and s.attributes["mode"] == "shadow" for s in (target, setpoint, writes))
+    # The unique id from Sunflow's id of the heat pump, not its name
+    registry = er.async_get(hass)
+    assert registry.async_get("sensor.sunflow_hpsu_setpoint").unique_id.endswith("_heat_pump_hp_setpoint")
+
+    climate = hass.states.get("climate.sunflow_house").attributes
+    assert {k: climate[k] for k in (
+        "mode", "shadow", "setpoint_written", "setpoint_written_at", "setpoint_pending", "setpoint_pending_at",
+        "setpoint_pending_reason", "setpoint_held",
+    )} == {
+        "mode": "shadow", "shadow": True, "setpoint_written": 32.0, "setpoint_written_at": "2026-11-22T10:00:00+00:00",
+        "setpoint_pending": 31.0, "setpoint_pending_at": "2026-11-22T10:05:00+00:00", "setpoint_pending_reason": "normal",
+        "setpoint_held": "spacing",
+    }
+
+    # Active: mode and icon change, name and entity id stay; nothing known yet: unknown, never 0
+    app = hass.config_entries.async_entries("sunflow_ems")[0]
+    app.runtime_data.state.async_set_updated_data({**STATE, "house": _house({**SETPOINT, "mode": "active", "written_c": None, "writes_today": None})})
+    await hass.async_block_till_done()
+    setpoint = hass.states.get("sensor.sunflow_hpsu_setpoint")
+    writes = hass.states.get("sensor.sunflow_hpsu_writes_today")
+    assert (setpoint.state, setpoint.attributes["mode"], setpoint.attributes["icon"]) == ("unknown", "active", "mdi:thermometer-water")
+    assert (writes.state, writes.attributes["icon"]) == ("unknown", "mdi:counter")
+    assert hass.states.get("sensor.sunflow_hpsu_flow_target").attributes["icon"] == "mdi:thermometer-water"
+    climate = hass.states.get("climate.sunflow_house").attributes
+    assert (climate["mode"], climate["shadow"]) == ("active", False)
+
+
+async def test_heat_pump_sensors_follow_the_heat_pumps(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    """A heat pump added later gets its sensors; one removed in Sunflow takes them along."""
+    from homeassistant.helpers import entity_registry as er
+
+    await _setup(hass, aioclient_mock, {**STATE, "house": _house(SETPOINT)})
+    app = hass.config_entries.async_entries("sunflow_ems")[0]
+    coordinator = app.runtime_data.state
+    registry = er.async_get(hass)
+
+    coordinator.async_set_updated_data({**STATE, "house": _house(SETPOINT, pumps=2)})
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.sunflow_werkstatt_setpoint").state == "32.0"
+    climate = hass.states.get("climate.sunflow_house").attributes
+    assert {k: climate["heat_pumps"]["Werkstatt"][k] for k in ("written", "pending", "held", "mode")} == {
+        "written": 32.0, "pending": 31.0, "held": "spacing", "mode": "shadow",
+    }
+
+    # Without the house in the state (older App): nothing removed
+    coordinator.async_set_updated_data({k: v for k, v in STATE.items() if k != "house"})
+    await hass.async_block_till_done()
+    assert registry.async_get("sensor.sunflow_werkstatt_setpoint") is not None
+
+    coordinator.async_set_updated_data({**STATE, "house": _house(SETPOINT, pumps=1)})
+    await hass.async_block_till_done()
+    assert registry.async_get("sensor.sunflow_werkstatt_setpoint") is None
+    assert hass.states.get("sensor.sunflow_werkstatt_setpoint") is None
+    assert hass.states.get("sensor.sunflow_hpsu_setpoint").state == "32.0"
+
+    coordinator.async_set_updated_data({**STATE, "house": None})
+    await hass.async_block_till_done()
+    assert registry.async_get("sensor.sunflow_hpsu_flow_target") is None

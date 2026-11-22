@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.17
+
+- Heat pumps (still shadow operation, nothing is written): new sensors per heat pump in Home Assistant at the device "Sunflow" – "<heat pump> flow target" (°C), "<heat pump> setpoint" (Max T-Vorlauf written last, in the shadow the virtual one, with value pending, due at, reasons and why it is held back as attributes) and "<heat pump> writes today" (history only, no long-term statistics; unknown after a restart until counted again). All three carry the attribute `mode` (`shadow` | `active`) and a ghost icon in the shadow; they go when the heat pump is removed in Sunflow. The thermostat "Haus" additionally shows the set value (`setpoint_written`, `setpoint_pending`, … `setpoint_held`) and `mode`. The attribute `shadow` of the thermostat is deprecated and follows `mode` – use `mode` in new cards and automations.
+
 ## 0.80.16
 
 - Heat pumps (still shadow operation, no effect yet): preparation for active writing – when the source of the flow target changes (house model, heat of the last 3 hours, base) while Sunflow writes for real, Sunflow shifts the room correction so the flow target does not jump (within ±3 K; a rest is noted in the journal). In the shadow the flow target still jumps once, as before. The change of the source is recorded in `heat_pump_samples` with the size of the jump.

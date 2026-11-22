@@ -81,6 +81,13 @@ REPORTED_EVERY = timedelta(seconds=CORRECTION_MAX_STEP_S)
 TIMEZONE_EVERY = timedelta(hours=1)
 # The start value of the old source counts for the jump protection only this long (8.1)
 SOURCE_SHIFT_MAX_AGE = timedelta(seconds=SOURCE_SHIFT_MAX_AGE_S)
+# Whether Sunflow writes to a heat pump for real or computes in the shadow (HA sensors, climate attribute mode)
+SHADOW = "shadow"
+ACTIVE = "active"
+# Why nothing is written although Sunflow would (setpoint.held): besides the write layer's spacing and
+# budget, the ESP regulation and the room thermostat block
+HELD_ESP = "esp_regulation"
+HELD_BLOCK = "block"
 
 
 def source_text(source: str) -> str:
@@ -528,6 +535,48 @@ class FlowShadow:
             # Limits the correction does not move beyond (8.3); the direction in guard.freeze_up/down
             "limited": list(flow.limited),
             "guard": self.guard_status(device_id),
+            "setpoint": self.setpoint_status(device_id),
+        }
+
+    def mode(self, device_id: str) -> str:
+        """Shadow or active: the one mark of the HA sensors and the climate attributes (step 3 part 4.6)."""
+        return ACTIVE if self.writing_active(device_id) else SHADOW
+
+    def setpoint_status(self, device_id: str) -> dict[str, Any]:
+        """The set value for the HA sensors "Stellwert" and "Schreibvorgänge heute" (13, step 3 part 4.6).
+
+        written: the last written Max T-Vorlauf (in the shadow the virtual one), a foreign change taken over
+        with reason foreign; None until a value is known. pending: a value waiting, with when it is due and
+        why it is wanted. held: why it waits (spacing, budget) or why nothing is written although Sunflow
+        would (esp_regulation, block). writes_today: writes of the set value on the local day, None until the
+        writes before this run are counted and Home Assistant's time zone is known (never a premature 0).
+        """
+        guard = self.guards.get(device_id)
+        flow = self.flows.get(device_id)
+        result = flow.guard if flow is not None else None
+        pending = result.pending if result is not None else None
+        held: str | None = pending.held if pending is not None else None
+        if held is None and guard is not None and result is not None:
+            if HELD_ESP in result.inactive:
+                held = HELD_ESP
+            elif guard.block:
+                held = HELD_BLOCK
+        writes_today: int | None = None
+        budget = self.budgets.get(device_id)
+        # The budget's own time zone (set each tick from Home Assistant's): without it the last 24 hours count
+        if budget is not None and budget.seeded and budget.tz is not None:
+            writes_today = budget.used(self._observed_at or datetime.now(UTC))[0]
+        return {
+            "mode": self.mode(device_id),
+            "written_c": guard.written_c if guard is not None else None,
+            "written_at": guard.written_at.astimezone(UTC).isoformat() if guard is not None and guard.written_at else None,
+            "written_reason": guard.written_reason if guard is not None else None,
+            "pending_c": pending.value_c if pending is not None else None,
+            "pending_at": pending.due_at.astimezone(UTC).isoformat() if pending is not None and pending.due_at else None,
+            "pending_reason": pending.reason if pending is not None else None,
+            "held": held,
+            "held_budget": pending.budget if pending is not None else None,
+            "writes_today": writes_today,
         }
 
     def guard_status(self, device_id: str) -> dict[str, Any] | None:

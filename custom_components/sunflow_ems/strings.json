@@ -110,6 +110,15 @@
       },
       "next_load": {
         "name": "Next one-time load"
+      },
+      "heat_pump_flow_target": {
+        "name": "{name} flow target"
+      },
+      "heat_pump_setpoint": {
+        "name": "{name} setpoint"
+      },
+      "heat_pump_writes_today": {
+        "name": "{name} writes today"
       }
     },
     "binary_sensor": {

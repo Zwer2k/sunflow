@@ -1184,8 +1184,30 @@ Nur CAN:
   - `climate`-Entity „Haus“: Raum-Soll (einstellbar), Raum-Ist, Modus; Attribute Planziel und Grund
     (z. B. „Vorheizen wegen PV“), Vorlauf-Ziel, Stellwert geschrieben/ausstehend; seit 3, Teil 2 auch
     Quelle des Vorlauf-Ziels (`flow_source`, `flow_source_reason`, `flow_curve_temperature`,
-    `flow_heat_needed`) und die gelernte Kennlinie (`heating_curve`, mit `shadow: true`).
-  - Sensoren „Vorlauf-Ziel“, „Stellwert“ und „Schreibvorgänge heute“.
+    `flow_heat_needed`) und die gelernte Kennlinie (`heating_curve`, mit `shadow: true`); seit 3, Teil 4.6
+    Stellwert der ersten Wärmepumpe (`setpoint_written`, `setpoint_written_at`, `setpoint_pending`,
+    `setpoint_pending_at`, `setpoint_pending_reason`, `setpoint_held`) und das Kennzeichen
+    `mode` (`shadow` | `active`, nur Anzeige; der Schalter selbst folgt in 4.7). Bei mehreren Wärmepumpen
+    unter `heat_pumps` je Wärmepumpe dieselben Namen ohne Präfix (`written`, …, `held`, `mode`). Das ältere
+    Attribut `shadow` (true/false) bleibt vorerst, wird aus derselben Quelle gesetzt (`shadow` = `mode` ist
+    `shadow`) und gilt als veraltet.
+  - Sensoren je Wärmepumpe am Gerät „Sunflow“, Name mit dem Namen der Wärmepumpe vorne, `unique_id` aus
+    der Sunflow-Geräte-ID (Umbenennen ändert weder Entity-ID noch History); wird die Wärmepumpe in Sunflow
+    entfernt, verschwinden ihre Sensoren (auch aus der Entity-Registry). Ohne bekannten Wert `unknown`,
+    nie 0. An allen dreien das Attribut `mode` (`shadow` | `active`, kein zusätzliches `shadow`), Symbol im
+    Schatten `mdi:ghost-outline`, aktiv `mdi:thermometer-water` bzw. `mdi:counter`; beim Aktivschalten
+    ändern sich nur Attribut und Symbol.
+    - „Vorlauf-Ziel“ (`<name> flow target`): V_Ziel in °C, `measurement`, 1 Nachkommastelle.
+    - „Stellwert“ (`<name> setpoint`): zuletzt geschriebener Max T-Vorlauf (im Schatten der virtuelle) in
+      °C, `measurement`, 1 Nachkommastelle; eine fremde Änderung übernimmt er wie der Stellwert selbst.
+      Attribute `pending`, `pending_at` (fällig um), `pending_reason`, `written_at`, `written_reason`
+      (`normal`, `start`, `track`, `manual`, `foreign`; leer, solange es der eigene Wert der Wärmepumpe
+      ist), `held` (`spacing`, `budget`, `block`, `esp_regulation`; sonst leer), `mode`.
+    - „Schreibvorgänge heute“ (`<name> writes today`): Schreibvorgänge auf den Stellwert am lokalen Tag
+      (Budget, 8.5; Sperre zählt nicht), im Schatten virtuell; ohne Einheit und ohne `state_class` (nur
+      Verlauf, keine Langzeitstatistik; Auswertungen über längere Zeit aus `heat_pump_samples`). Nach einem
+      Neustart `unknown`, bis die Schreibvorgänge aus den Ereignissen neu gezählt sind und die Zeitzone
+      von HA bekannt ist.
 - Sunflow-UI, Bereich Wärmepumpe:
   - Gerät: CAN, ggf. UART-Begleiter, Paarung (Name, Bereich, MAC); erkannte Strategie (aus
     `hk_function`); Programm und Aktivität; Kompatibilität (fehlende Rollen mit Grund, 3.6).
@@ -1257,6 +1279,8 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
 3. Startwerte Budget (48 + 24) nach den ersten Wochen prüfen. Seit 3, Teil 4.3 zählt
    `shadow_writes` mit Mindestabstand und Budget (virtuell, 8.5); damit lässt sich die Zahl schon im Schatten
    beurteilen – Tage mit Budget-Sperre oder vollem Notkontingent zeigen, dass die Werte zu knapp sind.
+   Seit 3, Teil 4.6 zeigt der HA-Sensor „Schreibvorgänge heute“ den laufenden Tag (im Schatten virtuell);
+   zur Beurteilung über Wochen weiter `shadow_writes` bzw. `heat_pump_samples`, nicht die HA-History.
 4. Höchster Vorlauf für den Estrich (Nutzereinstellung, Standard?). **Geklärt, umgesetzt (0.80.11):**
    Einstellung min/max des Stellwerts je Wärmepumpe (8.3), leer = Startgrenzen des Heizflächentyps
    (`HEATING_SURFACES`), immer eingeengt auf `min`/`max` der Entity im Manifest; max ist zugleich der
@@ -1425,6 +1449,15 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       6. **HA-Sensoren** (13): „Vorlauf-Ziel“, „Stellwert“ (Attribute geschrieben/ausstehend, Zeit, Grund,
          `shadow`), „Schreibvorgänge heute“; climate-Attribute Stellwert geschrieben/ausstehend und Schalter
          (nur Anzeige). Im Schatten gekennzeichnet.
+         **Umgesetzt (0.80.17):** Status `flow.setpoint` je Wärmepumpe (`FlowShadow.setpoint_status`: `mode`,
+         `written_c`/`_at`/`_reason`, `pending_c`/`_at`/`_reason`, `held`, `held_budget`, `writes_today`),
+         Grund des geschriebenen Werts in der Schutzschicht (`Guard.written_reason`, in
+         `heat_pump_state.json`; ältere Zustände aus `recent_writes` abgeleitet); `sunflow_ems`: Sensoren
+         „Vorlauf-Ziel“, „Stellwert“, „Schreibvorgänge heute“ je Wärmepumpe (`SunflowHeatPumpSensor`; Namen,
+         Einheiten und Anzeige vom Nutzer festgelegt, Abschnitt 13), Entfernen mit der Wärmepumpe,
+         climate-Attribute `setpoint_*` und `mode` (Schalter nur als Anzeige). Tests
+         `tests/test_heat_pump_ha_sensors.py`, `tests_integration/test_sunflow.py` (lief in einer Kopie von
+         HA core unter `/tmp`).
       7. **Aktivschalten**: Schalter je Wärmepumpe (Standard aus), Übernahme beim Einschalten mit
          eingefrorener Basis und Korrektur 0 (V_Ziel springt nicht, geschrieben wird erst, wenn die Regeln es
          verlangen), echtes Schreiben über die Profil-Schreibschritte (`storage: eeprom`), eigene Sperre ist
@@ -1435,6 +1468,8 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
          Voraussetzungen zum Einschalten: Gerät kompatibel, Strategie `fixed`, keine ESP-Regelung, Punkt 9
          entschieden. Simulation nach Abschnitt 14 (HPSU-Nachbildung) als Abnahme. Das erste Schreiben an
          der Wärmepumpe nur mit Freigabe des Nutzers.
+      - **Später:** veraltetes climate-Attribut `shadow` entfernen (seit 0.80.17 ersetzt durch `mode`), mit
+        Hinweis im CHANGELOG und in der Doku; vorher prüfen, dass Karten und Automationen `mode` nutzen.
       - **Todo (offener Punkt 8):** in den ersten Tagen des aktiven Betriebs per MCP (HA-History) und aus
         `heat_pump_samples` prüfen, ob der während Warmwasser geschriebene Stellwert (Vorbereiten, 8.4)
         beim Start danach gilt: Ereignisse `write` mit Phase `hot_water`, danach `start` mit

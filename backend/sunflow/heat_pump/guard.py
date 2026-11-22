@@ -88,6 +88,8 @@ BUDGET_BLOCK = "budget"
 FOREIGN = "foreign"
 # Earlier name in heat_pump_state.json (0.80.10)
 _ADOPTED = "adopted"
+# Reason of the written value besides the write reasons: a manual write ("write now")
+MANUAL = "manual"
 
 FLAT = timedelta(seconds=TV_FLAT_WINDOW_S)
 TRACK_LOOKBACK = timedelta(seconds=TRACK_LOOKBACK_S)
@@ -226,6 +228,11 @@ class Guard:
         self.start = Start.from_dict(state.get("start")) if state.get("start") else None
         self.bumps: dict[str, Any] = state.get("bumps") if isinstance(state.get("bumps"), dict) else {}
         self.recent_writes: list[dict[str, Any]] = [w for w in state.get("recent_writes") or [] if isinstance(w, dict)]
+        # Why the written value is what it is (HA sensor "Stellwert", step 3 part 4.6): normal, start, track,
+        # manual or foreign; None while it is the heat pump's own value (no write seen yet)
+        self.written_reason: str | None = (
+            state["written_reason"] if isinstance(state.get("written_reason"), str) else self._reason_from_writes()
+        )
         self.recent_stops: list[dict[str, Any]] = [s for s in state.get("recent_stops") or [] if isinstance(s, dict)]
         self.implausible = bool(state.get("implausible"))
         # A protection step held back by the budget without a block possible was noted (once per episode)
@@ -247,6 +254,7 @@ class Guard:
         return {
             "written_c": self.written_c,
             "written_at": _iso(self.written_at) if self.written_at else None,
+            "written_reason": self.written_reason,
             "block": self.block,
             "block_at": _iso(self.block_at) if self.block_at else None,
             "block_reason": self.block_reason,
@@ -260,6 +268,16 @@ class Guard:
             "unprotected": self.unprotected,
             "foreign": self.foreign.as_dict(),
         }
+
+    def _reason_from_writes(self) -> str | None:
+        """State from before 0.80.17: the reason of the latest write of the set value at written_at, if kept."""
+        if self.written_at is None:
+            return None
+        at = _iso(self.written_at)
+        for event in reversed(self.recent_writes):
+            if event.get("reason") in (NORMAL_WRITE, START, TRACK) and event.get("at") == at:
+                return MANUAL if event.get("manual") else event["reason"]
+        return None
 
     # Tv over the last minutes
 
@@ -339,7 +357,7 @@ class Guard:
         actual = values.get("max_flow_setpoint")
         seen = self.foreign.step(now, actual, values.get(REGULATED_ROLE), data.settings.step, self.written_c)
         if seen.change is not None and actual is not None:
-            self.written_c, self.written_at = actual, now
+            self.written_c, self.written_at, self.written_reason = actual, now, FOREIGN
             # With the activity: a change during hot water answers open point 8 (15)
             event = {**seen.change, "activity": data.reading.activity, "shadow": not data.writing}
             result.events.append(event)
@@ -522,6 +540,7 @@ class Guard:
             # The change of the real value to it is Sunflow's own, not a foreign one
             self.foreign.expect(value, now)
         self.written_c, self.written_at = value, now
+        self.written_reason = MANUAL if manual else reason
         self.unprotected = False
         result.setpoint_c = value
         result.writes.append(event)
