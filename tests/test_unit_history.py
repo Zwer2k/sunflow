@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import HTTPException
 import pytest
-from sunflow.analysis.optimizer_history import day_step, optimizer_day
+from sunflow.analysis.unit_history import day_step, optimizer_day
 from sunflow.api.optimizers import get_optimizer_history
 from sunflow.devices.optimizers import Optimizer
 

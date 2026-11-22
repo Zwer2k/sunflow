@@ -17,7 +17,7 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import ProfileLibrary
 from sunflow.devices.resolver import normalize, preview
 from sunflow.devices.site import pv_strings
-from sunflow.devices.units import find_units
+from sunflow.devices.units import find_units, natural_key
 
 KIND = "optimizer"
 
@@ -71,11 +71,7 @@ def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[Optimizer]:
         )
         for u in find_units(snapshot, library.units_of(KIND))
     ]
-    return sorted(found, key=lambda o: (o.source, _natural(o.label)))
-
-
-def _natural(text: str) -> list[Any]:
-    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", text)]
+    return sorted(found, key=lambda o: (o.source, natural_key(o.label)))
 
 
 def plant_strings(config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot) -> list[dict[str, Any]]:

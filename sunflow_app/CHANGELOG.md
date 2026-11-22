@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.11
+
+- Battery modules: if a battery reports values per module, the Live view shows the number of modules at the battery and a click opens them – now as a tower with state of charge, voltage, current, temperature, cell spread, SOH, cycles and capacity to choose from, marking a state of charge far from the others and reported alarms, protections and faults; and a daily profile of state of charge, current, temperature and cell spread per module. Described by unit profiles like the optimizers; Sofar BTS (solax_modbus) is the first.
+
 ## 0.80.10
 
 - Optimizers now come from unit profiles (profiles/units/, schema unit.schema.json) instead of being built in: Huawei and Tigo are described there, further integrations need only a profile. The settings page shows each source's hints from its profile. No change in behaviour.

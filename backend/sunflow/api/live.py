@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 from sunflow import i18n
 from sunflow.config.models import DisplaySettings, SceneSettings, SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.battery_modules import battery_modules
 from sunflow.devices.heat_pump import DEFAULT_VOLTAGE, reading as heat_pump_reading
 from sunflow.devices.optimizers import optimizers as optimizer_list
 from sunflow.devices.profiles import ProfileLibrary
@@ -158,6 +159,10 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "connected": roles["connected"].raw_state == "on" if "connected" in roles else None,
                 }
             )
+    # Batteries with modules open the module view
+    module_counts = {b["device_id"]: len(b["modules"]) for b in battery_modules(config, _library(request), snapshot)}
+    for battery in batteries:
+        battery["modules"] = module_counts.get(battery["device_id"], 0)
     # Strings with optimizers open the roof view; the forecast plane names the roof face
     assigned = optimizer_counts(config, _library(request), snapshot)
     planes = {key: plane.display_name for plane in config.forecast_planes for key in plane.strings}
@@ -351,6 +356,7 @@ def combine_batteries(batteries: list[dict[str, Any]]) -> dict[str, Any] | None:
     return {
         "name": " + ".join(b["name"] for b in batteries),
         "count": len(batteries),
+        "modules": sum(b.get("modules", 0) for b in batteries),
         "soc_pct": soc,
         "power_w": sum(powers) if powers else None,
         "parts": batteries if len(batteries) > 1 else [],

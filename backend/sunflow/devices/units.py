@@ -5,6 +5,7 @@ values; each value is the entity whose unique_id ends with the profile's key.
 """
 
 from dataclasses import dataclass, field
+import re
 from statistics import fmean
 from typing import Any
 
@@ -24,6 +25,11 @@ class Unit:
     parent: str | None
     entities: dict[str, list[str]]
     entry_ids: list[str] = field(default_factory=list)
+
+
+def natural_key(text: str) -> list[Any]:
+    """Sort key with numbers by value: "Module 2" before "Module 10"."""
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", text)]
 
 
 def value_key(spec: str | dict[str, str]) -> str:

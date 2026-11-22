@@ -22,7 +22,7 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
         "homevolt/homevolt", "marstek_modbus/venus", "zendure_ha/manager", "generic/heat_pump", "generic/relays",
         "generic/grid_meter", "solax_modbus/growatt_hybrid", "solax_modbus/growatt_pv", "solarman/deye_micro",
     }
-    assert set(library.units) == {"huawei_solar/optimizer", "tigo_rs485/optimizer"}
+    assert set(library.units) == {"huawei_solar/optimizer", "tigo_rs485/optimizer", "solax_modbus/sofar_bts"}
     assert library.integrations == {
         "solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "edl21", "homewizard", "powerfox", "discovergy",
         "goecharger_mqtt", "goecharger", "solaredge_modbus", "fronius", "goodwe", "kostal_plenticore", "indevolt", "homevolt",

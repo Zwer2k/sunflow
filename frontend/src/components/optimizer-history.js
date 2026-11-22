@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { formatPower } from "../lib/format.js";
 import { lineChart } from "./charts.js";
 import "./roof.js";
+import { isoDay } from "./day-nav.js";
 import { locale, t } from "../lib/i18n.js";
 
 // Below this share of the roof part's best module the reference is too weak to compare (dawn, dusk)
@@ -26,9 +27,6 @@ const timeFormat = new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: 
 const dayFormat = new Intl.DateTimeFormat(locale(), { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
 const percent = new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 });
 const kwh = new Intl.NumberFormat(locale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const isoDay = (date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
 function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -101,14 +99,7 @@ class SunflowOptimizerHistory extends LitElement {
     }
   }
 
-  _shift(days) {
-    const date = new Date(`${this._day}T12:00:00`);
-    date.setDate(date.getDate() + days);
-    this._setDay(isoDay(date));
-  }
-
   _setDay(day) {
-    if (!day || day > isoDay(new Date())) return;
     this._day = day;
     this._hover = null;
     this._load();
@@ -148,15 +139,9 @@ class SunflowOptimizerHistory extends LitElement {
 
   render() {
     const model = this._data ? this._model() : null;
-    const today = this._day >= isoDay(new Date());
     return html`
       <div class="bar">
-        <div class="days">
-          <button aria-label=${t("Tag davor")} @click=${() => this._shift(-1)}>‹</button>
-          <input type="date" .value=${this._day} max=${isoDay(new Date())} aria-label=${t("Tag")}
-            @change=${(e) => this._setDay(e.target.value)}>
-          <button aria-label=${t("Tag danach")} ?disabled=${today} @click=${() => this._shift(1)}>›</button>
-        </div>
+        <sf-day-nav .day=${this._day} @change=${(e) => this._setDay(e.detail.day)}></sf-day-nav>
         <div class="segmented" role="group" aria-label=${t("Farbskala")}>
           <button class=${this._relative ? "on" : ""} aria-pressed=${this._relative ? "true" : "false"}
             title=${t("Anteil am besten Modul zur selben Zeit: Wolken fallen heraus, Verschattung und schwache Module bleiben")}
@@ -301,13 +286,6 @@ class SunflowOptimizerHistory extends LitElement {
     .small { font-size: 13px; }
     .alert { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     .bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-    .days { display: flex; align-items: center; gap: 4px; }
-    .days button {
-      min-width: 36px; min-height: 36px; border-radius: 8px; border: 1px solid var(--sf-border-strong);
-      background: transparent; color: var(--sf-text); font-size: 18px; cursor: pointer;
-    }
-    .days button:disabled { opacity: 0.4; cursor: default; }
-    .days input { font: inherit; min-height: 36px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--sf-border-strong); background: var(--sf-surface); color: var(--sf-text); }
     .segmented { display: flex; gap: 2px; background: var(--sf-subtle); padding: 3px; border-radius: 9px; }
     .segmented button {
       min-height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent;

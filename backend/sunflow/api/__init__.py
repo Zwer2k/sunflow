@@ -2,6 +2,7 @@
 
 from . import (
     analysis,
+    battery_modules,
     consumer_stats,
     control,
     device_test,
@@ -23,6 +24,7 @@ from .common import router
 for _area in (
     system, integration, direct, devices, device_test, setup, sources, plan, vehicles, control, analysis, consumer_stats, live,
     optimizers,
+    battery_modules,
     house,
 ):
     router.include_router(_area.router)

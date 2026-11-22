@@ -4,6 +4,7 @@ import { poll } from "../lib/poll.js";
 import { dailyRatios, splitFlows } from "../components/flows.js";
 import { formatPower, formatValue } from "../lib/format.js";
 import "../components/optimizer-view.js";
+import "../components/battery-modules-view.js";
 import "../components/quick-controls.js";
 import "../components/house-scene.js";
 import "../components/iso-scene.js";
@@ -154,6 +155,8 @@ class SunflowLive extends LitElement {
     _weatherDays: { state: true },
     // String whose optimizers are shown: {key, name}
     _optimizers: { state: true },
+    // Whether the battery modules are shown
+    _modules: { state: true },
     _todayError: { state: true },
     _scroll: { state: true },
     _flowView: { state: true },
@@ -292,6 +295,7 @@ class SunflowLive extends LitElement {
         ? html`<sf-optimizer-view .string=${this._optimizers.key} .heading=${t("Optimierer · {name}", { name: this._optimizers.name })}
             @close=${() => (this._optimizers = null)}></sf-optimizer-view>`
         : nothing}
+      ${this._modules ? html`<sf-battery-modules-view @close=${() => (this._modules = false)}></sf-battery-modules-view>` : nothing}
     `;
   }
 
@@ -766,7 +770,13 @@ class SunflowLive extends LitElement {
     const circumference = 2 * Math.PI * (R + 6);
     const power = battery.power_w ?? 0;
     const state = power > ACTIVE_W ? t("lädt") : power < -ACTIVE_W ? t("entlädt") : t("ruht");
+    // With modules the battery opens them
+    const open = battery.modules > 0;
     return svg`
+      <g class=${open ? "battery-open" : ""} role=${open ? "button" : "img"} tabindex=${open ? "0" : "-1"}
+        aria-label=${open ? t("Batterie: {count} Module anzeigen", { count: battery.modules }) : t("Batterie")}
+        @click=${() => open && (this._modules = true)}
+        @keydown=${(e) => open && (e.key === "Enter" || e.key === " ") && (this._modules = true)}>
       <circle cx=${x} cy=${y} r=${R + 6} class="soc-track"></circle>
       <circle cx=${x} cy=${y} r=${R + 6} class="soc-ring" style="stroke: ${COLOR.battery}"
         stroke-dasharray="${circumference * soc} ${circumference}" transform="rotate(-90 ${x} ${y})"></circle>
@@ -778,6 +788,11 @@ class SunflowLive extends LitElement {
         formatPower(Math.abs(power), battery.display),
         state,
       )}
+      ${open
+        ? svg`<circle cx=${x + (R + 6) * 0.72} cy=${y - (R + 6) * 0.72} r="9" class="badge"></circle>
+            <text x=${x + (R + 6) * 0.72} y=${y - (R + 6) * 0.72 + 4} class="badge-text" text-anchor="middle">${battery.modules}</text>`
+        : nothing}
+      </g>
     `;
   }
 
@@ -932,6 +947,9 @@ class SunflowLive extends LitElement {
     .node.clickable { cursor: pointer; }
     .node.clickable:hover .disc, .node.clickable:focus-visible .disc { stroke-width: 4; }
     .node.clickable:focus { outline: none; }
+    .battery-open { cursor: pointer; }
+    .battery-open:hover .disc, .battery-open:focus-visible .disc { stroke-width: 4; }
+    .battery-open:focus { outline: none; }
     .badge { fill: var(--sf-series-2); }
     .badge-text { fill: var(--sf-surface); font-size: 11px; font-weight: 700; }
     .string-value { fill: var(--sf-text); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }

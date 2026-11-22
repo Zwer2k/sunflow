@@ -58,7 +58,19 @@ as they take at most 60 % of the screen:
   the big window.
 
 - **House** shows consumption without the controllable loads; "total" below includes them.
-- **Battery** shows power, direction and state of charge; the ring is the state of charge.
+- **Battery** shows power, direction and state of charge; the ring is the state of charge. If the
+  battery reports values per module, the number of modules is shown at the circle and a click opens them:
+  - **Now**: the modules as a tower, each filled by its state of charge. Which values appear (state
+    of charge, voltage, current, temperature, cell spread, SOH, cycles, capacity) can be toggled.
+    A state of charge 10 percentage points or more away from the modules' mean is marked, as are
+    reported alarms, protections and faults.
+  - **Daily profile**: state of charge, current, temperature (warmest sensor) and cell spread per
+    module over a day. Drifting states of charge show an imbalance, a growing cell spread a weak
+    cell or missing balancing.
+
+  Which batteries report values per module is described by the unit profiles (see
+  [Devices](devices.md)); today Sofar BTS via solax_modbus. Values an integration does not have
+  are simply left out.
 - **Wallbox** shows charging power and the state of charge of the detected car.
 - **PV strings**: the number at the circle is the number of optimizers. A click opens the module
   optimizers of the string with their current values (see [Optimizers](optimizers.md)).

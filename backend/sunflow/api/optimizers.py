@@ -1,13 +1,13 @@
 """Optimizers of the PV strings: values for the roof view, assignment and layout in the setup."""
 
 from dataclasses import asdict
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from sunflow.analysis.optimizer_history import day_step, optimizer_day
+from sunflow.analysis.unit_history import day_window, optimizer_day
 from sunflow.config.models import OptimizerSettings
 from sunflow.devices.optimizers import (
     VALUE_UNITS,
@@ -60,11 +60,9 @@ async def get_optimizer_history(
     tz = await _local_tz(request)
     now = datetime.now(UTC)
     day = day or now.astimezone(tz).date()
-    start = datetime.combine(day, time(), tz).astimezone(UTC)
-    if start > now:
+    if (window := day_window(day, tz, now)) is None:
         raise HTTPException(status_code=422, detail=t("Dieser Tag liegt in der Zukunft"))
-    end = datetime.combine(day + timedelta(days=1), time(), tz).astimezone(UTC)
-    step = day_step(start, now)
+    start, end, step = window
     config = request.app.state.store.load()
     found, _ = optimizers(config, _library(request), await _snapshot(request))
     try:

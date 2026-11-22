@@ -56,6 +56,7 @@
   "Neuberechnung fehlgeschlagen, angezeigt wird der Plan von {time} ({error}).": "Recalculation failed, showing the plan from {time} ({error}).",
   "Nicht weiter als 31 Tage zurück": "Not more than 31 days back",
   "Dieser Tag liegt in der Zukunft": "This day lies in the future",
+  "Speicher ohne Module": "Battery without modules",
   "Plan wird noch berechnet": "Plan is still being calculated",
   "Netz (Bezug und Einspeisung)": "Grid (import and export)",
   "Hausverbrauch": "Home consumption",

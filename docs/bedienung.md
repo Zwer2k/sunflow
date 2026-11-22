@@ -60,7 +60,19 @@ stehen, solange sie höchstens 60 % des Bildschirms brauchen:
   eingerichtet sind (erkannt am Namen); die Geräte im Haus sieht man durchs große Fenster.
 
 - **Haus** zeigt den Verbrauch ohne die steuerbaren Verbraucher, darunter „gesamt“ mit ihnen.
-- **Speicher** zeigt Leistung, Richtung und Ladestand; der Ring ist der Ladestand.
+- **Speicher** zeigt Leistung, Richtung und Ladestand; der Ring ist der Ladestand. Meldet der
+  Speicher Werte je Modul, steht die Anzahl der Module am Kreis, und ein Klick öffnet sie:
+  - **Jetzt**: die Module als Turm, jedes mit Ladestand als Füllung. Welche Werte erscheinen
+    (Ladestand, Spannung, Strom, Temperatur, Zellspreizung, SOH, Zyklen, Kapazität), lässt sich
+    ein- und ausblenden. Markiert werden ein Ladestand, der 10 Prozentpunkte oder mehr vom
+    Durchschnitt der Module abweicht, sowie gemeldete Alarme, Schutzabschaltungen und Fehler.
+  - **Tagesverlauf**: Ladestand, Strom, Temperatur (wärmster Fühler) und Zellspreizung je Modul
+    über einen Tag. Auseinanderlaufende Ladestände zeigen ein Ungleichgewicht, eine wachsende
+    Zellspreizung eine schwache Zelle oder fehlendes Balancing.
+
+  Welche Speicher Werte je Modul liefern, beschreiben die Unit-Profile (siehe
+  [Geräte](geraete.md#ein-gerät-fehlt-oder-ist-geprüft)); heute Sofar BTS über solax_modbus.
+  Werte, die eine Integration nicht hat, fehlen einfach.
 - **Wallbox** zeigt Ladeleistung und Ladestand des erkannten Autos.
 - **PV-Strings**: Die Zahl am Kreis ist die Anzahl der Optimierer. Ein Klick öffnet die
   Modul-Optimierer des Strings mit ihren aktuellen Werten (siehe [Optimierer](optimierer.md)).

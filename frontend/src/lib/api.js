@@ -143,6 +143,9 @@ export const api = {
   integrationSettings: () => request("GET", "/config/integration"),
   display: () => request("GET", "/config/display"),
   optimizers: () => request("GET", "/optimizers"),
+  batteryModules: () => request("GET", "/battery-modules"),
+  batteryModuleHistory: (device, day = null) =>
+    request("GET", `/battery-modules/history?${new URLSearchParams({ device, ...(day ? { day } : {}) })}`),
   optimizerHistory: (string, day = null) =>
     request("GET", `/optimizers/history?${new URLSearchParams({ string, ...(day ? { day } : {}) })}`),
   setOptimizers: (body) => request("PUT", "/config/optimizers", body),

@@ -257,6 +257,6 @@ If you have tested a device from the table on real hardware, please report it wi
 version and device model; the test status here will then be updated. A new device needs a
 profile in `profiles/` (schema: `schema/profile.schema.json`). The existing profiles show how
 roles, actions and limits are described.
-Module optimizers (and soon battery modules) are described by a unit profile in `profiles/units/`
-(schema: `schema/unit.schema.json`): the integration, how a device is recognised as optimizer and
+Module optimizers and battery modules are described by a unit profile in `profiles/units/`
+(schema: `schema/unit.schema.json`): the integration, how a device is recognised as unit and
 which entity delivers which value. Values an integration does not have are simply left out.
