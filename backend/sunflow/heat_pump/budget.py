@@ -126,12 +126,12 @@ class EepromLog:
     def __init__(self, guard: "EepromGuard", entity_id: str) -> None:
         """The guard of the data directory and the entity of the set value."""
         self._guard = guard
-        self._entity_id = entity_id
+        self.entity_id = entity_id
         self.seeded = True
 
     def times(self) -> list[datetime]:
         """Recorded writes, oldest first."""
-        return self._guard.times(self._entity_id)
+        return self._guard.times(self.entity_id)
 
     def add(self, at: datetime) -> None:
         """Recorded by execute() already."""

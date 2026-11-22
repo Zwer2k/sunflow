@@ -7,7 +7,9 @@ samples. Rooms being aired (6.2) are taken from the shadow control each minute a
 in flags.ventilation, changes of the flow target's source (8.1) in events. The heating curve of each
 heat pump is learned from the table every hour (9.2), with the swing, start jumps and output range
 of the protection layer (8.3, 8.4); the writes it would cause are noted in events. Unknown states, faults, the room thermostat block and the heat pump limiting the flow
-itself are noted once per change in the journal. Reads only; nothing is written to a device.
+itself are noted once per change in the journal. The recorder itself only reads; writing to the heat pump
+is the shadow control's (shadow.py, only when the user switched it on, step 3 part 4.7), whose set value in
+force is noted per row (written_c).
 """
 
 import asyncio
@@ -27,6 +29,7 @@ from sunflow.i18n import t
 from sunflow.planning.house_model import outside_entity
 from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
 
+from .active import WriteTargets, write_targets
 from .budget import KEEP as BUDGET_KEEP
 from .curve import Curve, learn as learn_curve
 from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, FEED_HEAT_WINDOW_S, JUMP_LEARN_DAYS, POWER_LEARN_DAYS
@@ -97,6 +100,8 @@ class Minute:
     tv_peak_c: float | None = None
     # Parameters of the protection layer from the profile and the manifest (8.3, 8.4)
     control: ControlSettings | None = None
+    # Entities Sunflow writes to once writing for real is switched on (step 3 part 4.7)
+    targets: WriteTargets | None = None
 
 
 @dataclass(kw_only=True)
@@ -124,6 +129,8 @@ class Recording:
     noted_fault: bool | None = None
     noted_block: bool | None = None
     noted_limit: bool = False
+    # Set value Sunflow writes for real, per minute of the interval (step 3 part 4.7); empty in the shadow
+    written: list[float] = field(default_factory=list)
 
 
 class HeatPumpRecorder:
@@ -230,6 +237,7 @@ class HeatPumpRecorder:
                 if (row := self._row(recording)) is not None:
                     rows.append(row)
                 recording.minutes = []
+                recording.written = []
                 # Peaks and events of intervals that are over (also of one without samples)
                 recording.peaks = {k: v for k, v in recording.peaks.items() if k >= interval}
                 recording.events = {k: v for k, v in recording.events.items() if k >= interval}
@@ -264,6 +272,12 @@ class HeatPumpRecorder:
             except Exception:
                 # The recording goes on without the shadow control
                 _LOGGER.exception("Shadow flow control failed")
+            for device_id, recording in self._recordings.items():
+                guard = self.flow.guards.get(device_id)
+                if self.flow.writing_active(device_id) and guard is not None and guard.written_c is not None:
+                    recording.written.append(guard.written_c)
+                # The self-limit time of the states counts from Sunflow's last real write (section 4)
+                recording.tracker.written_at = self.flow.real_written_at.get(device_id)
             events, self.flow.source_events = self.flow.source_events, []
             for device_id, event in events:
                 if (recording := self._recordings.get(device_id)) is not None:
@@ -367,6 +381,7 @@ class HeatPumpRecorder:
             ventilation=aired,
             tv_peak_c=recording.minute_peak,
             control=ControlSettings.from_profile(profile, recording.manifest, device.flow_min_c, device.flow_max_c),
+            targets=write_targets(profile, recording.manifest, entities),
         )
         recording.minute_peak = None
         return minute, entities
@@ -400,8 +415,8 @@ class HeatPumpRecorder:
             "heat_w": mean([m.heat_w for m in minutes]),
             "heat_source": next((m.heat_source for m in reversed(minutes) if m.heat_source), None),
             "outside_c": mean([m.outside_c for m in minutes]),
-            # Sunflow writes nothing yet (shadow operation)
-            "written_c": None,
+            # The set value in force while Sunflow writes for real (mean); None in the shadow
+            "written_c": sum(recording.written) / len(recording.written) if recording.written else None,
             "compressor": sum(compressor) / len(compressor) if compressor else None,
             "program": common([m.reading.program for m in minutes]),
             "activity": common([m.reading.activity for m in minutes]),

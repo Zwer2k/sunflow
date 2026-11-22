@@ -391,6 +391,7 @@ async def execute(
     dry_run: bool,
     direct: DirectWriter | None = None,
     force: bool = False,
+    at: datetime | None = None,
 ) -> None:
     """Run planned calls in order, honoring if_differs and the EEPROM guard.
 
@@ -398,6 +399,7 @@ async def execute(
     when none of them was written. Register writes go to the direct device;
     if_differs compares them with the value last written there. force writes
     if_differs values regardless (refreshing devices that need repeated commands).
+    at is the time recorded for an EEPROM write (default: now).
     """
     wrote_since_press = False
     for call in calls:
@@ -427,5 +429,5 @@ async def execute(
                 await client.call_service(call.domain, call.service, call.data, target)
             call.status = "done"
             if call.storage == "eeprom" and call.entity_id:
-                guard.record(call.entity_id)
+                guard.record(call.entity_id, at)
         wrote_since_press = call.service != "press"

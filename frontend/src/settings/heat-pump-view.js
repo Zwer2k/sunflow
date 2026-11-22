@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from "../../vendor/lit-all.min.js";
 import { api } from "../lib/api.js";
 import { fromDisplay, toDisplay } from "../lib/format.js";
 import "../components/picker.js";
+import { confirmDialog } from "../components/dialog.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { lineChart, SERIES_COLORS } from "../components/charts.js";
 
@@ -143,6 +144,14 @@ function frozenText(reason) {
   if (reason.startsWith("activity_")) return t("Aktivität: {state}", { state: ACTIVITIES()[reason.slice(9)] ?? reason.slice(9) });
   return reason;
 }
+
+// Why writing for real cannot be switched on (api/heat_pump.py, writing_refused)
+const WRITING_REFUSED = () => ({
+  incompatible: t("Wärmepumpe nicht kompatibel oder nicht erreichbar"),
+  no_sample: t("noch keine Messwerte"),
+  strategy: t("HK Funktion nicht auf Fest"),
+  esp_regulation: t("ESP-Regelung aktiv"),
+});
 
 /** The house: its rooms and what Sunflow learned from them (settings area "Wärmepumpe"). */
 class SunflowHeatPump extends LitElement {
@@ -377,9 +386,54 @@ class SunflowHeatPump extends LitElement {
               : t("Eingefroren: {reasons}", { reasons: state.frozen.map(frozenText).join(", ") })}</p>
             ${flow ? this._renderFlow(flow, one, tile) : nothing}
             ${flow?.guard ? this._renderGuard(device.id, flow.guard, this._writes[device.id], one, tile) : nothing}`}
+        ${device.writing ? this._renderWriting(device) : nothing}
         ${device.flow_limits ? this._renderLimits(device, one) : nothing}
       </section>
     `;
+  }
+
+  /** The switch: Sunflow writes to the heat pump for real (default off, design/heat_pump.md 16 step 3 part 4.7). */
+  _renderWriting(device) {
+    const writing = device.writing;
+    const refused = writing.refused;
+    return html`
+      <fieldset class="group">
+        <legend>${t("Aktives Schreiben")}</legend>
+        <label class="inline">
+          <input type="checkbox" .checked=${writing.active} ?disabled=${this._busy || (!writing.active && refused != null)}
+            @change=${(e) => this._setWriting(device, e.target.checked, e.target)}>
+          ${t("Sunflow schreibt an die Wärmepumpe")}
+        </label>
+        <p class="small muted">${writing.active
+          ? t("An: Sunflow schreibt Max T-Vorlauf (EEPROM, im Budget) und die Raumthermostat-Sperre, wenn die Regeln es verlangen. Ausschalten stellt nichts zurück: Max T-Vorlauf und eine gesetzte Sperre bleiben stehen.")
+          : t("Aus (Standard): Schattenbetrieb – Sunflow rechnet und zeigt an, schreibt aber nichts. Beim Einschalten übernimmt Sunflow mit eingefrorener Basis und Korrektur 0 und schreibt erst, wenn die Regeln es verlangen.")}</p>
+        ${!writing.active && refused != null
+          ? html`<p class="small warn-text">${t("Einschalten nicht möglich: {reason}", { reason: WRITING_REFUSED()[refused] ?? refused })}</p>`
+          : nothing}
+      </fieldset>
+    `;
+  }
+
+  async _setWriting(device, active, input) {
+    if (active && !(await confirmDialog({
+      title: t("Aktives Schreiben für „{name}“ einschalten?", { name: device.name }),
+      text: t("Sunflow schreibt dann Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe. Andere Regler, die diese Werte schreiben, vorher abschalten. Ausschalten stellt nichts zurück."),
+      confirm: t("Einschalten"),
+    }))) {
+      input.checked = false;
+      return;
+    }
+    this._busy = true;
+    try {
+      await api.setHeatPumpWriting(device.id, active);
+      this._error = null;
+      await this._loadStatus();
+    } catch (err) {
+      input.checked = !active;
+      this._error = t("Aktives Schreiben nicht umgeschaltet: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+    }
   }
 
   /** Range of the set value (Max T-Vorlauf) per heat pump; empty: the heating surface type's start limit. */
@@ -464,7 +518,7 @@ class SunflowHeatPump extends LitElement {
     const kw = (w) => decimal((w / 1000).toFixed(2));
     return html`
       <div class="learned">
-        <span class="field-label">${t("Vorlauf-Ziel (Schatten)")}</span>
+        <span class="field-label">${flow.shadow === false ? t("Vorlauf-Ziel") : t("Vorlauf-Ziel (Schatten)")}</span>
         <div class="tiles">
           ${tile(t("Vorlauf-Ziel"), flow.target_c == null ? "–" : `${one(flow.target_c)} °C`, targetHelp)}
           ${tile(t("Quelle"), FLOW_SOURCES()[source] ?? source, curve ? null : sourceReasonText(flow.source_reason))}
@@ -482,7 +536,9 @@ class SunflowHeatPump extends LitElement {
           : t("Wechselt die Quelle, springt das Vorlauf-Ziel im Schattenbetrieb einmal; die Korrektur bleibt.")}</p>
         <p class="small muted">${flow.frozen.length
           ? t("Korrektur angehalten: {reasons}", { reasons: flow.frozen.map(frozenText).join(", ") })
-          : t("Korrektur läuft.")} ${t("Im Schattenbetrieb wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Aktivschalten beginnt sie bei 0.")}</p>
+          : t("Korrektur läuft.")} ${flow.shadow === false
+          ? t("Die Basis ist seit dem Aktivschalten eingefroren; die Korrektur hat dort bei 0 begonnen.")
+          : t("Im Schattenbetrieb wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Aktivschalten beginnt sie bei 0.")}</p>
         ${(flow.limited ?? []).length
           ? html`<p class="small warn-text">${t("An einer Grenze, die Korrektur läuft nicht weiter darüber hinaus: {limits}", { limits: flow.limited.map((l) => LIMITS()[l] ?? l).join(", ") })}</p>`
           : nothing}
@@ -519,11 +575,20 @@ class SunflowHeatPump extends LitElement {
     const budget = guard.budget;
     return html`
       <div class="learned">
-        <span class="field-label">${t("Stellwert und Schutz (Schatten)")}</span>
-        <p class="small muted">${t("Sunflow rechnet aus, was es an die Wärmepumpe schreiben würde (Max T-Vorlauf und Raumthermostat-Sperre), schreibt aber nichts.")}</p>
+        <span class="field-label">${shadow ? t("Stellwert und Schutz (Schatten)") : t("Stellwert und Schutz")}</span>
+        <p class="small muted">${shadow
+          ? t("Sunflow rechnet aus, was es an die Wärmepumpe schreiben würde (Max T-Vorlauf und Raumthermostat-Sperre), schreibt aber nichts.")
+          : t("Sunflow schreibt Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe.")}</p>
+        ${guard.adopt?.state === "missing"
+          ? html`<p class="small warn-text">${t("Zuletzt geschriebener Wert {value} °C von der Wärmepumpe nicht übernommen.", { value: one(guard.adopt.value_c) })}</p>`
+          : guard.adopt?.state === "limited"
+            ? html`<p class="small warn-text">${t("Geschrieben {value} °C, wirksamer Vorlauf-Soll {effective} °C: die Wärmepumpe begrenzt selbst. Obergrenze des Stellwerts höchstens auf diesen Wert stellen.", { value: one(guard.adopt.value_c), effective: one(guard.adopt.effective_c) })}</p>`
+            : nothing}
         ${guard.block && guard.block_reason === "foreign"
           ? html`<div class="alert warn" role="status">${t("Raumthermostat-Sperre aktiv, nicht von Sunflow gesetzt: Die Wärmepumpe heizt nicht. Sunflow hebt sie nicht auf – bitte selbst aufheben, wenn sie nicht gewollt ist.")}</div>`
-          : guard.block ? html`<div class="alert warn" role="status">${t("Sunflow würde die Raumthermostat-Sperre setzen: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })}</div>` : nothing}
+          : guard.block ? html`<div class="alert warn" role="status">${shadow
+            ? t("Sunflow würde die Raumthermostat-Sperre setzen: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })
+            : t("Raumthermostat-Sperre von Sunflow gesetzt: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })}</div>` : nothing}
         <div class="tiles">
           ${tile(t("Stellwert"), guard.setpoint_c == null ? "–" : `${one(guard.setpoint_c)} °C`, last
             ? (shadow ? t("würde schreiben {time}: {what}", { time: time(last.at), what: writeText(last) }) : t("geschrieben {time}: {what}", { time: time(last.at), what: writeText(last) }))
@@ -540,7 +605,9 @@ class SunflowHeatPump extends LitElement {
             : nothing}
         </div>
         ${guard.inactive?.length
-          ? html`<p class="small muted">${t("Würde nichts schreiben: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })}</p>`
+          ? html`<p class="small muted">${shadow
+            ? t("Würde nichts schreiben: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })
+            : t("Schreibt nichts: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })}</p>`
           : nothing}
         ${pendingText ? html`<p class="small">${pendingText}</p>` : nothing}
         ${!shadow && (pending || sent)
@@ -566,7 +633,9 @@ class SunflowHeatPump extends LitElement {
           ${tile(t("Leistungsbereich"), `${decimal((values.power_min_w / 1000).toFixed(1))}–${decimal((values.power_max_w / 1000).toFixed(1))} kW`, source("power"))}
         </div>
         ${guard.writes?.length
-          ? html`<p class="small muted">${t("Würde schreiben (zuletzt): {writes}", { writes: guard.writes.slice(0, 8).map((w) => `${time(w.at)} ${writeText(w)}`).join(" · ") })}</p>`
+          ? html`<p class="small muted">${shadow
+            ? t("Würde schreiben (zuletzt): {writes}", { writes: guard.writes.slice(0, 8).map((w) => `${time(w.at)} ${writeText(w)}`).join(" · ") })
+            : t("Geschrieben (zuletzt): {writes}", { writes: guard.writes.slice(0, 8).map((w) => `${time(w.at)} ${writeText(w)}`).join(" · ") })}</p>`
           : nothing}
         ${guard.unwanted_stops?.length
           ? html`<p class="small warn-text">${t("Ungewollte Abschaltungen (zuletzt): {stops}", { stops: guard.unwanted_stops.slice(0, 5).map((s) => t("{time} bei {peak} °C (Soll {setpoint} °C)", { time: time(s.at), peak: one(s.peak_c), setpoint: one(s.setpoint_c) })).join(" · ") })}</p>`

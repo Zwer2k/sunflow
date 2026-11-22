@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.18
+
+- Heat pumps: new switch per heat pump in Settings → Heat pump, **writing to the heat pump** (default off; until then everything stays shadow operation). Switched on, Sunflow takes over without writing anything – the base is frozen, the correction starts at 0, set value and room thermostat block count as the heat pump has them – and from then on writes Max T-Vorlauf (EEPROM, within the budget, counted in the EEPROM counter file) and the room thermostat block when the rules ask for it; every write is in the journal. A failed write is taken back and tried again; about a minute after a write Sunflow checks that the heat pump took the value over and warns when it does not or limits the flow itself. It can be switched on only when the heat pump is compatible, sampled, set to fixed and the ESP regulation is off. Switching off (and mode off) resets nothing: Max T-Vorlauf and a block Sunflow set stay as they are. The sensors and the thermostat "Haus" show `mode: active` while writing. `heat_pump_samples` now notes the set value in force (`written_c`) while writing.
+
 ## 0.80.17
 
 - Heat pumps (still shadow operation, nothing is written): new sensors per heat pump in Home Assistant at the device "Sunflow" – "<heat pump> flow target" (°C), "<heat pump> setpoint" (Max T-Vorlauf written last, in the shadow the virtual one, with value pending, due at, reasons and why it is held back as attributes) and "<heat pump> writes today" (history only, no long-term statistics; unknown after a restart until counted again). All three carry the attribute `mode` (`shadow` | `active`) and a ghost icon in the shadow; they go when the heat pump is removed in Sunflow. The thermostat "Haus" additionally shows the set value (`setpoint_written`, `setpoint_pending`, … `setpoint_held`) and `mode`. The attribute `shadow` of the thermostat is deprecated and follows `mode` – use `mode` in new cards and automations.

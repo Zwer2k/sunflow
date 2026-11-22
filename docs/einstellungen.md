@@ -76,7 +76,23 @@ Je Wallbox:
 ## Wärmepumpe
 
 Die Regelung der Wärmepumpe läuft im **Schattenbetrieb**: Sunflow rechnet den Vorlauf aus und zeigt
-ihn an, schreibt aber nichts an die Wärmepumpe.
+ihn an, schreibt aber nichts an die Wärmepumpe – bis Sie je Wärmepumpe **Aktives Schreiben** einschalten.
+
+**Aktives Schreiben** (je Wärmepumpe, Standard aus): Eingeschaltet schreibt Sunflow den Stellwert
+(Max T-Vorlauf, im EEPROM der Wärmepumpe, im Budget) und die Raumthermostat-Sperre an die Wärmepumpe.
+Einschalten geht nur, wenn die Wärmepumpe kompatibel und erreichbar ist, Messwerte da sind, die HK-Funktion
+auf Fest steht und die ESP-Regelung aus ist; vorher andere Regler abschalten, die diese Werte schreiben.
+Beim Einschalten übernimmt Sunflow, ohne etwas zu schreiben: Die Basis wird eingefroren, die Korrektur
+beginnt bei 0, Stellwert und Sperre gelten so, wie die Wärmepumpe sie gerade hat (eine fremde Sperre
+bleibt fremd). Geschrieben wird erst, wenn die Regeln es verlangen; jeder Schreibvorgang steht mit Grund im
+Journal. Schlägt ein Schreibvorgang fehl, nimmt Sunflow ihn zurück (Journal) und versucht es wieder, wenn
+die Regeln es verlangen. Etwa eine Minute nach dem Schreiben prüft Sunflow, ob die Wärmepumpe den Wert
+übernommen hat: zeigt sie ihn nicht, geht Sunflow vom angezeigten Wert aus; bleibt der wirksame
+Vorlauf-Soll im Heizbetrieb darunter, begrenzt die Wärmepumpe selbst (z. B. T-Vorlauf Tag) – dann die
+Obergrenze des Stellwerts höchstens auf diesen Wert stellen (beides Warnung im Journal). Im Modus Aus
+schreibt Sunflow nichts; danach übernimmt es wieder wie beim Einschalten. **Ausschalten** stellt nichts
+zurück: Max T-Vorlauf bleibt, wie zuletzt geschrieben, eine von Sunflow gesetzte Sperre bleibt gesetzt
+(die Wärmepumpe heizt dann nicht, bis sie aufgehoben wird); Sunflow rechnet wieder im Schatten.
 
 **Raum-Soll:** die Raumtemperatur, die Sunflow halten soll (18–27 °C), und der Modus Heizen/Aus; dasselbe
 wie das Thermostat „Haus“ in Home Assistant. Daneben das Raum-Ist (gewichtetes Mittel der Räume; ein Raum
@@ -155,12 +171,13 @@ nur, und nach Ablauf schreibt es den letzten Wert, falls er noch abweicht (ein n
 geschrieben“ angezeigt. Ebenso gilt schon im Schatten das **Budget** (aus dem Geräteprofil, bei der HPSU
 48 Schreibvorgänge je Tag, dazu 24 nur für Schutzschritte, höchstens 6 in jeder Stunde; der Tag folgt der
 Zeitzone von Home Assistant): Sunflow zählt dafür virtuell aus den aufgezeichneten Schreibvorgängen, der
-Zähler für echte EEPROM-Schreibvorgänge bleibt unberührt. Ist das Tagesbudget erschöpft, wartet ein
+Zähler für echte EEPROM-Schreibvorgänge bleibt unberührt; bei aktivem Schreiben zählen die echten
+Schreibvorgänge aus diesem Zähler. Ist das Tagesbudget erschöpft, wartet ein
 normaler Wert („ausstehend … wartet: Tagesbudget erschöpft“) bis zum nächsten Tag; Schutzschritte gehen
 über das Notkontingent weiter. Ist auch dieses erschöpft oder die Höchstzahl je Stunde erreicht, würde
 Sunflow statt des Schutzschritts die Raumthermostat-Sperre setzen und sie aufheben, sobald wieder ein
 Schutzschritt geschrieben werden darf (frühestens nach ihrer Mindestdauer). Das Journal vermerkt jede Art
-der Erschöpfung einmal am Tag. Die Kachel **Budget heute (virtuell)** zeigt den Verbrauch des Tages, das
+der Erschöpfung einmal am Tag. Die Kachel **Budget heute** (im Schatten „virtuell“) zeigt den Verbrauch des Tages, das
 übrige Notkontingent und die letzte Stunde. Die Taste **Jetzt schreiben** überspringt den Mindestabstand
 für den ausstehenden Wert (nicht das Budget) und wird im Schattenbetrieb noch nicht angeboten. Die
 Raumthermostat-Sperre zählt nicht ins Budget und nicht zum Mindestabstand: Die HPSU legt diesen Eingang

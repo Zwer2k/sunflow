@@ -15,8 +15,8 @@ protection step (start, tracking); this layer decides when it is written:
 - the budget (budget.py, step 3 part 4.3): a value it holds back waits without a time (held budget);
   a protection step held back sets the block instead (guard.py), each exhaustion once a day in the journal.
 In the shadow it works on the virtual writes (counted virtually against the budget) and adds nothing to
-the journal for a write (events as before); a real write gets a journal entry with its reason. Writing to
-the heat pump itself follows in step 3 part 4.7; until then nothing switches it on.
+the journal for a write (events as before); a real write gets a journal entry with its reason. The call to
+the heat pump itself is the shadow control's (shadow.py, step 3 part 4.7, only when the user switched it on).
 """
 
 from collections.abc import Callable
@@ -236,6 +236,9 @@ def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bo
     )
     if outcome.write is not None:
         guard.record_write(result, data.at, outcome.write.value_c, outcome.write.reason, shadow=not active, manual=outcome.manual)
+        if active and outcome.notes:
+            # The journal entry of the write (the first note): taken back with it if writing for real fails
+            result.write_notes.append((result.writes[-1], outcome.notes[0]))
         if isinstance(budget, WriteBudget):
             budget.wrote(data.at)
     pending = outcome.pending

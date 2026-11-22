@@ -202,6 +202,12 @@ GUARD_RECENT_MAX = 20
 FOREIGN_EPISODE_S = 24 * 3600
 OWN_WRITE_CONFIRM_S = 10 * 60
 
+# Writing for real (step 3 part 4.7): the heat pump takes a written set value over within ADOPT_DELAY_S
+# (fallback when the profile leaves out flow_control.adopt_delay); after it Sunflow checks the real
+# Max T-Vorlauf and the effective setpoint. The room thermostat block Sunflow switched is its own while the
+# real state follows within OWN_WRITE_CONFIRM_S.
+ADOPT_DELAY_S = 60
+
 # House model from heat_pump_samples (9.3): a day counts for the coverage when it holds at least
 # HOUSE_SAMPLES_DAY_MIN_S of valid heating without ventilation; an hour is used with at least
 # HOUSE_SAMPLES_HOUR_MIN_ROWS of its 5 minute rows.

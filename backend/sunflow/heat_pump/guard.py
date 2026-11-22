@@ -1,10 +1,11 @@
-"""Protection layer of the strategy fixed (design/heat_pump.md, 8.3, 8.4), in shadow.
+"""Protection layer of the strategy fixed (design/heat_pump.md, 8.3, 8.4).
 
-Turns the flow target into the set value Sunflow would write (Max T-Vorlauf) and into the writes it
-would cause - each with time, value and reason (normal, start, track, block_on, block_off). Nothing
-is written to the heat pump: the "written" value here is the one Sunflow would have written last
-(virtual, starting from the heat pump's Max T-Vorlauf), the block is the room thermostat input as
-Sunflow would have set it. The protection layer only says which value it wants and whether that is a
+Turns the flow target into the set value Sunflow writes (Max T-Vorlauf) and into the writes it causes -
+each with time, value and reason (normal, start, track, block_on, block_off). In the shadow nothing is
+written to the heat pump: the "written" value here is the one Sunflow would have written last (virtual,
+starting from the heat pump's Max T-Vorlauf), the block is the room thermostat input as Sunflow would
+have set it. Writing for real (step 3 part 4.7, switched on by the user) the shadow control (shadow.py)
+sends the writes to the heat pump and takes one back when it fails (undo). The protection layer only says which value it wants and whether that is a
 protection step; when it is written (spacing, deadband, "write now") decides the write layer behind it
 (writer.py, 8.5, step 3 part 4.2), within the budget (budget.py, part 4.3).
 
@@ -46,6 +47,7 @@ from .defaults import (
     BLOCK_ROOM_ABOVE_K,
     BUMP_EXTRA_K,
     GUARD_RECENT_MAX,
+    OWN_WRITE_CONFIRM_S,
     POWER_AT_LIMIT_SHARE,
     ROOM_DEADBAND_K,
     START_AFTER_S,
@@ -95,6 +97,8 @@ FLAT = timedelta(seconds=TV_FLAT_WINDOW_S)
 TRACK_LOOKBACK = timedelta(seconds=TRACK_LOOKBACK_S)
 STOP_LOOKBACK = timedelta(seconds=STOP_LOOKBACK_S)
 START_AFTER = timedelta(seconds=START_AFTER_S)
+# The real block follows Sunflow's own switch within this time (writing for real, step 3 part 4.7)
+BLOCK_CONFIRM = timedelta(seconds=OWN_WRITE_CONFIRM_S)
 OBSERVE_MAX = timedelta(seconds=START_OBSERVE_MAX_S)
 # Tv kept in memory: enough for every window above
 HISTORY = max(FLAT, TRACK_LOOKBACK, STOP_LOOKBACK) + timedelta(minutes=5)
@@ -204,6 +208,8 @@ class GuardResult:
     foreign: dict[str, Any] | None = None
     # Journal entries (message, warn)
     notes: list[tuple[str, bool]] = field(default_factory=list)
+    # The journal entry of each write in writes (taken back with it when writing for real fails)
+    write_notes: list[tuple[dict[str, Any], tuple[str, bool]]] = field(default_factory=list)
 
 
 class Guard:
@@ -248,6 +254,9 @@ class Guard:
         self._circuit_tv: float | None = None
         self._prev_tv: float | None = None
         self.last: GuardResult | None = None
+        # Writing for real this minute (step 3 part 4.7) and when Sunflow last switched the real block
+        self._writing = False
+        self.block_written_at: datetime | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """For heat_pump_state.json."""
@@ -311,6 +320,7 @@ class Guard:
     def step(self, data: GuardInput) -> GuardResult:
         """Follow the heat pump for one minute and decide what Sunflow would write."""
         reading, settings, values, now = data.reading, data.settings, data.values, data.at
+        self._writing = data.writing
         tv = reading.values.get("flow_temperature")
         peak_now = max((v for v in (tv, data.tv_peak_c, reading.values.get("flow_temperature_max")) if v is not None), default=None)
         running = reading.activity == HEATING and reading.compressor is True
@@ -323,7 +333,7 @@ class Guard:
             # Sunflow starts from what the heat pump has, without a write
             self.written_c = current
         self._follow_writers(data, result)
-        self._follow_foreign(reading, result, now)
+        self._follow_block(reading, result, now)
 
         self._follow_activity(reading, now, tv)
         self._detect_stop(data, result, tv)
@@ -364,14 +374,26 @@ class Guard:
             result.foreign = event
         result.notes.extend(seen.notes)
 
-    def _follow_foreign(self, reading: Reading, result: GuardResult, now: datetime) -> None:
+    def _follow_block(self, reading: Reading, result: GuardResult, now: datetime) -> None:
         """A block Sunflow did not set is kept and only shown (status, UI, journal), never released (8.6).
 
-        In the shadow Sunflow writes nothing, so every real block is someone else's; once Sunflow writes
-        (16, step 3 part 4), a block it wrote itself is its own and not foreign.
+        In the shadow Sunflow writes nothing, so every real block is someone else's. While Sunflow writes for
+        real (step 3 part 4.7) a block it set itself is its own: the real state may take BLOCK_CONFIRM to
+        follow Sunflow's switch; after that a real state other than Sunflow's is someone else's doing - a
+        block set by someone else is foreign, Sunflow's block released by someone else is released.
         """
         if reading.blocked is None:
             return
+        if self._writing and self.block_reason != FOREIGN and self.block is not None:
+            if reading.blocked == self.block:
+                return
+            if self.block_written_at is not None and timedelta(0) <= now - self.block_written_at <= BLOCK_CONFIRM:
+                # Sunflow's own switch not shown yet
+                return
+            if not reading.blocked:
+                self.block, self.block_at, self.block_reason = False, now, None
+                result.notes.append((t("Raumthermostat-Sperre von außen aufgehoben, nicht von Sunflow."), True))
+                return
         if reading.blocked and self.block_reason != FOREIGN:
             self.block, self.block_at, self.block_reason = True, now, FOREIGN
             result.notes.append((t("Raumthermostat-Sperre nicht von Sunflow gesetzt: Sunflow hebt sie nicht auf und regelt nicht, bis sie aufgehoben ist."), True))
@@ -419,7 +441,7 @@ class Guard:
             "at": _iso(now), "kind": STOP_EVENT, "tv_c": tv, "peak_c": round(peak, 2), "setpoint_c": self._effective,
             "max_setpoint_c": data.reading.values.get("max_flow_setpoint"),
             "during": starting.kind if starting else "running", "raised": name,
-            "value": max(raised, current), "shadow": True,
+            "value": max(raised, current), "shadow": not data.writing,
         }
         result.events.append(event)
         self.recent_stops.append(event)
@@ -493,10 +515,12 @@ class Guard:
         if target is not None:
             result.desired_c = clamp(round_near(target, data.settings.step), low, high, data.settings.step)
         if result.implausible_k is not None and not self.implausible:
-            result.notes.append((t(
-                "Vorlauf-Ziel {target} °C nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): Sunflow würde es nicht schreiben.",
-                target=number(target or 0.0), k=number(result.implausible_k),
-            ), True))
+            values = {"target": number(target or 0.0), "k": number(result.implausible_k)}
+            if data.writing:
+                message = t("Vorlauf-Ziel {target} °C nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): Sunflow schreibt es nicht.", **values)
+            else:
+                message = t("Vorlauf-Ziel {target} °C nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): Sunflow würde es nicht schreiben.", **values)
+            result.notes.append((message, True))
         self.implausible = result.implausible_k is not None
 
     @staticmethod
@@ -530,6 +554,67 @@ class Guard:
         """The set value wanted now; the write layer decides when it is written (8.5)."""
         result.request = Request(value_c=value, reason=reason, protect=reason in PROTECT_REASONS)
 
+    # Writing for real (step 3 part 4.7)
+
+    def adopt(self, actual_c: float | None, blocked: bool | None, now: datetime) -> None:
+        """Sunflow takes over: it starts from what the heat pump has, not from the virtual values of the shadow.
+
+        The written value is the real Max T-Vorlauf (no write of Sunflow's yet, so no time and no reason: the
+        next write goes when the rules ask for it); the block is the real one - set, it is someone else's
+        (Sunflow did not set it) and stays until someone else releases it (8.6)."""
+        if actual_c is not None:
+            self.written_c = actual_c
+            self.foreign.seen_c = actual_c
+        self.written_at, self.written_reason = None, None
+        self.foreign.expect_c = self.foreign.expect_at = None
+        if blocked is True:
+            self.block, self.block_at, self.block_reason = True, now, FOREIGN
+        elif blocked is False:
+            self.block, self.block_at, self.block_reason = False, None, None
+        else:
+            self.block, self.block_at, self.block_reason = None, None, None
+        self.block_written_at = None
+        self.unprotected = False
+
+    def release(self) -> bool:
+        """Writing switched off: nothing is reset (8.6). A block Sunflow set stays at the heat pump and is
+        someone else's from now on (the shadow never releases a real block). True when one stays set."""
+        self.block_written_at = None
+        if self.block and self.block_reason != FOREIGN:
+            self.block_reason = FOREIGN
+            return True
+        return False
+
+    def snapshot(self) -> dict[str, Any]:
+        """What a real write changes, to take it back when the write fails."""
+        return {
+            "written": (self.written_c, self.written_at, self.written_reason),
+            "expect": (self.foreign.expect_c, self.foreign.expect_at),
+            "block": (self.block, self.block_at, self.block_reason, self.block_written_at),
+        }
+
+    def undo(self, result: GuardResult, event: dict[str, Any], before: dict[str, Any]) -> None:
+        """A real write failed: the event, its journal entry and its effect on the state are taken back."""
+        if event.get("reason") in (BLOCK_ON, BLOCK_OFF):
+            self.block, self.block_at, self.block_reason, self.block_written_at = before["block"]
+        else:
+            self.written_c, self.written_at, self.written_reason = before["written"]
+            self.foreign.expect_c, self.foreign.expect_at = before["expect"]
+            result.setpoint_c = self.written_c
+        result.writes = [w for w in result.writes if w is not event]
+        self.recent_writes = [w for w in self.recent_writes if w is not event]
+        for written, note in [(w, n) for w, n in result.write_notes if w is event]:
+            if note in result.notes:
+                result.notes.remove(note)
+        result.write_notes = [(w, n) for w, n in result.write_notes if w is not event]
+
+    def not_adopted(self, actual_c: float) -> None:
+        """The heat pump does not show the value Sunflow wrote: Sunflow goes on from the value it shows."""
+        self.written_c = actual_c
+        self.written_reason = None
+        self.foreign.seen_c = actual_c
+        self.foreign.expect_c = self.foreign.expect_at = None
+
     def record_write(self, result: GuardResult, now: datetime, value: float, reason: str, *, shadow: bool = True, manual: bool = False) -> None:
         """The write layer wrote the set value (in the shadow virtually)."""
         event = {"at": _iso(now), "kind": WRITE_EVENT, "reason": reason, "value_c": value, "from_c": self.written_c,
@@ -549,14 +634,21 @@ class Guard:
 
     def _switch_block(self, result: GuardResult, now: datetime, on: bool, reason: str | None, why: str) -> None:
         event = {"at": _iso(now), "kind": WRITE_EVENT, "reason": BLOCK_ON if on else BLOCK_OFF, "block": on,
-                 "block_reason": reason, "phase": result.phase, "shadow": True}
+                 "block_reason": reason, "phase": result.phase, "shadow": not self._writing}
         self.block, self.block_at, self.block_reason = on, now, reason
+        if self._writing:
+            self.block_written_at = now
         result.writes.append(event)
         self.recent_writes.append(event)
         del self.recent_writes[:-GUARD_RECENT_MAX]
-        message = (t("Schatten: Sunflow würde die Raumthermostat-Sperre setzen ({why}).", why=why) if on
-                   else t("Schatten: Sunflow würde die Raumthermostat-Sperre aufheben ({why}).", why=why))
+        if self._writing:
+            message = (t("Raumthermostat-Sperre gesetzt ({why}).", why=why) if on
+                       else t("Raumthermostat-Sperre aufgehoben ({why}).", why=why))
+        else:
+            message = (t("Schatten: Sunflow würde die Raumthermostat-Sperre setzen ({why}).", why=why) if on
+                       else t("Schatten: Sunflow würde die Raumthermostat-Sperre aufheben ({why}).", why=why))
         result.notes.append((message, False))
+        result.write_notes.append((event, (message, False)))
 
     def _block(self, data: GuardInput, result: GuardResult) -> None:
         """Wanted off: the room well above its target sets the block; released after the minimum duration."""

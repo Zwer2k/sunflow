@@ -830,8 +830,8 @@ beide je Takt; noch nichts an die Wärmepumpe):
   Grund „manuell“. Status `guard.write_now.requested_at`, solange er wartet; das UI zeigt „wird
   geschrieben …“ bis zum Takt und die Taste nur bei aktivem Schreiben.
 - Journal: im Schatten keins (Ereignisse wie bisher, `shadow: true`); bei aktivem Schreiben je Schreibvorgang
-  „Max T-Vorlauf geschrieben: … (vorher …), Grund: …“. Aktiv schaltet erst Teil 4.7
-  (`FlowShadow.writing_active`, bis dahin für jede Wärmepumpe falsch); Status `guard.shadow` folgt dem.
+  „Max T-Vorlauf geschrieben: … (vorher …), Grund: …“. Aktiv schaltet der Schalter je Wärmepumpe (Teil 4.7,
+  `FlowShadow.writing_active`, Standard aus); Status `guard.shadow` folgt dem.
 - Status `guard.parameters.min_interval_s`/`protect_interval_s`; Tests `tests/test_heat_pump_writer.py`.
 
 Umsetzung Budget (3, Teil 4.3, `heat_pump/budget.py`, Hook `budget` der Schreibschicht; noch nichts an die
@@ -1031,7 +1031,8 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
   - Mittelwerte mit Einheit im Namen: `tv_c`, `tr_c`, `tvbh_c`, `setpoint_c` (wirksamer Soll),
     `max_setpoint_c` (aktueller Max T-Vorlauf), `bypass_pct`, `heat_w`, `outside_c`;
   - `tv_max_c`: höchste Spitze im Intervall (für die Sprung-Lernwerte);
-  - `written_c`: von Sunflow geschriebener Stellwert (bis Schritt 3 leer);
+  - `written_c`: von Sunflow geschriebener Stellwert (Mittel der Minuten mit aktivem Schreiben, seit 3, Teil
+    4.7; im Schatten leer);
   - `heat_source` (`meter`/`measured`); `compressor`: Anteil der Minuten mit laufendem Kompressor (0–1);
   - Zustände als kanonische Schlüssel (`program`, `activity`, `strategy`; häufigster Wert im Intervall);
     `error`: Schlüssel des Fehlercodes (z. B. `err_0`) oder unbekannter Text;
@@ -1048,7 +1049,7 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
     Starts `{"at", "kind": "start_jump", "start_kind", "start_at", "ref_c", "peak_c", "jump_k", "settle_s"}`
     (Grundlage des Lernens) und ungewollte Abschaltungen `{"at", "kind": "unwanted_stop", "tv_c", "peak_c",
     "setpoint_c", "max_setpoint_c", "during", "raised", "value"}`. `written_c` bleibt leer, solange nichts
-    geschrieben wird. Ab 3, Teil 4.2 laufen die Schreibvorgänge des Stellwerts durch die Schreibschicht
+    geschrieben wird (Schatten). Ab 3, Teil 4.2 laufen die Schreibvorgänge des Stellwerts durch die Schreibschicht
     (8.5, Mindestabstand); ein Schreibvorgang über „jetzt schreiben“ trägt zusätzlich `"manual": true`.
     Ab 3, Teil 4.4 fremde Änderungen von Max T-Vorlauf `{"at", "kind": "foreign_write", "from_c",
     "value_c", "written_c" (was Sunflow bis dahin als geschrieben hatte), "regulation", "activity", "shadow"}`.
@@ -1187,7 +1188,7 @@ Nur CAN:
     `flow_heat_needed`) und die gelernte Kennlinie (`heating_curve`, mit `shadow: true`); seit 3, Teil 4.6
     Stellwert der ersten Wärmepumpe (`setpoint_written`, `setpoint_written_at`, `setpoint_pending`,
     `setpoint_pending_at`, `setpoint_pending_reason`, `setpoint_held`) und das Kennzeichen
-    `mode` (`shadow` | `active`, nur Anzeige; der Schalter selbst folgt in 4.7). Bei mehreren Wärmepumpen
+    `mode` (`shadow` | `active`, nur Anzeige; der Schalter ist in der Sunflow-UI, seit 4.7). Bei mehreren Wärmepumpen
     unter `heat_pumps` je Wärmepumpe dieselben Namen ohne Präfix (`written`, …, `held`, `mode`). Das ältere
     Attribut `shadow` (true/false) bleibt vorerst, wird aus derselben Quelle gesetzt (`shadow` = `mode` ist
     `shadow`) und gilt als veraltet.
@@ -1311,8 +1312,8 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    Änderung von Max T-Vorlauf als Ereignis `foreign_write` mit `activity` in `heat_pump_samples`; eine
    Änderung während Warmwasser (auch dieser Test) lässt sich damit direkt mit den Zeilen und dem Ereignis
    `start` danach auswerten.
-9. **Bereich von Max T-Vorlauf gegen die eigene Grenze der HPSU** (offen, vor dem Aktivschalten zu
-   entscheiden). Das Manifest meldet für Max T-Vorlauf (`max_target_flow_temp`) 20–90 °C – den
+9. **Bereich von Max T-Vorlauf gegen die eigene Grenze der HPSU** (für 4.7 entschieden, siehe
+   „Entscheidung“ unten; Vorschlag und Test am Gerät offen). Das Manifest meldet für Max T-Vorlauf (`max_target_flow_temp`) 20–90 °C – den
    Registerbereich, fest beim Kompilieren. Die HPSU begrenzt den wirksamen Vorlauf-Soll laut Nutzer selbst
    niedriger (40 °C); dazu passt der HPSU-Parameter „Max Temp Heizung“ (`max_heating_temperature`, im
    Manifest number 5–85 °C, Schritt 1), eine Nutzereinstellung in der HPSU, kein fester Gerätewert.
@@ -1341,6 +1342,41 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    Manifest (Abschnitt 12) hilft nicht: `min`/`max` dort sind fest beim Kompilieren, die HPSU-Grenze ist
    eine Einstellung. Vorher am Gerät bestätigen (Nutzer), dass „Max Temp Heizung“ der begrenzende Wert ist
    (z. B. Max T-Vorlauf kurz über die Grenze setzen und den wirksamen Vorlauf-Soll ansehen).
+   **Befund (per MCP gelesen, vor 4.7):** „HK Funktion“ steht auf Fest; „T Vorlauf Tag“ (CAN-Schlüssel
+   `flow_temperature_day`, Register `FA 01 29`) und „Max Temp Heizung“ (`max_heating_temperature`,
+   `FA 06 6E`) stehen beide auf 40 °C; Betriebsmodus „Heizen“, „HZ Unterstützung“ aus. Die Grenze kann also
+   von beiden kommen. In der HA-History lag Max T-Vorlauf mehrmals kurz über 40 °C (nach Warmwasser); der
+   wirksame Vorlauf-Soll blieb dann bei 40 °C und folgte darunter dem Max T-Vorlauf – die Grenze ist damit
+   belegt, ihre Quelle nicht.
+   **Was T Vorlauf Tag bei Fest bedeutet (RoCon-HP-Anleitung, Fachmann; CAN-Komponente):** Mit
+   [HK Funktion] = 1 (Fest) regelt die HPSU auf einen festen Vorlauf-Soll: im Heizbetrieb [T-Vorlauf Tag]
+   während der Heizzeit (Betriebsart „Automatik 1/2“, „Heizen“), [T-Vorlauf Nacht] während der Absenkzeit
+   („Automatik 1/2“, „Absenken“). [Max T-Vorlauf] begrenzt den so ermittelten Soll nach oben. Wirksamer Soll
+   im Heizbetrieb also min(T-Vorlauf Tag bzw. Nacht, Max T-Vorlauf); Sunflow stellt über Max T-Vorlauf nur
+   unterhalb von T-Vorlauf Tag. Die Komponente liest T Vorlauf Tag nur (number 20–90 °C, Schritt 0,1) und
+   verwendet es nicht in ihrer eigenen Regelung; ihr Beispiel „Heizkurve zu Rotex“ schreibt T Vorlauf
+   Tag/Nacht als selbst berechnete Heizkurve. [Max Temp Heizung] begrenzt laut Parameterliste den Vorlauf-Soll
+   „bei aktiver Heizungsunterstützungsfunktion“ (Wärme aus dem Speicher, BIV); die Störungstabelle der
+   Anleitung nennt es aber auch bei „Heizung wird nicht ausreichend warm“. Wahrscheinlich begrenzt also
+   T Vorlauf Tag; sicher ist das erst nach dem Test unten. Folge für Automatik 1/2 und Absenken: in der
+   Absenkzeit gilt T-Vorlauf Nacht als Grenze (Werkseinstellung 10 °C); Sunflow kennt das Zeitprogramm nicht.
+   - **Todo – Test am Gerät (offen, nur auf ausdrückliche Anweisung des Nutzers):** je Kandidat zwei
+     Schreibvorgänge (EEPROM), nur im Heizbetrieb (Betriebsmodus „Heizen“, Betriebsart Heizen oder
+     Bereitschaft), nicht während Warmwasser und nicht in den 10 min danach, am besten bei Kompressor aus
+     (ein Soll unter Tv − 3 K schaltet einen laufenden Kompressor ab). Kandidat 1: T Vorlauf Tag auf 1 K unter
+     den aktuellen Max T-Vorlauf setzen (nicht unter Min T-Vorlauf), nach 2 min den Vorlauf-Soll lesen
+     (folgt er auf diesen Wert, begrenzt T Vorlauf Tag), danach T Vorlauf Tag auf den alten Wert zurück.
+     Kandidat 2: dasselbe mit Max Temp Heizung. Vorher und nachher HK Funktion, Betriebsmodus, Max T-Vorlauf
+     und Vorlauf-Soll festhalten; Ergebnis hier eintragen. Die Umsetzung muss ohne den Test sicher sein.
+   **Entscheidung für 4.7 (einfachste sichere Variante, umgesetzt 0.80.18):** keine neue Rolle und keine
+   automatische Obergrenze. Die Obergrenze des Stellwerts stellt der Nutzer je Wärmepumpe (`flow_max_c`, 8.3)
+   höchstens auf die eigene Grenze der HPSU (Fußboden: Startgrenze 40 °C, passt zur heutigen Einstellung).
+   Abgesichert durch (a) die vorhandene Erkennung „Wärmepumpe begrenzt selbst“ (Abschnitt 4, `self_limited`:
+   friert Korrektur und normales Schreiben ein, Journal) und (b) die Prüfung nach `adopt_delay` (4.7): bleibt der
+   wirksame Soll im Heizbetrieb mehr als die Totzone unter dem geschriebenen Wert, Warnung im Journal mit dem
+   Hinweis auf die Obergrenze. Ein Schreiben über die Grenze schadet der Wärmepumpe nicht (sie fährt ihre
+   Grenze), kostet aber Budget und schützt beim Start nicht. Der Vorschlag oben (Rolle, Klemm-Erkennung als
+   Obergrenze) bleibt für später (Abschnitt 16, „Nach dem Aktivschalten“).
 10. **Quellenwechsel vor dem Aktivschalten beobachten** (Beobachtung, keine Entscheidung). Seit 3, Teil 4.5
     trägt jedes Ereignis `flow_source` auch im Schatten `jump_k` (Sprung des Startwerts). Vor 4.7 aus
     `heat_pump_samples` prüfen, wie oft die Quelle wechselt (z. B. `heat_recent` ↔ `base` an der 2-h-Schwelle)
@@ -1468,6 +1504,60 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
          Voraussetzungen zum Einschalten: Gerät kompatibel, Strategie `fixed`, keine ESP-Regelung, Punkt 9
          entschieden. Simulation nach Abschnitt 14 (HPSU-Nachbildung) als Abnahme. Das erste Schreiben an
          der Wärmepumpe nur mit Freigabe des Nutzers.
+         **Umgesetzt (0.80.18, nichts an die Wärmepumpe geschrieben, Schalter überall aus):** Schalter
+         `DeviceConfig.flow_active` (Standard aus, nur genau `true` gilt), `PUT /api/v1/heat_pump/<id>/writing`
+         (Einschalten 409 mit `reason` `incompatible`, `no_sample`, `strategy`, `esp_regulation`; Ausschalten
+         immer), Status `writing` je Gerät, UI-Schalter mit Bestätigung. `FlowShadow._switch`: Journal bei
+         Ein/Aus; übernommen wird, sobald eingeschaltet und Modus Heizen (`_adopt`: Basis bleibt wie sie ist und
+         folgt nicht mehr dem wirksamen Soll, Korrektur aller Strategien 0 mit neuem Bezug, Schutzschicht vom
+         echten Max T-Vorlauf ohne Zeit/Grund und von der echten Sperre – gesetzt = fremd; Merker `active`/
+         `writing` je Gerät in `heat_pump_state.json`, fehlt er, wird neu übernommen). Modus Aus: nichts
+         geschrieben, Basis folgt wieder, danach neue Übernahme. Echtes Schreiben (`heat_pump/active.py`,
+         `WriteTargets` aus Profil-Schreibrolle der Strategie fixed mit `storage`, Sperre als Option des Selects
+         laut Manifest bzw. Schalter): `execute` mit `EepromGuard` (Zeit des Takts), Budget aus `EepromLog`;
+         Fehler (keine Entität, keine Verbindung, Ablehnung, EEPROM-Grenze) → Schreibvorgang samt Ereignis und
+         Journal zurückgenommen, Journal-Warnung einmal bis zum nächsten Erfolg. Eigene Sperre nicht fremd
+         (`Guard._follow_block`: echte Sperre darf `OWN_WRITE_CONFIRM_S` brauchen, danach gilt die echte; von
+         außen aufgehoben → Journal). Prüfung nach `adopt_delay` (`AdoptCheck`, Profil `adopt_delay`, Standard
+         60 s): echter Max T-Vorlauf ≠ geschrieben → `missing`, Schutzschicht folgt dem angezeigten Wert;
+         wirksamer Soll im Heizbetrieb unter geschrieben − Totzone → `limited`; je Art eine Journal-Warnung bis
+         eine Prüfung passt; Status `guard.adopt`. Ausschalten: nichts zurückgestellt, eine eigene Sperre bleibt
+         und gilt ab dann als fremd (Journal). `written_c` in `heat_pump_samples`, `HeatingTracker.written_at`
+         aus dem letzten echten Schreiben. Tests `tests/test_heat_pump_active.py` (mit HPSU-Nachbildung: Übernahme
+         nach 60 s, eigene Grenze, 3-K-Start/Stopp, Sprung, Sperre), Suite grün.
+      - **Nach dem Aktivschalten** (beim Umsetzen von 4.7 aufgefallen, nicht umgesetzt, je mit dem Nutzer
+        entscheiden):
+        1. Übernahme mit Quelle Kennlinie (`house_model`/`heat_recent`): Korrektur 0 heißt V_Ziel = Kennlinie,
+           das kann vom wirksamen Soll abweichen – „springt nicht“ gilt nur für die Quelle Basis. Abgefangen
+           durch Totzone und Plausibilität (±8 K); denkbar: Korrektur bei der Übernahme auf wirksam − Kennlinie
+           (in ±3 K).
+        2. Die Basis bleibt eingefroren, solange eingeschaltet ist und Modus Heizen gilt – auch wenn Sunflow lange
+           nicht schreibt (Strategie ≠ fest, ESP-Regelung, Programm ≠ Heizen, fremde Sperre). Nur Modus Aus
+           gibt sie frei. Bei langer Pause ist sie veraltet.
+        3. Punkt 9: keine automatische Obergrenze aus der HPSU (T-Vorlauf Tag, Max Temp Heizung, in Automatik
+           1/2 nachts T-Vorlauf Nacht). Schutzschritte über der Grenze kosten Budget und schützen nicht. Vorschlag
+           in Abschnitt 15, Punkt 9 (Rolle, Klemm-Erkennung als Obergrenze).
+        4. Nicht übernommener Wert (`missing`): Sunflow schreibt nach dem Mindestabstand erneut, jedes Mal ein
+           EEPROM-Schreibvorgang (nur durch das Budget begrenzt). Denkbar: nach n Fehlschlägen Schreiben
+           anhalten und warnen.
+        5. Ausschalten mit eigener Sperre: Sie bleibt (8.6) und gilt danach als fremd; die HPSU heizt nicht, bis
+           der Nutzer sie aufhebt. Denkbar: Hinweis/Taste „Sperre aufheben“ im UI beim Ausschalten.
+        6. Fremde Änderungen im aktiven Betrieb: Sunflow schreibt nach dem Mindestabstand dagegen; zwei Regler
+           können sich bis zum Budget abwechseln. Denkbar: bei wiederholten fremden Änderungen Schreiben anhalten.
+        7. Zwei Tagesbegriffe: `EepromGuard` zählt seine harte Tagesgrenze (hier 72) nach dem Datum des Systems
+           der App, das Budget nach der Zeitzone von HA. Unschädlich (das Budget ist enger), aber uneinheitlich.
+        8. Prüfung des Übernommenen und die Bestätigungszeit der eigenen Sperre stehen nur im Speicher: nach
+           einem Neustart kurz nach einem Schreibvorgang entfällt die Prüfung, und eine noch nicht angezeigte
+           eigene Sperre könnte als von außen geändert gelten.
+        9. Die Liste „zuletzt geschrieben“ im UI mischt virtuelle (Schatten) und echte Schreibvorgänge; die
+           Ereignisse tragen `shadow`, die Anzeige unterscheidet es nicht.
+        10. Der Schalter ist nur in der Sunflow-UI/API, nicht als Entity in HA (13 sieht nur die Anzeige `mode`
+            vor).
+        11. Abnahme-Simulation deckt Übernahme, Sperre, Pause/Start, Fehler und Prüfung ab; Warmwasser, Abtauen,
+            Bypass, Soll-Sprünge und erschöpftes Budget im aktiven Betrieb nur über die Tests der Schichten
+            (Schatten), nicht mit der HPSU-Nachbildung.
+        12. Einschalten prüft nicht, ob andere Regler Max T-Vorlauf oder die Sperre schreiben (Inbetriebnahme
+            Schritt 0); das meldet erst die Erkennung fremder Schreiber.
       - **Später:** veraltetes climate-Attribut `shadow` entfernen (seit 0.80.17 ersetzt durch `mode`), mit
         Hinweis im CHANGELOG und in der Doku; vorher prüfen, dass Karten und Automationen `mode` nutzen.
       - **Todo (offener Punkt 8):** in den ersten Tagen des aktiven Betriebs per MCP (HA-History) und aus
@@ -1485,7 +1575,7 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    inzwischen entfernt.
 
    **Vor Teil 4:** Hardware-Test geklärt (Abschnitt 15, Punkt 1), ebenso Raumthermostat-Eingang (7) und
-   höchster Vorlauf für den Estrich (4); Punkt 8 folgt in Teil 4. Neu offen und vor Teil 4.7 zu entscheiden:
+   höchster Vorlauf für den Estrich (4); Punkt 8 folgt in Teil 4. Vor Teil 4.7 entschieden (0.80.18):
    Bereich von Max T-Vorlauf gegen die eigene Grenze der HPSU (Punkt 9). Vor dem Einschalten Inbetriebnahme
    Schritt 0 (Abschnitt 14) erneut prüfen: kein anderer Regler darf Max T-Vorlauf oder den
    Raumthermostat-Eingang schreiben.

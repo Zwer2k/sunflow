@@ -291,6 +291,15 @@ class DeviceConfig(BaseModel):
     # flow_max_c is also the highest flow the screed may get.
     flow_min_c: float | None = Field(default=None, ge=FLOW_LIMIT_LOW_C, le=FLOW_LIMIT_HIGH_C)
     flow_max_c: float | None = Field(default=None, ge=FLOW_LIMIT_LOW_C, le=FLOW_LIMIT_HIGH_C)
+    # Heat pumps: Sunflow writes the set value and the room thermostat block to the heat pump for real
+    # (design/heat_pump.md, 16 step 3 part 4.7); off: shadow operation. Switched on only by the user.
+    flow_active: bool = False
+
+    @field_validator("flow_active", mode="before")
+    @classmethod
+    def _flow_active(cls, value: object) -> object:
+        # Anything but a real true is off: writing to the heat pump needs the user's explicit switch
+        return value is True
 
     @field_validator("flow_min_c", "flow_max_c", mode="before")
     @classmethod

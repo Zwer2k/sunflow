@@ -15,6 +15,7 @@ from typing import Any
 
 from .budget import BudgetLimits
 from .defaults import (
+    ADOPT_DELAY_S,
     BLOCK_MIN_S,
     DEADBAND_K,
     DEFAULT_SETPOINT_STEP_K,
@@ -77,6 +78,8 @@ class ControlSettings:
     # The user's range of the set value (device setting); None: the heating surface type's start limit
     user_min: float | None = None
     user_max: float | None = None
+    # Time the heat pump needs to take a written set value over (profile adopt_delay, step 3 part 4.7)
+    adopt_delay_s: float = ADOPT_DELAY_S
 
     @classmethod
     def from_profile(
@@ -113,6 +116,7 @@ class ControlSettings:
             entity_max=_optional((entity or {}).get("max")),
             user_min=user_min,
             user_max=user_max,
+            adopt_delay_s=duration(flow.get("adopt_delay"), ADOPT_DELAY_S).total_seconds(),
         )
 
     @property

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from sunflow.config.models import ClimateSettings, SunflowConfig
 from sunflow.config.store import ConfigStore
@@ -110,6 +110,8 @@ async def heat_pump_status(request: Request) -> dict[str, Any]:
                 "component": device.component,
                 "profile": device.profile,
                 "profile_version": {"configured": device.profile_version, "current": profile["version"]},
+                # The user's switch: Sunflow writes to the heat pump for real (16 step 3 part 4.7)
+                "writing": {"active": device.flow_active, "refused": writing_refused(request, device.id) if not device.flow_active else None},
             }
             | status.get(device.id, {"status": "pending", "usable": False, "problems": [], "manifest": None})
             # Program, activity, block, fault, whether it heats validly (section 4) and the shadow
@@ -168,6 +170,53 @@ async def write_now(request: Request, device_id: str) -> dict[str, Any]:
     if not accepted:
         raise HTTPException(status_code=409, detail={"reason": reason})
     return {"accepted": True, "pending": pending}
+
+
+class Writing(BaseModel):
+    """The switch of one heat pump: Sunflow writes to it for real (true) or computes in the shadow (false)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    active: StrictBool
+
+
+def writing_refused(request: Request, device_id: str) -> str | None:
+    """Why writing for real cannot be switched on now (16 step 3 part 4.7), None when it can: the heat pump
+    must be compatible and reachable, sampled, in the strategy fixed and without the ESP regulation."""
+    manifests = getattr(request.app.state, "manifests", None)
+    if manifests is None or not manifests.usable(device_id):
+        return "incompatible"
+    recorder = _recorder(request)
+    state = (recorder.status() if recorder is not None else {}).get(device_id)
+    if state is None:
+        return "no_sample"
+    if state.get("strategy") != "fixed":
+        return "strategy"
+    guard = getattr(getattr(recorder, "flow", None), "guards", {}).get(device_id)
+    if guard is not None and guard.foreign.regulating:
+        return "esp_regulation"
+    return None
+
+
+@router.put("/heat_pump/{device_id}/writing")
+async def set_writing(request: Request, device_id: str, body: Writing) -> dict[str, Any]:
+    """Switch writing to the heat pump for real on or off (16 step 3 part 4.7; default off).
+
+    On: 409 with the reason when the heat pump is not compatible, not sampled yet, not in the strategy fixed
+    or the ESP regulates; Sunflow takes over with the next tick (base frozen, correction 0) and writes only
+    when the rules ask for it. Off: always; nothing at the heat pump is reset (8.6)."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    device = next((d for d in config.devices if d.id == device_id), None)
+    profile = _library(request).profiles.get(device.profile) if device else None
+    if device is None or profile is None or not records_heat_pump(profile):
+        raise HTTPException(status_code=404, detail="No heat pump with this id")
+    if body.active and not device.flow_active and (reason := writing_refused(request, device_id)) is not None:
+        raise HTTPException(status_code=409, detail={"reason": reason})
+    if device.flow_active != body.active:
+        device.flow_active = body.active
+        store.save(config)
+    return {"active": device.flow_active}
 
 
 class FlowLimits(BaseModel):

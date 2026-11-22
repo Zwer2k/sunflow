@@ -297,5 +297,21 @@
   "Wärme der letzten 3 h": "heat of the last 3 h",
   "Basis": "base",
   "Quelle des Vorlauf-Ziels gewechselt ({old} → {new}): Die Korrektur reicht nicht ganz für den Ausgleich, das Vorlauf-Ziel springt um {rest} K.": "Source of the flow target changed ({old} → {new}): the correction cannot balance it fully, the flow target jumps by {rest} K.",
-  "Quelle des Vorlauf-Ziels gewechselt ({old} → {new}) ohne Sprungschutz: kein aktueller Wert der bisherigen Quelle.": "Source of the flow target changed ({old} → {new}) without jump protection: no recent value of the previous source."
+  "Quelle des Vorlauf-Ziels gewechselt ({old} → {new}) ohne Sprungschutz: kein aktueller Wert der bisherigen Quelle.": "Source of the flow target changed ({old} → {new}) without jump protection: no recent value of the previous source.",
+  "Vorlauf-Ziel {target} °C nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): Sunflow schreibt es nicht.": "Flow target {target} °C not plausible ({k} K from the effective setpoint or the heating curve): Sunflow does not write it.",
+  "Max T-Vorlauf {value} °C geschrieben, die Wärmepumpe zeigt aber {actual} °C: nicht übernommen. Sunflow geht vom angezeigten Wert aus.": "Max T-Vorlauf {value} °C written, but the heat pump shows {actual} °C: not taken over. Sunflow goes on from the value shown.",
+  "Max T-Vorlauf {value} °C geschrieben, der wirksame Vorlauf-Soll bleibt bei {effective} °C: die Wärmepumpe begrenzt selbst (z. B. T-Vorlauf Tag). Obergrenze des Stellwerts höchstens auf diese Grenze stellen.": "Max T-Vorlauf {value} °C written, the effective flow setpoint stays at {effective} °C: the heat pump limits it itself (e.g. flow temperature day). Set the upper limit of the set value to this limit at most.",
+  "Raumthermostat-Sperre gesetzt ({why}).": "Room thermostat block set ({why}).",
+  "Raumthermostat-Sperre aufgehoben ({why}).": "Room thermostat block released ({why}).",
+  "Raumthermostat-Sperre von außen aufgehoben, nicht von Sunflow.": "Room thermostat block released from outside, not by Sunflow.",
+  "Sunflow übernimmt die Wärmepumpe: Basis {base} °C eingefroren, Korrektur 0, Max T-Vorlauf {value} °C wie vorgefunden. Geschrieben wird erst, wenn die Regeln es verlangen.": "Sunflow takes the heat pump over: base {base} °C frozen, correction 0, Max T-Vorlauf {value} °C as found. Written only when the rules ask for it.",
+  "{message} Die Raumthermostat-Sperre ist gesetzt, nicht von Sunflow: Sunflow hebt sie nicht auf.": "{message} The room thermostat block is set, not by Sunflow: Sunflow does not release it.",
+  "Aktives Schreiben ausgeschaltet: Sunflow rechnet wieder nur im Schatten. Max T-Vorlauf bleibt, wie zuletzt geschrieben (nichts zurückgestellt).": "Writing switched off: Sunflow computes in the shadow again. Max T-Vorlauf stays as last written (nothing reset).",
+  "Raumthermostat-Sperre": "Room thermostat block",
+  "keine Entität zum Schreiben": "no entity to write to",
+  "{message} Die Raumthermostat-Sperre bleibt gesetzt: die Wärmepumpe heizt nicht, bis sie aufgehoben wird.": "{message} The room thermostat block stays set: the heat pump does not heat until it is released.",
+  "Max T-Vorlauf": "Max T-Vorlauf",
+  "keine Verbindung zu Home Assistant": "no connection to Home Assistant",
+  "Aktives Schreiben eingeschaltet: Sunflow schreibt ab jetzt Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe.": "Writing switched on: from now on Sunflow writes the Max T-Vorlauf and the room thermostat block to the heat pump.",
+  "{what} nicht geschrieben ({error}); Sunflow versucht es wieder, wenn die Regeln es verlangen.": "{what} not written ({error}); Sunflow tries again when the rules ask for it."
 }

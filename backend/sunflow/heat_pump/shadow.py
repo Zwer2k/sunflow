@@ -23,9 +23,16 @@ correction does not move further beyond it.
 
 Write layer (8.5, step 3 part 4.2, writer.py): when the wanted set value is written - leading edge,
 minimum spacing, deadband except for protection steps, "write now". In the shadow it acts on the
-virtual writes; writing to the heat pump follows in part 4.7 (until then no heat pump is active).
+virtual writes.
 Budget (8.5, step 3 part 4.3, budget.py): per day in Home Assistant's time zone, counted virtually in the
-shadow (seeded from the write events in heat_pump_samples), never in eeprom_writes.json.
+shadow (seeded from the write events in heat_pump_samples), never in eeprom_writes.json; writing for real
+the writes EepromGuard records.
+Writing for real (step 3 part 4.7, active.py): only when the user switched it on for the heat pump
+(DeviceConfig.flow_active, default off). Taking over (switched on in mode heat): the base is frozen, the
+correction starts at 0, the protection layer starts from the real Max T-Vorlauf and block - nothing is
+written until the rules ask for it. Then set value (EEPROM, budget) and block go to the heat pump; a write
+that fails is taken back (journal), after adopt_delay Sunflow checks that the heat pump took the value
+over. Switching off, mode off and failures reset nothing (8.6); switched off it is the shadow again.
 Foreign writers (8.5, step 3 part 4.4, foreign.py): a change of the real Max T-Vorlauf Sunflow did not
 write is noted (journal, status, setup summary) and the written value follows it; while the ESP regulation
 is active nothing is written.
@@ -39,13 +46,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
 import logging
 import math
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from sunflow.config.models import DeviceConfig, SunflowConfig
+from sunflow.devices.executor import EepromGuard, execute
 from sunflow.i18n import number, t
 
-from .budget import WriteBudget
+from .active import MISSING, AdoptCheck, WriteTargets
+from .budget import SETPOINT_REASONS, EepromLog, VirtualLog, WriteBudget
 from .correction import Correction, SetpointWatch, Settling
 from .curve import Curve
 from .defaults import (
@@ -61,7 +71,7 @@ from .defaults import (
     correction_ti_h,
 )
 from .feedforward import BASE, HEAT_RECENT, HOUSE_MODEL, Feed, HouseContext, RecentHeat, feedforward, house_heat_w, source_shift
-from .guard import Guard, GuardInput, GuardResult
+from .guard import BLOCK_OFF, BLOCK_ON, Guard, GuardInput, GuardResult
 from .learned import Learned, values as guard_values
 from .limits import ControlSettings
 from .rooms import RoomTemperature, StateReader, reported_times, room_temperature
@@ -142,10 +152,12 @@ class FlowState:
 class FlowShadow:
     """Room correction and flow target of every heat pump, computed each minute, never written."""
 
-    def __init__(self, store: HeatPumpStateStore, client: StateReader | None = None) -> None:
-        """Start from the stored state; client reads last_reported of the room sensors."""
+    def __init__(self, store: HeatPumpStateStore, client: StateReader | None = None, data_dir: Path | None = None) -> None:
+        """Start from the stored state; client reads last_reported of the room sensors and writes to the heat
+        pump once that is switched on; data_dir holds eeprom_writes.json (default: the state file's)."""
         self._store = store
         self._client = client
+        self._data_dir = data_dir or store.data_dir
         house = store.house
         self.watch = SetpointWatch(_float(house.get("setpoint_c")), Settling.from_dict(house.get("settling")))
         self._corrections: dict[tuple[str, str], Correction] = {}
@@ -171,10 +183,16 @@ class FlowShadow:
         self.guards: dict[str, Guard] = {}
         self.learned: dict[str, Learned] = {}
         self.settings: dict[str, ControlSettings] = {}
-        # Write layer per heat pump (8.5) and the heat pumps Sunflow writes to for real. Nothing switches
-        # writing on before step 3 part 4.7: every heat pump runs in the shadow.
+        # Write layer per heat pump (8.5) and the heat pumps Sunflow writes to for real: the user's switch
+        # (DeviceConfig.flow_active, step 3 part 4.7), set every tick; off: shadow
         self.writers: dict[str, Writer] = {}
         self.active: dict[str, bool] = {}
+        # Whether the heat pump took the last real write over (step 3 part 4.7), the last real write of the
+        # set value (the self-limit time of the states counts from it)
+        self.adopt_checks: dict[str, AdoptCheck] = {}
+        self.real_written_at: dict[str, datetime] = {}
+        # Real writes failing (device id, set value or block): noted once until one succeeds again
+        self._failing: set[tuple[str, bool]] = set()
         # Write budget per heat pump (8.5), counted virtually in the shadow; the local day needs Home
         # Assistant's time zone (None until read: then the last 24 hours count)
         self.budgets: dict[str, WriteBudget] = {}
@@ -214,8 +232,12 @@ class FlowShadow:
         return self.writers.setdefault(device_id, Writer())
 
     def budget(self, device_id: str) -> WriteBudget:
-        """The write budget of one heat pump (virtual until Sunflow writes for real, step 3 part 4.7)."""
+        """The write budget of one heat pump (virtual in the shadow, EepromGuard while writing for real)."""
         return self.budgets.setdefault(device_id, WriteBudget())
+
+    def adopt_check(self, device_id: str) -> AdoptCheck:
+        """The check whether the heat pump took the last real write over."""
+        return self.adopt_checks.setdefault(device_id, AdoptCheck())
 
     async def _timezone(self, now: datetime) -> None:
         """Home Assistant's time zone, read again every TIMEZONE_EVERY; the last one stays on a failure."""
@@ -230,7 +252,7 @@ class FlowShadow:
             _LOGGER.debug("Time zone of Home Assistant not read", exc_info=True)
 
     def writing_active(self, device_id: str) -> bool:
-        """Sunflow writes to this heat pump for real (not before step 3 part 4.7)."""
+        """Sunflow writes to this heat pump for real: the user switched it on (step 3 part 4.7)."""
         return self.active.get(device_id, False)
 
     def request_write_now(self, device_id: str, now: datetime) -> tuple[bool, str | None, dict[str, Any] | None]:
@@ -323,13 +345,17 @@ class FlowShadow:
                 )
                 continue
             reading, evaluation = minute.reading, minute.evaluation
+            # The user's switch; taking over freezes the base and starts the correction at 0
+            writing = self._switch(config, device_id, device, minute, stored, room.value_c, now)
             self.recent(device_id).add(minute, bool(self.aired))
             feed, recent_s = self._feed(config, device_id, minute, states, now)
             previous = stored.get("source")
             source_changed = isinstance(previous, str) and previous != feed.source
             stored["source"] = feed.source
             effective = reading.values.get("flow_setpoint")
-            if evaluation.valid and effective is not None:
+            # The base follows the effective setpoint only while Sunflow does not write (shadow, mode off):
+            # writing for real the effective setpoint is Sunflow's own value
+            if evaluation.valid and effective is not None and not writing:
                 base, base_at = effective, now
                 stored["base_c"], stored["base_at"] = base, now.isoformat()
             frozen = list(evaluation.frozen)
@@ -374,7 +400,7 @@ class FlowShadow:
                 stored["start_c"], stored["start_at"] = start, now.isoformat()
             target = start + correction_k if start is not None and correction_k is not None else None
             reason = "no_base" if start is None else "strategy_unknown" if correction_k is None else None
-            result = self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now)
+            result = await self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now)
             stored["guard"] = self.guard(device_id).as_dict()
             flows[device_id] = FlowState(
                 strategy=strategy, base_c=base, base_at=base_at, correction_k=correction_k, target_c=target,
@@ -390,6 +416,9 @@ class FlowShadow:
             self.writers.pop(gone, None)
             self.budgets.pop(gone, None)
             self.active.pop(gone, None)
+            self.adopt_checks.pop(gone, None)
+            self.real_written_at.pop(gone, None)
+            self._failing = {f for f in self._failing if f[0] != gone}
             self.learned.pop(gone, None)
             self.settings.pop(gone, None)
         self._store.house = {
@@ -399,6 +428,65 @@ class FlowShadow:
             "model_source": self.house_source,
         }
         self._store.save()
+
+    def _switch(
+        self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",
+        stored: dict[str, Any], room_c: float | None, now: datetime,
+    ) -> bool:
+        """The user's switch (step 3 part 4.7); True while Sunflow takes the heat pump over (switched on, mode heat).
+
+        Switched on: journal; once in mode heat Sunflow takes over (base frozen, correction 0, protection
+        layer from the real values). Switched off: nothing is reset (8.6), journal; the shadow again.
+        Mode off while switched on writes nothing (8.4, inactive) and lets the base follow again; back in
+        mode heat Sunflow takes over anew."""
+        on = device.flow_active
+        self.active[device_id] = on
+        was_on = stored.get("active") is True
+        if on != was_on:
+            stored["active"] = on
+            if on:
+                self.notes.append((device_id, t(
+                    "Aktives Schreiben eingeschaltet: Sunflow schreibt ab jetzt Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe."
+                ), True))
+            else:
+                kept = self.guard(device_id).release()
+                self.adopt_check(device_id).reset()
+                self.writer(device_id).pending = None
+                message = t("Aktives Schreiben ausgeschaltet: Sunflow rechnet wieder nur im Schatten. Max T-Vorlauf bleibt, wie zuletzt geschrieben (nichts zurückgestellt).")
+                if kept:
+                    message = t("{message} Die Raumthermostat-Sperre bleibt gesetzt: die Wärmepumpe heizt nicht, bis sie aufgehoben wird.", message=message)
+                self.notes.append((device_id, message, True))
+        writing = on and config.house.climate.mode == "heat"
+        if writing and stored.get("writing") is not True:
+            self._adopt(device_id, minute, stored, room_c, now)
+        stored["writing"] = writing
+        return writing
+
+    def _adopt(self, device_id: str, minute: "Minute", stored: dict[str, Any], room_c: float | None, now: datetime) -> None:
+        """Taking over (8.1, 8.2): the base frozen as it is, the correction of every strategy at 0 (new
+        reference, no step), the protection layer from the real Max T-Vorlauf and block. The flow target is
+        then the effective setpoint the heat pump has (without a curve), so nothing jumps; written is only
+        what the rules ask for."""
+        reading = minute.reading
+        actual = reading.values.get("max_flow_setpoint")
+        self.guard(device_id).adopt(actual, reading.blocked, now)
+        strategies = set(stored.get("corrections") or {}) | {s for d, s in self._corrections if d == device_id}
+        for strategy in strategies:
+            correction = self._correction(device_id, strategy)
+            correction.value_k = 0.0
+            correction.hold(room_c, now)
+        stored["corrections"] = dict.fromkeys(sorted(strategies), 0.0)
+        writer = self.writer(device_id)
+        writer.pending, writer.manual_at = None, None
+        self.adopt_check(device_id).reset()
+        base = _float(stored.get("base_c"))
+        message = t(
+            "Sunflow übernimmt die Wärmepumpe: Basis {base} °C eingefroren, Korrektur 0, Max T-Vorlauf {value} °C wie vorgefunden. Geschrieben wird erst, wenn die Regeln es verlangen.",
+            base=number(base) if base is not None else "–", value=number(actual) if actual is not None else "–",
+        )
+        if reading.blocked:
+            message = t("{message} Die Raumthermostat-Sperre ist gesetzt, nicht von Sunflow: Sunflow hebt sie nicht auf.", message=message)
+        self.notes.append((device_id, message, False))
 
     def _source_change(
         self, device_id: str, device: DeviceConfig, old: str, new: str, start: float | None, strategy: str, now: datetime,
@@ -445,16 +533,22 @@ class FlowShadow:
         self.source_events.append((device_id, event))
         return shift
 
-    def _guard_step(
+    async def _guard_step(
         self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",
         target: float | None, feed: Feed, room_c: float | None, now: datetime,
     ) -> GuardResult | None:
-        """The protection layer for this minute: set value and writes Sunflow would cause (shadow)."""
+        """The protection layer for this minute: set value and writes Sunflow causes (in the shadow virtually)."""
         guard = self.guard(device_id)
         settings = minute.control or ControlSettings()
         self.settings[device_id] = settings
+        active = self.writing_active(device_id)
+        targets = minute.targets or WriteTargets()
         budget = self.budget(device_id)
         budget.limits, budget.tz = settings.budget, self.tz
+        self._budget_log(budget, active, targets, settings)
+        if active:
+            self._check_adopted(device_id, guard, minute, settings, now)
+        before = guard.snapshot()
         try:
             result = write_step(guard, self.writer(device_id), GuardInput(
                 at=now, reading=minute.reading, evaluation=minute.evaluation, settings=settings,
@@ -463,16 +557,82 @@ class FlowShadow:
                 curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w,
                 room_c=room_c, plan_c=config.house.climate.setpoint_c, mode=config.house.climate.mode,
                 surface=config.house.heating_surface,
-            ), active=self.writing_active(device_id), budget=budget)
+            ), active=active, budget=budget)
         except Exception:
             # The flow target goes on without it
             _LOGGER.exception("%s: protection layer failed", device.name)
             return None
+        if active:
+            await self._write(device_id, device, guard, result, targets, settings, before, now)
         for event in (*result.events, *result.writes):
             self.source_events.append((device_id, event))
         for message, warn in result.notes:
             self.notes.append((device_id, message, warn))
         return result
+
+    def _budget_log(self, budget: WriteBudget, active: bool, targets: WriteTargets, settings: ControlSettings) -> None:
+        """Writing for real the writes EepromGuard records count; in the shadow the virtual ones (seeded anew
+        from the events by the recorder after switching back)."""
+        if active and targets.setpoint_entity is not None:
+            if not isinstance(budget.log, EepromLog) or budget.log.entity_id != targets.setpoint_entity:
+                limit = settings.budget.per_day + settings.budget.emergency_per_day
+                budget.log = EepromLog(EepromGuard(self._data_dir, limit), targets.setpoint_entity)
+        elif not active and not isinstance(budget.log, VirtualLog):
+            budget.log = VirtualLog()
+
+    def _check_adopted(self, device_id: str, guard: Guard, minute: "Minute", settings: ControlSettings, now: datetime) -> None:
+        """After adopt_delay: did the heat pump take the last real write over (journal when not)."""
+        check = self.adopt_check(device_id)
+        outcome = check.step(now, minute.reading, settings.adopt_delay_s, settings.step, settings.deadband)
+        if check.state == MISSING and outcome.actual_c is not None:
+            guard.not_adopted(outcome.actual_c)
+        for message, warn in outcome.notes or []:
+            self.notes.append((device_id, message, warn))
+
+    async def _write(
+        self, device_id: str, device: DeviceConfig, guard: Guard, result: GuardResult, targets: WriteTargets,
+        settings: ControlSettings, before: dict[str, Any], now: datetime,
+    ) -> None:
+        """The writes of this minute go to the heat pump: the set value (EEPROM, EepromGuard) and the block.
+
+        A write that cannot be made (no entity, no connection, refused, EEPROM limit) is taken back - the
+        state stays as before, so the rules ask for it again - and noted in the journal."""
+        for event in [w for w in result.writes if w.get("shadow") is False]:
+            block = event.get("reason") in (BLOCK_ON, BLOCK_OFF)
+            if block:
+                call = targets.block_call(bool(event.get("block")))
+                what = t("Raumthermostat-Sperre")
+            elif event.get("reason") in SETPOINT_REASONS:
+                call = targets.setpoint_call(float(event["value_c"]))
+                what = t("Max T-Vorlauf")
+            else:
+                continue
+            error: str | None = None
+            if call is None:
+                error = t("keine Entität zum Schreiben")
+            elif self._client is None or not hasattr(self._client, "call_service"):
+                error = t("keine Verbindung zu Home Assistant")
+            else:
+                guard_eeprom = EepromGuard(self._data_dir, settings.budget.per_day + settings.budget.emergency_per_day)
+                try:
+                    await execute(self._client, [call], {}, guard_eeprom, dry_run=False, at=now)  # type: ignore[arg-type]
+                except Exception as err:  # noqa: BLE001 - any failure takes the write back
+                    _LOGGER.warning("%s: writing %s failed: %s", device.name, call.entity_id, err)
+                    error = str(err) or type(err).__name__
+                else:
+                    if call.status != "done":
+                        error = call.reason or call.status
+            if error is not None:
+                guard.undo(result, event, before)
+                _LOGGER.info("%s: %s not written: %s", device.name, call.entity_id if call else what, error)
+                if (device_id, block) not in self._failing:
+                    self._failing.add((device_id, block))
+                    self.notes.append((device_id, t("{what} nicht geschrieben ({error}); Sunflow versucht es wieder, wenn die Regeln es verlangen.", what=what, error=error), True))
+                continue
+            self._failing.discard((device_id, block))
+            if not block:
+                self.adopt_check(device_id).wrote(float(event["value_c"]), now)
+                self.real_written_at[device_id] = now
 
     # Status
 
@@ -500,7 +660,7 @@ class FlowShadow:
 
     def house_status(self, config: SunflowConfig | None = None) -> dict[str, Any]:
         """Room setpoint, mode and room temperature for the climate entity and the UI."""
-        return climate_status(config or self._config, self.room, self.watch.settling, self.ventilation)
+        return climate_status(config or self._config, self.room, self.watch.settling, self.ventilation, shadow=not any(self.active.values()))
 
     def flow_status(self, device_id: str) -> dict[str, Any] | None:
         """Base, correction and flow target of one heat pump (shadow: nothing is written)."""
@@ -619,6 +779,8 @@ class FlowShadow:
             "budget": self.budget(device_id).status(now, virtual=not self.writing_active(device_id)),
             # Foreign writers (8.5): the running episode, the latest foreign changes, the ESP regulation
             "foreign": guard.foreign.status(now),
+            # Writing for real (step 3 part 4.7): whether the heat pump took the last write over
+            "adopt": self.adopt_checks[device_id].status() if device_id in self.adopt_checks else None,
             "writes": list(reversed(guard.recent_writes)),
             "unwanted_stops": list(reversed(guard.recent_stops)),
             "values": guard_values(settings, learned, guard.bumps, now).as_dict(),
@@ -636,6 +798,7 @@ def climate_status(
     room: RoomTemperature | None,
     settling: Settling | None,
     ventilation: VentilationWatch | None = None,
+    shadow: bool = True,
 ) -> dict[str, Any]:
     """Room setpoint, its range, mode, room temperature, a setpoint change being followed, ventilation."""
     climate = config.house.climate if config is not None else None
@@ -656,6 +819,6 @@ def climate_status(
         # Planning follows in step 4: the plan target is the setpoint
         "plan_target_c": climate.setpoint_c if climate else None,
         "settling": settling.as_dict() if settling else None,
-        # Nothing is written to a heat pump yet
-        "shadow": True,
+        # No heat pump is written to for real (the mark per heat pump is in its flow status, setpoint.mode)
+        "shadow": shadow,
     }

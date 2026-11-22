@@ -2,7 +2,8 @@
 
 Only while Sunflow writes for real: the correction is shifted by old − new start value (within ±3 K), the
 rest stays as a jump and goes into the journal. In the shadow the flow target jumps once, by design.
-Writing for real is switched on only in part 4.7; here it is simulated with FlowShadow.active.
+Writing for real is the user's switch (DeviceConfig.flow_active, part 4.7); here the heat pump is switched on
+and already taken over (no new takeover with correction 0), nothing is written (no client).
 """
 
 from datetime import timedelta
@@ -23,6 +24,15 @@ CURVE_C = _ready_curve().flow_c(21.0, 2500.0)
 JUMP = CURVE_C - BASE_C
 
 
+def _switch(shadow: Shadow, active: bool) -> None:
+    """Writing for real switched on (or off) and, when on, taken over before with the base BASE_C (frozen since)."""
+    shadow.device.flow_active = active
+    stored = shadow.shadow._store.devices.setdefault("hp", {})
+    stored.update(active=active, writing=active)
+    if active and "base_c" not in stored:
+        stored.update(base_c=BASE_C, base_at=NOW.isoformat())
+
+
 def _notes(shadow: Shadow) -> list[str]:
     return [m for _, m, _ in shadow.shadow.notes if "Quelle des Vorlauf-Ziels" in m]
 
@@ -34,7 +44,7 @@ def _flow_events(shadow: Shadow) -> list[dict[str, Any]]:
 async def _to_house_model(tmp_path: Path, correction: float, active: bool, gap: timedelta = MIN) -> tuple[Shadow, dict[str, Any], dict[str, Any]]:
     """One minute on the base, then (after gap) the house model takes over: flows before and after."""
     shadow = Shadow(tmp_path)
-    shadow.shadow.active["hp"] = active
+    _switch(shadow, active)
     shadow.shadow.set_curve("hp", _ready_curve())
     shadow.shadow._correction("hp", "fixed").value_k = correction
     before = await shadow.tick(NOW, _minute(NOW, setpoint=BASE_C))
@@ -122,7 +132,7 @@ async def test_active_way_back_and_after_a_restart(tmp_path: Path) -> None:
     """House model → base after a restart of Sunflow: the stored start value protects as well."""
     _, _, on_curve = await _to_house_model(tmp_path, 1.0, active=True)
     restarted = Shadow(tmp_path)
-    restarted.shadow.active["hp"] = True
+    _switch(restarted, True)
     restarted.shadow.set_curve("hp", _ready_curve())
     # No house model any more, no recent heat after the restart: back to the base
     back = await restarted.tick(NOW + 2 * MIN, _minute(NOW + 2 * MIN, setpoint=BASE_C))
@@ -137,7 +147,7 @@ async def test_active_way_back_and_after_a_restart(tmp_path: Path) -> None:
 
 async def test_no_change_no_event(tmp_path: Path) -> None:
     shadow = Shadow(tmp_path)
-    shadow.shadow.active["hp"] = True
+    _switch(shadow, True)
     for i in range(3):
         flow = await shadow.tick(NOW + i * MIN, _minute(NOW + i * MIN, setpoint=BASE_C))
 

@@ -76,7 +76,22 @@ Per wallbox:
 ## Heat pump
 
 The heat pump control runs in **shadow operation**: Sunflow computes the flow temperature and shows
-it, but writes nothing to the heat pump.
+it, but writes nothing to the heat pump – until you switch on **writing to the heat pump** per heat pump.
+
+**Writing to the heat pump** (per heat pump, default off): switched on, Sunflow writes the set value (Max
+T-Vorlauf, stored in the heat pump's EEPROM, within the budget) and the room thermostat block to the heat
+pump. It can be switched on only when the heat pump is compatible and reachable, values are there, the
+heating circuit function is fixed and the ESP regulation is off; switch off other controllers writing these
+values first. When switched on, Sunflow takes over without writing anything: the base is frozen, the
+correction starts at 0, set value and block count as the heat pump has them (a block set by someone else
+stays someone else's). Sunflow writes only when the rules ask for it; every write is in the journal with its
+reason. A write that fails is taken back (journal) and tried again when the rules ask for it. About a minute
+after a write Sunflow checks that the heat pump took the value over: if it does not show it, Sunflow goes on
+from the value shown; if the effective flow setpoint stays below it while heating, the heat pump limits it
+itself (e.g. flow temperature day) – then set the upper limit of the set value to that value at most (both a
+warning in the journal). In mode off Sunflow writes nothing; afterwards it takes over again as when switched
+on. **Switching off** resets nothing: Max T-Vorlauf stays as last written, a block Sunflow set stays set (the
+heat pump then does not heat until it is released); Sunflow computes in the shadow again.
 
 **Room setpoint:** the room temperature Sunflow is to keep (18–27 °C) and the mode heat/off; the same as
 the thermostat "Haus" in Home Assistant. Next to it the room temperature (weighted mean of the rooms; a
@@ -151,12 +166,13 @@ writes the latest value if it still differs (a normal value by more than 0.5 K, 
 raise). A waiting value is shown as "pending … would be written at …". The **budget** applies in shadow
 as well (from the device profile, for the HPSU 48 writes per day, plus 24 only for protection steps, at
 most 6 in any hour; the day follows Home Assistant's time zone): Sunflow counts virtually from the
-recorded writes, the counter of real EEPROM writes stays untouched. When the daily budget is used up, a
+recorded writes, the counter of real EEPROM writes stays untouched; writing for real, the real writes in
+that counter count. When the daily budget is used up, a
 normal value waits ("pending … waits: daily budget used up") until the next day; protection steps go on
 from the emergency quota. When that is used up too or the hourly limit is reached, Sunflow would set the
 room thermostat block instead of the protection step and release it once a protection step may be
 written again (at the earliest after its minimum duration). The journal notes each kind of exhaustion
-once a day. The tile **Budget today (virtual)** shows the day's use, the emergency quota left and the
+once a day. The tile **Budget today** ("virtual" in the shadow) shows the day's use, the emergency quota left and the
 last hour. The button **Write now** skips the spacing for the pending value (not the budget) and is not
 offered in shadow operation yet. The room thermostat block counts neither against the
 budget nor for the spacing: the HPSU does not store this input in its EEPROM; its minimum duration

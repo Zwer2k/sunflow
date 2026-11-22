@@ -2,9 +2,10 @@
 
 Sunflow stores setpoint and mode; this entity mirrors them. Changes in quick succession (e.g. an
 automation stepping the setpoint) are sent once, with the last value. Mode off: Sunflow writes
-nothing to the heat pump but keeps computing. For now Sunflow runs in shadow operation: the flow
-target is computed and shown in the attributes, nothing is written. The attribute mode (shadow | active)
-says which; shadow (true/false) is the older mark, set from the same source (deprecated, use mode).
+nothing to the heat pump but keeps computing. Until the user switches writing on per heat pump in the
+Sunflow App, Sunflow runs in shadow operation: the flow target is computed and shown in the attributes,
+nothing is written. The attribute mode (shadow | active) says which; shadow (true/false) is the older mark,
+set from the same source (deprecated, use mode).
 """
 
 import logging

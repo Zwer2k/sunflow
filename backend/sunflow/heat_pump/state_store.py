@@ -27,6 +27,11 @@ class HeatPumpStateStore:
         self._written: str | None = None
         self._read()
 
+    @property
+    def data_dir(self) -> Path:
+        """The directory of the state file."""
+        return self._path.parent
+
     def _read(self) -> None:
         try:
             raw = json.loads(self._path.read_text())

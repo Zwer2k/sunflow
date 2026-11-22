@@ -154,6 +154,7 @@ export const api = {
   heatPumpStatus: () => request("GET", "/heat_pump/status"),
   setHeatPumpFlowLimits: (deviceId, body) => request("PUT", `/heat_pump/${encodeURIComponent(deviceId)}/flow_limits`, body),
   heatPumpWriteNow: (deviceId) => request("POST", `/heat_pump/${encodeURIComponent(deviceId)}/write_now`),
+  setHeatPumpWriting: (deviceId, active) => request("PUT", `/heat_pump/${encodeURIComponent(deviceId)}/writing`, { active }),
   heatPumpShadowWrites: (deviceId, days = 7) =>
     request("GET", `/heat_pump/${encodeURIComponent(deviceId)}/shadow_writes?days=${days}`),
   setIntegrationSettings: (body) => request("PUT", "/config/integration", body),
