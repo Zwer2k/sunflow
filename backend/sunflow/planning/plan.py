@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta, tzinfo
+import logging
 import math
 from statistics import fmean, median
 import time
@@ -38,6 +39,7 @@ from .habits import (
     learn_usage_from_energy,
 )
 from .hot_water import HotWaterUsage, learn_hot_water
+from .house_plan import ACTIVE as HOUSE_ACTIVE, HouseInput, HousePlan, house_plan, house_setup
 from .load_forecast import (
     LoadForecast,
     build_load_forecast,
@@ -65,6 +67,8 @@ from .sources import (
 )
 from .vehicle_usage import VehicleUsage, usage_from as vehicle_usage_from
 from .vehicles import PLUGGED, Recognized, recognize, soc_of, vehicle_max_power
+
+_LOGGER = logging.getLogger(__name__)
 
 # The plan looks this far ahead; beyond the published prices with estimated ones
 HORIZON_HOURS = 96
@@ -654,6 +658,9 @@ class PlanResult:
     vehicle_usages: dict[str, VehicleUsage] = field(default_factory=dict)
     plug_in_hints: list[dict[str, Any]] = field(default_factory=list)
     pv_correction: PvCorrection | None = None
+    # The room heating planned with the house (design/heat_pump.md, 7): in the plan ("Lernen + Regeln"),
+    # from a second run only shown ("Nur Lernen"), or why not
+    house: HousePlan | None = None
 
 
 async def consumer_usages(
@@ -1575,6 +1582,40 @@ def risk_shares(risk: float, clouds: list[float | None], measured: list[float]) 
     ]
 
 
+async def optimize_with_house(
+    config: SunflowConfig,
+    house: HouseInput | None,
+    inputs: list[SlotInput],
+    temperatures: list[float | None],
+    batteries: list[BatterySpec],
+    settings: Settings,
+    loads: list[FlexLoad],
+) -> tuple[Plan, HousePlan | None]:
+    """Optimize, with the room heating as the mode wants it (design/heat_pump.md, 7).
+
+    "Lernen + Regeln": the heat pump planned with the house in the plan, its usual draw out of the house
+    load. "Nur Lernen": the plan as without room heating, a second run only shows what Sunflow would
+    preheat. Off, without a usable house model, outside the heating program ...: no room heating plan.
+    The solver is CPU bound and runs in a thread, keeping the event loop (HA connection, API) responsive.
+    Without a heat pump there is no room heating to show (None).
+    """
+    if house is None:
+        return await asyncio.to_thread(optimize, inputs, batteries, settings, loads), None
+    setup = house_setup(config, house, inputs, temperatures)
+    if setup.load is not None and setup.mode == HOUSE_ACTIVE:
+        plan = await asyncio.to_thread(optimize, setup.adjusted, batteries, settings, loads, [setup.load])
+        return plan, house_plan(config, house, setup, plan)
+    plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads)
+    shown = None
+    if setup.load is not None:
+        try:
+            shown = await asyncio.to_thread(optimize, setup.adjusted, batteries, settings, loads, [setup.load])
+        except Exception:
+            # Only shown: the plan itself goes on without it
+            _LOGGER.exception("Planning the room heating (shown only) failed")
+    return plan, house_plan(config, house, setup, shown)
+
+
 async def compute_plan(
     client: HAClient,
     config: SunflowConfig,
@@ -1592,13 +1633,15 @@ async def compute_plan(
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
     pv_recent: tuple[float, float, float] | None = None,
+    house: HouseInput | None = None,
 ) -> PlanResult:
     """Fetch forecasts and prices, then optimize the battery schedule.
 
     consumer_hours: hourly power of all controllable consumers from Sunflow's own samples;
     vehicle_hours: hourly SoC per car from them; sun_corrections: correction by sun position;
     pv_recent: measured, raw forecast and expected PV energy (Wh) of the last hours
-    per plane, used instead of the hourly one when switched on.
+    per plane, used instead of the hourly one when switched on. house: the first heat pump with the house
+    model and the room temperature, planned with the house (7).
     """
     warnings: list[str] = []
     battery_device = planned_battery(config.devices, profiles)
@@ -1938,8 +1981,8 @@ async def compute_plan(
             settings,
             reserve_dip_wh=tuple(reserve_dips(inputs, batteries[0], settings.reserve_wh, floor, tz)),
         )
-    # The solver is CPU bound; keep the event loop (HA connection, API) responsive
-    plan = await asyncio.to_thread(optimize, inputs, batteries, settings, loads)
+    # The room heating with the house as the mode wants it (7)
+    plan, heating = await optimize_with_house(config, house, inputs, weather["temperature"], batteries, settings, loads)
     device_actions(plan, profile, battery_device.id)
     for device, _ in others:
         device_actions(plan, profiles[device.profile], device.id)
@@ -1989,4 +2032,5 @@ async def compute_plan(
         + [(device.id, device.name, spec) for (device, _), spec in zip(others, batteries[1:], strict=True)],
         reserve_wh=settings.reserve_wh,
         reserve_dip_wh=settings.reserve_dip_wh,
+        house=heating,
     )

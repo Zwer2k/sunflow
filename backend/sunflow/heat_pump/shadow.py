@@ -11,7 +11,8 @@ The correction belongs to the strategy, not to the source: in the shadow a chang
 it as it is and the flow target jumps once (noted in heat_pump_samples). While Sunflow writes for real
 (step 3 part 4.5, switched on in part 4.7) the correction is shifted by old − new start value at a source
 change, within its limit, so the flow target does not jump; a rest is noted in the journal. The target
-room temperature is the room setpoint (planning follows in step 4).
+room temperature is the room setpoint (the planning plans it from step 4 part 2, planning/house_plan.py; the
+controller takes the plan target over in part 3).
 
 Shadow: everything is computed, stored and shown, nothing is written to a heat pump. As Sunflow does
 not act, the correction has no effect back and may run to its limit; it is marked as shadow and starts
@@ -173,6 +174,8 @@ class FlowShadow:
         self.aired: tuple[str, ...] = ()
         self.room: RoomTemperature | None = None
         self.flows: dict[str, FlowState] = {}
+        # The last sample of each heat pump (room heating planning, 7: program, outside temperature)
+        self.last_minutes: dict[str, "Minute"] = {}
         self._config: SunflowConfig | None = None
         self._observed_at: datetime | None = None
         # Learned heating curves per heat pump (from the cache until learned anew) and the house model
@@ -358,6 +361,7 @@ class FlowShadow:
                     target_c=None, frozen=("no_sample",), reason="no_sample",
                 )
                 continue
+            self.last_minutes[device_id] = minute
             reading, evaluation = minute.reading, minute.evaluation
             # The user's switch; taking over freezes the base and starts the correction at 0
             writing = self._switch(config, device_id, device, minute, stored, room.value_c, now)
@@ -428,6 +432,7 @@ class FlowShadow:
         for gone in set(self._store.devices) - set(minutes):
             del self._store.devices[gone]
             self.curves.pop(gone, None)
+            self.last_minutes.pop(gone, None)
             self._recent.pop(gone, None)
             self.guards.pop(gone, None)
             self.writers.pop(gone, None)
@@ -838,7 +843,7 @@ def climate_status(
         # Ventilation (6.2): rooms being aired and events that ended within the last 24 h, newest first
         "ventilation": [e.as_dict() for e in ventilation.active.values()] if ventilation else [],
         "ventilation_recent": [e.as_dict() for e in reversed(ventilation.recent)] if ventilation else [],
-        # Planning follows in step 4: the plan target is the setpoint
+        # The controller follows the plan target from step 4 part 3 on (the plan itself: GET /plan, house); until then the setpoint
         "plan_target_c": climate.setpoint_c if climate else None,
         "settling": settling.as_dict() if settling else None,
         # No heat pump is written to for real (the mark per heat pump is in its flow status, setpoint.mode)

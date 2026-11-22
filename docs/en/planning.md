@@ -160,6 +160,36 @@ soon, the hint "… plugging in at "*wallbox*" pays off" appears (in Home Assist
 **One-off loads** such as a washing machine or dryer are scheduled at the cheapest time with the
 action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
 
+## Room heating
+
+With a heat pump and a learned house model the house itself becomes a heat storage: with PV surplus or
+cheap electricity Sunflow preheats, with dear electricity it lets the house cool a little – within the
+**margin** around the room setpoint (Settings → Heat pump, start: preheat up to +1 K, no lowering).
+
+- Per 15 minutes Sunflow computes the room temperature ahead with the house model (heat loss to outside,
+  internal gains, heat of the heat pump); the heat pump's power is a variable of the plan, the COP is
+  estimated from the outside temperature (Carnot), the highest power comes from the highest heat output
+  learned (else the profile's start value). The outside temperature comes from the weather forecast; without
+  a forecast the measured one stays. The sun is left out – on sunny days Sunflow plans a little too much
+  heat, the room correction makes up for it.
+- Every kelvin above or below the room setpoint costs 0.05 € per hour: without a saving the plan target
+  stays on the setpoint. Below the margin it is very expensive (practically ruled out), above it dear but
+  possible (the sun may push the house there).
+- What the heat pump needs to hold the room setpoint (house model heat / COP) Sunflow takes out of the load
+  forecast (which learned it), at most 70 % of it per quarter hour, and plans it anew; in the comparison
+  without Sunflow it counts again.
+- **Lernen + Regeln** (learning + control): battery and loads are planned with the heat pump. **Nur Lernen**
+  (learning only): the plan stays as without room heating (the heat pump is part of the load forecast); a
+  second calculation only shows how Sunflow would preheat. **Aus** (off): no preheating plan.
+- Only the first heat pump is planned, only in the heating program, with a usable house model (at least
+  7 days of data, better than "it stays the same"), with the room temperature and a current reading of the
+  heat pump – otherwise the plan target is the room setpoint and the plan says why. Without a controllable
+  battery Sunflow computes no plan and so no preheating plan either.
+- A change of room setpoint, margin, mode or "Lernen + Regeln" replans at once.
+- Shown in the plan under **Room heating**: the planned room temperature within the margin and the heat
+  pump's power draw, planned and without planning. The flow controller still works towards the room
+  setpoint; it takes the plan target over in one of the next versions.
+
 ## Learning
 
 - **PV forecast**: Sunflow compares forecast and measurement per hour and cloud cover and learns a

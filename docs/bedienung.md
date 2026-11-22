@@ -149,6 +149,9 @@ Links von „jetzt“ stehen gemessene Werte, rechts die Prognose und der Plan.
   Laden aus dem Netz, Entladen begrenzt …) und Ladestand von → bis.
 - **Steuerbare Verbraucher**: je Verbraucher Ziel, Zeitpunkt und was eingeplant ist, oder
   warum nicht.
+- **Raumheizung** (mit Wärmepumpe): Planziel der Raumtemperatur im Spielraum um den Raum-Soll und die
+  Stromaufnahme der Wärmepumpe, geplant und ohne Planung; bei „Nur Lernen“ als „würde vorheizen“
+  gekennzeichnet, sonst der Grund, warum nicht geplant wird (siehe [Planung](planung.md#raumheizung)).
 - **Verlauf und Prognose**: Diagramme für Ladestand, PV-Erzeugung und Hausverbrauch,
   Netzbezug und Einspeisung, Kostenverlauf und Bezugspreis.
   - Zeitraum 24 h, 48 h oder 7 Tage; mit ‹ › blättern, **Jetzt** springt zurück.

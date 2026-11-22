@@ -43,6 +43,19 @@ ROOM_PREHEAT_DEFAULT_K = 1.0
 ROOM_LOWER_DEFAULT_K = 0.0
 ROOM_MARGIN_MAX_K = 3.0
 ROOM_MARGIN_STEP_K = 0.1
+# Planning with the house (7, step 4 part 2): € per K and hour the planned room temperature lies away
+# from the setpoint within the margin, up or down alike - small against a real saving, so the plan stays
+# on the setpoint without one. Not a setting.
+PLAN_DEVIATION_EUR_PER_KH = 0.05
+# Below the margin: far above what heating a kelvin costs (practically hard); above it: dear, but the
+# sun may push the house there
+PLAN_COLD_EUR_PER_KH = 50.0
+PLAN_WARM_EUR_PER_KH = 0.2
+# What the heat pump draws to hold the setpoint is taken out of the house load forecast (which learned
+# it), at most this share of the forecast per slot
+PLAN_MAX_LOAD_SHARE = 0.7
+# The heat pump's last sample counts for the planning this long (room temperature, outside, program)
+PLAN_SAMPLE_MAX_AGE_S = 10 * 60
 
 # Room correction (8.2): proportional part on the room temperature (the same for every heating surface
 # type), integral time of the default type (each type's own in HEATING_SURFACES, ti_h), deadband of the

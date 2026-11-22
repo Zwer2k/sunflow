@@ -481,7 +481,7 @@ def _api(tmp_path: Path, library: Any, flow: Any, usable: bool = True, strategy:
     app.state.store.save(config)
     app.state.manifests = SimpleNamespace(usable=lambda device_id: usable, status=dict, notes=list)
     status = {"hp": {"strategy": strategy}} if sampled else {}
-    app.state.runner = SimpleNamespace(heat_pump=SimpleNamespace(flow=flow, status=lambda: status), shadow=None)
+    app.state.runner = SimpleNamespace(heat_pump=SimpleNamespace(flow=flow, status=lambda: status), shadow=None, request_replan=lambda: None)
     return TestClient(app)
 
 

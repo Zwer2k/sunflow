@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.24
+
+- Heat pumps: the **planning** now uses the room setpoint and the margin. With a learned house model Sunflow treats the house as a heat storage: within "Vorheizen bis" / "Absenken bis" it preheats with PV surplus or cheap electricity and lets the house cool when electricity is dear. Every kelvin away from the room setpoint costs 0.05 € per hour in the plan, so without a saving the plan target stays on the setpoint. What the heat pump needs to hold the setpoint (house model heat / COP, at most 70 % of the load forecast) is taken out of the load forecast and planned anew. Only the first heat pump, only in the heating program, without the sun (on sunny days the room correction catches the difference). With **Lernen + Regeln** the battery and consumer plan includes the heat pump; with **Nur Lernen** the plan stays as before and a second calculation only shows how Sunflow would preheat; with **Aus** there is no preheating plan. New section **Room heating** in the plan (planned room temperature within the margin, heat pump power planned and without planning, or why not). A change of setpoint, margin, mode or "Lernen + Regeln" replans at once. The flow controller still works towards the room setpoint (the plan target follows in a next version).
+
 ## 0.80.23
 
 - Heat pumps: new setting **margin** with the room setpoint in Settings → Heat pump: "Vorheizen bis" (preheat up to, start +1.0 K) and "Absenken bis" (lower down to, start 0 K), each 0–3 K. It tells the planning how far it may heat above the room setpoint with PV surplus or cheap electricity, or let the house fall below it when electricity is dear. Stored only for now; the planning uses it in one of the next versions.

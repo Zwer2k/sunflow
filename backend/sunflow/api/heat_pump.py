@@ -24,7 +24,7 @@ from sunflow.heat_pump.limits import ControlSettings, setpoint_range, surface_ra
 from sunflow.heat_pump.samples import records_heat_pump
 from sunflow.heat_pump.shadow import climate_status
 
-from .common import _library, _local_tz
+from .common import _library, _local_tz, _replan
 
 router = APIRouter()
 
@@ -222,6 +222,8 @@ async def set_writing(request: Request, device_id: str, body: Writing) -> dict[s
     if device.flow_active != body.active:
         device.flow_active = body.active
         store.save(config)
+        # "Lernen + Regeln" plans the battery with the heat pump, "Nur Lernen" without (7)
+        _replan(request)
     return {"active": device.flow_active}
 
 
@@ -288,4 +290,6 @@ async def set_climate(request: Request, body: ClimateUpdate) -> dict[str, Any]:
     if climate.model_dump() != current.model_dump():
         config.house.climate = climate
         store.save(config)
+        # The planning's band and target follow at once (7), not with the next quarter hour
+        _replan(request)
     return climate.model_dump()

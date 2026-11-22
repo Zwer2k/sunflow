@@ -28,6 +28,7 @@ from sunflow.devices.site import (
 from sunflow.ha import HAClient, HAError
 from sunflow.heat_pump.feedforward import HouseContext
 from sunflow.planning.house_model import SAMPLES, HouseModel, learn_house
+from sunflow.planning.house_plan import HouseInput, house_input
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import (
@@ -159,6 +160,7 @@ async def current_plan(
     chargers: ChargerWatch | None = None,
     sun_corrections: dict[str, SunCorrection] | None = None,
     pv_recent: tuple[float, float, float] | None = None,
+    house: HouseInput | None = None,
 ) -> PlanResult:
     """Plan from the current slot on with live data."""
     # Fresh states for the plan, registries from the shared cache
@@ -180,6 +182,7 @@ async def current_plan(
         chargers,
         sun_corrections,
         pv_recent,
+        house,
     )
 
 
@@ -554,7 +557,8 @@ class ShadowRunner:
         pv_limit = max(EARLY_REPLAN_PV_W, EARLY_REPLAN_PV_SHARE * slot.pv_w)
         if (d := lasting(lambda s: None if s.pv_w is None else s.pv_w - slot.pv_w, pv_limit)) is not None:
             return f"PV {d:+.0f} W gegenüber Plan"
-        planned_load = slot.load_w + sum((slot.flex_w or {}).values())
+        # The heat pump planned with the house is part of the load ("Lernen + Regeln")
+        planned_load = slot.load_w + sum((slot.flex_w or {}).values()) + sum((getattr(slot, "heat_w", None) or {}).values())
         if (d := lasting(lambda s: None if s.load_w is None else s.load_w - planned_load, EARLY_REPLAN_LOAD_W)) is not None:
             return f"Verbrauch {d:+.0f} W gegenüber Plan"
         capacity = self.latest.battery.capacity_wh if self.latest.battery else None
@@ -878,6 +882,10 @@ class ShadowRunner:
                 else None
             )
 
+    def house_input(self) -> HouseInput | None:
+        """The first heat pump with the house model and room temperature for the planning (7)."""
+        return house_input(self._store.load(), self._library.profiles, self.flow_shadow, self.house_model, datetime.now(UTC))
+
     @property
     def flow_shadow(self) -> Any:
         """The shadow flow control of the heat pump recording (FlowShadow), if there is one."""
@@ -902,6 +910,7 @@ class ShadowRunner:
             chargers=self.controller.chargers if self.controller is not None else None,
             sun_corrections=self.sun_corrections(),
             pv_recent=await asyncio.to_thread(self.pv_recent, await local_timezone(self._client)),
+            house=self.house_input(),
         )
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
@@ -914,7 +923,9 @@ class ShadowRunner:
             "power": first.action_power_w,
             "soc": first.soc_wh,
             "pv": first.pv_w,
-            "load": first.load_w,
+            # The house load forecast as learned, with what the heat pump would draw unplanned (taken out
+            # while it is planned with the house)
+            "load": first.load_w + sum(first.heat_base_w.values()),
             "price": first.price,
             # Learning compares the uncorrected forecast with the measurement
             "forecast_pv": result.raw_pv[0] if result.raw_pv else None,

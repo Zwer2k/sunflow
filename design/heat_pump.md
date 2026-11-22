@@ -501,7 +501,7 @@ Umsetzung (3, Teil 1; umgestellt 0.80.21, `heat_pump/ventilation.py`, Startwerte
   ohne Fehler. Ändern über `PUT /api/v1/house/climate` (Teiländerung wie Soll und Modus; Werte außerhalb
   werden dort abgelehnt) und im Sunflow-UI beim Raum-Soll; nicht über die climate-Entity (HA kennt kein
   Band zum Einstellen). Status `GET /api/v1/heat_pump/status` (`house.preheat_k`, `lower_k`, Bereich
-  `margin_max_k`). Wirkung erst mit der Planung (4.2).
+  `margin_max_k`). Wirkung mit der Planung (Abschnitt 7, 4.2): Band und Ziel der Raumheizung.
 - Attribute der climate-Entity: aktuelles Planziel, Grund („Vorheizen wegen PV“), Vorlauf-Ziel,
   geschriebener/ausstehender Stellwert.
 - Entfällt: `comfort_min`, `comfort_max`, `night_min`, `night_start`, `night_end`, `reference` in
@@ -534,6 +534,36 @@ Umsetzung (3, Teil 1; umgestellt 0.80.21, `heat_pump/ventilation.py`, Startwerte
   Vorheiz-Plan, Planziel = Soll.
 - Mehrere Wärmepumpen: geplant wird ein Haus mit der ersten Wärmepumpe (wie die climate-Attribute); weitere
   laufen ohne Plan (Planziel = Soll).
+
+**Umsetzung (4, Teil 4.2, 0.80.24):** `planning/house_plan.py` (`HouseInput`, `house_setup`, `house_plan`),
+`optimize_with_house` in `planning/plan.py`, `ThermalLoad` mit `target`/`deviation_cost` (Abweichung nach oben und
+unten je Slot als eigene Variablen) und `max_heat_w` (elektrische Grenze je Slot = höchste Heizleistung / COP).
+Konstanten in `heat_pump/defaults.py` (`PLAN_DEVIATION_EUR_PER_KH` 0,05, `PLAN_COLD_EUR_PER_KH` 50,
+`PLAN_WARM_EUR_PER_KH` 0,2 wie bisher, `PLAN_MAX_LOAD_SHARE` 0,7, `PLAN_SAMPLE_MAX_AGE_S` 10 min).
+- Eingaben (`ShadowRunner.house_input`): erste Wärmepumpe (`heat_pump_device`), nutzbares Hausmodell des Runners
+  (`useful`, `b` > 0), Raum-Ist (6.1), letzter Messwert der Wärmepumpe aus `FlowShadow.last_minutes` (Programm,
+  gemessene Außentemperatur; höchstens 10 min alt), höchste Heizleistung aus den gelernten Werten (sonst Startwert
+  des Profils, `learned.values`), Schalter `flow_active`.
+- Band [Soll − `lower_k`, Soll + `preheat_k`], Ziel = Soll je Slot; Außentemperatur der Prognose je Slot, Lücken mit
+  dem letzten bekannten Wert, ohne Prognose die gemessene; COP `carnot_cop`. **Ohne Sonne** (keine
+  Einstrahlungsprognose; Nutzer 22.11.): nur innere Gewinne `d`, die Korrektur fängt sonnige Tage auf.
+- Grundlast: Strom, um den Soll zu halten = max(a·(Soll − T_out) − d, 0)/b / COP, begrenzt auf die elektrische
+  Grenze und 70 % der Lastprognose des Slots; aus der Lastprognose genommen, im Vergleich ohne Sunflow wieder addiert.
+- Modus: „Lernen + Regeln“ (`flow_active` und Modus Heizen) plant mit `ThermalLoad` im Batterieplan; „Nur Lernen“ rechnet
+  den Batterieplan ohne und eine zweite Rechnung nur für die Anzeige (Fehler dort lassen den Plan unberührt, Grund
+  `failed`); Aus: kein Vorheiz-Plan.
+- Kein Plan der Raumheizung (Planziel = Soll), mit Grund: `mode_off`, `no_model`, `no_sample`, `program` (mit
+  Programm), `no_room`, `no_outside`, `failed`; ohne Wärmepumpe gar keine Anzeige. Ohne steuerbaren Speicher rechnet
+  Sunflow keinen Plan (bestehende Einschränkung, Nutzer 22.11.: so lassen).
+- Ausgabe `PlanResult.house` → `GET /api/v1/plan…` unter `house` (`mode` `active`|`shadow`, `reason`, Soll, Band,
+  Raum-Ist, je Slot `target_c`, `power_w`, `heat_w`, `baseline_w`, `outside_c`, `cop`; Strom geplant/ohne Planung in
+  kWh); Plan-Ansicht Abschnitt „Raumheizung“ (Planziel im Spielraum, Stromaufnahme geplant/ohne Planung; „würde
+  vorheizen“ bei „Nur Lernen“). `plan_target_c` im Status bleibt bis 4.3 der Soll.
+- Neuplanung sofort bei Änderung von Soll, Spielraum, Modus (`PUT /api/v1/house/climate`) und Schalter
+  (`PUT /api/v1/heat_pump/<id>/writing`). Gespeicherte Lastprognose (`planned_load_w`) mit der Grundlast der Wärmepumpe,
+  frühe Neuplanung vergleicht den Verbrauch mit Last + geplanter Wärmepumpe.
+- Beobachtet beim Testen: oberhalb des Bands kostet es 0,2 €/K·h; bei großen Preisunterschieden plant Sunflow einige
+  Zehntel Kelvin über Soll + `preheat_k` (bewusst wie bisher „teuer, aber möglich“).
 
 **Außentemperatur – gemessen für jetzt, Prognose für später:**
 
@@ -1632,6 +1662,10 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
             (Schatten), nicht mit der HPSU-Nachbildung.
         12. Einschalten prüft nicht, ob andere Regler Max T-Vorlauf oder die Sperre schreiben (Inbetriebnahme
             Schritt 0); das meldet erst die Erkennung fremder Schreiber.
+        13. Sonne in der Planung (7, Teil 4.2 ohne Sonne): die PV-Prognose als Ersatz für die Einstrahlung im
+            Hausmodell (S je Slot = PV-Prognose / höchste PV-Leistung, 0–1) – ungeprüfte Annahme (PV-Fläche ≠
+            Fenster), nicht umgesetzt (Nutzer 22.11.). Das Vorheizen bei PV-Überschuss über den Spielraum ist davon
+            unberührt.
       - **Modus in einer Auswahl (0.80.22):** Aus / Nur Lernen / Lernen + Regeln statt Modus und Schalter,
         Aus ohne Aufzeichnung und Lernen (Abschnitt 13). Tests `test_heat_pump_samples.py`
         (`test_mode_off_records_and_learns_nothing`), `test_heat_pump_guard.py`
@@ -1665,7 +1699,8 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       für die Abweichung vom Soll im MILP), nur mit nutzbarem Hausmodell und Programm Heizen; COP Carnot;
       Wärmepumpe aus der Lastprognose über das Modell (höchstens 70 %); Ausgabe je Slot Planziel und Wärme;
       Neuplanung sofort bei Soll- oder Spielraum-Änderung; bei „Nur Lernen“ eigene zweite Rechnung nur zur
-      Anzeige; Anzeige im Plan.
+      Anzeige; Anzeige im Plan. **Umgesetzt (0.80.24):** Abschnitt 7 „Umsetzung“; Tests `tests/test_house_plan.py`;
+      Regler unverändert (Planziel erst 4.3).
    3. **Planziel an den Regler** (8.1, 8.2): Korrektur gegen das Planziel des laufenden Slots; `Q*` aus der
       Planung als neue erste Quelle `plan` (vor `house_model`), mit Sprungschutz wie die anderen Quellen;
       Änderungen des Planziels frieren die Korrektur nicht ein (nur eine Soll-Änderung); climate-Attribute

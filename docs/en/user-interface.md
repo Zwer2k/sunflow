@@ -142,6 +142,9 @@ Left of "now" are measured values, right of it forecast and plan.
   from → to.
 - **Controllable loads**: target, deadline and what is planned per load,
   or why not.
+- **Room heating** (with a heat pump): the planned room temperature within the margin around the room
+  setpoint and the heat pump's power draw, planned and without planning; with "Nur Lernen" (learning only)
+  marked "would preheat", otherwise why it is not planned (see [Planning](planning.md#room-heating)).
 - **History and forecast**: charts for state of charge, PV production and
   house consumption, grid import and export, cost over time and import price.
   - Period 24 h, 48 h or 7 days; page with ‹ ›, **Now** jumps back.

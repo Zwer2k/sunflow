@@ -70,6 +70,23 @@ function flexWindows(slots, name) {
 }
 
 /** A fixed color per controllable consumer, in the order of the plan; load and PV keep the first two. */
+const HOUSE_REASONS = {
+  mode_off: t("Modus Aus: kein Vorheiz-Plan, Planziel ist der Raum-Soll."),
+  no_model: t("Noch kein nutzbares Hausmodell – Planziel ist der Raum-Soll."),
+  no_sample: t("Kein aktueller Messwert der Wärmepumpe – Planziel ist der Raum-Soll."),
+  no_room: t("Raumtemperatur fehlt – Planziel ist der Raum-Soll."),
+  no_outside: t("Außentemperatur fehlt (weder Prognose noch Messung) – Planziel ist der Raum-Soll."),
+  failed: t("Berechnung fehlgeschlagen – Planziel ist der Raum-Soll."),
+};
+
+/** Why the room heating is not planned. */
+function houseReason(house) {
+  if (house.reason === "program") {
+    return t("Die Wärmepumpe ist nicht im Programm Heizen ({program}) – kein Vorheiz-Plan, Planziel ist der Raum-Soll.", { program: house.detail ?? "–" });
+  }
+  return HOUSE_REASONS[house.reason] ?? house.reason;
+}
+
 function consumerColors(flex) {
   return new Map((flex ?? []).map((f, i) => [f.device_id, SERIES_COLORS[i + 2] ?? UNASSIGNED_COLOR]));
 }
@@ -540,7 +557,8 @@ class SunflowPlan extends LitElement {
                     points: slots.map((s) => ({
                       start: s.start,
                       end: s.end,
-                      value: s.load_w + Object.values(s.flex_w ?? {}).reduce((a, b) => a + b, 0),
+                      // The heat pump planned with the house ("Lernen + Regeln") is taken out of the house load
+                      value: s.load_w + Object.values(s.flex_w ?? {}).reduce((a, b) => a + b, 0) + Object.values(s.heat_w ?? {}).reduce((a, b) => a + b, 0),
                     })),
                   },
                 ]
@@ -603,6 +621,8 @@ class SunflowPlan extends LitElement {
         )}
       </section>
 
+      ${this._renderHouse(plan, nowDate)}
+
       ${this._renderCostCurve(plan, slots)}
 
       <section>
@@ -614,6 +634,72 @@ class SunflowPlan extends LitElement {
         })}
       </section>
 
+    `;
+  }
+
+  _renderHouse(plan, now) {
+    // The room heating planned with the house (design/heat_pump.md, 7): in the plan or, with "Nur Lernen", only shown
+    const house = plan.house;
+    if (!house) return nothing;
+    const shadow = house.mode === "shadow";
+    const head = html`<h3>${t("Raumheizung")}${shadow
+      ? html` <span class="tag" title=${t("Nur Lernen: Der Speicher- und Verbrauchsplan rechnet ohne Raumheizung; angezeigt wird, wie Sunflow vorheizen würde.")}>${t("würde vorheizen")}</span>`
+      : nothing}</h3>`;
+    if (!house.slots?.length) {
+      return html`<section>${head}<p class="small muted">${houseReason(house)}</p></section>`;
+    }
+    const series = (key) => house.slots.map((s) => ({ start: s.start, end: s.end, value: s[key] }));
+    const flat = (value) => house.slots.map((s) => ({ start: s.start, end: s.end, value }));
+    const targets = house.slots.map((s) => s.target_c).filter((v) => v !== null);
+    const low = Math.floor(Math.min(house.lower_c, ...targets) - 0.5);
+    const degrees = (v) => `${decimal(Math.round(v * 10) / 10)} °C`;
+    return html`
+      <section>
+        ${head}
+        <p class="small muted help">${shadow
+          ? t("Nur Lernen: Der Speicher- und Verbrauchsplan rechnet ohne Raumheizung; angezeigt wird, wie Sunflow vorheizen würde.")
+          : t("Lernen + Regeln: Speicher- und Verbrauchsplan rechnen mit der Wärmepumpe.")}
+          ${t("Abweichung vom Raum-Soll kostet in der Planung – ohne Ersparnis bleibt das Planziel auf dem Soll.")}</p>
+        <div class="legend">
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[4]}"></span>${t("Planziel Raumtemperatur")}</span>
+          <span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>${t("Raum-Soll {value}", { value: degrees(house.setpoint_c) })}</span>
+          <span class="legend-item muted">${t("Spielraum {low} bis {high}", { low: degrees(house.lower_c), high: degrees(house.upper_c) })}${house.inside_c !== null
+            ? ` · ${t("jetzt {value}", { value: degrees(house.inside_c) })}`
+            : ""}</span>
+        </div>
+        ${lineChart(
+          [
+            { name: t("Raum-Soll"), color: UNASSIGNED_COLOR, thin: true, points: flat(house.setpoint_c) },
+            { name: t("Planziel Raumtemperatur"), color: SERIES_COLORS[4], dashed: true, points: series("target_c") },
+          ],
+          {
+            label: t("Planziel der Raumtemperatur im Spielraum um den Raum-Soll"),
+            formatY: degrees,
+            yMin: low,
+            yMax: Math.ceil(Math.max(house.upper_c, ...targets) + 0.5),
+            now,
+            range: this._range,
+            bands: [{ name: t("Spielraum"), color: SERIES_COLORS[4], points: house.slots.map((s) => ({ start: s.start, end: s.end, low: house.lower_c, high: house.upper_c })) }],
+          },
+        )}
+        <div class="legend">
+          <span class="legend-item"><span class="swatch" style="background:${SERIES_COLORS[5]}"></span>${shadow ? t("Wärmepumpe würde aufnehmen") : t("Wärmepumpe geplant")}</span>
+          <span class="legend-item"><span class="swatch" style="background:${UNASSIGNED_COLOR}"></span>${t("ohne Planung (Raum-Soll halten)")}</span>
+          <span class="legend-item muted">${t("Strom: geplant {planned}, ohne Planung {baseline}", { planned: formatValue((house.energy_kwh ?? 0) * 1000, "Wh"), baseline: formatValue((house.baseline_kwh ?? 0) * 1000, "Wh") })}</span>
+        </div>
+        ${lineChart(
+          [
+            { name: t("ohne Planung (Raum-Soll halten)"), color: UNASSIGNED_COLOR, thin: true, points: series("baseline_w") },
+            { name: shadow ? t("Wärmepumpe würde aufnehmen") : t("Wärmepumpe geplant"), color: SERIES_COLORS[5], dashed: true, points: series("power_w") },
+          ],
+          {
+            label: t("Stromaufnahme der Wärmepumpe, geplant und ohne Planung"),
+            formatY: (v) => formatValue(v, "W"),
+            now,
+            range: this._range,
+          },
+        )}
+      </section>
     `;
   }
 

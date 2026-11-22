@@ -181,7 +181,9 @@ class ThermalLoad:
 
     Per slot with the learned house (K/h): T[t] = T[t-1] + dt·(a·(T_out[t] - T[t-1]) + gains)
     + b·COP[t]·P[t]·dt/1000, b in K per kWh of heat. Below lower the plan pays cold_cost, above
-    upper warm_cost (sun can push it there without the heat pump), per K and hour.
+    upper warm_cost (sun can push it there without the heat pump), per K and hour. With a target
+    (the room setpoint) every kelvin away from it, up or down, costs deviation_cost per hour: without
+    a saving the plan stays on the target (design/heat_pump.md, 7).
     """
 
     name: str
@@ -202,6 +204,17 @@ class ThermalLoad:
     warm_cost: float = 0.02
     # Reference room minus the model's mean: the plan shows the reference room's temperature
     offset: float = 0.0
+    # The temperature the plan keeps to without a saving (per slot), and € per K and hour away from it
+    target: list[float] | None = None
+    deviation_cost: float = 0.0
+    # Highest heat output (W): the electric power per slot is at most max_heat_w / COP
+    max_heat_w: float | None = None
+
+    def power_limit(self, t: int) -> float:
+        """Highest electric power in slot t."""
+        if self.max_heat_w is None:
+            return self.max_power_w
+        return min(self.max_power_w, self.max_heat_w / max(self.cop[t], 1.0))
 
 
 @dataclass(kw_only=True)
@@ -480,6 +493,17 @@ def optimize(
     # The end temperature that counts for later, at most the upper bound: warmth above it is no saving
     kept = [count + k for k in range(len(thermal))]
     count += len(thermal)
+    # Degrees above and below the target per slot (only with a target)
+    above: list[Any] = []
+    below: list[Any] = []
+    for heat in thermal:
+        if heat.target is not None:
+            above.append(count + np.arange(n))
+            below.append(count + n + np.arange(n))
+            count += 2 * n
+        else:
+            above.append(None)
+            below.append(None)
     eta_c = [b.efficiency_charge for b in batteries]
     eta_d = [b.efficiency_discharge for b in batteries]
     eta_g = [b.efficiency_charge_grid or b.efficiency_charge for b in batteries]
@@ -601,6 +625,8 @@ def optimize(
         for t in range(n):
             cost[cold[k][t]] = heat.cold_cost * dts[t]
             cost[warm[k][t]] = heat.warm_cost * dts[t]
+            if above[k] is not None:
+                cost[above[k][t]] = cost[below[k][t]] = heat.deviation_cost * dts[t]
         # Warmth left at the end saves heat pump power later: worth it at the mean price and COP
         cost[kept[k]] -= mean_price / heat.b / max(float(np.mean(heat.cop)), 1.0)
 
@@ -695,7 +721,7 @@ def optimize(
                 limit = min(limit, max(pv_rest[t], 0.0))
             upper[f[k][t]] = limit
         for k, heat in enumerate(thermal):
-            upper[hp[k][t]] = heat.max_power_w
+            upper[hp[k][t]] = heat.power_limit(t)
             lower[room[k][t]], upper[room[k][t]] = -np.inf, np.inf
     for k, heat in enumerate(thermal):
         lower[kept[k]], upper[kept[k]] = -np.inf, heat.upper[-1]
@@ -813,6 +839,10 @@ def optimize(
             # T + cold >= lower and T - warm <= upper: only the degrees outside the band cost
             gate_rows.append(({room[k][t]: -1, cold[k][t]: -1}, -heat.lower[t]))
             gate_rows.append(({room[k][t]: 1, warm[k][t]: -1}, heat.upper[t]))
+            if heat.target is not None:
+                # T - above <= target and T + below >= target: only the degrees away from it cost
+                gate_rows.append(({room[k][t]: 1, above[k][t]: -1}, heat.target[t]))
+                gate_rows.append(({room[k][t]: -1, below[k][t]: -1}, -heat.target[t]))
         # kept <= T at the end
         gate_rows.append(({kept[k]: 1, room[k][-1]: -1}, 0.0))
     for k in range(m):
