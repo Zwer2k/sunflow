@@ -101,10 +101,10 @@ async def get_learning_sources(request: Request) -> dict[str, Any]:
     """The chosen learning sources, candidates per kind and the planes for module temperatures."""
     config = request.app.state.store.load()
     snapshot = await _snapshot(request)
-    on_planes = plane_optimizer_temperatures(config, _library(request).profiles, snapshot)
+    on_planes = plane_optimizer_temperatures(config, _library(request), snapshot)
     return {
         "sources": config.learning_sources.model_dump(),
-        "candidates": learning_candidates(config, snapshot),
+        "candidates": learning_candidates(config, _library(request), snapshot),
         # Only planes in use: unassigned ones (e.g. a second provider for the same roof) are not planned
         "planes": [
             {"key": p.key, "name": p.display_name, "optimizers": len(on_planes.get(p.key, []))}
@@ -137,9 +137,9 @@ async def get_learning_source_quality(request: Request) -> dict[str, Any]:
         if entity_id
     } | {
         f"module_temperature:{plane}": entities
-        for plane, entities in module_temperature_sources(config, _library(request).profiles, snapshot).items()
+        for plane, entities in module_temperature_sources(config, _library(request), snapshot).items()
     }
-    optimizer_sources = plane_optimizer_temperatures(config, _library(request).profiles, snapshot)
+    optimizer_sources = plane_optimizer_temperatures(config, _library(request), snapshot)
     now = datetime.now(UTC)
     cache = getattr(request.app.state, "quality_cache", None)
     if cache is not None and cache[1] == chosen and now - cache[0] <= QUALITY_TTL:

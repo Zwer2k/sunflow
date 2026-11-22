@@ -5,8 +5,6 @@ import "../components/roof.js";
 import { t, tn } from "../lib/i18n.js";
 import { toggleSheet } from "../lib/display-toggles.js";
 
-const TIGO_REPO = "https://github.com/Zwer2k/ha-tigo-rs485";
-
 /** Optimizers (settings area "Optimierer"): sources, string assignment and their places on the roof. */
 class SunflowOptimizers extends LitElement {
   static properties = {
@@ -37,7 +35,7 @@ class SunflowOptimizers extends LitElement {
   }
 
   /** The stored settings with one optimizer changed; proposals stay proposals (null). */
-  async _save(changes = {}, tigoPlant = this._data.tigo_plant_chosen, layouts = this._data.layouts) {
+  async _save(changes = {}, plant = this._data.standalone_plant_chosen, layouts = this._data.layouts) {
     const placements = this._data.optimizers.map((o) => ({
       ha_device_id: o.id,
       string: o.string_auto ? null : (o.string ?? ""),
@@ -49,7 +47,7 @@ class SunflowOptimizers extends LitElement {
     }));
     this._saving = true;
     try {
-      await api.setOptimizers({ tigo_plant: tigoPlant || null, placements, layouts });
+      await api.setOptimizers({ tigo_plant: plant || null, placements, layouts });
       await this._load();
     } catch (err) {
       this._error = t("Nicht gespeichert: {error}", { error: err.message });
@@ -73,7 +71,7 @@ class SunflowOptimizers extends LitElement {
     const at = row ?? col;
     const breaks = layout[field];
     layout[field] = breaks.includes(at) ? breaks.filter((b) => b !== at) : [...breaks, at].sort((a, b) => a - b);
-    return this._save({}, this._data.tigo_plant_chosen, { ...this._data.layouts, [key]: layout });
+    return this._save({}, this._data.standalone_plant_chosen, { ...this._data.layouts, [key]: layout });
   }
 
   _reset(optimizers) {
@@ -96,9 +94,11 @@ class SunflowOptimizers extends LitElement {
   }
 
   _renderSources(data) {
-    const tigo = data.sources.find((s) => s.key === "tigo");
+    // Optimizers of an integration of their own (not sub-devices of an inverter) need the plant they hang on
+    const standalone = data.sources.filter((s) => !s.sub_device && s.count);
     const plants = [...new Map(data.strings.map((s) => [s.device_id, s.plant])).entries()];
-    const [tigoBefore, tigoAfter] = t("Über die Integration {link}, die den Bus zwischen CCA und TAP mitliest.").split("{link}");
+    const [before, after] = t("Über die Integration {link}.").split("{link}");
+    const plantLabel = t("{names}-Optimierer hängen am Wechselrichter", { names: standalone.map((s) => s.name).join(", ") });
     return html`<section class="card help-card">
       <h2>${t("Quellen")}</h2>
       <ul class="sources">
@@ -109,20 +109,27 @@ class SunflowOptimizers extends LitElement {
             : s.installed
               ? t("Integration eingerichtet, Optimierer nicht genutzt – unter „Integrationen“ auswählen und unter „Geräte“ nutzen")
               : t("Integration nicht eingerichtet")}</span>
-          ${s.key === "huawei"
-            ? html`<span class="small muted help">${t("Über die Integration „Huawei Solar“; Optimierer erscheinen als Unter-Geräte des Wechselrichters. Ist nur ein String in Betrieb, ordnet Sunflow sie ihm zu.")}</span>`
-            : html`<span class="small muted help">${tigoBefore}<a href=${TIGO_REPO} target="_blank" rel="noopener">Tigo RS485</a>${tigoAfter}
-                ${t("Dort jedem Optimierer ein Label geben: „A1“ ist String A, Modul 1 – danach ordnet Sunflow ihn zu.")}</span>`}
+          <span class="small muted help">
+            ${s.url ? html`${before}<a href=${s.url} target="_blank" rel="noopener">${s.domain}</a>${after}` : nothing}
+            ${s.sub_device
+              ? t("Optimierer erscheinen als Unter-Geräte des Wechselrichters. Ist nur ein String in Betrieb, ordnet Sunflow sie ihm zu.")
+              : nothing}
+            ${s.label_position
+              ? t("Dort jedem Optimierer ein Label geben: „A1“ ist String A, Modul 1 – danach ordnet Sunflow ihn zu.")
+              : nothing}
+          </span>
         </li>`)}
       </ul>
-      ${tigo?.count
+      ${standalone.length
         ? html`<label class="field">
-            <span class="field-label">${t("Tigo-Optimierer hängen am Wechselrichter")}</span>
-            <sf-picker label=${t("Tigo-Optimierer hängen am Wechselrichter")} hide-values ?disabled=${this._saving}
-              empty-label=${t("automatisch ({name})", { name: plants.find(([id]) => id === data.tigo_plant)?.[1] ?? t("keiner") })}
-              .value=${data.tigo_plant_chosen ?? ""} .options=${plants.map(([id, name]) => ({ value: id, label: name }))}
+            <span class="field-label">${plantLabel}</span>
+            <sf-picker label=${plantLabel} hide-values ?disabled=${this._saving}
+              empty-label=${t("automatisch ({name})", { name: plants.find(([id]) => id === data.standalone_plant)?.[1] ?? t("keiner") })}
+              .value=${data.standalone_plant_chosen ?? ""} .options=${plants.map(([id, name]) => ({ value: id, label: name }))}
               @change=${(e) => this._save({}, e.detail.value)}></sf-picker>
-            <span class="small muted help">${t("String A ist dessen String 1, B String 2 usw.")}</span>
+            ${standalone.some((s) => s.label_position)
+              ? html`<span class="small muted help">${t("String A ist dessen String 1, B String 2 usw.")}</span>`
+              : nothing}
           </label>`
         : nothing}
     </section>`;

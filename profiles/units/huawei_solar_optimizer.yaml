@@ -1,0 +1,17 @@
+# Huawei SUN2000 optimizers: sub-devices of their inverter (which has values of the same names).
+# The string an optimizer hangs on is not exposed: with one string in use it is that one.
+unit: huawei_solar/optimizer
+kind: optimizer
+name: Huawei
+match:
+  integration: huawei_solar
+  sub_device: true
+required: [power, voltage_in]
+values:
+  power: output_power
+  voltage_in: input_voltage
+  current_in: input_current
+  voltage_out: output_voltage
+  current_out: output_current
+  temperature: temperature
+  energy_total: accumulated_energy_yield

@@ -265,3 +265,6 @@ Wer ein Gerät aus der Tabelle an echter Hardware geprüft hat, meldet das bitte
 Integrations-Version und Gerätemodell. Danach wird der Prüfstand hier geändert.
 Ein neues Gerät braucht ein Profil in `profiles/` (Schema: `schema/profile.schema.json`).
 Die vorhandenen Profile zeigen, wie Rollen, Aktionen und Grenzen beschrieben werden.
+Modul-Optimierer (und künftig Speichermodule) beschreibt ein Unit-Profil in `profiles/units/`
+(Schema: `schema/unit.schema.json`): Integration, woran ein Gerät als Optimierer erkannt wird und
+welche Entität welchen Wert liefert. Werte, die eine Integration nicht hat, bleiben einfach weg.

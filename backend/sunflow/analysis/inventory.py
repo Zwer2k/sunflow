@@ -15,6 +15,7 @@ from typing import Any
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.optimizers import optimizers as optimizer_list
+from sunflow.devices.profiles import ProfileLibrary
 from sunflow.devices.site import site_status
 from sunflow.ha import HAClient, HACommandError, HAError
 from sunflow.planning.plan import weather_entity
@@ -172,14 +173,14 @@ async def solcast_days(client: HAClient, sites: list[str], now: datetime, tz: tz
 async def data_inventory(
     client: HAClient,
     config: SunflowConfig,
-    profiles: dict[str, Any],
+    library: ProfileLibrary,
     snapshot: Snapshot,
     tz: tzinfo,
     extra: list[str] | None = None,
 ) -> dict[str, Any]:
     """How far back the measurements, the weather and the PV forecasts go; extra: further entities to check."""
     now = datetime.now(UTC)
-    site = site_status(config.devices, profiles, snapshot, measured_by=config.measured_by)
+    site = site_status(config.devices, library.profiles, snapshot, measured_by=config.measured_by)
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     for device in site.devices:
@@ -188,7 +189,7 @@ async def data_inventory(
                 seen.add(role.entity_id)
                 rows.append({"device": device.name, "role": role.role, "entity_id": role.entity_id})
     # Per module: shading and heat can be learned module by module
-    for optimizer in optimizer_list(config, profiles, snapshot)[0]:
+    for optimizer in optimizer_list(config, library, snapshot)[0]:
         for value in OPTIMIZER_VALUES:
             if (entity_id := optimizer.entities.get(value)) and entity_id not in seen:
                 seen.add(entity_id)

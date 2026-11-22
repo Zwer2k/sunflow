@@ -138,7 +138,7 @@ async def get_data_inventory(request: Request, refresh: bool = False, entities: 
             inventory = await data_inventory(
                 request.app.state.ha,
                 config,
-                _library(request).profiles,
+                _library(request),
                 await _snapshot(request),
                 await _local_tz(request),
                 extra,

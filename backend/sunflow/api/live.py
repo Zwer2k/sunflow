@@ -11,6 +11,7 @@ from sunflow.config.models import DisplaySettings, SceneSettings, SunflowConfig
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.heat_pump import DEFAULT_VOLTAGE, reading as heat_pump_reading
 from sunflow.devices.optimizers import optimizers as optimizer_list
+from sunflow.devices.profiles import ProfileLibrary
 from sunflow.devices.site import (
     PV_OUTPUT_ROLES,
     device_kind,
@@ -158,7 +159,7 @@ async def get_live(request: Request) -> dict[str, Any]:
                 }
             )
     # Strings with optimizers open the roof view; the forecast plane names the roof face
-    assigned = optimizer_counts(config, profiles, snapshot)
+    assigned = optimizer_counts(config, _library(request), snapshot)
     planes = {key: plane.display_name for plane in config.forecast_planes for key in plane.strings}
     for plant in pv:
         for string in plant["strings"]:
@@ -187,10 +188,10 @@ async def get_live(request: Request) -> dict[str, Any]:
     }
 
 
-def optimizer_counts(config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot) -> dict[str, int]:
+def optimizer_counts(config: SunflowConfig, library: ProfileLibrary, snapshot: Snapshot) -> dict[str, int]:
     """Number of optimizers per string key."""
     counts: dict[str, int] = {}
-    for optimizer in optimizer_list(config, profiles, snapshot)[0]:
+    for optimizer in optimizer_list(config, library, snapshot)[0]:
         if optimizer.string:
             counts[optimizer.string] = counts.get(optimizer.string, 0) + 1
     return counts

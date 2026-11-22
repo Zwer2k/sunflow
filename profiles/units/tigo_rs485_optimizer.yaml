@@ -1,0 +1,23 @@
+# Tigo TS4 optimizers read from the CCA–TAP bus (github.com/Zwer2k/ha-tigo-rs485).
+# Their label set in that integration places them: "A1" is string A, module 1.
+unit: tigo_rs485/optimizer
+kind: optimizer
+name: Tigo
+url: https://github.com/Zwer2k/ha-tigo-rs485
+match:
+  integration: tigo_rs485
+  # Sums over a string or the installation (tigo_rs485 1.1.0) are no optimizer
+  exclude_identifier: _group_
+name_strip: "Tigo Optimizer "
+label_position: '^([A-Za-z])\s*0*(\d+)$'
+required: [power]
+values:
+  power: power
+  voltage_in: voltage_in
+  current_in: current
+  voltage_out: voltage_out
+  temperature: temperature
+  pwm: pwm
+  # Since tigo_rs485 1.1.0
+  energy_today: energy_today
+  energy_total: energy_total

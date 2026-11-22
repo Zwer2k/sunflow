@@ -10,11 +10,11 @@ from pydantic import BaseModel
 from sunflow.analysis.optimizer_history import day_step, optimizer_day
 from sunflow.config.models import OptimizerSettings
 from sunflow.devices.optimizers import (
-    SOURCES,
     VALUE_UNITS,
     discover,
     optimizers,
-    tigo_plant,
+    sources,
+    standalone_plant,
     used_entries,
 )
 from sunflow.ha import HAError
@@ -30,19 +30,24 @@ async def get_optimizers(request: Request) -> dict[str, Any]:
     """Every optimizer with string, roof position and current values, and the strings to choose from."""
     config = request.app.state.store.load()
     snapshot = await _snapshot(request)
-    found, strings = optimizers(config, _library(request).profiles, snapshot)
+    library = _library(request)
+    found, strings = optimizers(config, library, snapshot)
+    units = sources(library)
     installed = {e["domain"] for e in snapshot.entries}
     return {
         "optimizers": [asdict(o) for o in found],
         "strings": strings,
         "sources": [
-            {"key": s.key, "name": s.name, "domain": s.domain, "installed": s.domain in installed,
-             "count": sum(o.source == s.key for o in found)}
-            for s in SOURCES
+            {
+                "key": key, "name": u["name"], "domain": u["match"]["integration"], "url": u.get("url"),
+                "sub_device": bool(u["match"].get("sub_device")), "label_position": "label_position" in u,
+                "installed": u["match"]["integration"] in installed, "count": sum(o.source == key for o in found),
+            }
+            for key, u in units.items()
         ],
         "units": VALUE_UNITS,
-        "tigo_plant": tigo_plant(config, strings, found),
-        "tigo_plant_chosen": config.optimizer_settings.tigo_plant,
+        "standalone_plant": standalone_plant(config, strings, found, units),
+        "standalone_plant_chosen": config.optimizer_settings.tigo_plant,
         "layouts": {k: v.model_dump() for k, v in config.optimizer_settings.layouts.items()},
     }
 
@@ -61,7 +66,7 @@ async def get_optimizer_history(
     end = datetime.combine(day + timedelta(days=1), time(), tz).astimezone(UTC)
     step = day_step(start, now)
     config = request.app.state.store.load()
-    found, _ = optimizers(config, _library(request).profiles, await _snapshot(request))
+    found, _ = optimizers(config, _library(request), await _snapshot(request))
     try:
         days = await optimizer_day(request.app.state.ha, [o for o in found if o.string == string], start, end, step)
     except HAError as err:
@@ -101,7 +106,7 @@ async def use_optimizer_entry(request: Request, entry_id: str, body: OptimizerEn
     """Take over the optimizers of an integration, or drop them (their placements stay)."""
     store = request.app.state.store
     # The snapshot first: a configuration loaded before waiting for it would overwrite what was saved meanwhile
-    found = discover(await _snapshot(request))
+    found = discover(await _snapshot(request), _library(request))
     config = store.load()
     entries = used_entries(config, found)
     entries = entries | {entry_id} if body.used else entries - {entry_id}

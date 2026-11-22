@@ -5,6 +5,7 @@ from typing import Any
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.optimizers import discover as discover_optimizers, optimizers
+from sunflow.devices.profiles import ProfileLibrary
 
 DEVICE_CLASSES = {
     "temperature": ("temperature",),
@@ -26,20 +27,20 @@ OUTDOOR_HINTS = (
 )
 
 
-def _sunflow_devices(config: SunflowConfig, snapshot: Snapshot) -> set[str]:
+def _sunflow_devices(config: SunflowConfig, library: ProfileLibrary, snapshot: Snapshot) -> set[str]:
     """HA devices of configured devices and their sub-devices (e.g. battery modules), but not optimizers.
 
     An optimizer sits on its module: its temperature is the module temperature.
     """
     own = {d.ha_device_id for d in config.devices}
-    optimizers = {o.id for o in discover_optimizers(snapshot)}
+    optimizers = {o.id for o in discover_optimizers(snapshot, library)}
     return (own | {d["id"] for d in snapshot.devices if d.get("via_device_id") in own}) - optimizers
 
 
-def learning_candidates(config: SunflowConfig, snapshot: Snapshot) -> dict[str, list[dict[str, Any]]]:
+def learning_candidates(config: SunflowConfig, library: ProfileLibrary, snapshot: Snapshot) -> dict[str, list[dict[str, Any]]]:
     """Sensors per kind of source; the inverter's and battery's own temperatures are left out."""
     registry = {e["entity_id"]: e for e in snapshot.entities}
-    excluded = _sunflow_devices(config, snapshot)
+    excluded = _sunflow_devices(config, library, snapshot)
     result: dict[str, list[dict[str, Any]]] = {kind: [] for kind in DEVICE_CLASSES}
     for entity_id, state in snapshot.states.items():
         if not entity_id.startswith("sensor."):
@@ -71,10 +72,10 @@ def learning_candidates(config: SunflowConfig, snapshot: Snapshot) -> dict[str, 
 
 
 def plane_optimizer_temperatures(
-    config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot
+    config: SunflowConfig, library: ProfileLibrary, snapshot: Snapshot
 ) -> dict[str, list[str]]:
     """Temperature entities of the optimizers on each plane in use, found by the plane's strings."""
-    found, _ = optimizers(config, profiles, snapshot)
+    found, _ = optimizers(config, library, snapshot)
     result = {}
     for plane in config.forecast_planes:
         if not plane.device_id:
@@ -86,11 +87,11 @@ def plane_optimizer_temperatures(
 
 
 def module_temperature_sources(
-    config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot
+    config: SunflowConfig, library: ProfileLibrary, snapshot: Snapshot
 ) -> dict[str, list[str]]:
     """Per plane in use: the chosen sensor, else the mean of its optimizers' temperatures."""
     chosen = config.learning_sources.module_temperature
     in_use = {p.key for p in config.forecast_planes if p.device_id}
-    return plane_optimizer_temperatures(config, profiles, snapshot) | {
+    return plane_optimizer_temperatures(config, library, snapshot) | {
         plane: [entity_id] for plane, entity_id in chosen.items() if plane in in_use
     }

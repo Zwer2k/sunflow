@@ -5,8 +5,10 @@ from typing import Any
 
 import pytest
 from sunflow.devices.discovery import Snapshot, match_profile
-from sunflow.devices.profiles import ProfileLibrary, load_profiles
+from sunflow.devices.profiles import ProfileLibrary, load_profiles, load_unit_schema
 from sunflow.devices.resolver import preview
+
+REPO_SCHEMA = Path(__file__).resolve().parents[1] / "schema"
 
 
 def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
@@ -20,6 +22,7 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
         "homevolt/homevolt", "marstek_modbus/venus", "zendure_ha/manager", "generic/heat_pump", "generic/relays",
         "generic/grid_meter", "solax_modbus/growatt_hybrid", "solax_modbus/growatt_pv", "solarman/deye_micro",
     }
+    assert set(library.units) == {"huawei_solar/optimizer", "tigo_rs485/optimizer"}
     assert library.integrations == {
         "solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "edl21", "homewizard", "powerfox", "discovergy",
         "goecharger_mqtt", "goecharger", "solaredge_modbus", "fronius", "goodwe", "kostal_plenticore", "indevolt", "homevolt",
@@ -50,6 +53,32 @@ def test_invalid_profile_is_reported(tmp_path: Path, schema: dict[str, Any]) -> 
     assert "profile" in messages["bad.yaml"]
     assert "capabilities/0" in messages["bad.yaml"]
     assert "broken.yaml" in messages
+
+
+UNIT = "unit: x/opt\nkind: optimizer\nname: X\nmatch: {integration: x}\n"
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        pytest.param(UNIT + "required: [power]\nvalues: {power: power, soc: soc}\n", "values: 'soc' is not one of", id="value_of_another_kind"),
+        pytest.param(UNIT + "required: [pwm]\nvalues: {power: power}\n", "required names no value: pwm", id="required_without_value"),
+        pytest.param(
+            UNIT + "label_position: '^([A-Z])'\nrequired: [power]\nvalues: {power: power}\n",
+            "label_position needs two groups (string, module)", id="label_position_groups",
+        ),
+    ],
+)
+def test_invalid_unit_is_reported(tmp_path: Path, schema: dict[str, Any], content: str, message: str) -> None:
+    """A unit profile that cannot be used is collected as error; device profiles skip the units folder."""
+    (tmp_path / "units").mkdir()
+    (tmp_path / "units" / "x.yaml").write_text(content)
+
+    library = load_profiles(tmp_path, schema, load_unit_schema(REPO_SCHEMA))
+
+    assert (library.profiles, library.units) == ({}, {})
+    (error,) = library.errors
+    assert message in error.message
 
 
 def test_duplicate_profile_id(tmp_path: Path, schema: dict[str, Any]) -> None:

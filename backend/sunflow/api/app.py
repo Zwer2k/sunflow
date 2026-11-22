@@ -28,7 +28,7 @@ from sunflow.control.reload import ReloadWatchdog
 from sunflow.devices.device_test import RestoreMarker
 from sunflow.devices.discovery import SnapshotCache
 from sunflow.devices.executor import EepromGuard
-from sunflow.devices.profiles import load_profiles, load_schema
+from sunflow.devices.profiles import load_profiles, load_schema, load_unit_schema
 from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient, HAError
 from sunflow.i18n import t
@@ -140,7 +140,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.store = ConfigStore(settings.data_dir)
         estimator.load(settings.data_dir)
         app.state.profiles = load_profiles(
-            settings.profiles_dir, load_schema(settings.schema_dir)
+            settings.profiles_dir, load_schema(settings.schema_dir), load_unit_schema(settings.schema_dir)
         )
         app.state.ha = HAClient(settings.ha_websocket_url, settings.ha_token)
         app.state.direct = DirectHub()

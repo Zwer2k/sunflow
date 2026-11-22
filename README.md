@@ -177,6 +177,11 @@ Profiles are grouped by kind of device (`profiles/inverters/`, `meters/`,
 `loadpoints/`, `loads/`); a profile is identified by its `profile` field, not
 its path.
 
+Units below a device that Home Assistant shows as devices of their own – module
+optimizers and battery modules – are described in `profiles/units/` (schema
+`schema/unit.schema.json`): the integration, how a unit is recognised and the
+unique_id key of each value. Values a unit does not have are simply left out.
+
 ## Development
 
 The backend runs as a plain process during development and connects to a

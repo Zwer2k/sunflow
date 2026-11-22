@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sunflow.devices.profiles import ProfileLibrary, load_profiles, load_schema
+from sunflow.devices.profiles import ProfileLibrary, load_profiles, load_schema, load_unit_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,4 +18,4 @@ def schema() -> dict[str, Any]:
 @pytest.fixture
 def library(schema: dict[str, Any]) -> ProfileLibrary:
     """Return the profile library shipped with the repository."""
-    return load_profiles(REPO_ROOT / "profiles", schema)
+    return load_profiles(REPO_ROOT / "profiles", schema, load_unit_schema(REPO_ROOT / "schema"))

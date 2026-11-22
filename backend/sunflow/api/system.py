@@ -122,7 +122,7 @@ async def discovery(request: Request) -> list[dict[str, Any]]:
     """Return integrations and devices found in Home Assistant."""
     # Newly installed integrations must show up right away
     snapshot = await _snapshot(request, fresh=True)
-    found = discover_optimizers(snapshot)
+    found = discover_optimizers(snapshot, _library(request))
     used = used_entries(request.app.state.store.load(), found)
     # An integration with optimizers only (e.g. Tigo) can be chosen for them
     with_optimizers = frozenset(entry for o in found for entry in o.entry_ids)

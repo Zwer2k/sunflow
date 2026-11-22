@@ -1,11 +1,11 @@
 """PV module optimizers: found in Home Assistant, assigned to strings and placed on the roof.
 
-Only optimizers of integrations taken over under "Geräte" count.
+Which integrations provide optimizers and how is described by the unit profiles of kind
+"optimizer" (profiles/units/). Only optimizers of integrations taken over under "Geräte" count.
 
-Huawei optimizers are sub-devices of their inverter (huawei_solar). The string they
-hang on is not exposed by the integration: with one string in use it is that one.
-Tigo optimizers (tigo_rs485) carry the label given in that integration; by Tigo's
-convention "A1" is string A, module 1.
+Optimizers that are sub-devices of their inverter hang on one of its strings; which one is
+not known unless only one string is in use. Optimizers of an integration of their own hang on
+a chosen plant; a label_position in their profile places them by label ("A1": string A, module 1).
 """
 
 from dataclasses import dataclass, field
@@ -14,63 +14,14 @@ from typing import Any
 
 from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.profiles import ProfileLibrary
 from sunflow.devices.resolver import normalize, preview
 from sunflow.devices.site import pv_strings
+from sunflow.devices.units import find_units
+
+KIND = "optimizer"
 
 
-@dataclass(frozen=True, kw_only=True)
-class OptimizerSource:
-    """An integration that has a Home Assistant device per optimizer."""
-
-    key: str
-    name: str
-    domain: str
-    # Value -> end of the entity's unique_id
-    values: dict[str, str]
-    # Values that must be there for a device to count as optimizer
-    required: tuple[str, ...]
-    # Optimizers are sub-devices of their inverter (which has values of the same names)
-    sub_device: bool = False
-    # Part of the identifier of devices that sum up several optimizers
-    group_marker: str | None = None
-
-
-SOURCES = (
-    OptimizerSource(
-        key="huawei",
-        name="Huawei",
-        domain="huawei_solar",
-        values={
-            "power": "_output_power",
-            "voltage_in": "_input_voltage",
-            "current_in": "_input_current",
-            "voltage_out": "_output_voltage",
-            "current_out": "_output_current",
-            "temperature": "_temperature",
-            "energy_total": "_accumulated_energy_yield",
-        },
-        required=("power", "voltage_in"),
-        sub_device=True,
-    ),
-    OptimizerSource(
-        key="tigo",
-        name="Tigo",
-        domain="tigo_rs485",
-        values={
-            "power": "_power",
-            "voltage_in": "_voltage_in",
-            "current_in": "_current",
-            "voltage_out": "_voltage_out",
-            "temperature": "_temperature",
-            "pwm": "_pwm",
-            # Since tigo_rs485 1.1.0
-            "energy_today": "_energy_today",
-            "energy_total": "_energy_total",
-        },
-        required=("power",),
-        group_marker="_group_",
-    ),
-)
 VALUE_UNITS = {
     "power": "W",
     "voltage_in": "V",
@@ -82,7 +33,6 @@ VALUE_UNITS = {
     "energy_today": "kWh",
     "energy_total": "kWh",
 }
-TIGO_LABEL = re.compile(r"^([A-Za-z])\s*0*(\d+)$")
 # A string counts as in use with this much voltage
 STRING_IN_USE_V = 5.0
 
@@ -107,44 +57,20 @@ class Optimizer:
     values: dict[str, float | None] = field(default_factory=dict)
 
 
-def _label(source: OptimizerSource, device: dict[str, Any]) -> str:
-    name = device.get("name_by_user") or device.get("name") or device["id"]
-    return name.removeprefix("Tigo Optimizer ").strip() if source.key == "tigo" else name
+def sources(library: ProfileLibrary) -> dict[str, dict[str, Any]]:
+    """The unit profiles of optimizers by id."""
+    return {u["unit"]: u for u in library.units_of(KIND)}
 
 
-def discover(snapshot: Snapshot) -> list[Optimizer]:
+def discover(snapshot: Snapshot, library: ProfileLibrary) -> list[Optimizer]:
     """All optimizers Home Assistant knows, with the entities of their values."""
-    by_device: dict[str, list[dict[str, Any]]] = {}
-    for entity in snapshot.entities:
-        if entity.get("device_id") and not entity.get("disabled_by"):
-            by_device.setdefault(entity["device_id"], []).append(entity)
-    found = []
-    for device in snapshot.devices:
-        domains = {identifier[0] for identifier in device.get("identifiers", [])}
-        for source in SOURCES:
-            if source.domain not in domains or (source.sub_device and not device.get("via_device_id")):
-                continue
-            # Sums over a string or the installation (tigo_rs485 1.1.0) are no optimizer
-            if any(source.group_marker and source.group_marker in str(i[1]) for i in device.get("identifiers", [])):
-                continue
-            entities = {}
-            for value, suffix in source.values.items():
-                # The shortest match: "_power" must not take "_output_power"
-                matches = sorted(
-                    (e for e in by_device.get(device["id"], []) if (e.get("unique_id") or "").endswith(suffix)),
-                    key=lambda e: len(e.get("unique_id") or ""),
-                )
-                if matches:
-                    entities[value] = matches[0]["entity_id"]
-            if all(v in entities for v in source.required):
-                label = _label(source, device)
-                found.append(
-                    Optimizer(
-                        id=device["id"], source=source.key, name=label, label=label,
-                        parent=device.get("via_device_id"), entities=entities,
-                        entry_ids=list(device.get("config_entries", [])),
-                    )
-                )
+    found = [
+        Optimizer(
+            id=u.id, source=u.unit, name=u.name, label=u.name, parent=u.parent,
+            entities={k: ids[0] for k, ids in u.entities.items()}, entry_ids=u.entry_ids,
+        )
+        for u in find_units(snapshot, library.units_of(KIND))
+    ]
     return sorted(found, key=lambda o: (o.source, _natural(o.label)))
 
 
@@ -180,30 +106,32 @@ def plant_strings(config: SunflowConfig, profiles: dict[str, Any], snapshot: Sna
     return result
 
 
-def tigo_plant(config: SunflowConfig, strings: list[dict[str, Any]], optimizers: list[Optimizer]) -> str | None:
-    """The plant the Tigo optimizers hang on: chosen, or the only one without own optimizers."""
+def standalone_plant(
+    config: SunflowConfig, strings: list[dict[str, Any]], optimizers: list[Optimizer], profiles: dict[str, dict[str, Any]]
+) -> str | None:
+    """The plant optimizers of an integration of their own hang on: chosen, or the first without own optimizers."""
     if config.optimizer_settings.tigo_plant:
         return config.optimizer_settings.tigo_plant
-    with_own = {o.parent for o in optimizers if o.source != "tigo"}
+    with_own = {o.parent for o in optimizers if profiles[o.source]["match"].get("sub_device")}
     plants = list(dict.fromkeys(s["device_id"] for s in strings if s["ha_device_id"] not in with_own))
-    return plants[0] if len(plants) >= 1 else None
+    return plants[0] if plants else None
 
 
-def _auto_place(optimizer: Optimizer, strings: list[dict[str, Any]], tigo: str | None, index: int) -> None:
-    keys = {s["key"] for s in strings}
-    if optimizer.source == "tigo":
-        if (match := TIGO_LABEL.match(optimizer.label)) is not None:
-            number = ord(match.group(1).upper()) - ord("A") + 1
-            if tigo and f"{tigo}:{number}" in keys:
-                optimizer.string = f"{tigo}:{number}"
-            optimizer.row, optimizer.col = 0, int(match.group(2)) - 1
-            return
-    else:
+def _auto_place(
+    optimizer: Optimizer, profile: dict[str, Any], strings: list[dict[str, Any]], plant: str | None, index: int
+) -> None:
+    if profile["match"].get("sub_device"):
         own = [s for s in strings if s["ha_device_id"] == optimizer.parent]
         used = [s for s in own if s["in_use"]]
         # Several strings in use: which one the optimizer hangs on is not known
         if len(own) == 1 or len(used) == 1:
             optimizer.string = (own if len(own) == 1 else used)[0]["key"]
+    elif "label_position" in profile and (match := re.match(profile["label_position"], optimizer.label)) is not None:
+        number = ord(match.group(1).upper()) - ord("A") + 1
+        if plant and any(s["key"] == f"{plant}:{number}" for s in strings):
+            optimizer.string = f"{plant}:{number}"
+        optimizer.row, optimizer.col = 0, int(match.group(2)) - 1
+        return
     optimizer.row, optimizer.col = 0, index
 
 
@@ -215,13 +143,16 @@ def used_entries(config: SunflowConfig, found: list[Optimizer]) -> set[str]:
     return {entry for o in found if o.id in placed for entry in o.entry_ids}
 
 
-def optimizers(config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapshot) -> tuple[list[Optimizer], list[dict[str, Any]]]:
+def optimizers(
+    config: SunflowConfig, library: ProfileLibrary, snapshot: Snapshot
+) -> tuple[list[Optimizer], list[dict[str, Any]]]:
     """The taken-over optimizers with string, roof position (set or proposed) and current values; and the strings."""
-    strings = plant_strings(config, profiles, snapshot)
-    found = discover(snapshot)
+    strings = plant_strings(config, library.profiles, snapshot)
+    found = discover(snapshot, library)
     entries = used_entries(config, found)
     found = [o for o in found if entries & set(o.entry_ids)]
-    tigo = tigo_plant(config, strings, found)
+    units = sources(library)
+    plant = standalone_plant(config, strings, found, units)
     placements = {p.ha_device_id: p for p in config.optimizer_settings.placements}
     counters: dict[str | None, int] = {}
     placed: set[str] = set()
@@ -229,7 +160,7 @@ def optimizers(config: SunflowConfig, profiles: dict[str, Any], snapshot: Snapsh
         placement = placements.get(optimizer.id)
         counter = counters.get(optimizer.parent, 0)
         counters[optimizer.parent] = counter + 1
-        _auto_place(optimizer, strings, tigo, counter)
+        _auto_place(optimizer, units[optimizer.source], strings, plant, counter)
         optimizer.string_auto = True
         if placement is not None:
             if placement.string is not None:

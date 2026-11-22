@@ -12,9 +12,12 @@ from sunflow.config.models import (
 )
 from sunflow.devices import optimizers as module
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.profiles import load_profiles, load_schema, load_unit_schema
 
 HUAWEI_KEYS = ("output_power", "input_voltage", "input_current", "output_voltage", "output_current", "temperature", "accumulated_energy_yield")
 TIGO_KEYS = ("power", "voltage_in", "current", "voltage_out", "temperature", "pwm", "energy_today", "energy_total")
+REPO = Path(__file__).resolve().parents[1]
+LIBRARY = load_profiles(REPO / "profiles", load_schema(REPO / "schema"), load_unit_schema(REPO / "schema"))
 HUAWEI = "huawei-entry"
 TIGO = "tigo-entry"
 
@@ -55,16 +58,17 @@ def _found(config: SunflowConfig, monkeypatch: pytest.MonkeyPatch, strings: list
     monkeypatch.setattr(module, "plant_strings", lambda *_: strings)
     if config.optimizer_settings.entries is None:
         config.optimizer_settings.entries = [HUAWEI, TIGO]
-    found, _ = module.optimizers(config, {}, _snapshot())
+    found, _ = module.optimizers(config, LIBRARY, _snapshot())
     return {o.label: o for o in found}
 
 
 def test_discovers_huawei_and_tigo_optimizers() -> None:
     """Sub-devices with optimizer values; "_power" does not take "_output_power"."""
-    found = module.discover(_snapshot())
+    found = module.discover(_snapshot(), LIBRARY)
 
+    huawei, tigo = "huawei_solar/optimizer", "tigo_rs485/optimizer"
     assert [(o.source, o.label) for o in found] == [
-        ("huawei", "JV22B1"), ("huawei", "JV22B2"), ("tigo", "A2"), ("tigo", "B1"), ("tigo", "Garage"),
+        (huawei, "JV22B1"), (huawei, "JV22B2"), (tigo, "A2"), (tigo, "B1"), (tigo, "Garage"),
     ]
     assert found[0].entities["power"] == "sensor.o1_output_power"
     assert found[2].entities["current_in"] == "sensor.a2_current"
@@ -159,6 +163,6 @@ def test_only_taken_over_integrations_count(
     """Optimizers only count once their integration was taken over under "Geräte"."""
     monkeypatch.setattr(module, "plant_strings", lambda *_: _strings())
 
-    found, _ = module.optimizers(SunflowConfig(optimizer_settings=settings), {}, _snapshot())
+    found, _ = module.optimizers(SunflowConfig(optimizer_settings=settings), LIBRARY, _snapshot())
 
     assert sorted(o.label for o in found) == labels

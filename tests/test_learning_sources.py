@@ -3,6 +3,7 @@
 import pytest
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.devices.discovery import Snapshot
+from sunflow.devices.profiles import ProfileLibrary
 from sunflow.planning.learning_sources import learning_candidates
 
 
@@ -13,7 +14,7 @@ def _sensor(entity_id: str, name: str, device_class: str | None, unit: str, stat
     return {"entity_id": entity_id, "state": "5.6", "attributes": attributes}
 
 
-def test_candidates_by_device_class_outdoor_first() -> None:
+def test_candidates_by_device_class_outdoor_first(library: ProfileLibrary) -> None:
     """Sensors grouped by kind; names pointing outside come first, the inverter's own ones are left out."""
     states = [
         _sensor("sensor.wohnzimmer_temperature", "Wohnzimmer Temperatur", "temperature", "°C", "measurement"),
@@ -50,7 +51,7 @@ def test_candidates_by_device_class_outdoor_first() -> None:
         devices=[DeviceConfig(id="sofar", name="Sofar", profile="solax_modbus/sofar", profile_version=1, ha_device_id="inverter")]
     )
 
-    candidates = learning_candidates(config, snapshot)
+    candidates = learning_candidates(config, library, snapshot)
 
     assert [c["entity_id"] for c in candidates["temperature"]] == [
         "sensor.garten_klima_temperature",
@@ -88,7 +89,7 @@ def test_module_temperature_from_the_optimizers_of_a_plane(monkeypatch: pytest.M
     config.learning_sources.module_temperature = {"solcast:no": "sensor.station_pv_nord", "forecast_solar:x": "sensor.y"}
     snapshot = Snapshot(entries=[], devices=[], entities=[], states={}, energy_prefs=None)
 
-    assert learning_sources.module_temperature_sources(config, {}, snapshot) == {
+    assert learning_sources.module_temperature_sources(config, ProfileLibrary(), snapshot) == {
         "solcast:so": ["sensor.a1_temperature", "sensor.a2_temperature"],
         "solcast:no": ["sensor.station_pv_nord"],
     }
