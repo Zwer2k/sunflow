@@ -225,6 +225,7 @@ def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bo
 
     A protection step the budget holds back sets the block instead (guard.budget_block); the block the
     budget set is released once a protection step may be written again."""
+    data = replace(data, writing=active)
     if budget is not None:
         free = budget(Request(value_c=0.0, reason="start", protect=True), data.at) is None
         data = replace(data, protect_budget=free)

@@ -283,5 +283,14 @@
   "Schatten: {message}": "Shadow: {message}",
   "Schutzschritt wegen des Budgets nicht möglich, die Raumthermostat-Sperre ebenfalls nicht (keine Sperre oder ihre Mindestdauer): die Wärmepumpe kann abschalten.": "Protection step not possible because of the budget, nor the room thermostat block (no block or its minimum duration): the heat pump may shut down.",
   "Schreibbudget erschöpft": "write budget used up",
-  "Schreibbudget wieder verfügbar": "write budget available again"
+  "Schreibbudget wieder verfügbar": "write budget available again",
+  "Seit {hours} h keine Änderung von Max T-Vorlauf von außen mehr (zuvor {n}× geändert).": "No change of Max T-Vorlauf from outside for {hours} h (changed {n}× before).",
+  "Max T-Vorlauf von außen geändert: {before} → {value} °C, nicht von Sunflow (Automation, Skript, ESP-Regelung oder von Hand). Sunflow geht ab jetzt von diesem Wert aus; weitere Änderungen zählt es, meldet sie aber nicht einzeln.": "Max T-Vorlauf changed from outside: {before} → {value} °C, not by Sunflow (automation, script, ESP regulation or by hand). Sunflow assumes this value from now on; it counts further changes but does not report them one by one.",
+  "{message} Die ESP-Regelung ist aktiv.": "{message} The ESP regulation is active.",
+  "ESP-Regelung des Vorlaufs aktiv ({value} °C): die ESP-Komponente regelt Max T-Vorlauf selbst; Sunflow schreibt nicht, solange sie aktiv ist. Zum Abschalten den Wert in ESPHome auf 0 setzen.": "ESP flow regulation active ({value} °C): the ESP component regulates Max T-Vorlauf itself; Sunflow does not write while it is active. To switch it off, set the value to 0 in ESPHome.",
+  "ESP-Regelung des Vorlaufs beendet.": "ESP flow regulation ended.",
+  "{n} min": "{n} min",
+  "{n} h": "{n} h",
+  "{name}: Max T-Vorlauf wird von außen geändert, nicht von Sunflow ({n}× geändert, zuletzt vor {ago}) – andere Regler abschalten, die ihn schreiben.": "{name}: Max T-Vorlauf is changed from outside, not by Sunflow (changed {n}×, last {ago} ago) – switch off other controllers that write it.",
+  "{name}: ESP-Regelung des Vorlaufs aktiv – Sunflow schreibt nicht, solange sie aktiv ist (in ESPHome auf 0 setzen).": "{name}: ESP flow regulation active – Sunflow does not write while it is active (set it to 0 in ESPHome)."
 }

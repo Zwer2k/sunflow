@@ -377,6 +377,10 @@
         "unit": {"type": "string"},
         "sign": {"enum": ["charge_positive", "discharge_positive", "import_positive", "export_positive"]},
         "optional": {"type": "boolean", "default": false},
+        "missing_ok": {
+          "description": "Optional role whose absence is the normal case (e.g. an alternative controller that is not configured): a missing key is not reported as a missing function.",
+          "type": "boolean"
+        },
         "minus": {
           "description": "Another role of the profile subtracted from this one, for values measured by two sensors (e.g. grid_power as import minus grid_export_power).",
           "type": "string"

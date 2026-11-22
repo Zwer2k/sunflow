@@ -35,6 +35,8 @@ class RoleRequirement:
     max_step: float | None
     optional: bool
     companion: bool = False
+    # Optional role whose absence is the normal case: a missing key is no problem
+    missing_ok: bool = False
     # Sunflow writes this role: domain number, range and step are checked
     written: bool = False
 
@@ -100,6 +102,7 @@ def role_requirements(profile: dict[str, Any]) -> dict[str, RoleRequirement]:
                 max_step=MAX_SETPOINT_STEP_K if is_written else None,
                 optional=spec.get("optional", False),
                 companion=companion,
+                missing_ok=bool(spec.get("optional", False) and spec.get("missing_ok", False)),
                 written=is_written,
             )
     return result
@@ -183,6 +186,9 @@ def check_compatibility(
     for requirement in role_requirements(profile).values():
         entities = other if requirement.companion else own
         if entities is None:
+            continue
+        if requirement.missing_ok and requirement.key not in entities:
+            # Not configured (e.g. the ESP regulation): nothing missing
             continue
         if reasons := role_problems(requirement, entities.get(requirement.key)):
             problems.append(

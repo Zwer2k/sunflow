@@ -24,6 +24,9 @@ minimum spacing, deadband except for protection steps, "write now". In the shado
 virtual writes; writing to the heat pump follows in part 4.7 (until then no heat pump is active).
 Budget (8.5, step 3 part 4.3, budget.py): per day in Home Assistant's time zone, counted virtually in the
 shadow (seeded from the write events in heat_pump_samples), never in eeprom_writes.json.
+Foreign writers (8.5, step 3 part 4.4, foreign.py): a change of the real Max T-Vorlauf Sunflow did not
+write is noted (journal, status, setup summary) and the written value follows it; while the ESP regulation
+is active nothing is written.
 
 Ventilation (6.2): a room being aired does not count for the room temperature, and the correction is
 frozen meanwhile. When rooms leave or join the room temperature (aired, stale, missing), the
@@ -38,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from sunflow.config.models import DeviceConfig, SunflowConfig
+from sunflow.i18n import t
 
 from .budget import WriteBudget
 from .correction import Correction, SetpointWatch, Settling
@@ -400,6 +404,28 @@ class FlowShadow:
 
     # Status
 
+    def summary_notes(self, names: dict[str, str], now: datetime) -> list[str]:
+        """For the setup summary: heat pumps whose set value someone else changes, or the ESP regulates."""
+        notes = []
+        for device_id, guard in self.guards.items():
+            name = names.get(device_id)
+            if name is None:
+                continue
+            status = guard.foreign.status(now)
+            episode = guard.foreign.episode
+            if status["episode"] is not None and episode is not None:
+                minutes = max(0, round((now - episode.last_at).total_seconds() / 60))
+                ago = t("{n} min", n=minutes) if minutes < 120 else t("{n} h", n=round(minutes / 60))
+                notes.append(t(
+                    "{name}: Max T-Vorlauf wird von außen geändert, nicht von Sunflow ({n}× geändert, zuletzt vor {ago}) – andere Regler abschalten, die ihn schreiben.",
+                    name=name, n=episode.count, ago=ago,
+                ))
+            if status["regulation"]["active"]:
+                notes.append(t(
+                    "{name}: ESP-Regelung des Vorlaufs aktiv – Sunflow schreibt nicht, solange sie aktiv ist (in ESPHome auf 0 setzen).", name=name,
+                ))
+        return notes
+
     def house_status(self, config: SunflowConfig | None = None) -> dict[str, Any]:
         """Room setpoint, mode and room temperature for the climate entity and the UI."""
         return climate_status(config or self._config, self.room, self.watch.settling, self.ventilation)
@@ -474,6 +500,8 @@ class FlowShadow:
             } if writer is not None else None,
             # Budget (8.5): used today and in the last hour, left, what it holds back (virtual in the shadow)
             "budget": self.budget(device_id).status(now, virtual=not self.writing_active(device_id)),
+            # Foreign writers (8.5): the running episode, the latest foreign changes, the ESP regulation
+            "foreign": guard.foreign.status(now),
             "writes": list(reversed(guard.recent_writes)),
             "unwanted_stops": list(reversed(guard.recent_stops)),
             "values": guard_values(settings, learned, guard.bumps, now).as_dict(),

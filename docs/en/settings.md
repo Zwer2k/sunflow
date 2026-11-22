@@ -160,6 +160,16 @@ offered in shadow operation yet. The room thermostat block counts neither agains
 budget nor for the spacing: the HPSU does not store this input in its EEPROM; its minimum duration
 prevents cycling.
 
+**Foreign writers:** When Max T-Vorlauf changes at the heat pump without Sunflow having written it
+(automation, script, ESP regulation, by hand), Sunflow reports it as a warning in the journal – once while
+such changes follow each other; further ones it only counts. It counts as over only 24 hours after the
+last change (journal entry); until then the setup summary names the heat pump as well. Sunflow assumes the
+new value from then on (in shadow also for the virtual writes) and waits for the minimum spacing before
+writing again itself; foreign changes do not count against its budget. While the **ESP regulation** of the
+CAN component is active ("Vorlauf Soll Geregelt" above 0), the component regulates Max T-Vorlauf itself:
+Sunflow then writes nothing (in shadow "Would write nothing: ESP regulation active"), reports it in the journal and the
+summary, and controls again once the value is set to 0 in ESPHome.
+
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
 optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
 The **heating surface type** (underfloor heating, mixed, radiators; default underfloor) sets the start

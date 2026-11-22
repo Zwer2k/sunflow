@@ -140,7 +140,8 @@ speichert Sunflow das Home-Assistant-Gerät, dessen MAC-Adresse und die Komponen
 - **Neu angelegte Integration:** Findet Sunflow das Home-Assistant-Gerät nicht mehr, sucht es eines
   mit derselben MAC-Adresse und ordnet es neu zu (Eintrag im Protokoll).
 - **Profilversion:** Ist das Profil neuer als beim Übernehmen, weist die Zusammenfassung darauf hin.
-  Version 2 ergänzt den Außenfühler des Außengeräts (TA2, optional).
+  Version 2 ergänzt den Außenfühler des Außengeräts (TA2, optional), Version 3 die ESP-Regelung
+  „Vorlauf Soll Geregelt“ (optional; nicht eingerichtet ist der Normalfall und wird nicht als fehlend gemeldet).
 - **Zustände und Aufzeichnung:** Sunflow liest jede Minute Betriebsmodus, Betriebsart, HK-Funktion,
   Bypass-Ventil, Raumthermostat und Fehlercode und speichert je 5 Minuten die Mittelwerte mit den
   Zuständen (Tabelle `heat_pump_samples`, ein Jahr lang; im Export enthalten). Als **gültiger

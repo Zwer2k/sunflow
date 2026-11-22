@@ -631,6 +631,7 @@ export default {
   "Modus Aus": "mode off",
   "Vorlauf unbekannt": "flow temperature unknown",
   "Max T-Vorlauf unbekannt": "Max T-Vorlauf unknown",
+  "ESP-Regelung aktiv": "ESP regulation active",
   "Strategie: {state}": "Strategy: {state}",
   "An einer Grenze, die Korrektur läuft nicht weiter darüber hinaus: {limits}": "At a limit, the correction does not move further beyond it: {limits}",
   "{reason}: {value} °C": "{reason}: {value} °C",

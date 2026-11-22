@@ -164,6 +164,16 @@ für den ausstehenden Wert (nicht das Budget) und wird im Schattenbetrieb noch n
 Raumthermostat-Sperre zählt nicht ins Budget und nicht zum Mindestabstand: Die HPSU legt diesen Eingang
 nicht im EEPROM ab; gegen Takten gilt ihre Mindestdauer.
 
+**Fremde Schreiber:** Ändert sich Max T-Vorlauf an der Wärmepumpe, ohne dass Sunflow geschrieben hat
+(Automation, Skript, ESP-Regelung, von Hand), meldet Sunflow das als Warnung im Journal – einmal, solange
+solche Änderungen aufeinander folgen; weitere zählt es nur. Erst 24 Stunden nach der letzten Änderung gilt
+das als beendet (Eintrag im Journal); bis dahin nennt auch die Zusammenfassung der Einrichtung die
+Wärmepumpe. Sunflow geht danach vom neuen Wert aus (im Schatten auch für die virtuellen Schreibvorgänge)
+und wartet den Mindestabstand ab, bevor es selbst wieder schreibt; fremde Änderungen zählen nicht in sein
+Budget. Ist die **ESP-Regelung** der CAN-Komponente aktiv („Vorlauf Soll Geregelt“ über 0), regelt die
+Komponente Max T-Vorlauf selbst: Sunflow schreibt dann nichts (im Schatten „Würde nichts schreiben: ESP-Regelung aktiv“),
+meldet das im Journal und in der Zusammenfassung und regelt wieder, sobald der Wert in ESPHome auf 0 steht.
+
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
 Wärmepumpe). Der **Heizflächentyp** (Fußbodenheizung, gemischt, Heizkörper; Standard Fußboden) gibt den

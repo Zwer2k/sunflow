@@ -3,7 +3,7 @@
 # delivers (action rotex_can_manifest) and roles name the component's keys, not unique_id endings.
 # Design: design/heat_pump.md, sections 3 and 11.
 profile: esphome/rotex_hpsu_can
-version: 2
+version: 3
 match:
   integration: esphome
   manifest: {id: rotex_hpsu_can}
@@ -32,6 +32,9 @@ roles:
   error: {key: error_code, domain: [text_sensor, sensor]}
   # Max T-Vorlauf: the set value of the strategy "fixed"; written, so checked as a number with range and step
   max_flow_setpoint: {key: max_target_flow_temp, domain: [number], unit: "°C"}
+  # Regulation of the component itself ("Vorlauf Soll Geregelt"): above 0 it writes Max T-Vorlauf, Sunflow
+  # then writes nothing (design 8.5); read only. Not configured is the normal case.
+  regulated_setpoint: {key: supply_setpoint_regulated, domain: [number], unit: "°C", optional: true, missing_ok: true}
   outdoor_unit: {key: outdoor_unit, domain: [select, text_sensor], optional: true}
   electric_energy: {key: total_electrical_energy, domain: [sensor], unit: kWh, optional: true}
 

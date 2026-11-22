@@ -24,6 +24,9 @@ Rules (8.4), with the learned values (learned.py; start values until there are e
   released: phase blocked, journal, shown in status and UI, until someone else releases it (8.6).
 - Budget used up for a protection step (emergency quota or hourly limit): the block instead of the
   write (reason budget), released after its minimum duration once a protection step may be written again.
+- Foreign writers (foreign.py, step 3 part 4.4): a change of the real Max T-Vorlauf Sunflow did not write
+  is noted (journal once per episode, status, summary) and the written value follows it; while the ESP
+  regulation is active nothing is written (inactive esp_regulation).
 - Unwanted shutdown: the compressor stops in heating at Tv ≥ effective setpoint + 3 K without block,
   hot water or defrost → journal; the value concerned (jump of that start, else the swing) is raised.
 Limits (8.3): the set value stays within [min, max]; a flow target beyond the plausibility band is not
@@ -53,6 +56,7 @@ from .defaults import (
     TRACK_LOOKBACK_S,
     TV_FLAT_WINDOW_S,
 )
+from .foreign import FOREIGN_EVENT, REGULATED_ROLE, ForeignWatch, regulation_active
 from .learned import NORMAL, START_JUMP_EVENT, Values
 from .limits import ControlSettings, clamp, implausible, round_near, round_up, setpoint_range
 from .states import FIXED, HEATING, Evaluation, Reading
@@ -166,6 +170,8 @@ class GuardInput:
     surface: str | None = None
     # The budget would let a protection step be written now (write_step); releases a budget block
     protect_budget: bool = True
+    # Sunflow writes to this heat pump for real (write_step; not before step 3 part 4.7)
+    writing: bool = False
 
 
 @dataclass(kw_only=True)
@@ -192,6 +198,8 @@ class GuardResult:
     request: Request | None = None
     pending: Pending | None = None
     manual: dict[str, Any] | None = None
+    # A foreign change of the set value this minute (foreign.py)
+    foreign: dict[str, Any] | None = None
     # Journal entries (message, warn)
     notes: list[tuple[str, bool]] = field(default_factory=list)
 
@@ -222,6 +230,8 @@ class Guard:
         self.implausible = bool(state.get("implausible"))
         # A protection step held back by the budget without a block possible was noted (once per episode)
         self.unprotected = bool(state.get("unprotected"))
+        # Foreign writers and the ESP regulation (8.5, step 3 part 4.4)
+        self.foreign = ForeignWatch(state.get("foreign"))
         # In memory only: Tv of the last minutes (time, Tv, peak) and the previous minute
         self._history: deque[tuple[datetime, float, float]] = deque()
         self._activity: str | None = None
@@ -248,6 +258,7 @@ class Guard:
             "recent_stops": self.recent_stops[-GUARD_RECENT_MAX:],
             "implausible": self.implausible,
             "unprotected": self.unprotected,
+            "foreign": self.foreign.as_dict(),
         }
 
     # Tv over the last minutes
@@ -293,6 +304,7 @@ class Guard:
         if self.written_c is None and (current := reading.values.get("max_flow_setpoint")) is not None:
             # Sunflow starts from what the heat pump has, without a write
             self.written_c = current
+        self._follow_writers(data, result)
         self._follow_foreign(reading, result, now)
 
         self._follow_activity(reading, now, tv)
@@ -317,6 +329,22 @@ class Guard:
         self._prev_tv = tv
         self.last = result
         return result
+
+    def _follow_writers(self, data: GuardInput, result: GuardResult) -> None:
+        """A change of the real set value Sunflow did not write: noted, and the written value follows it.
+
+        The spacing of the next write runs from the change (written_at), so Sunflow does not answer it at
+        once; the change does not count against Sunflow's budget."""
+        values, now = data.reading.values, data.at
+        actual = values.get("max_flow_setpoint")
+        seen = self.foreign.step(now, actual, values.get(REGULATED_ROLE), data.settings.step, self.written_c)
+        if seen.change is not None and actual is not None:
+            self.written_c, self.written_at = actual, now
+            # With the activity: a change during hot water answers open point 8 (15)
+            event = {**seen.change, "activity": data.reading.activity, "shadow": not data.writing}
+            result.events.append(event)
+            result.foreign = event
+        result.notes.extend(seen.notes)
 
     def _follow_foreign(self, reading: Reading, result: GuardResult, now: datetime) -> None:
         """A block Sunflow did not set is kept and only shown (status, UI, journal), never released (8.6).
@@ -474,6 +502,9 @@ class Guard:
             reasons.append("tv_missing")
         if reading.values.get("max_flow_setpoint") is None:
             reasons.append("setpoint_missing")
+        if regulation_active(reading.values.get(REGULATED_ROLE)):
+            # The ESP component regulates Max T-Vorlauf itself (8.5): no takeover
+            reasons.append("esp_regulation")
         return reasons
 
     @staticmethod
@@ -487,6 +518,9 @@ class Guard:
                  "phase": result.phase, "shadow": shadow}
         if manual:
             event["manual"] = True
+        if not shadow:
+            # The change of the real value to it is Sunflow's own, not a foreign one
+            self.foreign.expect(value, now)
         self.written_c, self.written_at = value, now
         self.unprotected = False
         result.setpoint_c = value
@@ -616,12 +650,12 @@ COUNTED_REASONS = (NORMAL_WRITE, START, TRACK, BLOCK_ON, BLOCK_OFF)
 
 
 def daily_counts(events: list[dict[str, Any]], tz: Any, days: int, now: datetime) -> list[dict[str, Any]]:
-    """Per local day (newest first, days of them): planned writes by reason and unwanted shutdowns."""
+    """Per local day (newest first, days of them): planned writes by reason, unwanted shutdowns and foreign writes."""
     today = now.astimezone(tz).date()
     counts: dict[Any, dict[str, Any]] = {}
     for back in range(days):
         day = today - timedelta(days=back)
-        counts[day] = {"date": day.isoformat(), **dict.fromkeys(COUNTED_REASONS, 0), "unwanted_stops": 0}
+        counts[day] = {"date": day.isoformat(), **dict.fromkeys(COUNTED_REASONS, 0), "unwanted_stops": 0, "foreign_writes": 0}
     seen: set[tuple[Any, ...]] = set()
     for event in events:
         if not isinstance(event, dict) or (at := _time(event.get("at"))) is None:
@@ -637,6 +671,9 @@ def daily_counts(events: list[dict[str, Any]], tz: Any, days: int, now: datetime
             day[event["reason"]] += 1
         elif event.get("kind") == STOP_EVENT:
             day["unwanted_stops"] += 1
+        elif event.get("kind") == FOREIGN_EVENT:
+            # Changes of the real set value by someone else (step 3 part 4.4); not Sunflow's budget
+            day["foreign_writes"] += 1
     for day in counts.values():
         # Normal budget and emergency budget (8.5): normal writes; start and tracking (protection steps)
         day["setpoint"] = day[NORMAL_WRITE] + day[START] + day[TRACK]

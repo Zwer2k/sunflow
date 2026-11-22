@@ -16,7 +16,7 @@ from sunflow.devices.site import (
 from sunflow.i18n import N_, t
 
 from .common import _library, _replan
-from .heat_pump import manifest_notes, manifest_status
+from .heat_pump import heat_pump_notes, manifest_notes, manifest_status
 
 router = APIRouter()
 
@@ -27,7 +27,8 @@ def _summary_response(summary: SetupSummary) -> dict[str, Any]:
 
 def _build(request: Request, config: SunflowConfig) -> SetupSummary:
     return build_summary(
-        config, _library(request).profiles, manifest_status=manifest_status(request), manifest_notes=manifest_notes(request)
+        config, _library(request).profiles, manifest_status=manifest_status(request), manifest_notes=manifest_notes(request),
+        heat_pump_notes=heat_pump_notes(request, config),
     )
 
 

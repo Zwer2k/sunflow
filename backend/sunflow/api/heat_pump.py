@@ -39,6 +39,14 @@ def _recorder(request: Request) -> Any:
     return getattr(getattr(request.app.state, "runner", None), "heat_pump", None)
 
 
+def heat_pump_notes(request: Request, config: SunflowConfig) -> list[str]:
+    """Heat pumps whose set value someone else changes or the ESP regulates (8.5, for the setup summary)."""
+    flow = getattr(_recorder(request), "flow", None)
+    if flow is None or not hasattr(flow, "summary_notes"):
+        return []
+    return flow.summary_notes({d.id: d.name for d in config.devices}, datetime.now(UTC))
+
+
 def _manifest(request: Request, device: Any) -> dict[str, Any] | None:
     """The manifest the device was last linked with (entity ranges); None before the first one."""
     recorder = _recorder(request)

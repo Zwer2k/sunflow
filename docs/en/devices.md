@@ -136,7 +136,8 @@ Sunflow stores the Home Assistant device, its MAC address and the component (CAN
 - **Integration added again:** If Sunflow no longer finds the Home Assistant device, it looks for one
   with the same MAC address and assigns it anew (log entry).
 - **Profile version:** If the profile is newer than when the device was added, the summary says so.
-  Version 2 adds the outside sensor of the outdoor unit (TA2, optional).
+  Version 2 adds the outside sensor of the outdoor unit (TA2, optional), version 3 the ESP regulation
+  "Vorlauf Soll Geregelt" (optional; not configured is the normal case and is not reported as missing).
 - **States and recording:** Every minute Sunflow reads operating mode, mode of operation, HK function,
   bypass valve, room thermostat and error code and stores the means with the states every 5 minutes
   (table `heat_pump_samples`, kept for a year; part of the export). Only this counts as **valid

@@ -190,6 +190,12 @@ BUMP_DECAY_K_PER_DAY = 0.1
 # Shown in the status: the latest planned writes and unwanted shutdowns
 GUARD_RECENT_MAX = 20
 
+# Foreign writers (8.5, step 3 part 4.4). A change of the set value by someone else starts an episode
+# (journal once); it ends FOREIGN_EPISODE_S after the last such change. A change to the value Sunflow
+# wrote itself counts as its own within OWN_WRITE_CONFIRM_S of that write (from part 4.7).
+FOREIGN_EPISODE_S = 24 * 3600
+OWN_WRITE_CONFIRM_S = 10 * 60
+
 # House model from heat_pump_samples (9.3): a day counts for the coverage when it holds at least
 # HOUSE_SAMPLES_DAY_MIN_S of valid heating without ventilation; an hour is used with at least
 # HOUSE_SAMPLES_HOUR_MIN_ROWS of its 5 minute rows.

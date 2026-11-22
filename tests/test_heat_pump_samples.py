@@ -35,6 +35,8 @@ STATES: dict[str, tuple[str, str | None]] = {
     "bypass_valve": ("0.0", "%"),
     "room_therm": ("Aus", None),
     "error_code": ("Kein Fehler", None),
+    # ESP regulation off (0): Sunflow may write (8.5)
+    "supply_setpoint_regulated": ("0.0", "°C"),
 }
 
 

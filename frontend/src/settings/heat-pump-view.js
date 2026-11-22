@@ -99,6 +99,7 @@ function inactiveText(reason) {
     fault: t("Störung"),
     tv_missing: t("Vorlauf unbekannt"),
     setpoint_missing: t("Max T-Vorlauf unbekannt"),
+    esp_regulation: t("ESP-Regelung aktiv"),
   }[reason];
   if (fixed) return fixed;
   if (reason.startsWith("strategy_")) return t("Strategie: {state}", { state: STRATEGIES()[reason.slice(9)] ?? reason.slice(9) });

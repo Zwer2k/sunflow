@@ -52,6 +52,8 @@ class Sim:
         self.heat: float | None = None
         self.surface = "underfloor"
         self.mode = "heat"
+        # Further role values of the reading (e.g. regulated_setpoint)
+        self.extra: dict[str, float | None] = {}
         self.results: list[tuple[datetime, float, GuardResult]] = []
 
     def minute(
@@ -60,7 +62,7 @@ class Sim:
     ) -> GuardResult:
         reading = Reading(
             program="heating", activity=activity, strategy=strategy, blocked=blocked, error="err_0", compressor=compressor,
-            values={"flow_temperature": tv, "flow_setpoint": self.effective, "max_flow_setpoint": self.real_setpoint, "bypass_valve": bypass},
+            values={"flow_temperature": tv, "flow_setpoint": self.effective, "max_flow_setpoint": self.real_setpoint, "bypass_valve": bypass} | self.extra,
         )
         if valid is None:
             valid = activity == "heating" and compressor and bypass == 0

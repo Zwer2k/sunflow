@@ -49,11 +49,13 @@ def build_summary(
     profiles: dict[str, dict[str, Any]],
     manifest_status: dict[str, dict[str, Any]] | None = None,
     manifest_notes: list[str] | None = None,
+    heat_pump_notes: list[str] | None = None,
 ) -> SetupSummary:
     """Collect configured items and open issues.
 
     manifest_status: link status of devices recognized by their manifest, by device id
-    (ManifestManager.status); manifest_notes: manifests no device could be assigned to.
+    (ManifestManager.status); manifest_notes: manifests no device could be assigned to;
+    heat_pump_notes: heat pumps whose set value someone else writes (design/heat_pump.md, 8.5).
     """
     summary = SetupSummary(
         tariff=config.tariff.import_entity_id,
@@ -140,6 +142,7 @@ def build_summary(
             )
 
     summary.issues.extend(Issue(level="warning", step=STEP_DEVICES, message=note) for note in manifest_notes or [])
+    summary.issues.extend(Issue(level="warning", step=STEP_DEVICES, message=note) for note in heat_pump_notes or [])
 
     if config.tariff.import_entity_id is None and config.tariff.fixed_price_ct is None:
         summary.issues.append(

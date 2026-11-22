@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.15
+
+- Heat pumps (still shadow operation): foreign writers are reported – a change of Max T-Vorlauf not made by Sunflow (automation, script, ESP regulation, by hand) is a warning in the journal once per episode (it ends 24 hours after the last change) and is named in the setup summary meanwhile; Sunflow then assumes the new value and waits for the minimum spacing before writing again. While the ESP regulation of the CAN component is active ("Vorlauf Soll Geregelt" above 0), Sunflow writes nothing and says so in the journal and the summary. Device profile Rotex HPSU CAN version 3 (optional role for the ESP regulation; not configured is not reported as missing).
+
 ## 0.80.14
 
 - Heat pumps (still shadow operation): the write budget now applies to the set value – 48 writes per day, 24 more only for protection steps (start, tracking), at most 6 in any hour; the day follows Home Assistant's time zone. In the shadow Sunflow counts virtually (from the recorded writes), the EEPROM counter file stays untouched. Once the budget is used up a normal value waits ("pending … waits: daily budget used up"); instead of a protection step beyond the emergency quota or the hourly limit Sunflow would set the room thermostat block and release it once a protection step may be written again. Each exhaustion is noted once a day in the journal. Settings → Heat pump shows the budget of today (virtual) and the table of writes per day now counts with spacing and budget.

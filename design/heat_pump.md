@@ -731,7 +731,8 @@ Sunflow zuletzt geschrieben hätte (virtuell, Start beim vorgefundenen Max T-Vor
   Schatten ist jede echte Sperre fremd; ab Teil 4 ist eine Sperre, die Sunflow selbst geschrieben hat,
   nicht fremd. Der frühere Wert `adopted` in `heat_pump_state.json` wird als `foreign` gelesen.
 - **Kein Schreiben** (Status `inactive`): Modus `off`, Strategie ≠ `fixed`, Gerät nicht nutzbar, Programm ≠
-  Heizen, unbekannte Aktivität, Störung, Tv oder Max T-Vorlauf unbekannt.
+  Heizen, unbekannte Aktivität, Störung, Tv oder Max T-Vorlauf unbekannt, ESP-Regelung aktiv
+  (`esp_regulation`, seit 3, Teil 4.4, 8.5).
 - **Ungewollte Abschaltung:** Kompressor an → aus, vorher Aktivität Heizen, nicht Warmwasser/Abtauen danach,
   keine (echte) Sperre, höchste Spitze der letzten 3 min (inklusive der Veröffentlichungen seit der letzten
   Minute) ≥ wirksamer Soll + `stop_margin` − 0,2 K (`STOP_TOLERANCE_K`). Innerhalb von 30 min nach einem
@@ -846,6 +847,31 @@ Wärmepumpe):
   `local_day`, `virtual`, `seeded`); UI-Kachel „Budget heute (virtuell)“. `shadow_writes` zählt damit, was
   mit Mindestabstand und Budget geschrieben würde; `budget` dort mit den Startwerten, wenn das Profil keine
   nennt. Tests `tests/test_heat_pump_budget.py`.
+
+Umsetzung fremde Schreiber (3, Teil 4.4, `heat_pump/foreign.py`, in der Schutzschicht je Takt; noch nichts an
+die Wärmepumpe):
+- Sunflow merkt sich den zuletzt gesehenen echten Max T-Vorlauf (`guard.foreign.seen_c` in
+  `heat_pump_state.json`, übersteht einen Neustart: eine Änderung, während Sunflow nicht lief, zählt auch).
+  Der erste Wert überhaupt wird still übernommen; eine Änderung unter einem halben `step` ist keine,
+  ein unbekannter Wert wird übersprungen (der letzte bekannte bleibt).
+- Eigen ist eine Änderung nur auf den Wert, den Sunflow **echt** geschrieben hat (ab 4.7), innerhalb von
+  10 min (`OWN_WRITE_CONFIRM_S`) nach diesem Schreibvorgang; im Schatten ist jede echte Änderung fremd.
+- Fremde Änderung: Ereignis `foreign_write` in `heat_pump_samples`; der geschriebene (im Schatten
+  virtuelle) Wert folgt dem echten, und der Mindestabstand läuft ab der Änderung (`written_at`), damit
+  Sunflow nicht sofort dagegen schreibt. Sie zählt nicht ins Budget.
+- Episode: Die erste fremde Änderung schreibt eine Warnung ins Journal („Max T-Vorlauf von außen geändert:
+  … → … °C …“, mit Hinweis, wenn die ESP-Regelung aktiv ist); weitere werden gezählt, nicht einzeln
+  gemeldet. Die Episode endet 24 h nach der letzten fremden Änderung (`FOREIGN_EPISODE_S`, Journal-Eintrag);
+  bis dahin nennt die Einrichtungs-Zusammenfassung die Wärmepumpe (Warnung, Zahl und „zuletzt vor …“).
+- ESP-Regelung: optionale Profilrolle `regulated_setpoint` (Schlüssel `supply_setpoint_regulated`, Profil
+  Version 3, nur lesen, `missing_ok`: nicht eingerichtet ist kein Fehlen). Wert > 0 → aktiv: Grund
+  `esp_regulation` in `inactive` (nichts schreiben, keine Übernahme), Journal (Warnung) beim Beginn, Eintrag
+  beim Ende, Zusammenfassung, solange aktiv; 0 oder unbekannt → nicht aktiv (wie die Komponente selbst).
+  Ihre Schreibvorgänge auf Max T-Vorlauf sind fremde Änderungen mit `regulation: true`.
+- Status `guard.foreign` (`seen_c`, laufende `episode` mit `since`, `last_at`, `count`, `from_c`,
+  `value_c`; die letzten 20 fremden Änderungen `recent`; `regulation` mit `active`, `value_c`, `since`;
+  `own_pending`); `shadow_writes` zählt je Tag `foreign_writes` (nicht im Budget). Keine eigene UI-Anzeige
+  außer dem Grund „ESP-Regelung aktiv“; Tests `tests/test_heat_pump_foreign.py`.
 
 ### 8.6 Ende der Steuerung und Ausfall
 
@@ -1009,6 +1035,8 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
     "setpoint_c", "max_setpoint_c", "during", "raised", "value"}`. `written_c` bleibt leer, solange nichts
     geschrieben wird. Ab 3, Teil 4.2 laufen die Schreibvorgänge des Stellwerts durch die Schreibschicht
     (8.5, Mindestabstand); ein Schreibvorgang über „jetzt schreiben“ trägt zusätzlich `"manual": true`.
+    Ab 3, Teil 4.4 fremde Änderungen von Max T-Vorlauf `{"at", "kind": "foreign_write", "from_c",
+    "value_c", "written_c" (was Sunflow bis dahin als geschrieben hatte), "regulation", "activity", "shadow"}`.
 - Aufräumen: Zeilen älter als 1 Jahr löschen (im Runner einmal täglich, Blöcke zu 5000 Zeilen).
 - Lernen zurücksetzen: Zeilen des Geräts löschen und `heat_pump_state.json`-Eintrag verwerfen.
 - Export/Import: `heat_pump_samples` wird beim Import übernommen (in `IMPORT_TABLES` eintragen); der
@@ -1020,7 +1048,9 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
   `curve` (Cache der Kennlinie, 9.2), `learned` (Cache der gelernten Schwankungs-, Sprung- und
   Leistungswerte, eigenes `format`) und `guard` (Schutzschicht 8.4: zuletzt geschrieben – im Schatten
   virtuell –, Sperre mit Zeit und Grund, Tv vor Warmwasser/Abtauen, laufender Start, Erhöhungen nach
-  ungewollten Abschaltungen, die letzten geplanten Schreibvorgänge und Abschaltungen); unbekannte Schlüssel werden ignoriert, geschrieben nur bei
+  ungewollten Abschaltungen, die letzten geplanten Schreibvorgänge und Abschaltungen, fremde Schreiber
+  `foreign`: zuletzt gesehener Max T-Vorlauf, erwarteter eigener Wert, Episode, ESP-Regelung, letzte fremde
+  Änderungen); unbekannte Schlüssel werden ignoriert, geschrieben nur bei
   Änderung, atomar. Im Export enthalten, beim Import nicht übernommen.
 - `config.json`: `house.heating_surface` (Heizflächentyp, 8.1; additiv ohne Migration, Standard
   `underfloor`).
@@ -1039,7 +1069,7 @@ in Schritt 3 hinzu. Weitere Wärmepumpen bekommen nur ein eigenes Profil dieser 
 
 ```yaml
 profile: esphome/rotex_hpsu_can
-version: 2                  # 2: optionale Rolle outside_temperature_unit (ta2)
+version: 3                  # 2: optionale Rolle outside_temperature_unit (ta2); 3: regulated_setpoint
 match:
   integration: esphome
   manifest: {id: rotex_hpsu_can}
@@ -1062,6 +1092,8 @@ roles:                      # domain: erlaubte Entity-Domains laut Manifest
   heating_block:        {key: room_therm, domain: [select, switch]}   # on = gesperrt, off = frei
   error:                {key: error_code, domain: [text_sensor, sensor]}
   max_flow_setpoint:    {key: max_target_flow_temp, domain: [number], unit: "°C"}   # Max T-Vorlauf, beschrieben
+  regulated_setpoint:   {key: supply_setpoint_regulated, domain: [number], unit: "°C", optional: true,
+                         missing_ok: true}   # ESP-Regelung, nur gelesen (> 0: Sunflow schreibt nicht, 8.5)
   outdoor_unit:         {key: outdoor_unit, domain: [select, text_sensor], optional: true}
   electric_energy:      {key: total_electrical_energy, domain: [sensor], unit: kWh, optional: true}
 
@@ -1105,6 +1137,9 @@ flow_control:
 - `heating_block`: Auswahlwerte für gesperrt/frei der Rolle `heating_block`, Mindestdauer.
 - `writes`: Mindestabstände und Budget (8.5); `deadband` nur, wenn ein Profil von `DEADBAND_K` abweicht.
 Beim Laden prüft Sunflow, dass `states` und `flow_control` nur Rollen des Profils nennen.
+Rollenfeld `missing_ok` (Schema, seit 3, Teil 4.4): bei einer optionalen Rolle, deren Fehlen der Normalfall
+ist (die ESP-Regelung), meldet die Kompatibilitätsprüfung einen fehlenden Schlüssel nicht; passt der
+vorhandene Schlüssel nicht (Domain, Einheit), bleibt es ein optionales Problem.
 
 ---
 
@@ -1125,7 +1160,8 @@ Nur CAN:
   `tv_max` gemeinsam im Intervall von `tv` veröffentlicht (8.4); in den Beispiel-YAMLs ergänzt.
 - Max T-Vorlauf und Min T-Vorlauf mit Schrittweite 0,1 °C (Register in Zehntel); beim Schreiben wird der
   skalierte Wert gerundet statt abgeschnitten (vorher z. B. 27,3 → 27,2).
-- `supply_setpoint_regulated` bleibt als Option (Sunflow übernimmt nicht, solange sie aktiv ist).
+- `supply_setpoint_regulated` bleibt als Option (Sunflow übernimmt nicht, solange sie aktiv ist; gelesen über
+  die Rolle `regulated_setpoint`, 8.5).
 
 ## 13. HA-Seite und UI
 
@@ -1232,7 +1268,10 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
    (die bisherigen Regler schreiben erst nach dem Ende). Nötig ist ein Test am Gerät (vom Nutzer): während
    einer Warmwasser-Bereitung Max T-Vorlauf einmal ändern, z. B. um 3 K über den Wert vorher, und prüfen,
    ob Warmwasser normal weiterläuft und ob der Kompressor beim Start danach mit dem neuen Wert läuft
-   (wirksamer Vorlauf-Soll, keine Abschaltung kurz nach dem Start).
+   (wirksamer Vorlauf-Soll, keine Abschaltung kurz nach dem Start). Seit 3, Teil 4.4 steht jede fremde
+   Änderung von Max T-Vorlauf als Ereignis `foreign_write` mit `activity` in `heat_pump_samples`; eine
+   Änderung während Warmwasser (auch dieser Test) lässt sich damit direkt mit den Zeilen und dem Ereignis
+   `start` danach auswerten.
 9. **Bereich von Max T-Vorlauf gegen die eigene Grenze der HPSU** (offen, vor dem Aktivschalten zu
    entscheiden). Das Manifest meldet für Max T-Vorlauf (`max_target_flow_temp`) 20–90 °C – den
    Registerbereich, fest beim Kompilieren. Die HPSU begrenzt den wirksamen Vorlauf-Soll laut Nutzer selbst
@@ -1347,6 +1386,11 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
          ESP-Regelung (`supply_setpoint_regulated` > 0, optionale Profilrolle) → Journal (Warnung, einmal je
          Episode), Zusammenfassung, Status; der virtuelle bzw. geschriebene Wert folgt dem echten. Wirkt
          schon im Schatten.
+         **Umgesetzt (0.80.15):** `heat_pump/foreign.py` (`ForeignWatch`, in der Schutzschicht), Ereignis
+         `foreign_write`, Episode 24 h, eigene Änderung nur nach echtem Schreiben (ab 4.7, 10 min), Mindestabstand
+         ab der fremden Änderung, nicht im Budget; Profil Version 3 mit Rolle `regulated_setpoint`
+         (Schema-Feld `missing_ok`), Grund `esp_regulation`; Status `guard.foreign`, Warnungen in der
+         Einrichtungs-Zusammenfassung, `foreign_writes` in `shadow_writes`. Tests `tests/test_heat_pump_foreign.py`.
       5. **Sprungschutz beim Quellenwechsel** (8.1) für den aktiven Betrieb: Korrektur um alt − neu
          verschieben, damit V_Ziel nicht springt (in der Begrenzung ±3 K, Rest bleibt als Sprung, Journal).
          Im Schatten bewusst nicht; getestet in der Simulation.
@@ -1358,6 +1402,7 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
          verlangen), echtes Schreiben über die Profil-Schreibschritte (`storage: eeprom`), eigene Sperre ist
          nicht fremd, Prüfung des Übernommenen (wirksamer Soll nach `adopt_delay`), Journal bei Ein/Aus;
          Ausschalten, Modus `off`, Ausfall: nichts zurückstellen (8.6), danach wieder Schatten.
+         Die Erkennung eigener Änderungen (4.4) braucht dann `Guard.record_write(shadow=False)`.
          Voraussetzungen zum Einschalten: Gerät kompatibel, Strategie `fixed`, keine ESP-Regelung, Punkt 9
          entschieden. Simulation nach Abschnitt 14 (HPSU-Nachbildung) als Abnahme. Das erste Schreiben an
          der Wärmepumpe nur mit Freigabe des Nutzers.
