@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.20
+
+- Rebuild of the Edge App only (0.80.19 had been built before its code was on GitHub); no change of behaviour.
+
 ## 0.80.19
 
 - Heat pumps: a room no longer drops out of the room temperature ("not considered … no report for over 2 h") while its temperature stays the same. Some integrations (MQTT, e.g. Zigbee2MQTT) do not report an unchanged value again; Sunflow now counts the latest report of any sensor of the same device (e.g. the humidity). A room counts as stale only when the whole device has been silent for 2 hours.
