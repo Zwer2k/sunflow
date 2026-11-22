@@ -95,7 +95,9 @@ heat pump then does not heat until it is released); Sunflow computes in the shad
 
 **Room setpoint:** the room temperature Sunflow is to keep (18–27 °C) and the mode heat/off; the same as
 the thermostat "Haus" in Home Assistant. Next to it the room temperature (weighted mean of the rooms; a
-room does not count while its sensor is unavailable or has not reported for more than 2 hours).
+room does not count while its sensor is unavailable or its device has not reported for more than 2 hours –
+another reading of the same device counts as well, e.g. the humidity, as some integrations do not report an
+unchanged temperature again).
 
 **Airing:** when a room falls by at least 0.3 K within 30 minutes, Sunflow notices airing. Until the
 room is steady again (changed by at most 0.1 K for 30 minutes), at most 2 hours, it does not count for

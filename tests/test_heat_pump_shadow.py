@@ -18,7 +18,7 @@ from sunflow.config.models import ClimateSettings, DeviceConfig, HouseSettings, 
 from sunflow.config.store import ConfigStore
 from sunflow.heat_pump.correction import Correction, SetpointWatch, Settling
 from sunflow.heat_pump.defaults import HEATING_SURFACES, correction_ti_h
-from sunflow.heat_pump.rooms import reported_times, room_temperature
+from sunflow.heat_pump.rooms import device_sensors, reported_times, room_temperature
 from sunflow.heat_pump.samples import Minute
 from sunflow.heat_pump.shadow import FlowShadow
 from sunflow.heat_pump.state_store import HeatPumpStateStore
@@ -186,6 +186,58 @@ async def test_reported_times_failed_request_means_no_check() -> None:
     reader = Reader({"sensor.a": NOW, "sensor.b": NOW}, failing={"sensor.b"})
 
     assert await reported_times(reader, ["sensor.a", "sensor.b", "sensor.c"]) == {"sensor.a": NOW, "sensor.b": None, "sensor.c": None}
+
+
+REGISTRY = [
+    {"entity_id": "sensor.kian_temperature", "device_id": "kian"},
+    {"entity_id": "sensor.kian_humidity", "device_id": "kian"},
+    {"entity_id": "sensor.kian_battery", "device_id": "kian"},
+    {"entity_id": "sensor.kian_linkquality", "device_id": "kian", "disabled_by": "integration"},
+    {"entity_id": "number.kian_temperature_calibration", "device_id": "kian"},
+    {"entity_id": "sensor.other_humidity", "device_id": "other"},
+    {"entity_id": "sensor.template_room"},
+]
+
+
+def test_device_sensors_are_the_other_enabled_sensors_of_the_device() -> None:
+    siblings = device_sensors(REGISTRY, ["sensor.kian_temperature", "sensor.template_room", "sensor.unknown"])
+
+    assert siblings == {
+        "sensor.kian_temperature": ["sensor.kian_battery", "sensor.kian_humidity"],
+        "sensor.template_room": [],
+        "sensor.unknown": [],
+    }
+
+
+async def test_a_steady_temperature_counts_while_its_device_reports() -> None:
+    """MQTT (Zigbee2MQTT) does not write an unchanged temperature again: its last_reported stands still while
+    the humidity of the same device keeps reporting; the latest of the device counts (6.1)."""
+    reader = Reader({"sensor.kian_temperature": NOW - timedelta(hours=3), "sensor.kian_humidity": NOW - timedelta(minutes=5),
+                     "sensor.kian_battery": NOW - timedelta(hours=5)}, failing={"sensor.kian_battery"})
+    siblings = device_sensors(REGISTRY, ["sensor.kian_temperature"])
+
+    reported = await reported_times(reader, ["sensor.kian_temperature"], siblings)
+    room = room_temperature([Room(entity_id="sensor.kian_temperature")], {"sensor.kian_temperature": _state("22.4")}, reported, NOW)
+
+    assert reported == {"sensor.kian_temperature": NOW - timedelta(minutes=5)}
+    assert room.value_c == 22.4 and room.stale == ()
+    # The whole device silent: stale as before
+    silent = Reader({"sensor.kian_temperature": NOW - timedelta(hours=3), "sensor.kian_humidity": NOW - timedelta(hours=3)})
+    reported = await reported_times(silent, ["sensor.kian_temperature"], siblings)
+    assert room_temperature([Room(entity_id="sensor.kian_temperature")], {"sensor.kian_temperature": _state("22.4")}, reported, NOW).stale == ("sensor.kian_temperature",)
+
+
+async def test_flow_shadow_reads_the_device_sensors_from_the_registry(tmp_path: Path) -> None:
+    class RegistryReader(Reader):
+        async def get_entity_registry(self) -> list[dict[str, Any]]:
+            return [{"entity_id": ROOM, "device_id": "room"}, {"entity_id": "sensor.room_humidity", "device_id": "room"}]
+
+    reader = RegistryReader({ROOM: NOW - timedelta(hours=3), "sensor.room_humidity": NOW - timedelta(minutes=1)})
+    house = House(tmp_path, reader)
+    await house.tick(NOW)
+
+    assert house.shadow.room is not None and house.shadow.room.used == (ROOM,)
+    assert house.shadow.house_status(house.config)["rooms_stale"] == []
 
 
 # Shadow control: base, correction and flow target (8.1)

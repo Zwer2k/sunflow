@@ -96,7 +96,9 @@ zurück: Max T-Vorlauf bleibt, wie zuletzt geschrieben, eine von Sunflow gesetzt
 
 **Raum-Soll:** die Raumtemperatur, die Sunflow halten soll (18–27 °C), und der Modus Heizen/Aus; dasselbe
 wie das Thermostat „Haus“ in Home Assistant. Daneben das Raum-Ist (gewichtetes Mittel der Räume; ein Raum
-zählt nicht, wenn sein Sensor nicht verfügbar ist oder seit über 2 Stunden nichts gemeldet hat).
+zählt nicht, wenn sein Sensor nicht verfügbar ist oder sein Gerät seit über 2 Stunden nichts gemeldet hat – es
+zählt auch eine andere Messung desselben Geräts, z. B. die Luftfeuchte, weil manche Integrationen eine
+unveränderte Temperatur nicht neu melden).
 
 **Lüften:** Fällt ein Raum innerhalb von 30 Minuten um mindestens 0,3 K, erkennt Sunflow Lüften. Bis der
 Raum wieder gleichmäßig ist (30 Minuten lang höchstens 0,1 K Änderung), höchstens 2 Stunden, zählt er

@@ -419,6 +419,12 @@ Profil allgemein: `setpoint_kind: direct` (echter Sollwert; HPSU „Fest“) ode
   `last_reported` oder schlägt die Abfrage fehl, gibt es kein Veraltet-Kriterium (nie auf
   `last_updated` zurückfallen, sonst fiele ein stabiler Raum heraus). Umsetzung `heat_pump/rooms.py`
   (`reported_times`, `room_temperature`), gedacht auch für Lüft-Erkennung und Hausmodell.
+- **Meldung des Geräts statt der Entity** (0.80.19): Manche Integrationen schreiben einen unveränderten Wert
+  nicht neu (MQTT, z. B. Zigbee2MQTT): `last_reported` einer stabilen Temperatur bleibt stehen, obwohl das
+  Gerät weiter meldet (z. B. die Luftfeuchte). Maßgeblich ist deshalb das jüngste `last_reported` des
+  Raumsensors und der übrigen aktiven `sensor`-Entities desselben Geräts (Entity-Registry, `device_sensors`,
+  mit jeder Abfrage neu gelesen); ohne Gerät oder ohne lesbare Registry nur der Raumsensor selbst. Ein
+  Raum gilt damit erst als veraltet, wenn das ganze Gerät seit 2 h schweigt.
 
 ### 6.2 Lüft-Erkennung
 

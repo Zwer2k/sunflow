@@ -74,7 +74,7 @@ from .feedforward import BASE, HEAT_RECENT, HOUSE_MODEL, Feed, HouseContext, Rec
 from .guard import BLOCK_OFF, BLOCK_ON, Guard, GuardInput, GuardResult
 from .learned import Learned, values as guard_values
 from .limits import ControlSettings
-from .rooms import RoomTemperature, StateReader, reported_times, room_temperature
+from .rooms import RoomTemperature, StateReader, device_sensors, reported_times, room_temperature
 from .state_store import HeatPumpStateStore
 from .states import UNKNOWN
 from .ventilation import VentilationWatch
@@ -293,7 +293,7 @@ class FlowShadow:
         if self._client is not None and (
             key != self._reported_key or self._reported_at is None or now - self._reported_at >= REPORTED_EVERY
         ):
-            self._reported = await reported_times(self._client, ids)
+            self._reported = await reported_times(self._client, ids, await self._device_sensors(ids))
             self._reported_at, self._reported_key = now, key
         result: dict[str, datetime | None] = {}
         for entity_id in ids:
@@ -302,6 +302,18 @@ class FlowShadow:
             updated = _time((states.get(entity_id) or {}).get("last_updated"))
             result[entity_id] = max(fetched, updated) if fetched is not None and updated is not None else fetched
         return result
+
+    async def _device_sensors(self, ids: list[str]) -> dict[str, list[str]]:
+        """The other sensors of each room sensor's device (6.1), from the entity registry; none if it cannot be read."""
+        registry = getattr(self._client, "get_entity_registry", None)
+        if registry is None:
+            return {}
+        try:
+            return device_sensors(await registry(), ids)
+        except Exception:
+            # Then only the room sensor's own last_reported counts
+            _LOGGER.debug("Entity registry not read for the room sensors", exc_info=True)
+            return {}
 
     async def observe(self, config: SunflowConfig, states: dict[str, dict[str, Any]], now: datetime) -> tuple[str, ...]:
         """Ventilation and room temperature of this minute (once per minute); the rooms being aired."""

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.19
+
+- Heat pumps: a room no longer drops out of the room temperature ("not considered … no report for over 2 h") while its temperature stays the same. Some integrations (MQTT, e.g. Zigbee2MQTT) do not report an unchanged value again; Sunflow now counts the latest report of any sensor of the same device (e.g. the humidity). A room counts as stale only when the whole device has been silent for 2 hours.
+
 ## 0.80.18
 
 - Heat pumps: new switch per heat pump in Settings → Heat pump, **writing to the heat pump** (default off; until then everything stays shadow operation). Switched on, Sunflow takes over without writing anything – the base is frozen, the correction starts at 0, set value and room thermostat block count as the heat pump has them – and from then on writes Max T-Vorlauf (EEPROM, within the budget, counted in the EEPROM counter file) and the room thermostat block when the rules ask for it; every write is in the journal. A failed write is taken back and tried again; about a minute after a write Sunflow checks that the heat pump took the value over and warns when it does not or limits the flow itself. It can be switched on only when the heat pump is compatible, sampled, set to fixed and the ESP regulation is off. Switching off (and mode off) resets nothing: Max T-Vorlauf and a block Sunflow set stay as they are. The sensors and the thermostat "Haus" show `mode: active` while writing. `heat_pump_samples` now notes the set value in force (`written_c`) while writing.
