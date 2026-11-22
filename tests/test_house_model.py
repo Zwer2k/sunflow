@@ -164,6 +164,7 @@ def test_old_house_fields_survive(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "config.json").read_text())["house"] == old_house | {
         "outside_source": "auto", "climate": {"setpoint_c": 21.0, "mode": "heat"},
         "heating_surface": "underfloor",
+        "fast_change": {"start_k": 0.8, "start_min": 20, "settle_k": 0.5, "settle_min": 30, "max_h": 2.0},
     }
 
 

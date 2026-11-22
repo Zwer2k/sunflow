@@ -37,8 +37,8 @@ Foreign writers (8.5, step 3 part 4.4, foreign.py): a change of the real Max T-V
 write is noted (journal, status, setup summary) and the written value follows it; while the ESP regulation
 is active nothing is written.
 
-Ventilation (6.2): a room being aired does not count for the room temperature, and the correction is
-frozen meanwhile. When rooms leave or join the room temperature (aired, stale, missing), the
+Fast change (6.2: airing, cooking ...): while the fast part of a room's change lasts, the room does not
+count for the room temperature, and the correction is frozen meanwhile; the slow rest counts again. When rooms leave or join the room temperature (aired, stale, missing), the
 correction takes the new value as reference instead of a step, so that alone causes no jump.
 """
 
@@ -321,7 +321,7 @@ class FlowShadow:
             return self.aired
         self._config = config
         reported = await self._reported_times(config, states, now)
-        self.aired = self.ventilation.update((room.entity_id for room in config.house.rooms), states, now)
+        self.aired = self.ventilation.update((room.entity_id for room in config.house.rooms), states, now, config.house.fast_change)
         before = self.room
         self.room = room_temperature(config.house.rooms, states, reported, now, self.aired)
         self._rooms_changed = before is not None and before.used != self.room.used

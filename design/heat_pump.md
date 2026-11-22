@@ -426,38 +426,57 @@ Profil allgemein: `setpoint_kind: direct` (echter Sollwert; HPSU „Fest“) ode
   mit jeder Abfrage neu gelesen); ohne Gerät oder ohne lesbare Registry nur der Raumsensor selbst. Ein
   Raum gilt damit erst als veraltet, wenn das ganze Gerät seit 2 h schweigt.
 
-### 6.2 Lüft-Erkennung
+### 6.2 Schnelle Änderung (Lüften, Kochen …)
 
-Typischer Verlauf beim Stoßlüften: schneller Abfall (Größenordnung 1 K in einer halben Stunde),
-schnelle Teilerholung, sobald das Fenster zu ist (Luft wärmt sich an Wänden/Möbeln), Rest langsam über
-Stunden.
+Typischer Verlauf beim Stoßlüften: schneller Abfall (oft 1–4 K in 10–20 min), schnelle Teilerholung,
+sobald das Fenster zu ist (Luft wärmt sich an Wänden/Möbeln, etwa eine Stunde), Rest langsam über
+Stunden. Kochen oder ein Backofen: schneller Anstieg, danach langsames Abkühlen. In beiden Fällen ändert
+sich vor allem die Luft; der langsame Rest ist echte Wärme, die Wänden, Möbeln und Boden fehlt (bzw. die sie
+gewonnen haben) – er soll in die Korrektur eingehen, der schnelle Teil nicht (die Fußbodenheizung kann
+ihm nicht folgen; der P-Anteil würde schreiben und kurz danach zurück).
 
-- Ereignis: Raum fällt ≥ 0,3 K innerhalb ≤ 30 min (≥ 2 Meldungen) bzw. Steigung < −0,6 K/h.
-- Folge: Raum zählt für die Korrektur nicht, bis die schnelle Erholung vorbei ist (Steigung wieder flach,
-  höchstens 2 h). Für Lernen der Kennlinie wird das Intervall ausgelassen.
-- Der langsame Rest wird nicht aktiv ausgeregelt: Die Fußbodenheizung gibt bei kälterem Raum von selbst
-  mehr Wärme ab (Selbstregeleffekt); Korrektur ist langsam mit Totzone.
+- Ereignis: Raum ändert sich um ≥ `start_k` innerhalb ≤ `start_min`, nach unten oder oben (≥ 2 Meldungen).
+  Schwellen in Kelvin, nicht in Sensorschritten: Sensoren melden in Schritten von 0,1, 0,3 oder 0,5 K; ein
+  einzelner Schritt und langsames Abkühlen (z. B. nach dem Kochen) bleiben darunter.
+- Folge: Raum zählt für die Korrektur nicht, bis der schnelle Teil vorbei ist (über `settle_min` höchstens
+  `settle_k` Bewegung, höchstens `max_h`). Danach zählt er mit seinem Rückstand bzw. Überschuss. Für das
+  Lernen der Kennlinie und des Hausmodells werden die Intervalle ausgelassen.
+- Ein Abfall nach einem erkannten Anstieg (Abkühlen nach dem Kochen) gehört zum selben Ereignis, bis es
+  vorbei ist.
 - **Keine Uhrzeit-Features.** Wiederkehrende Tagesmuster deckt die Planung ab; ein gelernter Tagesgang
   innerer Gewinne nur, wenn die Auswertung ihn zeigt.
 
-Umsetzung (3, Teil 1, `heat_pump/ventilation.py`, Konstanten `VENT_*` in `heat_pump/defaults.py`):
+Einstellung `house.fast_change` (UI bei den Räumen, additiv ohne Migration; fehlend oder ungültig → Startwert):
+
+| Feld | Startwert | Bereich |
+|---|---|---|
+| `start_k` / `start_min` (Beginn ab … K in … min) | 0,8 K / 20 min | 0,2–5 K / 5–120 min |
+| `settle_k` / `settle_min` (vorbei bei höchstens … K in … min) | 0,5 K / 30 min | 0,1–5 K / 10–180 min |
+| `max_h` (höchstens) | 2 h | 0,5–12 h |
+
+Die Startwerte trennen Stoßlüften und Kochen (mehr als 1 K in 10–20 min) von langsamem Abkühlen (unter
+0,8 K in 20 min) und einzelnen Sensorschritten; nach den ersten Wochen prüfen (15, Punkt 11).
+
+Umsetzung (3, Teil 1; umgestellt 0.80.21, `heat_pump/ventilation.py`, Startwerte `FAST_*` in
+`heat_pump/defaults.py`):
 - Je Raum die Folge der angezeigten Werte (gilt bis zur nächsten Änderung, Zeit aus `last_changed`).
-  Ereignis, wenn der höchste in den letzten 30 min angezeigte Wert mindestens 0,3 K über dem aktuellen
-  liegt (zwei Meldungen: der Wert davor und der aktuelle). Das ist zugleich die Steigung −0,6 K/h; eine
-  Steigung über kürzere Spannen wertet Sunflow nicht aus, sie spräche bei 15-min-Sensoren auf einzelne
-  Schritte der Auflösung an.
-- Ende, wenn der Raum wieder flach ist: über die letzten 30 min (vollständig bekannt) höchstens 0,1 K
-  Unterschied; spätestens 2 h nach dem Erkennen. Danach zählen für das nächste Ereignis nur Werte ab dem
-  Ende.
+  Ereignis, wenn der höchste (niedrigste) im Fenster `start_min` angezeigte Wert mindestens `start_k` über
+  (unter) dem aktuellen liegt (zwei Meldungen: der Wert davor und der aktuelle); Richtung `down`/`up`.
+- Ende, wenn der schnelle Teil vorbei ist: über die letzten `settle_min` (vollständig bekannt) höchstens
+  `settle_k` Unterschied; spätestens `max_h` nach dem Erkennen. Danach zählen für das nächste Ereignis nur
+  Werte ab dem Ende.
 - Während des Ereignisses zählt der Raum nicht für Raum-Ist, und die Korrektur ist eingefroren (Grund
-  `ventilation`, 8.2). Ändert sich, aus welchen Räumen Raum-Ist besteht (gelüftet, veraltet, nicht
-  verfügbar), nimmt die Korrektur den neuen Wert als Bezug statt eines Schritts – kein Sprung.
+  `ventilation`, 8.2; Name bleibt). Ändert sich, aus welchen Räumen Raum-Ist besteht (schnelle Änderung,
+  veraltet, nicht verfügbar), nimmt die Korrektur den neuen Wert als Bezug statt eines Schritts – kein Sprung.
 - Laufende und in den letzten 24 h beendete Ereignisse (höchstens 20) stehen in `heat_pump_state.json`
-  (`house.ventilation`); nach einem Neustart endet ein laufendes Ereignis erst, wenn der Raum 30 min
-  flach bekannt ist. Kein Journal, nur Log. UI (Bereich Wärmepumpe): gelüftete Räume mit Beginn und
-  Abfall, Lüften der letzten 24 h; Status `GET /api/v1/heat_pump/status` (`house.ventilation`,
-  `ventilation_recent`, `rooms_ventilated`).
-- In `heat_pump_samples` `flags.ventilation` (10); `valid` bleibt unverändert der gültige Heizbetrieb.
+  (`house.ventilation`, je Ereignis `start_c`, `direction`, `extreme_c`, `change_k`; für Abfälle wie bisher
+  zusätzlich `low_c`/`drop_k`); nach einem Neustart endet ein laufendes Ereignis erst, wenn der Raum über
+  `settle_min` bekannt ist. Kein Journal, nur Log. UI (Bereich Wärmepumpe): Räume mit schneller Änderung
+  mit Beginn und Werten, schnelle Änderungen der letzten 24 h mit Vorzeichen; Status
+  `GET /api/v1/heat_pump/status` (`house.ventilation`, `ventilation_recent`, `rooms_ventilated`; Namen
+  bleiben).
+- In `heat_pump_samples` `flags.ventilation` (10, Name bleibt, enthält jetzt auch Anstiege); `valid` bleibt
+  unverändert der gültige Heizbetrieb.
 
 ### 6.3 Raum-Soll und Spielraum
 
@@ -1374,6 +1393,13 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
      (folgt er auf diesen Wert, begrenzt T Vorlauf Tag), danach T Vorlauf Tag auf den alten Wert zurück.
      Kandidat 2: dasselbe mit Max Temp Heizung. Vorher und nachher HK Funktion, Betriebsmodus, Max T-Vorlauf
      und Vorlauf-Soll festhalten; Ergebnis hier eintragen. Die Umsetzung muss ohne den Test sicher sein.
+     **Kandidat 2 getestet (Freigabe des Nutzers, per MCP):** Max Temp Heizung im Heizbetrieb bei laufendem
+     Kompressor für 3 min auf 2 K unter Max T-Vorlauf gesenkt, danach auf den alten Wert zurück. Der wirksame
+     Vorlauf-Soll blieb auf Max T-Vorlauf, folgte also nicht. **Max Temp Heizung begrenzt den Heizbetrieb
+     (sehr wahrscheinlich) nicht**, passend zur Parameterliste (nur bei Heizungsunterstützung). Einschränkung:
+     Der Sensor Vorlauf-Soll meldet nur bei Änderung, ein Neulesen in den 3 min ist nicht belegt; eine
+     verzögert wirkende Grenze wäre nicht erkannt. Kandidat 1 (T Vorlauf Tag) bleibt offen und ist jetzt der
+     wahrscheinliche Begrenzer.
    **Entscheidung für 4.7 (einfachste sichere Variante, umgesetzt 0.80.18):** keine neue Rolle und keine
    automatische Obergrenze. Die Obergrenze des Stellwerts stellt der Nutzer je Wärmepumpe (`flow_max_c`, 8.3)
    höchstens auf die eigene Grenze der HPSU (Fußboden: Startgrenze 40 °C, passt zur heutigen Einstellung).
@@ -1390,6 +1416,12 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
     zurück hebt sich auf, außer an der Grenze ±3 K); Sprünge über 3 K zeigen, dass der Rest als Sprung bleibt
     und die Schutzschicht ihn abfangen muss. Fällt das auf, vor 4.7 mit dem Nutzer klären (z. B. Hysterese
     beim Wechsel der Quelle).
+
+11. **Schwellen der schnellen Änderung beobachten** (6.2, seit 0.80.21; Beobachtung): aus
+    `ventilation_recent` bzw. `flags.ventilation` prüfen, ob echtes Lüften und Kochen erkannt werden, ob
+    langsames Abkühlen oder einzelne Sensorschritte noch auslösen und ob der schnelle Teil mit `settle_k`/
+    `settle_min` passend endet (zu früh: Korrektur springt nach dem Ende; zu spät: Rückstand zählt verspätet).
+    Die Werte sind im UI einstellbar; geänderte Startwerte mit dem Nutzer klären.
 
 ## 16. Reihenfolge
 
@@ -1417,7 +1449,9 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
       nichts schreiben.
 3. **Aktivschalten**, in vier Teilen, die sich je einzeln testen und committen lassen. Teil 1 bis 3
    schreiben nichts an die Wärmepumpe (Schattenbetrieb); erst Teil 4 schreibt.
-   1. **Lüft-Erkennung** (6.2) je Raum (umgesetzt, 0.80.8): ein gelüfteter Raum zählt eine Zeit lang
+   1. **Lüft-Erkennung** (6.2) je Raum (umgesetzt, 0.80.8; 0.80.21 zur Erkennung schneller Änderungen in
+      beide Richtungen umgebaut, Schwellen in Kelvin statt 0,3 K/30 min, einstellbar `house.fast_change`,
+      Anlass: jeder einzelne 0,3-K-Schritt eines groben Sensors galt als Lüften): ein gelüfteter Raum zählt eine Zeit lang
       nicht für Raum-Ist und Korrektur; `flags.ventilation` in `heat_pump_samples` (neuer JSON-Schlüssel,
       `datenhaltung.md` Regel 4); Anzeige im UI, Bereich Wärmepumpe.
    2. **Kennlinie lernen** (9.2), **Vorsteuerung** (8.1, mit Heizflächentyp) und **Hausmodell auf

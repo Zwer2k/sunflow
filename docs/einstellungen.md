@@ -100,10 +100,15 @@ zählt nicht, wenn sein Sensor nicht verfügbar ist oder sein Gerät seit über 
 zählt auch eine andere Messung desselben Geräts, z. B. die Luftfeuchte, weil manche Integrationen eine
 unveränderte Temperatur nicht neu melden).
 
-**Lüften:** Fällt ein Raum innerhalb von 30 Minuten um mindestens 0,3 K, erkennt Sunflow Lüften. Bis der
-Raum wieder gleichmäßig ist (30 Minuten lang höchstens 0,1 K Änderung), höchstens 2 Stunden, zählt er
-nicht für das Raum-Ist, und die Korrektur hält an. Angezeigt werden gerade gelüftete Räume und das
-Lüften der letzten 24 Stunden.
+**Schnelle Änderung (Lüften, Kochen …):** Ändert sich ein Raum innerhalb von 20 Minuten um mindestens
+0,8 K – nach unten wie beim Lüften oder nach oben wie beim Kochen –, zählt er vorerst nicht für das
+Raum-Ist, und die Korrektur hält an. Die Schwellen gelten in Kelvin, unabhängig davon, ob ein Sensor in
+Schritten von 0,1, 0,3 oder 0,5 K meldet; ein einzelner Schritt oder langsames Abkühlen löst nichts aus.
+Vorbei ist die Änderung, sobald sich der Raum 30 Minuten lang um höchstens 0,5 K bewegt (der schnelle Teil
+der Erholung ist vorbei), spätestens nach 2 Stunden. Danach zählt der Raum wieder, mit seinem Rückstand
+oder Überschuss: Nach dem Lüften fehlt Wänden und Möbeln oft noch über Stunden Wärme, die die Heizung
+ersetzen soll. Alle fünf Werte sind bei den Räumen einstellbar. Angezeigt werden Räume mit einer
+schnellen Änderung und die Änderungen der letzten 24 Stunden.
 
 **Wärmepumpe:** je Gerät Verbindung und Kompatibilität, Programm, Aktivität, Strategie (HK-Funktion),
 Bypass-Ventil, Vorlauf, Rücklauf, wirksamer Vorlauf-Soll und Max T-Vorlauf, eine aktive
@@ -113,7 +118,7 @@ Korrektur: Die Basis ist der wirksame Vorlauf-Soll aus gültigem Heizbetrieb (au
 solche Wert). Die Korrektur gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens
 ± 3 K; unter ± 0,2 K Abweichung wächst sie nicht); wie langsam, hängt vom Heizflächentyp ab
 (Nachstellzeit: Fußboden 6 h, gemischt 4 h, Heizkörper 2 h). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
-Raumtemperaturen fehlen, gelüftet wird oder der Raum einem geänderten Raum-Soll noch folgt (höchstens
+Raumtemperaturen fehlen, ein Raum sich schnell ändert (Lüften, Kochen) oder der Raum einem geänderten Raum-Soll noch folgt (höchstens
 24 Stunden). Im
 Schattenbetrieb wirkt sie nicht zurück und kann bis an ihre Grenze laufen.
 
@@ -121,7 +126,7 @@ Schattenbetrieb wirkt sie nicht zurück und kann bis an ihre Grenze laufen.
 Heizflächen abgeben: Q = K · (mittlere Wassertemperatur − Raum-Ist)^n, dazu die Spreizung (Vorlauf −
 Rücklauf) abhängig von der Wärme. n kommt aus dem **Heizflächentyp** (Fußboden 1,1, gemischt 1,2,
 Heizkörper 1,3), K und die Spreizung werden gelernt – nur aus gültigem Heizbetrieb mit seit mindestens
-15 Minuten laufendem Kompressor, ohne Nachlauf und ohne Lüften. Die letzten zwei Tage werden
+15 Minuten laufendem Kompressor, ohne Nachlauf und ohne schnelle Änderungen. Die letzten zwei Tage werden
 zurückgehalten: Die Kennlinie gilt erst als nutzbar, wenn sie dort den Vorlauf besser vorhersagt als
 „der Vorlauf bleibt“, ihre Werte plausibel sind und genug Daten vorliegen (mindestens 12 Stunden aus
 3 Tagen zum Lernen und 2 Stunden zum Prüfen). Angezeigt werden K, n, Spreizung, Güte und Datenumfang.
@@ -129,7 +134,7 @@ zurückgehalten: Die Kennlinie gilt erst als nutzbar, wenn sie dort den Vorlauf 
 Ist die Kennlinie nutzbar, ist das Vorlauf-Ziel = Kennlinie + Korrektur: der Vorlauf, mit dem die
 Heizflächen beim Raum-Soll die benötigte Wärme abgeben. Die benötigte Wärme kommt aus dem Hausmodell
 (sobald es nutzbar ist), sonst aus der mittleren Wärme der letzten 3 Stunden (Pausen des Kompressors
-zählen mit 0; Warmwasser, Abtauen, Nachlauf, Lüften und Sperre zählen nicht; mindestens 2 Stunden
+zählen mit 0; Warmwasser, Abtauen, Nachlauf, schnelle Änderungen und Sperre zählen nicht; mindestens 2 Stunden
 nötig). Diese Wärme entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt – die Kennlinie bildet
 dann nur den aktuellen Zustand nach, die Richtung gibt die Korrektur. Sonst gilt weiter Basis +
 Korrektur. Angezeigt wird, welche Quelle gerade gilt; wechselt sie, springt das Vorlauf-Ziel im
@@ -206,7 +211,7 @@ Stundenwerten der letzten vier Wochen. Stunden, in denen die Wärmepumpe Warmwas
 abgetaut hat, lässt es aus – deren Wärme ging nicht ins Haus. Die Stundenwerte kommen zuerst aus den
 Stundenmitteln von Home Assistant; sobald die Aufzeichnung der Wärmepumpe mindestens 7 Tage mit
 gültigem Heizbetrieb enthält (je Tag mindestens 1 Stunde), aus deren 5-Minuten-Werten – dann ohne
-Stunden mit Warmwasser, Abtauen, Nachlauf oder Lüften. Umgestellt wird erst, wenn das Modell daraus
+Stunden mit Warmwasser, Abtauen, Nachlauf oder schnellen Änderungen. Umgestellt wird erst, wenn das Modell daraus
 nicht schlechter ist; danach bleibt es dabei. Welche Quelle gilt, steht unter „Gelernt“:
 
 | Gelernt | Bedeutung |

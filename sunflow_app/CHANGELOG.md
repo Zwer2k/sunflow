@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.21
+
+- Heat pumps: instead of airing alone Sunflow now detects **fast changes** of a room in both directions – airing (down) and cooking or an oven (up). The thresholds are in kelvin and no longer depend on how finely a sensor reports: a change of at least 0.8 K within 20 minutes starts it (before 0.3 K in 30 minutes, so every single step of a sensor reporting in 0.3 K counted as airing, e.g. the kitchen cooling after cooking). It is over once the room moves by at most 0.5 K in 30 minutes (the fast part of the recovery), at the latest after 2 hours (before: 0.1 K in 30 minutes). Afterwards the room counts again with what it is still below or above – after airing, walls and furniture lack heat for hours, which the heating is to replace. All five values can be set in Settings → Heat pump with the rooms. The display says "fast change" with the direction of the change.
+
 ## 0.80.20
 
 - Rebuild of the Edge App only (0.80.19 had been built before its code was on GitHub); no change of behaviour.

@@ -21,6 +21,12 @@ const SURFACES = () => ({
   mixed: t("gemischt (Fußboden und Heizkörper)"),
   radiator: t("Heizkörper"),
 });
+// Fast change of a room (house.fast_change, design/heat_pump.md 6.2): start values and allowed ranges
+// [low, high, whole number] as in the backend (heat_pump/defaults.py)
+const FAST_CHANGE_DEFAULTS = { start_k: 0.8, start_min: 20, settle_k: 0.5, settle_min: 30, max_h: 2 };
+const FAST_CHANGE_RANGES = {
+  start_k: [0.2, 5, false], start_min: [5, 120, true], settle_k: [0.1, 5, false], settle_min: [10, 180, true], max_h: [0.5, 12, false],
+};
 // Where the flow target starts from (design/heat_pump.md, 8.1)
 const FLOW_SOURCES = () => ({
   base: t("Basis"),
@@ -134,7 +140,7 @@ function frozenText(reason) {
     setpoint_missing: t("Vorlauf-Soll unbekannt"),
     self_limited: t("Wärmepumpe begrenzt den Vorlauf selbst"),
     rooms_missing: t("keine aktuellen Raumtemperaturen"),
-    ventilation: t("Lüften erkannt"),
+    ventilation: t("schnelle Änderung erkannt"),
     setpoint_change: t("Raum-Soll geändert, Raum folgt noch"),
     strategy_unknown: t("Strategie unbekannt"),
     no_sample: t("keine Messwerte"),
@@ -315,22 +321,30 @@ class SunflowHeatPump extends LitElement {
     `;
   }
 
-  /** Rooms being aired now (left out of room temperature and correction) and events of the last 24 h. */
+  /** Rooms with a fast change now (airing, cooking ...; left out of room temperature and correction) and
+   * events of the last 24 h. */
   _renderVentilation(house, one) {
     const active = house.ventilation ?? [];
     const recent = house.ventilation_recent ?? [];
     if (!active.length && !recent.length) return nothing;
     const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
-    const drop = (e) => decimal(Number(e.drop_k).toFixed(1));
+    // Signed change; events of older versions carry only low_c/drop_k (falls)
+    const extreme = (e) => e.extreme_c ?? e.low_c;
+    const change = (e) => {
+      const k = e.change_k ?? -e.drop_k;
+      return `${k < 0 ? "−" : "+"}${decimal(Math.abs(Number(k)).toFixed(1))}`;
+    };
+    const hours = decimal(String((this._house?.fast_change?.max_h) ?? 2));
     return html`
       ${active.length
-        ? html`<p class="small warn-text">${t("Lüften erkannt, Raum zählt vorerst nicht und die Korrektur wartet (höchstens 2 h): {rooms}", {
-          rooms: active.map((e) => t("{room} seit {time} ({from} → {low} °C)", { room: this._roomName(e.entity_id), time: time(e.since), from: one(e.start_c), low: one(e.low_c) })).join(", "),
+        ? html`<p class="small warn-text">${t("Schnelle Änderung erkannt, Raum zählt vorerst nicht und die Korrektur wartet (höchstens {hours} h): {rooms}", {
+          hours,
+          rooms: active.map((e) => t("{room} seit {time} ({from} → {low} °C)", { room: this._roomName(e.entity_id), time: time(e.since), from: one(e.start_c), low: one(extreme(e)) })).join(", "),
         })}</p>`
         : nothing}
       ${recent.length
-        ? html`<p class="small muted">${t("Lüften in den letzten 24 h: {events}", {
-          events: recent.map((e) => t("{room} {from}–{until} (−{drop} K)", { room: this._roomName(e.entity_id), from: time(e.since), until: time(e.until), drop: drop(e) })).join(", "),
+        ? html`<p class="small muted">${t("Schnelle Änderungen in den letzten 24 h: {events}", {
+          events: recent.map((e) => t("{room} {from}–{until} ({change} K)", { room: this._roomName(e.entity_id), from: time(e.since), until: time(e.until), change: change(e) })).join(", "),
         })}</p>`
         : nothing}
     `;
@@ -701,7 +715,7 @@ class SunflowHeatPump extends LitElement {
           ${tile(t("Güte"), curve.error_k == null ? "–" : `± ${two(curve.error_k)} K`, curve.baseline_k == null ? t("Vorlauf auf zurückgehaltenen Tagen") : t("„Vorlauf bleibt“ läge bei ± {k} K", { k: two(curve.baseline_k) }))}
           ${tile(t("Datenumfang"), t("{count} Intervalle", { count: curve.intervals }), t("{days} Tage, davon {held} Intervalle zum Prüfen; nötig {min} Intervalle aus {min_days} Tagen", { days: curve.days, held: curve.held, min: curve.min_intervals, min_days: curve.min_days }))}
         </div>
-        <p class="small muted">${t("Gelernt nur aus gültigem Heizbetrieb mit laufendem Kompressor, ohne Nachlauf und ohne Lüften; stündlich neu berechnet.")}</p>
+        <p class="small muted">${t("Gelernt nur aus gültigem Heizbetrieb mit laufendem Kompressor, ohne Nachlauf und ohne schnelle Änderungen; stündlich neu berechnet.")}</p>
       </div>
     `;
   }
@@ -736,6 +750,7 @@ class SunflowHeatPump extends LitElement {
           </div>`)}
           <div><button class="secondary" @click=${() => set({ rooms: [...house.rooms, { entity_id: "", weight: 1 }] })}>${t("Raum hinzufügen")}</button></div>
           <p class="small muted">${t("Gewicht z. B. nach Fläche; ohne Angabe zählen alle Räume gleich.")}</p>
+          ${this._renderFastChange(house, set)}
           <div class="fields">
             <div class="field">
               <span class="field-label">${t("Wärme ins Haus (optional)")}</span>
@@ -771,6 +786,39 @@ class SunflowHeatPump extends LitElement {
           : nothing}
         ${this._renderHouseModel()}
       </section>
+    `;
+  }
+
+  /** Setting house.fast_change: when a room does not count for a while (airing, cooking ...). */
+  _renderFastChange(house, set) {
+    const current = { ...FAST_CHANGE_DEFAULTS, ...(house.fast_change ?? {}) };
+    const input = (key, unit) => html`<input inputmode="decimal" class="short" .value=${toDisplay(current[key], "")}
+      @change=${(e) => {
+        const [low, high, whole] = FAST_CHANGE_RANGES[key];
+        const v = fromDisplay(e.target.value, "");
+        if (v == null || v < low || v > high || (whole && !Number.isInteger(v))) {
+          e.target.value = toDisplay(current[key], "");
+          return;
+        }
+        set({ fast_change: { ...current, [key]: v } });
+      }}> ${unit}`;
+    return html`
+      <span class="field-label">${t("Schnelle Änderung (Lüften, Kochen …)")}</span>
+      <div class="fields">
+        <div class="field">
+          <span class="field-label">${t("Beginn ab")}</span>
+          <span class="input-unit">${input("start_k", "K")} ${t("in")} ${input("start_min", "min")}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">${t("Vorbei bei höchstens")}</span>
+          <span class="input-unit">${input("settle_k", "K")} ${t("in")} ${input("settle_min", "min")}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">${t("Höchstens")}</span>
+          <span class="input-unit">${input("max_h", "h")}</span>
+        </div>
+      </div>
+      <p class="small muted">${t("Ändert sich ein Raum so schnell, zählt er bis zum Ende nicht für das Raum-Ist und die Korrektur wartet; danach zählt er mit seinem Rückstand oder Überschuss.")}</p>
     `;
   }
 
@@ -828,7 +876,7 @@ class SunflowHeatPump extends LitElement {
         ${this._renderHouseSource(result)}
         ${result.excluded_hours
           ? html`<p class="small muted">${result.source === "heat_pump_samples"
-            ? t("{hours} Stunden mit Warmwasser, Abtauen, Nachlauf oder Lüften sind ausgelassen.", { hours: result.excluded_hours })
+            ? t("{hours} Stunden mit Warmwasser, Abtauen, Nachlauf oder schnellen Änderungen sind ausgelassen.", { hours: result.excluded_hours })
             : t("{hours} Stunden mit Warmwasser oder Abtauen sind ausgelassen: deren Wärme ging nicht ins Haus.", { hours: result.excluded_hours })}</p>`
           : nothing}
         ${result.restless?.length
@@ -895,6 +943,7 @@ class SunflowHeatPump extends LitElement {
     .room { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .room .grow { flex: 1 1 260px; }
     .room .narrow { flex: 0 0 90px; }
+    .input-unit input.short { width: 4.5em; }
     .learned { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--sf-border); padding-top: 12px; }
     .legend { display: flex; flex-wrap: wrap; gap: 16px; }
     .legend-item { display: inline-flex; align-items: center; gap: 6px; }

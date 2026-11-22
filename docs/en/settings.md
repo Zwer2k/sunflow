@@ -99,10 +99,14 @@ room does not count while its sensor is unavailable or its device has not report
 another reading of the same device counts as well, e.g. the humidity, as some integrations do not report an
 unchanged temperature again).
 
-**Airing:** when a room falls by at least 0.3 K within 30 minutes, Sunflow notices airing. Until the
-room is steady again (changed by at most 0.1 K for 30 minutes), at most 2 hours, it does not count for
-the room temperature and the correction pauses. Rooms being aired and the airing of the last 24 hours
-are shown.
+**Fast change (airing, cooking …):** when a room changes by at least 0.8 K within 20 minutes – down as
+when airing or up as when cooking – it does not count for the room temperature for now and the correction
+pauses. The thresholds are in kelvin, whether a sensor reports in steps of 0.1, 0.3 or 0.5 K; a single step
+or slow cooling triggers nothing. The change is over once the room moves by at most 0.5 K for 30 minutes
+(the fast part of the recovery is over), at the latest after 2 hours. Then the room counts again with what
+it is still below or above: after airing, walls and furniture often lack heat for hours, which the heating
+is to replace. All five values can be set with the rooms. Rooms with a fast change and the changes of the
+last 24 hours are shown.
 
 **Heat pump:** per device connection and compatibility, program, activity, strategy (HK function),
 bypass valve, flow, return, effective flow setpoint and Max T-Vorlauf, an active room thermostat block or
@@ -111,15 +115,15 @@ after-run, bypass valve). Below it the **flow target** = base + correction: the 
 flow setpoint from valid heating (outside it the last such value counts). The correction slowly evens
 out the difference between room temperature and setpoint (at most ± 3 K; it does not grow within
 ± 0.2 K); how slowly depends on the heating surface type (integral time: underfloor 6 h, mixed 4 h,
-radiators 2 h). It pauses while the heat pump does not heat validly, room temperatures are missing, a room is
-being aired or the room is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
+radiators 2 h). It pauses while the heat pump does not heat validly, room temperatures are missing, a room
+changes fast (airing, cooking) or the room is still following a changed setpoint (at most 24 hours). In shadow operation it has no effect back and
 may run to its limit.
 
 **Heating curve (shadow):** from the 5 minute values Sunflow learns every hour how much heat the heating
 surfaces give off: Q = K · (mean water temperature − room temperature)^n, plus the spread (flow −
 return) depending on the heat. n comes from the **heating surface type** (underfloor 1.1, mixed 1.2,
 radiators 1.3); K and the spread are learned – only from valid heating with the compressor running for
-at least 15 minutes, without after-run and without airing. The last two days are held back: the curve
+at least 15 minutes, without after-run and without fast changes. The last two days are held back: the curve
 counts as usable only when it predicts the flow there better than "the flow stays", its values are
 plausible and there is enough data (at least 12 hours from 3 days for learning and 2 hours for checking).
 K, n, spread, quality and amount of data are shown.
@@ -127,7 +131,7 @@ K, n, spread, quality and amount of data are shown.
 With a usable curve the flow target = curve + correction: the flow at which the heating surfaces give
 off the heat needed at the room setpoint. The heat needed comes from the house model (once it is
 usable), else from the mean heat of the last 3 hours (compressor pauses count as 0; hot water, defrost,
-after-run, airing and the block do not count; at least 2 hours needed). That heat comes from the flow the
+after-run, fast changes and the block do not count; at least 2 hours needed). That heat comes from the flow the
 heat pump runs now – the curve then only follows the current state, the direction comes from the
 correction. Otherwise base + correction still applies. The source in use is shown; when it changes, the
 flow target jumps once in shadow operation, the correction stays. Once Sunflow writes for real, it shifts
@@ -201,7 +205,7 @@ or only the own sensor. From the hourly values of the last four weeks Sunflow le
 model of the house. Hours in which the heat pump made hot water or defrosted are left out – their heat
 did not go into the house. The hourly values first come from Home Assistant's hourly means; once the
 heat pump's recording holds at least 7 days of valid heating (at least 1 hour each), from its 5 minute
-values – then without hours with hot water, defrost, after-run or airing. The switch happens only when
+values – then without hours with hot water, defrost, after-run or fast changes. The switch happens only when
 the model from them is not worse; after that it stays. The source in use is shown under "Learned":
 
 | Learned | Meaning |

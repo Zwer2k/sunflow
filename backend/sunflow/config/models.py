@@ -14,6 +14,16 @@ from pydantic import (
 )
 
 from sunflow.heat_pump.defaults import (
+    FAST_MAX_H,
+    FAST_MAX_H_RANGE,
+    FAST_SETTLE_K,
+    FAST_SETTLE_K_RANGE,
+    FAST_SETTLE_MIN,
+    FAST_SETTLE_MIN_RANGE,
+    FAST_START_K,
+    FAST_START_K_RANGE,
+    FAST_START_MIN,
+    FAST_START_MIN_RANGE,
     FLOW_LIMIT_HIGH_C,
     FLOW_LIMIT_LOW_C,
     HEATING_SURFACE_DEFAULT,
@@ -204,6 +214,47 @@ class ClimateSettings(BaseModel):
         return round(round(value / ROOM_SETPOINT_RESOLUTION_C) * ROOM_SETPOINT_RESOLUTION_C, 1)
 
 
+# A setting outside its range or no number counts as its start value (no error on loading)
+_FAST_FIELDS = {
+    "start_k": (FAST_START_K, FAST_START_K_RANGE),
+    "start_min": (FAST_START_MIN, FAST_START_MIN_RANGE),
+    "settle_k": (FAST_SETTLE_K, FAST_SETTLE_K_RANGE),
+    "settle_min": (FAST_SETTLE_MIN, FAST_SETTLE_MIN_RANGE),
+    "max_h": (FAST_MAX_H, FAST_MAX_H_RANGE),
+}
+
+
+class FastChangeSettings(BaseModel):
+    """Fast change of a room (design/heat_pump.md, 6.2: airing, cooking ...): starts with at least start_k
+    within start_min, down or up; over when the room moved by at most settle_k over settle_min, at the latest
+    after max_h. Meanwhile the room does not count for the room temperature and the correction waits."""
+
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+
+    start_k: float = Field(default=FAST_START_K, ge=FAST_START_K_RANGE[0], le=FAST_START_K_RANGE[1])
+    start_min: int = Field(default=FAST_START_MIN, ge=FAST_START_MIN_RANGE[0], le=FAST_START_MIN_RANGE[1])
+    settle_k: float = Field(default=FAST_SETTLE_K, ge=FAST_SETTLE_K_RANGE[0], le=FAST_SETTLE_K_RANGE[1])
+    settle_min: int = Field(default=FAST_SETTLE_MIN, ge=FAST_SETTLE_MIN_RANGE[0], le=FAST_SETTLE_MIN_RANGE[1])
+    max_h: float = Field(default=FAST_MAX_H, ge=FAST_MAX_H_RANGE[0], le=FAST_MAX_H_RANGE[1])
+
+
+def _fast_change(value: object) -> object:
+    """Broken fields (no number, outside the range, older or newer version) at their start values; the UI
+    only offers values within the ranges."""
+    if not isinstance(value, dict):
+        return {}
+    fixed = dict(value)
+    for name, (default, (low, high)) in _FAST_FIELDS.items():
+        if name in fixed:
+            number = fixed[name]
+            ok = isinstance(number, (int, float)) and not isinstance(number, bool) and low <= number <= high
+            if name.endswith("_min") and ok and number != int(number):
+                ok = False
+            if not ok:
+                fixed[name] = default
+    return fixed
+
+
 class HouseSettings(BaseModel):
     """The rooms Sunflow learns the house from, and the room setpoint."""
 
@@ -219,6 +270,14 @@ class HouseSettings(BaseModel):
     climate: ClimateSettings = Field(default_factory=ClimateSettings)
     # Type of the heating surfaces (design/heat_pump.md, 8.1): start value of the heating curve's exponent
     heating_surface: Literal["underfloor", "radiator", "mixed"] = HEATING_SURFACE_DEFAULT
+    # Fast change of a room (airing, cooking ...): when a room does not count for a while (6.2)
+    fast_change: FastChangeSettings = Field(default_factory=FastChangeSettings)
+
+    @field_validator("fast_change", mode="before")
+    @classmethod
+    def _fast(cls, value: object) -> object:
+        # Missing or broken (older or newer version, edited by hand): the start values, without an error
+        return _fast_change(value) if value is not None else {}
 
     @field_validator("heating_surface", mode="before")
     @classmethod

@@ -57,17 +57,24 @@ SOURCE_JUMP_NOTE_K = 0.05
 SETPOINT_SETTLE_MAX_S = 24 * 3600
 SETPOINT_CHANGE_MIN_K = 0.1
 
-# Ventilation (6.2), per room: an event starts when the room falls by at least VENT_DROP_K within
-# VENT_DROP_WINDOW (the value before counts as long as the sensor showed it; 0.3 K in 30 min is the
-# slope of -0.6 K/h). It ends when the room is flat again - changed by at most VENT_FLAT_K over
-# VENT_FLAT_WINDOW - at the latest after VENT_MAX. Meanwhile the room does not count for the room
-# temperature and the correction is frozen. Ended events are shown for VENT_RECENT_KEEP, at most
-# VENT_RECENT_MAX of them.
-VENT_DROP_K = 0.3
-VENT_DROP_WINDOW_S = 30 * 60
-VENT_FLAT_K = 0.1
-VENT_FLAT_WINDOW_S = 30 * 60
-VENT_MAX_S = 2 * 3600
+# Fast change (6.2, airing, cooking ...), per room; start values of the setting house.fast_change: an event
+# starts when the room changed by at least FAST_START_K within FAST_START_MIN, down or up (the value before
+# counts as long as the sensor showed it). In kelvin, not in steps of the sensor, so it works the same for
+# sensors reporting in 0.1, 0.3 or 0.5 K. It ends once the fast part is over - the room moved by at most
+# FAST_SETTLE_K over the last FAST_SETTLE_MIN - at the latest after FAST_MAX_H; the slow rest counts again.
+# Meanwhile the room does not count for the room temperature and the correction is frozen. Ended events are
+# shown for VENT_RECENT_KEEP, at most VENT_RECENT_MAX of them.
+FAST_START_K = 0.8
+FAST_START_MIN = 20
+FAST_SETTLE_K = 0.5
+FAST_SETTLE_MIN = 30
+FAST_MAX_H = 2.0
+# Allowed ranges of the setting
+FAST_START_K_RANGE = (0.2, 5.0)
+FAST_START_MIN_RANGE = (5, 120)
+FAST_SETTLE_K_RANGE = (0.1, 5.0)
+FAST_SETTLE_MIN_RANGE = (10, 180)
+FAST_MAX_H_RANGE = (0.5, 12.0)
 VENT_RECENT_KEEP_S = 24 * 3600
 VENT_RECENT_MAX = 20
 
