@@ -284,7 +284,7 @@ class EepromGuard:
     """Count EEPROM writes per entity and day, persisted in the data directory.
 
     Besides today's counters the times of the writes of the last EEPROM_TIMES_KEEP are kept (key
-    "times"), for budgets per hour and per local day (heat pump set value, design/heat_pump.md 8.5).
+    "times"), for budgets per hour and per local day (heat pump set value, design/heat_pump.md 12).
     """
 
     def __init__(self, data_dir: Path, max_writes_per_day: int) -> None:

@@ -1,9 +1,7 @@
-"""Shadow flow control: room temperature, correction, setpoint changes, base and flow target, climate
-entity "Haus" (design/heat_pump.md, 6.1, 6.3, 8.1, 8.2, 16 step 2c part 2b)."""
+"""Flow control: room temperature, correction, flow target, climate entity "Haus" (design/heat_pump.md, 6, 8, 9)."""
 
 from datetime import UTC, datetime, timedelta
 import json
-import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -16,7 +14,7 @@ from sunflow.api.house import router as house_router
 from sunflow.api.integration import router as integration_router
 from sunflow.config.models import ClimateSettings, DeviceConfig, HouseSettings, Room, SunflowConfig
 from sunflow.config.store import ConfigStore
-from sunflow.heat_pump.correction import Correction, SetpointWatch, Settling
+from sunflow.heat_pump.correction import Correction
 from sunflow.heat_pump.defaults import HEATING_SURFACES, correction_ti_h
 from sunflow.heat_pump.rooms import device_sensors, reported_times, room_temperature
 from sunflow.heat_pump.samples import Minute
@@ -30,7 +28,7 @@ ROOM = "sensor.wohnzimmer"
 PROFILE = "esphome/rotex_hpsu_can"
 
 
-# Correction (8.2)
+# Correction (9)
 
 
 def test_steady_room_below_setpoint_integrates() -> None:
@@ -92,58 +90,7 @@ def test_gap_counts_at_most_30_minutes() -> None:
     assert correction.value_k == pytest.approx(1.0 / 6.0 * 1.0 * 0.5)
 
 
-# Setpoint changes (8.2)
-
-
-def test_raising_freezes_until_the_room_follows() -> None:
-    watch = SetpointWatch(21.0)
-
-    assert watch.update(22.0, 21.0, NOW) == Settling(target_c=22.0, direction=1, since=NOW)
-    assert watch.update(22.0, 21.79, NOW + timedelta(hours=3)) is not None
-    assert watch.update(22.0, 21.8, NOW + timedelta(hours=4)) is None
-
-
-def test_lowering_freezes_until_the_room_follows() -> None:
-    watch = SetpointWatch(21.0)
-
-    assert watch.update(19.0, 21.0, NOW) is not None
-    assert watch.update(19.0, 19.21, NOW + timedelta(hours=5)) is not None
-    assert watch.update(19.0, 19.2, NOW + timedelta(hours=6)) is None
-
-
-def test_room_already_at_the_new_setpoint_does_not_freeze() -> None:
-    assert SetpointWatch(21.0).update(21.5, 21.4, NOW) is None
-
-
-def test_new_change_while_settling_starts_anew() -> None:
-    watch = SetpointWatch(21.0)
-    watch.update(22.0, 21.0, NOW)
-
-    settling = watch.update(20.0, 21.0, NOW + timedelta(hours=20))
-
-    assert settling == Settling(target_c=20.0, direction=-1, since=NOW + timedelta(hours=20))
-    # 24 h counted from the new change
-    assert watch.update(20.0, 21.0, NOW + timedelta(hours=30)) is not None
-
-
-def test_released_after_24_h_without_reaching(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.INFO)
-    watch = SetpointWatch(21.0)
-    watch.update(23.0, 21.0, NOW)
-
-    assert watch.update(23.0, 21.5, NOW + timedelta(hours=24)) is None
-    assert "did not reach the setpoint 23.0" in caplog.text
-    assert watch.update(23.0, 21.5, NOW + timedelta(hours=25)) is None
-
-
-def test_small_change_ignored_and_first_value_is_no_change() -> None:
-    watch = SetpointWatch()
-    assert watch.update(21.0, 20.0, NOW) is None
-    assert watch.update(21.05, 20.0, NOW + MIN) is None
-    assert watch.update(21.1, 20.0, NOW + 2 * MIN) is not None
-
-
-# Room temperature (6.1)
+# Room temperature (6)
 
 
 def _state(value: str, updated: datetime | None = None) -> dict[str, Any]:
@@ -211,7 +158,7 @@ def test_device_sensors_are_the_other_enabled_sensors_of_the_device() -> None:
 
 async def test_a_steady_temperature_counts_while_its_device_reports() -> None:
     """MQTT (Zigbee2MQTT) does not write an unchanged temperature again: its last_reported stands still while
-    the humidity of the same device keeps reporting; the latest of the device counts (6.1)."""
+    the humidity of the same device keeps reporting; the latest of the device counts (6)."""
     reader = Reader({"sensor.kian_temperature": NOW - timedelta(hours=3), "sensor.kian_humidity": NOW - timedelta(minutes=5),
                      "sensor.kian_battery": NOW - timedelta(hours=5)}, failing={"sensor.kian_battery"})
     siblings = device_sensors(REGISTRY, ["sensor.kian_temperature"])
@@ -240,13 +187,13 @@ async def test_flow_shadow_reads_the_device_sensors_from_the_registry(tmp_path: 
     assert house.shadow.house_status(house.config)["rooms_stale"] == []
 
 
-# Shadow control: base, correction and flow target (8.1)
+# Control: curve, correction and flow target (8, 9)
 
 
 def _minute(at: datetime, setpoint: float | None = 31.0, valid: bool = True, strategy: str = "fixed", frozen: tuple[str, ...] = ()) -> Minute:
     reading = Reading(program="heating", activity="heating" if valid else "hot_water", strategy=strategy, values={"flow_setpoint": setpoint})
     evaluation = Evaluation(valid=valid, frozen=frozen if not valid else ())
-    return Minute(at=at, reading=reading, evaluation=evaluation, heat_w=None, heat_source=None, outside_c=None, rooms={})
+    return Minute(at=at, reading=reading, evaluation=evaluation, heat_w=None, heat_source=None, outside_c=5.0, rooms={})
 
 
 class House:
@@ -273,37 +220,19 @@ class House:
         return self.shadow.flow_status("hp")
 
 
-async def test_base_follows_the_effective_setpoint_while_heating_validly(tmp_path: Path) -> None:
+async def test_flow_target_from_the_curve_also_during_hot_water(tmp_path: Path) -> None:
+    """21 + 0.6·(21 − 5) = 30.6 (underfloor start slope); hot water freezes the correction, the target stays."""
     house = House(tmp_path)
-    await house.tick(NOW, _minute(NOW, 31.0))
-    await house.tick(NOW + MIN, _minute(NOW + MIN, 32.5))
-
-    flow = house.flow()
-
-    assert (flow["base_c"], flow["correction_k"], flow["target_c"], flow["shadow"]) == (32.5, 0.0, 32.5, True)
-
-
-async def test_base_kept_during_hot_water(tmp_path: Path) -> None:
-    house = House(tmp_path)
-    await house.tick(NOW, _minute(NOW, 31.0))
+    await house.tick(NOW)
     await house.tick(NOW + MIN, _minute(NOW + MIN, 48.0, valid=False, frozen=("activity_hot_water",)))
 
     flow = house.flow()
 
-    assert (flow["base_c"], flow["target_c"]) == (31.0, 31.0)
+    assert (flow["curve_c"], flow["correction_k"], flow["target_c"], flow["shadow"]) == (30.6, 0.0, 30.6, True)
     assert flow["frozen"] == ["activity_hot_water"]
 
 
-async def test_no_base_no_flow_target(tmp_path: Path) -> None:
-    house = House(tmp_path)
-    await house.tick(NOW, _minute(NOW, 48.0, valid=False, frozen=("activity_hot_water",)))
-
-    flow = house.flow()
-
-    assert (flow["base_c"], flow["target_c"], flow["reason"]) == (None, None, "no_base")
-
-
-async def test_base_and_correction_survive_a_restart_a_setpoint_change_holds_nothing(tmp_path: Path) -> None:
+async def test_correction_survives_a_restart_a_setpoint_change_holds_nothing(tmp_path: Path) -> None:
     house = House(tmp_path)
     house.room = "20.5"
     for minute in range(6 * 60 + 1):
@@ -316,11 +245,9 @@ async def test_base_and_correction_survive_a_restart_a_setpoint_change_holds_not
     await house.tick(NOW + 363 * MIN, _minute(NOW + 363 * MIN, valid=False, frozen=("activity_hot_water",)))
 
     flow = house.flow()
-    assert flow["base_c"] == 31.0
     assert flow["correction_k"] == pytest.approx(0.5)
-    # Since 0.80.28 a setpoint change does not hold the correction
+    # A setpoint change does not hold the correction
     assert flow["frozen"] == ["activity_hot_water"]
-    assert house.shadow.house_status()["settling"] is None
     stored = json.loads((tmp_path / "heat_pump_state.json").read_text())
     assert stored["devices"]["hp"]["corrections"]["fixed"] == pytest.approx(0.5)
 
@@ -368,7 +295,7 @@ async def test_strategy_change_starts_without_jump(tmp_path: Path) -> None:
     assert house.flow()["strategy"] == "weather"
 
 
-# Integral time per heating surface type (8.2, step 3 part 4.1)
+# Integral time per heating surface type (9)
 
 
 def test_integral_time_per_heating_surface_type() -> None:
@@ -429,7 +356,7 @@ async def test_changing_the_heating_surface_does_not_jump_the_correction(tmp_pat
     assert house.flow()["correction_k"] == pytest.approx(0.25 + 0.75)
 
 
-# Climate entity "Haus" (6.3) and the room setpoint in the configuration
+# Climate entity "Haus" (6) and the room setpoint in the configuration
 
 
 def _api(tmp_path: Path, library: Any, config: SunflowConfig | None = None) -> tuple[TestClient, ConfigStore]:
@@ -499,7 +426,7 @@ def test_climate_model_rounds_and_refuses() -> None:
         ClimateSettings(setpoint_c=17.9)
 
 
-# Margin of the planning (6.3, step 4 part 1)
+# Margin of the planning (6, 14)
 
 
 def test_margin_stored_to_a_tenth_with_the_setpoint(tmp_path: Path, library: Any) -> None:
@@ -587,7 +514,7 @@ def test_rest_url_next_to_the_websocket() -> None:
 
 
 async def test_recorder_feeds_the_shadow_control(tmp_path: Path, library: Any) -> None:
-    """The recorder's minutes drive the shadow control; its status shows base, correction and target."""
+    """The recorder's minutes drive the control; its status shows curve, correction and target."""
     from test_heat_pump_samples import Pump  # noqa: PLC0415
 
     pump = Pump(tmp_path, library)
@@ -598,6 +525,7 @@ async def test_recorder_feeds_the_shadow_control(tmp_path: Path, library: Any) -
     finally:
         pump.store.close()
 
-    assert status["flow"]["base_c"] == 31.0
-    assert (status["flow"]["correction_k"], status["flow"]["target_c"], status["flow"]["frozen"]) == (0.0, 31.0, [])
+    # Outside 5 °C, room setpoint 21 °C (default), the test node's own slope "1": 21 + 1·16
+    assert (status["flow"]["outside_c"], status["flow"]["curve_c"]) == (5.0, 37.0)
+    assert (status["flow"]["correction_k"], status["flow"]["target_c"], status["flow"]["frozen"]) == (0.0, 37.0, [])
     assert pump.recorder.flow.house_status()["room_c"] == 21.0

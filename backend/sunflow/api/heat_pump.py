@@ -46,7 +46,7 @@ def _recorder(request: Request) -> Any:
 
 
 def heat_pump_notes(request: Request, config: SunflowConfig) -> list[str]:
-    """Heat pumps whose set value someone else changes or the ESP regulates (8.5, for the setup summary)."""
+    """Heat pumps whose set value someone else changes or the ESP regulates (12, for the setup summary)."""
     flow = getattr(_recorder(request), "flow", None)
     if flow is None or not hasattr(flow, "summary_notes"):
         return []
@@ -60,7 +60,7 @@ def _manifest(request: Request, device: Any) -> dict[str, Any] | None:
 
 
 def flow_limits(config: SunflowConfig, device: Any, profile: dict[str, Any], manifest: dict[str, Any] | None) -> dict[str, Any]:
-    """Range of the set value (8.3): the user's setting, the heating surface type's start limits, the
+    """Range of the set value (10): the user's setting, the heating surface type's start limits, the
     entity's range from the manifest and what applies."""
     settings = ControlSettings.from_profile(profile, manifest, device.flow_min_c, device.flow_max_c)
     surface = config.house.heating_surface
@@ -82,7 +82,7 @@ def house_status(request: Request, config: SunflowConfig) -> dict[str, Any] | No
         return None
     recorder = _recorder(request)
     flow = getattr(recorder, "flow", None)
-    status = flow.house_status(config) if flow is not None else climate_status(config, None, None)
+    status = flow.house_status(config) if flow is not None else climate_status(config, None)
     # The heat pumps' flow targets, for the climate entity's attributes
     states = recorder.status() if recorder is not None else {}
     status["heat_pumps"] = [
@@ -116,14 +116,14 @@ async def heat_pump_status(request: Request) -> dict[str, Any]:
                 "component": device.component,
                 "profile": device.profile,
                 "profile_version": {"configured": device.profile_version, "current": profile["version"]},
-                # The user's switch: Sunflow writes to the heat pump for real (16 step 3 part 4.7)
+                # The user's switch: Sunflow writes to the heat pump for real (4)
                 "writing": {"active": device.flow_active, "refused": writing_refused(request, device.id) if not device.flow_active else None},
-                # Learning phase of the stop margin (8.4): Sunflow lowers straight to the flow target
+                # Learning phase of the stop margin (11): Sunflow lowers straight to the flow target
                 "learn_stops": device.flow_learn_stops,
             }
             | status.get(device.id, {"status": "pending", "usable": False, "problems": [], "manifest": None})
-            # Program, activity, block, fault, whether it heats validly (section 4) and the shadow
-            # flow control (section 8); None before the first sample
+            # Program, activity, block, fault, whether it heats validly (section 4) and the
+            # flow control (sections 8-12); None before the first sample
             | {"state": states.get(device.id), "flow_limits": flow_limits(config, device, profile, _manifest(request, device))}
         )
     return {"devices": devices, "notes": manifest_notes(request), "house": house_status(request, config)}
@@ -136,7 +136,7 @@ WRITES_DAYS_MAX = 31
 @router.get("/heat_pump/{device_id}/shadow_writes")
 async def shadow_writes(request: Request, device_id: str, days: int = Query(default=7, ge=1, le=WRITES_DAYS_MAX)) -> dict[str, Any]:
     """Per day (Home Assistant's time zone): writes Sunflow would have caused, by reason, and unwanted
-    shutdowns (shadow, 8.4), with the budget of the profile (8.5). The writes are those that passed the
+    shutdowns (shadow, 11), with the budget of the profile (12). The writes are those that passed the
     minimum spacing and the budget; a block set instead of a protection step counts as block."""
     config = request.app.state.store.load()
     device = next((d for d in config.devices if d.id == device_id), None)
@@ -155,7 +155,7 @@ async def shadow_writes(request: Request, device_id: str, days: int = Query(defa
     flow = getattr(recorder, "flow", None)
     return {
         "days": daily_counts(events, tz, days, now),
-        # The budget of the profile (defaults where it names none); counted virtually in the shadow (8.5)
+        # The budget of the profile (defaults where it names none); counted virtually in the shadow (12)
         "budget": BudgetLimits.from_writes((profile.get("flow_control") or {}).get("writes") or {}).as_dict(),
         "shadow": not flow.writing_active(device_id) if flow is not None else True,
     }
@@ -229,7 +229,7 @@ async def history(request: Request, device_id: str, hours: int = Query(default=2
 
 @router.post("/heat_pump/{device_id}/write_now", status_code=202)
 async def write_now(request: Request, device_id: str) -> dict[str, Any]:
-    """"Write now" (8.5): the next tick writes the pending set value without waiting for the minimum
+    """"Write now" (12): the next tick writes the pending set value without waiting for the minimum
     spacing (the budget still applies). 409 when nothing is pending or Sunflow does not write to the heat
     pump (shadow), with the reason; the wish lapses when the next tick cannot write it."""
     config = request.app.state.store.load()
@@ -255,7 +255,7 @@ class Writing(BaseModel):
 
 
 def writing_refused(request: Request, device_id: str) -> str | None:
-    """Why writing for real cannot be switched on now (16 step 3 part 4.7), None when it can: the heat pump
+    """Why writing for real cannot be switched on now (4), None when it can: the heat pump
     must be compatible and reachable, sampled, in the strategy fixed and without the ESP regulation."""
     manifests = getattr(request.app.state, "manifests", None)
     if manifests is None or not manifests.usable(device_id):
@@ -274,11 +274,11 @@ def writing_refused(request: Request, device_id: str) -> str | None:
 
 @router.put("/heat_pump/{device_id}/writing")
 async def set_writing(request: Request, device_id: str, body: Writing) -> dict[str, Any]:
-    """Switch writing to the heat pump for real on or off (16 step 3 part 4.7; default off).
+    """Switch writing to the heat pump for real on or off (4; default off).
 
     On: 409 with the reason when the heat pump is not compatible, not sampled yet, not in the strategy fixed
     or the ESP regulates; Sunflow takes over with the next tick (base frozen, correction 0) and writes only
-    when the rules ask for it. Off: always; nothing at the heat pump is reset (8.6)."""
+    when the rules ask for it. Off: always; nothing at the heat pump is reset (4)."""
     store: ConfigStore = request.app.state.store
     config = store.load()
     device = next((d for d in config.devices if d.id == device_id), None)
@@ -290,14 +290,14 @@ async def set_writing(request: Request, device_id: str, body: Writing) -> dict[s
     if device.flow_active != body.active:
         device.flow_active = body.active
         store.save(config)
-        # "Lernen + Regeln" plans the battery with the heat pump, "Nur Lernen" without (7)
+        # "Lernen + Regeln" plans the battery with the heat pump, "Nur Lernen" without (14)
         _replan(request)
     return {"active": device.flow_active}
 
 
 @router.put("/heat_pump/{device_id}/learn_stops")
 async def set_learn_stops(request: Request, device_id: str, body: Writing) -> dict[str, Any]:
-    """Switch the learning phase of the stop margin on or off (8.4): on, Sunflow lowers the set value straight
+    """Switch the learning phase of the stop margin on or off (11): on, Sunflow lowers the set value straight
     to the flow target and lets the compressor stop, to learn where it does; off, it keeps above the learned
     (or the profile's) shutdown bound. The user decides when the phase ends."""
     store: ConfigStore = request.app.state.store
@@ -349,7 +349,7 @@ async def set_flow_limits(request: Request, device_id: str, body: FlowLimits) ->
 
 class ClimateUpdate(BaseModel):
     """A change of the climate entity "Haus": setpoint, mode and/or the planning's margin around the setpoint
-    (preheat_k up, lower_k down; design/heat_pump.md 6.3); values outside the range are refused."""
+    (preheat_k up, lower_k down; design/heat_pump.md 6); values outside the range are refused."""
 
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -375,6 +375,6 @@ async def set_climate(request: Request, body: ClimateUpdate) -> dict[str, Any]:
     if climate.model_dump() != current.model_dump():
         config.house.climate = climate
         store.save(config)
-        # The planning's band and target follow at once (7), not with the next quarter hour
+        # The planning's band and target follow at once (14), not with the next quarter hour
         _replan(request)
     return climate.model_dump()

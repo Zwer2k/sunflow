@@ -74,7 +74,7 @@ SCHEMA_STEPS: dict[int, list[str]] = {
     ],
     # evcc's CSV export also has the vehicle's state of charge before and after
     8: ["ALTER TABLE imported_sessions ADD COLUMN soc_start REAL", "ALTER TABLE imported_sessions ADD COLUMN soc_end REAL"],
-    # 5 minute means of a heat pump with its states (design/heat_pump.md, sections 9.1 and 10); kept a year
+    # 5 minute means of a heat pump with its states (design/heat_pump.md, sections 13 and 15); kept a year
     9: [
         "CREATE TABLE heat_pump_samples (device_id TEXT, start TEXT, samples INTEGER,"
         " tv_c REAL, tr_c REAL, tvbh_c REAL, tv_max_c REAL, heat_w REAL, heat_source TEXT, outside_c REAL,"

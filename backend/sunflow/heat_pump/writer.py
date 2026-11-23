@@ -1,4 +1,4 @@
-"""Writing the set value (design/heat_pump.md, 8.5, step 3 part 4.2), a layer behind the protection layer.
+"""Writing the set value (design/heat_pump.md, 12), a layer behind the protection layer.
 
 The protection layer (guard.py) computes every minute the set value it wants and whether that is a
 protection step (restart, tracking); this layer decides when it is written:
@@ -12,11 +12,11 @@ protection step (restart, tracking); this layer decides when it is written:
 - "write now" skips the spacing (not the budget) for one tick; the wish lapses when nothing can be
   written in the next tick (nothing pending, budget, no valid state, writing not active), with the reason
   in the status and the journal.
-- the budget (budget.py, step 3 part 4.3): a value it holds back waits without a time (held budget); a
+- the budget (budget.py): a value it holds back waits without a time (held budget); a
   protection step held back is noted once per episode, each exhaustion once a day in the journal.
 In the shadow it works on the virtual writes (counted virtually against the budget) and adds nothing to
 the journal for a write (events as before); a real write gets a journal entry with its reason. The call to
-the heat pump itself is the shadow control's (shadow.py, step 3 part 4.7, only when the user switched it on).
+the heat pump itself is the shadow control's (shadow.py, only when the user switched it on).
 """
 
 from collections.abc import Callable

@@ -16,7 +16,7 @@ stays as it is".
 
 The hourly rows come from Home Assistant's recorder (hourly means, hours with hot water or defrost
 left out) until heat_pump_samples covers at least MIN_DAYS days of valid heating (design/heat_pump.md,
-9.3); then from the heat pump's 5 minute rows, without hours with hot water, defrost, after-run,
+14); then from the heat pump's 5 minute rows, without hours with hot water, defrost, after-run,
 ventilation or heating that was not valid. The switch happens only when the model from the samples
 is there and not worse in use than the one from Home Assistant, and it is kept (no jump back and forth).
 """
@@ -325,12 +325,12 @@ class HouseData:
     excluded_hours: int = 0
     # ha_hourly (Home Assistant's hourly means) or heat_pump_samples
     source: str = HA_HOURLY
-    # Days of valid heating in heat_pump_samples (9.3), MIN_DAYS needed for the switch
+    # Days of valid heating in heat_pump_samples (14), MIN_DAYS needed for the switch
     coverage_days: int = 0
     # Sun value of a bright hour: the model's sun (0-1) is relative to it
     sun_bright: float | None = None
     # Sun (0-1) of every hour the sensor's history has, by hour start: each hour learns with its own
-    # hour's value, also hours that rows leave out here but the samples keep (9.3)
+    # hour's value, also hours that rows leave out here but the samples keep (14)
     sun_hours: dict[datetime, float] = field(default_factory=dict)
 
 
@@ -472,7 +472,7 @@ def _relative(values: dict[datetime, float]) -> dict[datetime, float]:
     return {s: min(max(v / bright, 0.0), 1.0) for s, v in values.items()}
 
 
-# From heat_pump_samples (9.3)
+# From heat_pump_samples (14)
 
 # Activities whose hour is used: the heat pump heats (validly), pauses or is off
 CALM_ACTIVITIES = frozenset({"heating", "idle"})
@@ -600,7 +600,7 @@ async def learn_house(
     kept: bool = False,
 ) -> HouseLearning:
     """Learn the house from Home Assistant's hourly means, or from heat_pump_samples once they cover
-    MIN_DAYS days of valid heating (9.3); kept: the samples were chosen before."""
+    MIN_DAYS days of valid heating (14); kept: the samples were chosen before."""
     ha = await house_data(client, config, profiles, now, snapshot)
     ha_model = fit(ha.rows, now)
     device = heat_pump_device(config, profiles)

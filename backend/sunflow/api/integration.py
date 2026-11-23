@@ -253,6 +253,6 @@ async def get_integration_state(request: Request) -> dict[str, Any]:
         runner.status.last_error,
         getattr(request.app.state, "loads", None),
     ) | {
-        # Climate entity "Haus" (design/heat_pump.md, 6.3, 13); None: no rooms and no heat pump
+        # Climate entity "Haus" (design/heat_pump.md, 6, 16); None: no rooms and no heat pump
         "house": house_status(request, config),
     }

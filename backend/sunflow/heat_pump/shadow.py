@@ -1,52 +1,18 @@
-"""Shadow operation of the flow temperature control (design/heat_pump.md, 8.1, 8.2, 16 step 2c part 2b).
+"""Flow temperature control of every heat pump (design/heat_pump.md, 3, 6-12).
 
-Without a usable heating curve the flow target is the base plus the room correction:
-    V_Ziel = base + correction
-The base is the effective flow setpoint of the heat pump, taken over only while it heats validly
-(section 4); outside that the last such value counts. Without one there is no flow target ("no_base").
-With a usable curve (step 3 part 2, feedforward.py) the flow target is the curve's flow for the heat
-the house needs plus the same correction:
-    V_Ziel = target + (Q*/K)^(1/n) + s(Q*)/2 + correction
-The correction belongs to the strategy, not to the source: in the shadow a change of the source leaves
-it as it is and the flow target jumps once (noted in heat_pump_samples). While Sunflow writes for real
-(step 3 part 4.5, switched on in part 4.7) the correction is shifted by old − new start value at a source
-change, within its limit, so the flow target does not jump; a rest is noted in the journal. The target
-room temperature is the room setpoint (the planning plans it from step 4 part 2, planning/house_plan.py; the
-controller takes the plan target over in part 3).
-
-Shadow: everything is computed, stored and shown, nothing is written to a heat pump. As Sunflow does
-not act, the correction has no effect back and may run to its limit; it is marked as shadow and starts
-at 0 when Sunflow takes over (step 3), with the base frozen then.
-
-Protection layer (8.3, 8.4, guard.py, reworked in 0.80.27): from the flow target the set value Sunflow
-writes and the writes it causes (normal, restart after the compressor stayed off, tracking, block); at a
-limit the correction does not move further beyond it.
-
-Write layer (8.5, step 3 part 4.2, writer.py): when the wanted set value is written - leading edge,
-minimum spacing, deadband except for protection steps, "write now". In the shadow it acts on the
-virtual writes.
-Budget (8.5, step 3 part 4.3, budget.py): per day in Home Assistant's time zone, counted virtually in the
-shadow (seeded from the write events in heat_pump_samples), never in eeprom_writes.json; writing for real
-the writes EepromGuard records.
-Writing for real (step 3 part 4.7, active.py): only when the user switched it on for the heat pump
-(DeviceConfig.flow_active, default off). Taking over (switched on in mode heat): the base is frozen, the
-correction starts at 0, the protection layer starts from the real Max T-Vorlauf and block - nothing is
-written until the rules ask for it. Then set value (EEPROM, budget) and block go to the heat pump; a write
-that fails is taken back (journal), after adopt_delay Sunflow checks that the heat pump took the value
-over. Switching off, mode off and failures reset nothing (8.6); switched off it is the shadow again.
-Foreign writers (8.5, step 3 part 4.4, foreign.py): a change of the real Max T-Vorlauf Sunflow did not
-write is noted (journal, status, setup summary) and the written value follows it; while the ESP regulation
-is active nothing is written.
-
-Fast change (6.2: airing, cooking ...): while the fast part of a room's change lasts, the room does not
-count for the room temperature, and the correction is frozen meanwhile; the slow rest counts again. When rooms leave or join the room temperature (aired, stale, missing), the
-correction takes the new value as reference instead of a step, so that alone causes no jump.
+Each minute: outside temperature for the control (measured, averaged), the heating curve (8)
+    flow target = R + S · (R − A) + P + correction
+with R the room setpoint, A the outside temperature, and the room correction (9). When the learned curve
+changes, the correction is shifted by old − new curve value (within its limit), so the flow target does not
+jump. Then limits, protection (guard.py) and writing (writer.py). With "Nur Lernen" (shadow) everything is
+computed and shown, nothing is written; with "Lernen + Regeln" (DeviceConfig.flow_active, active.py) the set
+value and the block go to the heat pump. Taking over starts the correction at 0 and the protection layer
+from the real Max T-Vorlauf and block; switching off resets nothing.
 """
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
 import logging
-import math
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -57,8 +23,8 @@ from sunflow.i18n import number, t
 
 from .active import MISSING, AdoptCheck, WriteTargets
 from .budget import SETPOINT_REASONS, EepromLog, VirtualLog, WriteBudget
-from .correction import Correction, SetpointWatch, Settling
-from .curve import Curve
+from .correction import Correction
+from .curve import Curve, start_curve, start_slope
 from .defaults import (
     CORRECTION_KP,
     CORRECTION_LIMIT_K,
@@ -69,11 +35,9 @@ from .defaults import (
     ROOM_SETPOINT_MAX_C,
     ROOM_SETPOINT_MIN_C,
     ROOM_SETPOINT_STEP_C,
-    SOURCE_JUMP_NOTE_K,
-    SOURCE_SHIFT_MAX_AGE_S,
+    OUTSIDE_MEAN_S,
     correction_ti_h,
 )
-from .feedforward import BASE, HEAT_RECENT, HOUSE_MODEL, Feed, HouseContext, RecentHeat, feedforward, house_heat_w, source_shift
 from .guard import BLOCK_OFF, BLOCK_ON, Guard, GuardInput, GuardResult
 from .learned import Learned, values as guard_values
 from .limits import ControlSettings
@@ -92,8 +56,9 @@ _LOGGER = logging.getLogger(__name__)
 REPORTED_EVERY = timedelta(seconds=CORRECTION_MAX_STEP_S)
 # Home Assistant's time zone (local day of the write budget) is read again this often
 TIMEZONE_EVERY = timedelta(hours=1)
-# The start value of the old source counts for the jump protection only this long (8.1)
-SOURCE_SHIFT_MAX_AGE = timedelta(seconds=SOURCE_SHIFT_MAX_AGE_S)
+OUTSIDE_MEAN = timedelta(seconds=OUTSIDE_MEAN_S)
+# Role of the heat pump's own heating curve slope (start value of the curve, 8)
+SLOPE_ROLE = "heating_curve_slope"
 # Whether Sunflow writes to a heat pump for real or computes in the shadow (HA sensors, climate attribute mode)
 SHADOW = "shadow"
 ACTIVE = "active"
@@ -103,31 +68,11 @@ HELD_ESP = "esp_regulation"
 HELD_BLOCK = "block"
 
 
-def source_text(source: str) -> str:
-    """The feedforward source for the journal."""
-    if source == HOUSE_MODEL:
-        return t("Hausmodell")
-    if source == HEAT_RECENT:
-        return t("Wärme der letzten 3 h")
-    if source == BASE:
-        return t("Basis")
-    return source
-
-
 def _time(text: Any) -> datetime | None:
     try:
         return datetime.fromisoformat(text) if isinstance(text, str) else None
     except ValueError:
         return None
-
-
-def _number(text: Any) -> float | None:
-    """A state as a number (sun sensor); None when unavailable or not a number."""
-    try:
-        value = float(text)
-    except (TypeError, ValueError):
-        return None
-    return value if math.isfinite(value) else None
 
 
 def _float(value: Any) -> float | None:
@@ -139,15 +84,14 @@ class FlowState:
     """What the shadow control computed for one heat pump."""
 
     strategy: str
-    base_c: float | None
-    base_at: datetime | None
     correction_k: float | None
     target_c: float | None
     frozen: tuple[str, ...]
     reason: str | None
-    feed: Feed | None = None
-    recent_s: float = 0.0
-    # Protection layer (8.3, 8.4): set value and writes Sunflow would cause, limits reached
+    # Outside temperature for the control and the heating curve's flow (8)
+    outside_c: float | None = None
+    curve_c: float | None = None
+    # Protection layer (10, 11): set value and writes Sunflow would cause, limits reached
     guard: GuardResult | None = None
     limited: tuple[str, ...] = ()
 
@@ -162,7 +106,6 @@ class FlowShadow:
         self._client = client
         self._data_dir = data_dir or store.data_dir
         house = store.house
-        self.watch = SetpointWatch(_float(house.get("setpoint_c")), Settling.from_dict(house.get("settling")))
         self._corrections: dict[tuple[str, str], Correction] = {}
         # Strategy each heat pump was computed in last (a change starts the new one without a jump)
         self._active: dict[str, str] = {}
@@ -178,29 +121,31 @@ class FlowShadow:
         self.last_minutes: dict[str, "Minute"] = {}
         self._config: SunflowConfig | None = None
         self._observed_at: datetime | None = None
-        # Learned heating curves per heat pump (from the cache until learned anew) and the house model
+        # Learned heating curves per heat pump (from the cache until learned anew), the heat pump's own slope
+        # and the measured outside temperature of the last minutes
         self.curves: dict[str, Curve] = {}
         for device_id, stored in store.devices.items():
             if (curve := Curve.from_dict(stored.get("curve"))) is not None:
                 self.curves[device_id] = curve
-        self.house: HouseContext | None = None
+        self._slopes: dict[str, float | None] = {}
+        self._outside: dict[str, list[tuple[datetime, float]]] = {}
         # Protection layer per heat pump and its learned values (from the cache until learned anew)
         self.guards: dict[str, Guard] = {}
         self.learned: dict[str, Learned] = {}
         self.settings: dict[str, ControlSettings] = {}
         # Per heat pump: the learning phase of the stop margin is on (DeviceConfig.flow_learn_stops)
         self._learn_stops: dict[str, bool] = {}
-        # Write layer per heat pump (8.5) and the heat pumps Sunflow writes to for real: the user's switch
-        # (DeviceConfig.flow_active, step 3 part 4.7), set every tick; off: shadow
+        # Write layer per heat pump (12) and the heat pumps Sunflow writes to for real: the user's switch
+        # (DeviceConfig.flow_active, 4), set every tick; off: shadow
         self.writers: dict[str, Writer] = {}
         self.active: dict[str, bool] = {}
-        # Whether the heat pump took the last real write over (step 3 part 4.7), the last real write of the
+        # Whether the heat pump took the last real write over (12), the last real write of the
         # set value (the self-limit time of the states counts from it)
         self.adopt_checks: dict[str, AdoptCheck] = {}
         self.real_written_at: dict[str, datetime] = {}
         # Real writes failing (device id, set value or block): noted once until one succeeds again
         self._failing: set[tuple[str, bool]] = set()
-        # Write budget per heat pump (8.5), counted virtually in the shadow; the local day needs Home
+        # Write budget per heat pump (12), counted virtually in the shadow; the local day needs Home
         # Assistant's time zone (None until read: then the last 24 hours count)
         self.budgets: dict[str, WriteBudget] = {}
         self.tz: tzinfo | None = None
@@ -210,8 +155,7 @@ class FlowShadow:
                 self.learned[device_id] = learned
         # Where the house model learns from: heat_pump_samples once chosen (kept, no jump back)
         self.house_source: str | None = house.get("model_source") if isinstance(house.get("model_source"), str) else None
-        self._recent: dict[str, RecentHeat] = {}
-        # Source changes, planned writes, starts and unwanted shutdowns of this tick: (device id, event)
+        # Writes, starts and stops of this tick: (device id, event)
         # for heat_pump_samples; journal entries (device id, message, warn)
         self.source_events: list[tuple[str, dict[str, Any]]] = []
         self.notes: list[tuple[str, str, bool]] = []
@@ -259,7 +203,7 @@ class FlowShadow:
             _LOGGER.debug("Time zone of Home Assistant not read", exc_info=True)
 
     def writing_active(self, device_id: str) -> bool:
-        """Sunflow writes to this heat pump for real: the user switched it on (step 3 part 4.7)."""
+        """Sunflow writes to this heat pump for real: the user switched it on (4)."""
         return self.active.get(device_id, False)
 
     def request_write_now(self, device_id: str, now: datetime) -> tuple[bool, str | None, dict[str, Any] | None]:
@@ -273,18 +217,25 @@ class FlowShadow:
         writer.request_now(now)
         return True, None, pending.as_dict()
 
-    def recent(self, device_id: str) -> RecentHeat:
-        """Heat of the last hours of one heat pump (source heat_recent)."""
-        return self._recent.setdefault(device_id, RecentHeat())
+    def start_slope(self, device_id: str, config: SunflowConfig) -> tuple[float, str]:
+        """Start slope of the heating curve: the heat pump's own, else the heating surface type's (8)."""
+        return start_slope(config.house.heating_surface, self._slopes.get(device_id))
 
-    def _feed(self, config: SunflowConfig, device_id: str, minute: "Minute", states: dict[str, dict[str, Any]], now: datetime) -> tuple[Feed, float]:
-        target = config.house.climate.setpoint_c
-        sun = None
-        if self.house is not None and self.house.sun_entity:
-            sun = _number((states.get(self.house.sun_entity) or {}).get("state"))
-        house_w = house_heat_w(self.house, target, minute.outside_c, sun)
-        recent_w, seconds = self.recent(device_id).mean(now)
-        return feedforward(self.curves.get(device_id), target, house_w, recent_w, config.house.heating_surface), seconds
+    def curve(self, device_id: str, config: SunflowConfig, now: datetime) -> Curve:
+        """The heating curve in use: the learned one while it rests on the current start slope, else the start."""
+        slope0, source = self.start_slope(device_id, config)
+        learned = self.curves.get(device_id)
+        if learned is not None and abs(learned.start_slope - slope0) < 1e-6:
+            return learned
+        return start_curve(slope0, source, now)
+
+    def outside(self, device_id: str, value: float | None, now: datetime) -> float | None:
+        """The measured outside temperature averaged over OUTSIDE_MEAN (7); None without a value in that time."""
+        values = [(at, v) for at, v in self._outside.get(device_id, []) if timedelta(0) <= now - at < OUTSIDE_MEAN]
+        if value is not None:
+            values.append((now, value))
+        self._outside[device_id] = values
+        return sum(v for _, v in values) / len(values) if values else None
 
     def _correction(self, device_id: str, strategy: str) -> Correction:
         key = (device_id, strategy)
@@ -311,7 +262,7 @@ class FlowShadow:
         return result
 
     async def _device_sensors(self, ids: list[str]) -> dict[str, list[str]]:
-        """The other sensors of each room sensor's device (6.1), from the entity registry; none if it cannot be read."""
+        """The other sensors of each room sensor's device (6), from the entity registry; none if it cannot be read."""
         registry = getattr(self._client, "get_entity_registry", None)
         if registry is None:
             return {}
@@ -342,45 +293,30 @@ class FlowShadow:
         minutes: dict[str, tuple[DeviceConfig, "Minute | None"]],
         now: datetime,
     ) -> None:
-        """One step: room temperature, setpoint change, then base, correction and target per heat pump."""
+        """One step: room temperature, then curve, correction and flow target per heat pump."""
         await self.observe(config, states, now)
         await self._timezone(now)
         room = self.room
         assert room is not None
         setpoint = config.house.climate.setpoint_c
-        # A setpoint change no longer holds the correction (0.80.28): with the base as source nothing else
-        # would raise the flow, the room would not follow. The watch is dropped with it.
-        self.watch.settling = None
-        self.watch.last_c = setpoint
         flows: dict[str, FlowState] = {}
         for device_id, (device, minute) in minutes.items():
             stored = self._store.devices.setdefault(device_id, {})
-            base, base_at = _float(stored.get("base_c")), _time(stored.get("base_at"))
             if minute is None:
                 # Nothing read (node away): what the room does meanwhile is dropped
                 if (active := self._active.get(device_id)) is not None:
                     self._correction(device_id, active).hold(room.value_c, now)
                 flows[device_id] = FlowState(
-                    strategy=active or UNKNOWN, base_c=base, base_at=base_at,
+                    strategy=active or UNKNOWN,
                     correction_k=self._correction(device_id, active).value_k if active else None,
                     target_c=None, frozen=("no_sample",), reason="no_sample",
                 )
                 continue
             self.last_minutes[device_id] = minute
             reading, evaluation = minute.reading, minute.evaluation
-            # The user's switch; taking over freezes the base and starts the correction at 0
-            writing = self._switch(config, device_id, device, minute, stored, room.value_c, now)
-            self.recent(device_id).add(minute, bool(self.aired))
-            feed, recent_s = self._feed(config, device_id, minute, states, now)
-            previous = stored.get("source")
-            source_changed = isinstance(previous, str) and previous != feed.source
-            stored["source"] = feed.source
-            effective = reading.values.get("flow_setpoint")
-            # The base follows the effective setpoint only while Sunflow does not write (shadow, mode off):
-            # writing for real the effective setpoint is Sunflow's own value
-            if evaluation.valid and effective is not None and not writing:
-                base, base_at = effective, now
-                stored["base_c"], stored["base_at"] = base, now.isoformat()
+            self._slopes[device_id] = reading.values.get(SLOPE_ROLE)
+            # The user's switch; taking over starts the correction at 0
+            self._switch(config, device_id, device, minute, stored, room.value_c, now)
             frozen = list(evaluation.frozen)
             if self.aired:
                 frozen.append("ventilation")
@@ -396,7 +332,7 @@ class FlowShadow:
             else:
                 correction = self._correction(device_id, strategy)
                 guard = self.guard(device_id)
-                # Limits reached in the previous minute (8.3): the correction does not move beyond them
+                # Limits reached in the previous minute (10): the correction does not move beyond them
                 last = guard.last
                 if self._active.get(device_id) != strategy:
                     correction.hold(room.value_c, now)
@@ -412,23 +348,20 @@ class FlowShadow:
                         ti_h=correction_ti_h(config.house.heating_surface),
                     )
                 correction_k = correction.value_k
-                stored.setdefault("corrections", {})[strategy] = round(correction.value_k, 4)
-            start = feed.curve_c if feed.source != BASE else base
-            if source_changed:
-                assert isinstance(previous, str)
-                shift_k = self._source_change(device_id, device, previous, feed.source, start, strategy, now)
-                if correction_k is not None and shift_k:
-                    correction_k = self._correction(device_id, strategy).value_k
-                    stored.setdefault("corrections", {})[strategy] = round(correction_k, 4)
-            if start is not None:
-                stored["start_c"], stored["start_at"] = start, now.isoformat()
-            target = start + correction_k if start is not None and correction_k is not None else None
-            reason = "no_base" if start is None else "strategy_unknown" if correction_k is None else None
-            result = await self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now)
+            outside = self.outside(device_id, minute.outside_c, now)
+            curve = self.curve(device_id, config, now)
+            curve_c = curve.flow_c(setpoint, outside) if outside is not None else None
+            if curve_c is not None and correction_k is not None:
+                correction_k = self._follow_curve(device_id, strategy, stored, curve, setpoint, outside)
+            if correction_k is not None:
+                stored.setdefault("corrections", {})[strategy] = round(correction_k, 4)
+            target = curve_c + correction_k if curve_c is not None and correction_k is not None else None
+            reason = "no_outside" if curve_c is None else "strategy_unknown" if correction_k is None else None
+            result = await self._guard_step(config, device_id, device, minute, target, room.value_c, now)
             stored["guard"] = self.guard(device_id).as_dict()
             flows[device_id] = FlowState(
-                strategy=strategy, base_c=base, base_at=base_at, correction_k=correction_k, target_c=target,
-                frozen=tuple(sorted(set(frozen))), reason=reason, feed=feed, recent_s=recent_s,
+                strategy=strategy, correction_k=correction_k, target_c=target,
+                frozen=tuple(sorted(set(frozen))), reason=reason, outside_c=outside, curve_c=curve_c,
                 guard=result, limited=result.limited if result else (),
             )
         self.flows = flows
@@ -436,7 +369,8 @@ class FlowShadow:
             del self._store.devices[gone]
             self.curves.pop(gone, None)
             self.last_minutes.pop(gone, None)
-            self._recent.pop(gone, None)
+            self._slopes.pop(gone, None)
+            self._outside.pop(gone, None)
             self.guards.pop(gone, None)
             self.writers.pop(gone, None)
             self.budgets.pop(gone, None)
@@ -447,23 +381,37 @@ class FlowShadow:
             self.learned.pop(gone, None)
             self.settings.pop(gone, None)
         self._store.house = {
-            "setpoint_c": self.watch.last_c,
-            "settling": self.watch.settling.as_dict() if self.watch.settling else None,
             "ventilation": self.ventilation.as_dict(),
             "model_source": self.house_source,
         }
         self._store.save()
 
+    def _follow_curve(self, device_id: str, strategy: str, stored: dict[str, Any], curve: Curve, room_c: float, outside_c: float) -> float:
+        """The learned curve changed (same start slope): the correction is shifted by old − new curve value at the
+        same room setpoint and outside, so the flow target does not jump (8). A new start slope (the heat pump's
+        own curve or the heating surface type changed) is the user's choice and applies at once. Returns the
+        correction."""
+        correction = self._correction(device_id, strategy)
+        used = stored.get("curve_used") if isinstance(stored.get("curve_used"), dict) else None
+        slope, shift, start = (_float((used or {}).get(k)) for k in ("slope", "shift_k", "start_slope"))
+        if (
+            slope is not None and shift is not None and start is not None and abs(start - curve.start_slope) < 1e-6
+            and (abs(slope - curve.slope) > 1e-6 or abs(shift - curve.shift_k) > 1e-6)
+        ):
+            old = room_c + slope * (room_c - outside_c) + shift
+            correction.shift(old - curve.flow_c(room_c, outside_c))
+        stored["curve_used"] = {"slope": curve.slope, "shift_k": curve.shift_k, "start_slope": curve.start_slope}
+        return correction.value_k
+
     def _switch(
         self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",
         stored: dict[str, Any], room_c: float | None, now: datetime,
     ) -> bool:
-        """The user's switch (step 3 part 4.7); True while Sunflow takes the heat pump over (switched on, mode heat).
+        """The user's switch (4); True while Sunflow takes the heat pump over (switched on, mode heat).
 
-        Switched on: journal; once in mode heat Sunflow takes over (base frozen, correction 0, protection
-        layer from the real values). Switched off: nothing is reset (8.6), journal; the shadow again.
-        Mode off while switched on writes nothing (8.4, inactive) and lets the base follow again; back in
-        mode heat Sunflow takes over anew."""
+        Switched on: journal; once in mode heat Sunflow takes over (correction 0, protection layer from the
+        real values). Switched off: nothing is reset (12), journal; the shadow again. Mode off while switched
+        on writes nothing (inactive); back in mode heat Sunflow takes over anew."""
         on = device.flow_active
         self.active[device_id] = on
         was_on = stored.get("active") is True
@@ -488,10 +436,8 @@ class FlowShadow:
         return writing
 
     def _adopt(self, device_id: str, minute: "Minute", stored: dict[str, Any], room_c: float | None, now: datetime) -> None:
-        """Taking over (8.1, 8.2): the base frozen as it is, the correction of every strategy at 0 (new
-        reference, no step), the protection layer from the real Max T-Vorlauf and block. The flow target is
-        then the effective setpoint the heat pump has (without a curve), so nothing jumps; written is only
-        what the rules ask for."""
+        """Taking over (4, 9): the correction of every strategy at 0 (new reference, no step), the protection
+        layer from the real Max T-Vorlauf and block; written is only what the rules ask for."""
         reading = minute.reading
         actual = reading.values.get("max_flow_setpoint")
         self.guard(device_id).adopt(actual, reading.blocked, now)
@@ -504,63 +450,17 @@ class FlowShadow:
         writer = self.writer(device_id)
         writer.pending, writer.manual_at = None, None
         self.adopt_check(device_id).reset()
-        base = _float(stored.get("base_c"))
         message = t(
-            "Sunflow übernimmt die Wärmepumpe: Basis {base} °C eingefroren, Korrektur 0, Max T-Vorlauf {value} °C wie vorgefunden. Geschrieben wird erst, wenn die Regeln es verlangen.",
-            base=number(base) if base is not None else "–", value=number(actual) if actual is not None else "–",
+            "Sunflow übernimmt die Wärmepumpe: Korrektur 0, Max T-Vorlauf {value} °C wie vorgefunden. Geschrieben wird erst, wenn die Regeln es verlangen.",
+            value=number(actual) if actual is not None else "–",
         )
         if reading.blocked:
             message = t("{message} Die Raumthermostat-Sperre ist gesetzt, nicht von Sunflow: Sunflow hebt sie nicht auf.", message=message)
         self.notes.append((device_id, message, False))
 
-    def _source_change(
-        self, device_id: str, device: DeviceConfig, old: str, new: str, start: float | None, strategy: str, now: datetime,
-    ) -> float:
-        """A change of the feedforward source (8.1): event in heat_pump_samples, jump protection when active.
-
-        In the shadow the flow target jumps once, by design (no shift). While Sunflow writes for real
-        (step 3 part 4.5, switched on in 4.7) the correction of the strategy is shifted by old − new start
-        value, within its limit; the rest of the jump is noted in the journal, as is a change without
-        protection (old start value unknown or too old). Returns the shift of the correction (K).
-        """
-        stored = self._store.devices.setdefault(device_id, {})
-        active = self.writing_active(device_id)
-        old_c, old_at = _float(stored.get("start_c")), _time(stored.get("start_at"))
-        known = old_c is not None and old_at is not None and timedelta(0) <= now - old_at <= SOURCE_SHIFT_MAX_AGE
-        event: dict[str, Any] = {"at": now.astimezone(UTC).isoformat(), "kind": "flow_source", "from": old, "to": new, "shadow": not active}
-        if known and start is not None:
-            assert old_c is not None
-            event["jump_k"] = round(start - old_c, 3)
-        _LOGGER.info("%s: flow target now from %s (was %s)", device.name, new, old)
-        shift = 0.0
-        if active:
-            correction = self._correction(device_id, strategy) if strategy != UNKNOWN else None
-            if known and start is not None and correction is not None:
-                assert old_c is not None
-                shift, rest = source_shift(old_c, start, correction.value_k)
-                correction.shift(shift)
-                event["shift_k"], event["rest_k"] = round(shift, 3), round(rest, 3)
-                if abs(rest) > SOURCE_JUMP_NOTE_K:
-                    self.notes.append((device_id, t(
-                        "Quelle des Vorlauf-Ziels gewechselt ({old} → {new}): Die Korrektur reicht nicht ganz für den Ausgleich, das Vorlauf-Ziel springt um {rest} K.",
-                        old=source_text(old), new=source_text(new), rest=("+" if rest > 0 else "") + number(rest),
-                    ), False))
-                event["protected"] = True
-            elif start is not None and correction is not None:
-                event["protected"] = False
-                self.notes.append((device_id, t(
-                    "Quelle des Vorlauf-Ziels gewechselt ({old} → {new}) ohne Sprungschutz: kein aktueller Wert der bisherigen Quelle.",
-                    old=source_text(old), new=source_text(new),
-                ), False))
-            else:
-                event["protected"] = False
-        stored["source_change"] = event
-        self.source_events.append((device_id, event))
-        return shift
-
     async def _guard_step(
         self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",
-        target: float | None, feed: Feed, room_c: float | None, now: datetime,
+        target: float | None, room_c: float | None, now: datetime,
     ) -> GuardResult | None:
         """The protection layer for this minute: set value and writes Sunflow causes (in the shadow virtually)."""
         guard = self.guard(device_id)
@@ -580,7 +480,6 @@ class FlowShadow:
                 at=now, reading=minute.reading, evaluation=minute.evaluation, settings=settings,
                 values=guard_values(settings, self.learned.get(device_id)),
                 tv_peak_c=minute.tv_peak_c, heat_w=minute.heat_w, target_c=target,
-                curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w,
                 learn_stops=device.flow_learn_stops, room_c=room_c, plan_c=config.house.climate.setpoint_c, mode=config.house.climate.mode,
                 surface=config.house.heating_surface,
             ), active=active, budget=budget)
@@ -686,10 +585,10 @@ class FlowShadow:
 
     def house_status(self, config: SunflowConfig | None = None) -> dict[str, Any]:
         """Room setpoint, mode and room temperature for the climate entity and the UI."""
-        return climate_status(config or self._config, self.room, self.watch.settling, self.ventilation, shadow=not any(self.active.values()))
+        return climate_status(config or self._config, self.room, self.ventilation, shadow=not any(self.active.values()))
 
     def flow_status(self, device_id: str) -> dict[str, Any] | None:
-        """Base, correction and flow target of one heat pump (shadow: nothing is written)."""
+        """Heating curve, correction and flow target of one heat pump (shadow: nothing is written)."""
         flow = self.flows.get(device_id)
         if flow is None:
             return None
@@ -697,39 +596,30 @@ class FlowShadow:
         return {
             "shadow": not self.writing_active(device_id),
             "strategy": flow.strategy,
-            "base_c": flow.base_c,
-            "base_at": flow.base_at.isoformat() if flow.base_at else None,
             "correction_k": round(flow.correction_k, 3) if flow.correction_k is not None else None,
             "target_c": round(flow.target_c, 2) if flow.target_c is not None else None,
             "frozen": list(flow.frozen),
             "reason": flow.reason,
-            # Feedforward (8.1): source of the flow target (base, house_model, heat_recent), why the base,
-            # heat needed and the curve's flow for it; the learned curve (shadow)
-            "source": flow.feed.source if flow.feed else BASE,
-            "source_reason": flow.feed.reason if flow.feed else None,
-            "heat_needed_w": round(flow.feed.heat_w) if flow.feed and flow.feed.heat_w is not None else None,
-            "curve_c": round(flow.feed.curve_c, 2) if flow.feed and flow.feed.curve_c is not None else None,
-            "heat_recent_s": round(flow.recent_s),
-            # The last change of the source (8.1): from, to, jump of the start value, shift of the correction
-            # and rest of the jump (only while writing for real), shadow
-            "source_change": (self._store.devices.get(device_id) or {}).get("source_change"),
-            "curve": curve.status() if (curve := self.curves.get(device_id)) is not None else None,
+            # Heating curve (8): outside temperature for the control, the curve's flow and the curve in use
+            "outside_c": round(flow.outside_c, 2) if flow.outside_c is not None else None,
+            "curve_c": round(flow.curve_c, 2) if flow.curve_c is not None else None,
+            "curve": self.curve(device_id, self._config, self._observed_at or datetime.now(UTC)).status() if self._config else None,
             "surface": surface,
             "parameters": {
                 "kp": CORRECTION_KP, "ti_h": correction_ti_h(surface), "deadband_k": ROOM_DEADBAND_K, "limit_k": CORRECTION_LIMIT_K,
             },
-            # Limits the correction does not move beyond (8.3); the direction in guard.freeze_up/down
+            # Limits the correction does not move beyond (10); the direction in guard.freeze_up/down
             "limited": list(flow.limited),
             "guard": self.guard_status(device_id),
             "setpoint": self.setpoint_status(device_id),
         }
 
     def mode(self, device_id: str) -> str:
-        """Shadow or active: the one mark of the HA sensors and the climate attributes (step 3 part 4.6)."""
+        """Shadow or active: the one mark of the HA sensors and the climate attributes (16)."""
         return ACTIVE if self.writing_active(device_id) else SHADOW
 
     def setpoint_status(self, device_id: str) -> dict[str, Any]:
-        """The set value for the HA sensors "Stellwert" and "Schreibvorgänge heute" (13, step 3 part 4.6).
+        """The set value for the HA sensors "Stellwert" and "Schreibvorgänge heute" (16).
 
         written: the last written Max T-Vorlauf (in the shadow the virtual one), a foreign change taken over
         with reason foreign; None until a value is known. pending: a value waiting, with when it is due and
@@ -766,7 +656,7 @@ class FlowShadow:
         }
 
     def guard_status(self, device_id: str) -> dict[str, Any] | None:
-        """Set value and writes Sunflow causes or would cause (8.3, 8.4), learned values and compressor stops."""
+        """Set value and writes Sunflow causes or would cause (10, 11), learned values and compressor stops."""
         flow = self.flows.get(device_id)
         guard = self.guards.get(device_id)
         result = flow.guard if flow else None
@@ -795,17 +685,17 @@ class FlowShadow:
             "block_since": guard.block_at.isoformat() if guard.block_at else None,
             "block_reason": guard.block_reason,
             "written_at": guard.written_at.isoformat() if guard.written_at else None,
-            # Write layer (8.5): a value waiting for the spacing or the budget, the last "write now"
+            # Write layer (12): a value waiting for the spacing or the budget, the last "write now"
             "pending": result.pending.as_dict() if result.pending else None,
             "write_now": {
                 "requested_at": writer.manual_at.isoformat() if writer.manual_at else None,
                 "last": writer.manual_result,
             } if writer is not None else None,
-            # Budget (8.5): used today and in the last hour, left, what it holds back (virtual in the shadow)
+            # Budget (12): used today and in the last hour, left, what it holds back (virtual in the shadow)
             "budget": self.budget(device_id).status(now, virtual=not self.writing_active(device_id)),
-            # Foreign writers (8.5): the running episode, the latest foreign changes, the ESP regulation
+            # Foreign writers (12): the running episode, the latest foreign changes, the ESP regulation
             "foreign": guard.foreign.status(now),
-            # Writing for real (step 3 part 4.7): whether the heat pump took the last write over
+            # Writing for real (12): whether the heat pump took the last write over
             "adopt": self.adopt_checks[device_id].status() if device_id in self.adopt_checks else None,
             "writes": list(reversed(guard.recent_writes)),
             "values": guard_values(settings, learned).as_dict(),
@@ -823,11 +713,10 @@ class FlowShadow:
 def climate_status(
     config: SunflowConfig | None,
     room: RoomTemperature | None,
-    settling: Settling | None,
     ventilation: VentilationWatch | None = None,
     shadow: bool = True,
 ) -> dict[str, Any]:
-    """Room setpoint, its range, mode, room temperature, a setpoint change being followed, ventilation."""
+    """Room setpoint, its range, mode, room temperature, fast changes of rooms."""
     climate = config.house.climate if config is not None else None
     return {
         "setpoint_c": climate.setpoint_c if climate else None,
@@ -835,7 +724,7 @@ def climate_status(
         "min_c": ROOM_SETPOINT_MIN_C,
         "max_c": ROOM_SETPOINT_MAX_C,
         "step_c": ROOM_SETPOINT_STEP_C,
-        # Margin of the planning around the setpoint (6.3; used by the planning from step 4 part 2)
+        # Margin of the planning around the setpoint (6; used by the planning, 14)
         "preheat_k": climate.preheat_k if climate else None,
         "lower_k": climate.lower_k if climate else None,
         "margin_max_k": ROOM_MARGIN_MAX_K,
@@ -845,12 +734,11 @@ def climate_status(
         "rooms_missing": list(room.missing) if room else [],
         "rooms_stale": list(room.stale) if room else [],
         "rooms_ventilated": list(room.ventilated) if room else [],
-        # Ventilation (6.2): rooms being aired and events that ended within the last 24 h, newest first
+        # Fast changes (6): rooms being aired and events that ended within the last 24 h, newest first
         "ventilation": [e.as_dict() for e in ventilation.active.values()] if ventilation else [],
         "ventilation_recent": [e.as_dict() for e in reversed(ventilation.recent)] if ventilation else [],
-        # The controller follows the plan target from step 4 part 3 on (the plan itself: GET /plan, house); until then the setpoint
+        # The controller follows the plan target later (17) (the plan itself: GET /plan, house); until then the setpoint
         "plan_target_c": climate.setpoint_c if climate else None,
-        "settling": settling.as_dict() if settling else None,
         # No heat pump is written to for real (the mark per heat pump is in its flow status, setpoint.mode)
         "shadow": shadow,
     }

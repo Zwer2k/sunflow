@@ -658,7 +658,7 @@ class PlanResult:
     vehicle_usages: dict[str, VehicleUsage] = field(default_factory=dict)
     plug_in_hints: list[dict[str, Any]] = field(default_factory=list)
     pv_correction: PvCorrection | None = None
-    # The room heating planned with the house (design/heat_pump.md, 7): in the plan ("Lernen + Regeln"),
+    # The room heating planned with the house (design/heat_pump.md, 14): in the plan ("Lernen + Regeln"),
     # from a second run only shown ("Nur Lernen"), or why not
     house: HousePlan | None = None
 
@@ -1591,7 +1591,7 @@ async def optimize_with_house(
     settings: Settings,
     loads: list[FlexLoad],
 ) -> tuple[Plan, HousePlan | None]:
-    """Optimize, with the room heating as the mode wants it (design/heat_pump.md, 7).
+    """Optimize, with the room heating as the mode wants it (design/heat_pump.md, 14).
 
     "Lernen + Regeln": the heat pump planned with the house in the plan, its usual draw out of the house
     load. "Nur Lernen": the plan as without room heating, a second run only shows what Sunflow would
@@ -1641,7 +1641,7 @@ async def compute_plan(
     vehicle_hours: hourly SoC per car from them; sun_corrections: correction by sun position;
     pv_recent: measured, raw forecast and expected PV energy (Wh) of the last hours
     per plane, used instead of the hourly one when switched on. house: the first heat pump with the house
-    model and the room temperature, planned with the house (7).
+    model and the room temperature, planned with the house (14).
     """
     warnings: list[str] = []
     battery_device = planned_battery(config.devices, profiles)
@@ -1981,7 +1981,7 @@ async def compute_plan(
             settings,
             reserve_dip_wh=tuple(reserve_dips(inputs, batteries[0], settings.reserve_wh, floor, tz)),
         )
-    # The room heating with the house as the mode wants it (7)
+    # The room heating with the house as the mode wants it (14)
     plan, heating = await optimize_with_house(config, house, inputs, weather["temperature"], batteries, settings, loads)
     device_actions(plan, profile, battery_device.id)
     for device, _ in others:

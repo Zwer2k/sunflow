@@ -1,4 +1,4 @@
-"""Write layer behind the protection layer (design/heat_pump.md, 8.5, 16 step 3 part 4.2): leading edge,
+"""Write layer behind the protection layer (design/heat_pump.md, 12): leading edge,
 minimum spacing (normal / protection step), only the latest value kept, deadband except for protection
 steps, rounding the safe way, pending with its time, "write now" (next tick, lapses), journal only for
 real writes. Nothing is written to a heat pump: every heat pump runs in the shadow."""
@@ -326,5 +326,5 @@ def test_write_now_accepted_with_a_pending_value(tmp_path: Path, library: Any) -
 
 
 def test_no_heat_pump_is_active(tmp_path: Path) -> None:
-    """Writing to a heat pump follows in step 3 part 4.7: nothing switches it on before."""
+    """Writing to a heat pump needs the user's switch: nothing switches it on by itself."""
     assert FlowShadow(HeatPumpStateStore(tmp_path)).writing_active("hp") is False

@@ -1,9 +1,9 @@
-"""Writing to the heat pump for real (design/heat_pump.md, 8.5, 8.6, 16 step 3 part 4.7).
+"""Writing to the heat pump for real (design/heat_pump.md, 4, 12).
 
 Switched on per heat pump only by the user (DeviceConfig.flow_active, default off). While it is on, what the
 protection and write layers decide goes to the heat pump: the set value through the profile's write role of
 the strategy fixed (storage eeprom, counted by EepromGuard) and the room thermostat block (not stored in the
-heat pump's EEPROM, not counted). Switching off, mode off and failures reset nothing (8.6).
+heat pump's EEPROM, not counted). Switching off, mode off and failures reset nothing (4, 12).
 
 - WriteTargets: the entities and values to write, from the profile, the manifest and the bound entities.
 - AdoptCheck: after a real write of the set value and the profile's adopt_delay, whether the heat pump took

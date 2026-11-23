@@ -1,4 +1,4 @@
-"""Limits of the set value (design/heat_pump.md, 8.3) and the profile's parameters of the protection layer (8.4).
+"""Limits of the set value (design/heat_pump.md, 10) and the profile's parameters of the protection layer (11).
 
 - Range of the set value: the user's setting per heat pump (flow_min_c/flow_max_c), else the start limits
   of the heating surface type (HEATING_SURFACES); never outside the written entity's own range
@@ -49,7 +49,7 @@ class ControlSettings:
 
     start_margin: float = START_MARGIN_K
     stop_margin: float = STOP_MARGIN_K
-    # Start value of the learned swing (8.4)
+    # Start value of the learned swing (11)
     steady_swing: float = STEADY_SWING_K
     # Heat output range (start values, W)
     power_min_w: float = POWER_MIN_KW_DEFAULT * 1000
@@ -58,10 +58,10 @@ class ControlSettings:
     # The heat pump has the room thermostat input (role heating_block)
     has_block: bool = True
     deadband: float = DEADBAND_K
-    # Minimum spacing of two writes of the set value (8.5): normal and for protection steps
+    # Minimum spacing of two writes of the set value (12): normal and for protection steps
     min_interval_s: float = WRITE_MIN_INTERVAL_S
     protect_interval_s: float = WRITE_PROTECT_INTERVAL_S
-    # Write budget of the set value (8.5): per day, emergency quota for protection steps, per hour
+    # Write budget of the set value (12): per day, emergency quota for protection steps, per hour
     budget: BudgetLimits = field(default_factory=BudgetLimits)
     # Step and range of the written entity (manifest); None when it names none
     step: float = DEFAULT_SETPOINT_STEP_K
@@ -70,7 +70,7 @@ class ControlSettings:
     # The user's range of the set value (device setting); None: the heating surface type's start limit
     user_min: float | None = None
     user_max: float | None = None
-    # Time the heat pump needs to take a written set value over (profile adopt_delay, step 3 part 4.7)
+    # Time the heat pump needs to take a written set value over (profile adopt_delay, 12)
     adopt_delay_s: float = ADOPT_DELAY_S
 
     @classmethod
@@ -97,7 +97,7 @@ class ControlSettings:
             block_min_s=duration(block.get("min_duration"), BLOCK_MIN_S).total_seconds(),
             has_block="heating_block" in profile.get("roles", {}) and bool(block),
             deadband=_number(writes.get("deadband"), DEADBAND_K),
-            # Never shorter than the heat pump needs to take a value over (8.5)
+            # Never shorter than the heat pump needs to take a value over (12)
             min_interval_s=max(duration(writes.get("min_interval"), WRITE_MIN_INTERVAL_S).total_seconds(), WRITE_INTERVAL_FLOOR_S),
             protect_interval_s=max(duration(writes.get("protect_interval"), WRITE_PROTECT_INTERVAL_S).total_seconds(), WRITE_INTERVAL_FLOOR_S),
             budget=BudgetLimits.from_writes(writes),

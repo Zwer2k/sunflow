@@ -50,6 +50,7 @@ async def test_rows_keep_flow_target_and_room_setpoint(tmp_path: Path, library: 
     pump = Pump(tmp_path, library)
     pump.recorder.flow = FlowShadow(HeatPumpStateStore(tmp_path))
     pump.states["max_target_flow_temp"] = pump.states["target_supply_temperature"] = ("29.0", "°C")
+    pump.states["heating_curve"] = ("0.5", None)
     try:
         await pump.minutes(NOW, 3)
         # Pause: after 5 minutes Sunflow would restart the compressor (a write event)

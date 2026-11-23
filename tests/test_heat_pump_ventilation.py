@@ -1,4 +1,4 @@
-"""Fast changes per room (design/heat_pump.md, 6.2; airing, cooking ...): events down and up in kelvin,
+"""Fast changes per room (design/heat_pump.md, 6; airing, cooking ...): events down and up in kelvin,
 independent of the sensor's resolution, with sensors reporting every 15 min or in steps of 0.3/0.5 K; room
 temperature and correction meanwhile, flags.ventilation in heat_pump_samples, state across a restart, the
 setting house.fast_change and the status for the UI."""

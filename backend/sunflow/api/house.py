@@ -88,7 +88,7 @@ async def house_model(request: Request) -> dict[str, Any]:
             "state": "learning" if model is None else "ready" if model.useful else "unsure",
             "days": model.days if model else len({r.start.date() for r in data.rows}),
             "min_days": MIN_DAYS,
-            # Where the hourly rows come from (9.3): ha_hourly until heat_pump_samples covers MIN_DAYS
+            # Where the hourly rows come from (14): ha_hourly until heat_pump_samples covers MIN_DAYS
             # days of valid heating, then heat_pump_samples
             "source": data.source,
             "coverage_days": data.coverage_days,

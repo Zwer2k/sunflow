@@ -201,7 +201,7 @@ class Room(BaseModel):
 
 
 class ClimateSettings(BaseModel):
-    """The climate entity "Haus": room setpoint and mode (design/heat_pump.md, 6.3).
+    """The climate entity "Haus": room setpoint and mode (design/heat_pump.md, 6).
 
     Mode off: Sunflow writes nothing to the heat pump, but goes on computing and showing.
     """
@@ -210,7 +210,7 @@ class ClimateSettings(BaseModel):
 
     setpoint_c: float = Field(default=ROOM_SETPOINT_DEFAULT_C, ge=ROOM_SETPOINT_MIN_C, le=ROOM_SETPOINT_MAX_C)
     mode: Literal["heat", "off"] = "heat"
-    # Margin of the planning (6.3, step 4): preheat up to setpoint + preheat_k, lower down to setpoint - lower_k
+    # Margin of the planning (6, 14): preheat up to setpoint + preheat_k, lower down to setpoint - lower_k
     preheat_k: float = Field(default=ROOM_PREHEAT_DEFAULT_K, ge=0.0, le=ROOM_MARGIN_MAX_K)
     lower_k: float = Field(default=ROOM_LOWER_DEFAULT_K, ge=0.0, le=ROOM_MARGIN_MAX_K)
 
@@ -242,7 +242,7 @@ _FAST_FIELDS = {
 
 
 class FastChangeSettings(BaseModel):
-    """Fast change of a room (design/heat_pump.md, 6.2: airing, cooking ...): starts with at least start_k
+    """Fast change of a room (design/heat_pump.md, 6: airing, cooking ...): starts with at least start_k
     within start_min, down or up; over when the room moved by at most settle_k over settle_min, at the latest
     after max_h. Meanwhile the room does not count for the room temperature and the correction waits."""
 
@@ -285,9 +285,9 @@ class HouseSettings(BaseModel):
     # source when set, else the heat pump's sensor; heat_pump_unit = the sensor of its outdoor unit
     outside_source: Literal["auto", "heat_pump", "heat_pump_unit", "learning_source"] = "auto"
     climate: ClimateSettings = Field(default_factory=ClimateSettings)
-    # Type of the heating surfaces (design/heat_pump.md, 8.1): start value of the heating curve's exponent
+    # Type of the heating surfaces (design/heat_pump.md, 8, 9): start slope of the heating curve, integral time of the correction
     heating_surface: Literal["underfloor", "radiator", "mixed"] = HEATING_SURFACE_DEFAULT
-    # Fast change of a room (airing, cooking ...): when a room does not count for a while (6.2)
+    # Fast change of a room (airing, cooking ...): when a room does not count for a while (6)
     fast_change: FastChangeSettings = Field(default_factory=FastChangeSettings)
 
     @field_validator("fast_change", mode="before")
@@ -362,15 +362,15 @@ class DeviceConfig(BaseModel):
     # again when its Home Assistant device id changed, and the component the manifest came from
     mac: str | None = None
     component: Literal["can", "uart"] | None = None
-    # Heat pumps: range of the set value (Max T-Vorlauf) the user allows (design/heat_pump.md, 8.3); None:
+    # Heat pumps: range of the set value (Max T-Vorlauf) the user allows (design/heat_pump.md, 10); None:
     # the start limit of the heating surface type. Always narrowed to the entity's range in the manifest.
     # flow_max_c is also the highest flow the screed may get.
     flow_min_c: float | None = Field(default=None, ge=FLOW_LIMIT_LOW_C, le=FLOW_LIMIT_HIGH_C)
     flow_max_c: float | None = Field(default=None, ge=FLOW_LIMIT_LOW_C, le=FLOW_LIMIT_HIGH_C)
     # Heat pumps: Sunflow writes the set value and the room thermostat block to the heat pump for real
-    # (design/heat_pump.md, 16 step 3 part 4.7); off: shadow operation. Switched on only by the user.
+    # (design/heat_pump.md, 4); off: shadow operation. Switched on only by the user.
     flow_active: bool = False
-    # Heat pumps: learning phase of the stop margin (design/heat_pump.md, 8.4): Sunflow lowers straight to the
+    # Heat pumps: learning phase of the stop margin (design/heat_pump.md, 11): Sunflow lowers straight to the
     # flow target, so the heat pump shows where it switches the compressor off; ended by the user.
     flow_learn_stops: bool = True
 

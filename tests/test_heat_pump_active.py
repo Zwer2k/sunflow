@@ -1,4 +1,4 @@
-"""Writing to the heat pump for real (design/heat_pump.md, 8.5, 8.6, 16 step 3 part 4.7).
+"""Writing to the heat pump for real (design/heat_pump.md, 4, 12).
 
 The user's switch per heat pump (DeviceConfig.flow_active, default off); taking over with the base frozen and
 the correction at 0; the set value (EEPROM, EepromGuard) and the block go to the heat pump through a fake Home
@@ -97,6 +97,8 @@ class Hpsu:
             values={
                 "flow_temperature": round(self.tv, 1), "flow_setpoint": self.effective,
                 "max_flow_setpoint": self.max_setpoint if self.shown_setpoint is None else self.shown_setpoint, "bypass_valve": 0.0,
+                # Slope 1 of the heat pump's curve: flow target = 21 + (21 − outside) at the default setpoint
+                "heating_curve_slope": 1.0,
             },
         )
 
@@ -144,6 +146,8 @@ class Plant:
         self.notes: list[str] = []
         self.events: list[dict[str, Any]] = []
         self.flows: list[dict[str, Any]] = []
+        # Outside temperature: with slope 1 and room setpoint 21 °C the flow target is 42 − outside
+        self.outside = 11.0
 
     async def minute(self, hpsu_steps: bool = True) -> dict[str, Any]:
         if hpsu_steps:
@@ -151,7 +155,7 @@ class Plant:
         self.ha.now = self.now
         reading = self.hpsu.reading()
         evaluation = self.tracker.evaluate(reading, self.now, True)
-        minute = Minute(at=self.now, reading=reading, evaluation=evaluation, heat_w=None, heat_source=None, outside_c=None,
+        minute = Minute(at=self.now, reading=reading, evaluation=evaluation, heat_w=None, heat_source=None, outside_c=self.outside,
                         rooms={}, control=SETTINGS, targets=TARGETS)
         states = {ROOM: {"state": str(self.room), "last_updated": self.now.isoformat()}}
         await self.flow.tick(self.config, states, {"hp": (self.device, minute)}, self.now)
@@ -163,6 +167,11 @@ class Plant:
         self.flows.append(status)
         self.now += MIN
         return status
+
+    def target(self, flow_c: float) -> None:
+        """Outside temperature for a flow target of the curve, at once (no averaging over the last minutes)."""
+        self.outside = 42.0 - flow_c
+        self.flow._outside.pop("hp", None)
 
     async def run(self, minutes: int) -> dict[str, Any]:
         status: dict[str, Any] = {}
@@ -205,21 +214,22 @@ def test_write_targets_from_the_profile_and_the_manifest(library: Any) -> None:
     assert off is not None and (off.domain, off.service) == ("switch", "turn_off")
 
 
-async def test_shadow_writes_nothing_and_the_base_follows(tmp_path: Path) -> None:
+async def test_shadow_writes_nothing(tmp_path: Path) -> None:
     plant = Plant(tmp_path)
     await plant.run(5)
-    plant.hpsu.max_setpoint = 33.0
+    plant.target(33.0)
     status = await plant.run(3)
 
     assert plant.ha.calls == []
-    assert status["setpoint"]["mode"] == "shadow" and status["base_c"] == 33.0
+    assert status["setpoint"]["mode"] == "shadow" and status["target_c"] == 33.0
+    assert [r for r, _ in plant.writes(shadow=True)] == ["normal"]
     assert plant.eeprom_times() == []
 
 
 # Taking over
 
 
-async def test_switching_on_freezes_the_base_and_starts_the_correction_at_0(tmp_path: Path) -> None:
+async def test_switching_on_starts_the_correction_at_0(tmp_path: Path) -> None:
     plant = Plant(tmp_path)
     await plant.run(5)
     # A correction run up in the shadow, a virtual write in the guard
@@ -228,17 +238,13 @@ async def test_switching_on_freezes_the_base_and_starts_the_correction_at_0(tmp_
     plant.device.flow_active = True
     taken = await plant.minute()
 
-    assert taken["correction_k"] == 0.0 and taken["base_c"] == 31.0 and taken["target_c"] == pytest.approx(31.0)
+    assert taken["correction_k"] == 0.0 and taken["target_c"] == pytest.approx(31.0)
     assert taken["setpoint"]["mode"] == "active"
     # The guard starts from the real Max T-Vorlauf, without time or reason; nothing needed, nothing written
     assert (taken["setpoint"]["written_c"], taken["setpoint"]["written_at"], taken["setpoint"]["written_reason"]) == (31.0, None, None)
     assert plant.ha.calls == []
     assert any("Lernen + Regeln eingeschaltet" in n for n in plant.notes)
-    assert any("Basis 31,0 °C eingefroren, Korrektur 0" in n for n in plant.notes)
-    # Frozen: the effective setpoint changes (by someone else), the base stays
-    plant.hpsu.max_setpoint = 32.0
-    status = await plant.minute()
-    assert status["base_c"] == 31.0
+    assert any("übernimmt die Wärmepumpe: Korrektur 0" in n for n in plant.notes)
     # The flags survive a restart: no second takeover
     stored = HeatPumpStateStore(tmp_path).devices["hp"]
     assert (stored["active"], stored["writing"], stored["corrections"]["fixed"]) == (True, True, 0.0)
@@ -265,8 +271,8 @@ async def test_a_real_write_goes_to_the_heat_pump_and_counts_in_eeprom(tmp_path:
     await plant.run(3)
     plant.device.flow_active = True
     await plant.run(6)
-    # The room is cold: the correction raises the flow target over time; simpler: a higher target by the base
-    plant.flow._store.devices["hp"]["base_c"] = 33.0
+    # Colder outside: the curve raises the flow target
+    plant.target(33.0)
     await plant.run(2)
 
     assert plant.writes() == [("normal", 33.0)]
@@ -288,7 +294,7 @@ async def test_a_failed_write_is_taken_back_and_tried_again(tmp_path: Path) -> N
     await plant.run(3)
     plant.device.flow_active = True
     await plant.run(6)
-    plant.flow._store.devices["hp"]["base_c"] = 33.0
+    plant.target(33.0)
     plant.ha.fail = True
     status = await plant.minute()
 
@@ -313,7 +319,7 @@ async def test_eeprom_limit_refuses_the_write(tmp_path: Path) -> None:
     await plant.run(3)
     plant.device.flow_active = True
     await plant.run(6)
-    plant.flow._store.devices["hp"]["base_c"] = 33.0
+    plant.target(33.0)
     await plant.minute()
 
     # The daily counter of EepromGuard is per date: the old writes are of today's file date
@@ -327,7 +333,7 @@ async def test_not_taken_over_the_guard_follows_the_value_shown(tmp_path: Path) 
     plant.device.flow_active = True
     await plant.run(6)
     plant.hpsu.lose_writes = True
-    plant.flow._store.devices["hp"]["base_c"] = 33.0
+    plant.target(33.0)
     await plant.run(3)
 
     assert plant.writes() == [("normal", 33.0)]
@@ -402,7 +408,7 @@ async def test_switching_off_resets_nothing(tmp_path: Path) -> None:
     await plant.run(2)
     plant.room = 21.6
     await plant.run(2)
-    plant.flow._store.devices["hp"]["base_c"] = 33.0
+    plant.target(33.0)
     calls = len(plant.ha.calls)
     plant.device.flow_active = False
     status = await plant.run(30)
@@ -423,21 +429,19 @@ async def test_mode_off_writes_nothing_and_takes_over_anew(tmp_path: Path) -> No
     plant.device.flow_active = True
     await plant.run(2)
     plant.config.house.climate.mode = "off"
-    plant.hpsu.max_setpoint = 34.0
+    plant.target(34.0)
     plant.flow._correction("hp", "fixed").value_k = 1.0
     status = await plant.run(10)
 
     assert plant.ha.calls == []
     assert status["guard"]["inactive"] == ["mode_off"]
-    # Not writing: the base follows the effective setpoint again
-    assert status["base_c"] == 34.0
     plant.config.house.climate.mode = "heat"
     back = await plant.minute()
     assert back["correction_k"] == 0.0 and back["target_c"] == pytest.approx(34.0)
     assert sum("Sunflow übernimmt die Wärmepumpe" in n for n in plant.notes) == 2
 
 
-# Acceptance: simulation with the HPSU (section 14)
+# Acceptance: simulation with the HPSU
 
 
 async def test_simulation_block_pause_start_without_self_caused_shutdown(tmp_path: Path) -> None:
@@ -446,6 +450,7 @@ async def test_simulation_block_pause_start_without_self_caused_shutdown(tmp_pat
     Assistant, within the budget, no shutdown (learning phase off)."""
     plant = Plant(tmp_path, Hpsu(max_setpoint=27.0, tv=26.5, cool_k=0.02))
     plant.device.flow_learn_stops = False
+    plant.target(27.0)
     await plant.run(10)
     plant.device.flow_active = True
     await plant.run(10)
@@ -478,11 +483,10 @@ async def test_simulation_learning_phase_lets_it_stop_and_restarts(tmp_path: Pat
     """Learning the stop margin: lowered straight to the flow target, the HPSU switches off (Tv ≥ setpoint + 3 K);
     5 minutes later Sunflow restarts it, 10 minutes after the start it lowers again."""
     plant = Plant(tmp_path, Hpsu(max_setpoint=35.0, tv=34.0, follow=0.1))
+    plant.target(29.0)
     await plant.run(5)
     plant.device.flow_active = True
-    await plant.run(2)
-    plant.flow._store.devices["hp"]["base_c"] = 29.0
-    await plant.run(60)
+    await plant.run(62)
 
     writes = [(r, v) for r, v in plant.writes() if r in ("normal", "start", "track")]
     assert plant.hpsu.stops, "the learning phase lets the compressor stop"

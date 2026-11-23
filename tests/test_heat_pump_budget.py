@@ -1,4 +1,4 @@
-"""Write budget of the set value (design/heat_pump.md, 8.5, 16 step 3 part 4.3): 48 normal writes per day,
+"""Write budget of the set value (design/heat_pump.md, 12): 48 normal writes per day,
 24 more only for protection steps, at most 6 in any hour; the local day in Home Assistant's time zone;
 counted virtually in the shadow (from the write events), never in eeprom_writes.json; a protection step the
 budget holds back sets the block instead; EepromGuard keeps the times for active writing."""

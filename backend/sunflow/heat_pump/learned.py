@@ -1,4 +1,4 @@
-"""Values of the protection layer learned from heat_pump_samples (design/heat_pump.md, 8.3, 8.4, 9.1).
+"""Values of the protection layer learned from heat_pump_samples (design/heat_pump.md, 10, 11, 13).
 
 - steady_swing: how far Tv peaks above its mean in steady running (rows with the compressor on through
   the row and SWING_STEADY_ROWS before, no start among them): a high quantile of tv_max − tv.
@@ -20,8 +20,8 @@ from typing import Any
 
 from .curve import INTERVAL, _float, _full, _start
 from .defaults import (
-    CURVE_HEAT_MAX_W,
-    CURVE_HEAT_MIN_W,
+    POWER_HEAT_MAX_W,
+    POWER_HEAT_MIN_W,
     POWER_MAX_QUANTILE,
     POWER_MIN_QUANTILE,
     POWER_MIN_ROWS,
@@ -179,7 +179,7 @@ def learn(rows: list[dict[str, Any]], now: datetime, start_stop_margin: float | 
         tv, peak, heat = _float(row.get("tv_c")), _float(row.get("tv_max_c")), _float(row.get("heat_w"))
         if tv is not None and peak is not None:
             swings.append(max(peak - tv, 0.0))
-        if heat is not None and CURVE_HEAT_MIN_W <= heat <= CURVE_HEAT_MAX_W:
+        if heat is not None and POWER_HEAT_MIN_W <= heat <= POWER_HEAT_MAX_W:
             heats.append(heat)
     since = (now - timedelta(days=STOP_LEARN_DAYS)).isoformat()
     stops = [s for s in classify_stops(rows, now) if s["at"] >= since]

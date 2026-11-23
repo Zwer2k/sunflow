@@ -112,7 +112,7 @@ def plan_response(result: Any, config: SunflowConfig) -> dict[str, Any]:
             for h in result.headrooms
             if h.slot < len(plan.slots)
         ],
-        # The room heating planned with the house (design/heat_pump.md, 7): mode active (in this plan) or
+        # The room heating planned with the house (design/heat_pump.md, 14): mode active (in this plan) or
         # shadow (a second run, only shown), the target room temperature and heat per slot, or why not
         "house": asdict(result.house) if getattr(result, "house", None) is not None else None,
         "pv_sources": sorted({PV_SOURCE_NAMES.get(p.source, p.source) for p in config.forecast_planes if p.device_id}),

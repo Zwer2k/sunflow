@@ -327,26 +327,32 @@ export function historyChart(history, { names = {} } = {}) {
 // ---------- Heating curve ----------
 
 /**
- * The learned heating curve: flow needed over the heat into the house at the room setpoint, the band of the
- * set value's limits and the measured points (valid heating of the history). curve: the status of the curve.
+ * The heating curve: flow over the outside temperature at the room setpoint, the start curve dashed, the one in
+ * use solid, the band of the set value's limits, the hours that were enough as dots and a mark at "now".
+ * curve: { slope, shift_k, start_slope }.
  */
-export function curveChart(curve, { roomC, minC, maxC, points = [], usable = false }) {
-  if (!curve?.k || roomC == null) return nothing;
+export function curveChart(curve, { roomC, minC, maxC, points = [], outsideC = null }) {
+  if (!curve || roomC == null) return nothing;
   const W = 480;
   const H = 230;
   const L = 36;
   const B = 30;
   const top = 12;
-  const n = Number(curve.n);
-  const flow = (kw) => roomC + (kw * 1000 / curve.k) ** (1 / n) + ((curve.spread0_k ?? 0) + (curve.spread_k_per_kw ?? 0) * kw) / 2;
-  const qMax = Math.max(3, Math.ceil(Math.max(...points.map((p) => p.kw), (curve.typical_heat_w ?? 0) / 1000 * 2, 0)));
-  const line = [];
-  for (let kw = 0.05; kw <= qMax + 1e-9; kw += qMax / 60) line.push([kw, flow(kw)]);
-  const yRange = range([...line.map(([, v]) => v), ...points.map((p) => p.flow), minC, maxC], 1, 10) ?? [20, 45];
-  const x = (kw) => L + (kw / qMax) * (W - L - 10);
+  const flow = (slope, shift, a) => roomC + slope * (roomC - a) + shift;
+  const xs = points.map((p) => p.outside);
+  const low = Math.floor(Math.min(-10, ...xs) / 5) * 5;
+  const high = Math.ceil(Math.max(15, ...xs) / 5) * 5;
+  const line = (slope, shift) => [low, high].map((a) => [a, flow(slope, shift, a)]);
+  const used = line(curve.slope, curve.shift_k);
+  const start = line(curve.start_slope, 0);
+  const yRange = range([...used, ...start].map(([, v]) => v).concat(points.map((p) => p.flow), minC, maxC), 1, 10) ?? [20, 45];
+  const x = (a) => L + ((a - low) / (high - low)) * (W - L - 10);
   const y = (v) => top + (H - B - top) - ((v - yRange[0]) / (yRange[1] - yRange[0])) * (H - B - top);
-  const typical = curve.typical_heat_w ? curve.typical_heat_w / 1000 : null;
-  return svg`<svg class="diagram-svg curve" viewBox=${`0 0 ${W} ${H}`} role="img" aria-label=${t("Kennlinie")}>
+  const pts = (items) => items.map(([a, v]) => `${x(a).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const xTicks = [];
+  for (let a = low; a <= high; a += 5) xTicks.push(a);
+  const now = outsideC != null ? flow(curve.slope, curve.shift_k, outsideC) : null;
+  return svg`<svg class="diagram-svg curve" viewBox=${`0 0 ${W} ${H}`} role="img" aria-label=${t("Heizkurve")}>
     ${minC != null && maxC != null
       ? svg`<rect class="limits" x=${L} y=${y(Math.min(maxC, yRange[1]))} width=${W - L - 10}
           height=${Math.max(0, y(Math.max(minC, yRange[0])) - y(Math.min(maxC, yRange[1])))}></rect>
@@ -354,13 +360,14 @@ export function curveChart(curve, { roomC, minC, maxC, points = [], usable = fal
       : nothing}
     ${ticks(yRange).map((v) => svg`<line class="grid dotted" x1=${L} x2=${W - 10} y1=${y(v)} y2=${y(v)}></line>
       <text class="axis" x="4" y=${y(v) + 4}>${v}°</text>`)}
-    ${Array.from({ length: qMax + 1 }, (_, kw) => svg`<text class="axis" x=${x(kw)} y=${H - 14} text-anchor="middle">${kw}</text>`)}
-    <text class="axis" x=${(W + L) / 2} y=${H - 1} text-anchor="middle">${t("Wärme ins Haus (kW)")}</text>
-    ${points.map((p) => svg`<circle class="dot point" cx=${x(p.kw)} cy=${y(p.flow)} r="2.5"></circle>`)}
-    <polyline class="ln curve ${usable ? "" : "unsure"}" points=${line.map(([kw, v]) => `${x(kw).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}></polyline>
-    ${typical != null
-      ? svg`<circle class="dot typical" cx=${x(typical)} cy=${y(flow(typical))} r="5"></circle>
-        <text class="axis" x=${x(typical) + 9} y=${y(flow(typical)) - 7}>${t("typisch {kw} kW → {flow} °C", { kw: decimal(typical.toFixed(2)), flow: one(flow(typical)) })}</text>`
+    ${xTicks.map((a) => svg`<text class="axis" x=${x(a)} y=${H - 17} text-anchor="middle">${a}°</text>`)}
+    <text class="axis" x=${(W + L) / 2} y=${H - 4} text-anchor="middle">${t("Außentemperatur")}</text>
+    ${points.map((p) => svg`<circle class="dot point" cx=${x(p.outside)} cy=${y(p.flow)} r="2.5"></circle>`)}
+    <polyline class="ln curve unsure" points=${pts(start)}></polyline>
+    <polyline class="ln curve" points=${pts(used)}></polyline>
+    ${now != null
+      ? svg`<circle class="dot typical" cx=${x(outsideC)} cy=${y(now)} r="5"></circle>
+        <text class="axis" x=${x(outsideC) + 9} y=${y(now) - 7}>${t("jetzt: außen {outside} °C → {flow} °C", { outside: one(outsideC), flow: one(now) })}</text>`
       : nothing}
   </svg>`;
 }

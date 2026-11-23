@@ -1,5 +1,5 @@
-"""The heat pump planned with the learned house: the optimizer's thermal load (design/heat_pump.md, 7;
-16 step 4 part 2).
+"""The heat pump planned with the learned house: the optimizer's thermal load (design/heat_pump.md,
+14).
 
 The room temperature becomes a heat storage: within the margin around the room setpoint
 [setpoint − lower_k, setpoint + preheat_k] the plan preheats in sunny or cheap hours and lets the house
@@ -57,7 +57,7 @@ class HouseInput:
     device_id: str
     name: str
     model: HouseModel | None
-    # Room temperature now (6.1) and the measured outside temperature of the heat pump's last sample
+    # Room temperature now (6) and the measured outside temperature of the heat pump's last sample
     inside_c: float | None
     outside_c: float | None
     # Program of the last sample (None: no recent sample)

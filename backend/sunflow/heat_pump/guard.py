@@ -1,14 +1,14 @@
-"""Protection layer of the strategy fixed (design/heat_pump.md, 8.3, 8.4).
+"""Protection layer of the strategy fixed (design/heat_pump.md, 10, 11).
 
 Turns the flow target into the set value Sunflow writes (Max T-Vorlauf) and into the writes it causes -
 each with time, value and reason (normal, start, track, block_on, block_off). In the shadow nothing is
 written to the heat pump: the "written" value here is the one Sunflow would have written last (virtual,
-starting from the heat pump's Max T-Vorlauf). Writing for real (step 3 part 4.7, switched on by the user)
+starting from the heat pump's Max T-Vorlauf). Writing for real (switched on by the user)
 the shadow control (shadow.py) sends the writes to the heat pump and takes one back when it fails (undo).
 The protection layer only says which value it wants and whether that is a protection step; when it is
-written (spacing, deadband, budget, "write now") decides the write layer behind it (writer.py, 8.5).
+written (spacing, deadband, budget, "write now") decides the write layer behind it (writer.py, 12).
 
-Rules (8.4, reworked in 0.80.27): Sunflow does not predict when the compressor switches; it reacts to it.
+Rules (11): Sunflow does not predict when the compressor switches; it reacts to it.
 - Normal: while the compressor runs in heating, the set value is the flow target, written only when it
   differs by more than the deadband (valid heating only).
 - Restart: the compressor has been off for RESTART_AFTER although heat is wanted (program heating, mode
@@ -22,10 +22,10 @@ Rules (8.4, reworked in 0.80.27): Sunflow does not predict when the compressor s
 - While the shutdown bound applies and Tv rises above it, the set value follows it with a swing of headroom
   (protection step "track").
 - Wanted off only by the block: the room well above its target; each state of the block lasts at least
-  its minimum duration. A block Sunflow did not set is never released (8.6).
+  its minimum duration. A block Sunflow did not set is never released (11).
 - Foreign writers (foreign.py): a change of the real Max T-Vorlauf Sunflow did not write is noted and the
   written value follows it; while the ESP regulation is active nothing is written.
-Limits (8.3): the set value stays within [min, max]; at a limit (set value range, heat output range) the
+Limits (10): the set value stays within [min, max]; at a limit (set value range, heat output range) the
 correction does not move further beyond it (the direction is reported).
 """
 
@@ -67,12 +67,12 @@ START = "start"
 TRACK = "track"
 BLOCK_ON = "block_on"
 BLOCK_OFF = "block_off"
-# Protection steps (8.5): shorter spacing, no deadband, emergency budget
+# Protection steps (12): shorter spacing, no deadband, emergency budget
 PROTECT_REASONS = (START, TRACK)
 WRITE_EVENT = "write"
 # Why Sunflow wants the heat pump off (block)
 ROOM_WARM = "room_warm"
-# A block Sunflow did not set (found on start or set by someone else): never released by Sunflow (8.6)
+# A block Sunflow did not set (found on start or set by someone else): never released by Sunflow (11)
 FOREIGN = "foreign"
 # Earlier names in heat_pump_state.json: a block found on start (0.80.10); blocks of the old rules (0.80.26)
 _ADOPTED = "adopted"
@@ -92,7 +92,7 @@ PHASE_INACTIVE = "inactive"
 RESTART_AFTER = timedelta(seconds=RESTART_AFTER_S)
 LOWER_AFTER = timedelta(seconds=LOWER_AFTER_S)
 PEAK_LOOKBACK = timedelta(seconds=PEAK_LOOKBACK_S)
-# The real block follows Sunflow's own switch within this time (writing for real, step 3 part 4.7)
+# The real block follows Sunflow's own switch within this time (writing for real)
 BLOCK_CONFIRM = timedelta(seconds=OWN_WRITE_CONFIRM_S)
 
 
@@ -124,15 +124,13 @@ class GuardInput:
     tv_peak_c: float | None = None
     heat_w: float | None = None
     target_c: float | None = None
-    curve_c: float | None = None
-    heat_needed_w: float | None = None
     room_c: float | None = None
     plan_c: float | None = None
     mode: str = "heat"
     surface: str | None = None
     # Learning phase of the stop margin (the user's switch): lowered straight to the flow target
     learn_stops: bool = False
-    # Sunflow writes to this heat pump for real (write_step; not before step 3 part 4.7)
+    # Sunflow writes to this heat pump for real (write_step)
     writing: bool = False
 
 
@@ -187,14 +185,14 @@ class Guard:
             # A block of the old rules: released by the room rule after its minimum duration
             self.block_reason = ROOM_WARM
         self.recent_writes: list[dict[str, Any]] = [w for w in state.get("recent_writes") or [] if isinstance(w, dict)]
-        # Why the written value is what it is (HA sensor "Stellwert", step 3 part 4.6): normal, start, track,
+        # Why the written value is what it is (HA sensor "Stellwert", 16): normal, start, track,
         # manual or foreign; None while it is the heat pump's own value (no write seen yet)
         self.written_reason: str | None = (
             state["written_reason"] if isinstance(state.get("written_reason"), str) else self._reason_from_writes()
         )
         # A restart held back by the budget was noted (once per episode)
         self.unprotected = bool(state.get("unprotected"))
-        # Foreign writers and the ESP regulation (8.5, step 3 part 4.4)
+        # Foreign writers and the ESP regulation (12)
         self.foreign = ForeignWatch(state.get("foreign"))
         # In memory only: Tv of the running minutes (time, peak), when the compressor started running in
         # heating and since when it is off although heat is wanted
@@ -203,7 +201,7 @@ class Guard:
         self.off_since: datetime | None = None
         self._seen = False
         self.last: GuardResult | None = None
-        # Writing for real this minute (step 3 part 4.7) and when Sunflow last switched the real block
+        # Writing for real this minute and when Sunflow last switched the real block
         self._writing = False
         self.block_written_at: datetime | None = None
 
@@ -299,17 +297,17 @@ class Guard:
         seen = self.foreign.step(now, actual, values.get(REGULATED_ROLE), data.settings.step, self.written_c)
         if seen.change is not None and actual is not None:
             self.written_c, self.written_at, self.written_reason = actual, now, FOREIGN
-            # With the activity: a change during hot water answers open point 8 (15)
+            # With the activity of the heat pump at the change
             event = {**seen.change, "activity": data.reading.activity, "shadow": not data.writing}
             result.events.append(event)
             result.foreign = event
         result.notes.extend(seen.notes)
 
     def _follow_block(self, reading: Reading, result: GuardResult, now: datetime) -> None:
-        """A block Sunflow did not set is kept and only shown (status, UI, journal), never released (8.6).
+        """A block Sunflow did not set is kept and only shown (status, UI, journal), never released (11).
 
         In the shadow Sunflow writes nothing, so every real block is someone else's. While Sunflow writes for
-        real (step 3 part 4.7) a block it set itself is its own: the real state may take BLOCK_CONFIRM to
+        real a block it set itself is its own: the real state may take BLOCK_CONFIRM to
         follow Sunflow's switch; after that a real state other than Sunflow's is someone else's doing - a
         block set by someone else is foreign, Sunflow's block released by someone else is released.
         """
@@ -358,7 +356,7 @@ class Guard:
 
     @staticmethod
     def _inactive(data: GuardInput, tv: float | None) -> list[str]:
-        """Why Sunflow would write nothing now (8.5: mode off, strategy, program, activity, device)."""
+        """Why Sunflow would write nothing now (12: mode off, strategy, program, activity, device)."""
         reading, frozen = data.reading, set(data.evaluation.frozen)
         reasons = []
         if data.mode != "heat":
@@ -378,13 +376,13 @@ class Guard:
         if reading.values.get("max_flow_setpoint") is None:
             reasons.append("setpoint_missing")
         if regulation_active(reading.values.get(REGULATED_ROLE)):
-            # The ESP component regulates Max T-Vorlauf itself (8.5): no takeover
+            # The ESP component regulates Max T-Vorlauf itself (12): no takeover
             reasons.append("esp_regulation")
         return reasons
 
     @staticmethod
     def _request(result: GuardResult, value: float, reason: str) -> None:
-        """The set value wanted now; the write layer decides when it is written (8.5)."""
+        """The set value wanted now; the write layer decides when it is written (12)."""
         result.request = Request(value_c=value, reason=reason, protect=reason in PROTECT_REASONS)
 
     @staticmethod
@@ -440,14 +438,14 @@ class Guard:
             return
         self._request(result, max(result.desired_c, bound) if bound is not None else result.desired_c, NORMAL_WRITE)
 
-    # Writing for real (step 3 part 4.7)
+    # Writing for real
 
     def adopt(self, actual_c: float | None, blocked: bool | None, now: datetime) -> None:
         """Sunflow takes over: it starts from what the heat pump has, not from the virtual values of the shadow.
 
         The written value is the real Max T-Vorlauf (no write of Sunflow's yet, so no time and no reason: the
         next write goes when the rules ask for it); the block is the real one - set, it is someone else's
-        (Sunflow did not set it) and stays until someone else releases it (8.6)."""
+        (Sunflow did not set it) and stays until someone else releases it (11)."""
         if actual_c is not None:
             self.written_c = actual_c
             self.foreign.seen_c = actual_c
@@ -463,7 +461,7 @@ class Guard:
         self.unprotected = False
 
     def release(self) -> bool:
-        """Writing switched off: nothing is reset (8.6). A block Sunflow set stays at the heat pump and is
+        """Writing switched off: nothing is reset (4). A block Sunflow set stays at the heat pump and is
         someone else's from now on (the shadow never releases a real block). True when one stays set."""
         self.block_written_at = None
         if self.block and self.block_reason != FOREIGN:
@@ -588,10 +586,10 @@ def daily_counts(events: list[dict[str, Any]], tz: Any, days: int, now: datetime
             # Compressor stops in heating (heat_pump_samples), whatever the reason
             day["stops"] += 1
         elif event.get("kind") == FOREIGN_EVENT:
-            # Changes of the real set value by someone else (step 3 part 4.4); not Sunflow's budget
+            # Changes of the real set value by someone else (12); not Sunflow's budget
             day["foreign_writes"] += 1
     for day in counts.values():
-        # Normal budget and emergency budget (8.5): normal writes; restart and tracking (protection steps)
+        # Normal budget and emergency budget (12): normal writes; restart and tracking (protection steps)
         day["setpoint"] = day[NORMAL_WRITE] + day[START] + day[TRACK]
         day["protect"] = day[START] + day[TRACK]
         day["block"] = day[BLOCK_ON] + day[BLOCK_OFF]

@@ -3,7 +3,7 @@
 A component (e.g. daikin_rotex_can) registers a Native API action with a response that
 returns its manifest in pages: its stable entity keys with the names, domains, units and
 value maps the firmware actually uses. Home Assistant offers it as the action
-esphome.<node>_<action> (design/heat_pump.md, section 3).
+esphome.<node>_<action> (design/heat_pump_device.md, 1).
 """
 
 from dataclasses import dataclass

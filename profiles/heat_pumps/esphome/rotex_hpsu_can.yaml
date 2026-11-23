@@ -1,7 +1,7 @@
 # Rotex/Daikin HPSU through the ESPHome component daikin_rotex_can (CAN bus). Entity names in
 # ESPHome are free and translated, so the node is recognized only by the manifest its component
 # delivers (action rotex_can_manifest) and roles name the component's keys, not unique_id endings.
-# Design: design/heat_pump.md, sections 3 and 11.
+# Design: design/heat_pump_device.md, sections 1 and 2.
 profile: esphome/rotex_hpsu_can
 version: 3
 match:
@@ -33,8 +33,10 @@ roles:
   # Max T-Vorlauf: the set value of the strategy "fixed"; written, so checked as a number with range and step
   max_flow_setpoint: {key: max_target_flow_temp, domain: [number], unit: "°C"}
   # Regulation of the component itself ("Vorlauf Soll Geregelt"): above 0 it writes Max T-Vorlauf, Sunflow
-  # then writes nothing (design 8.5); read only. Not configured is the normal case.
+  # then writes nothing (heat_pump.md 12); read only. Not configured is the normal case.
   regulated_setpoint: {key: supply_setpoint_regulated, domain: [number], unit: "°C", optional: true, missing_ok: true}
+  # Slope of the heat pump's own heating curve: start value of Sunflow's curve (heat_pump.md 8); read only
+  heating_curve_slope: {key: heating_curve, domain: [number, sensor], optional: true, missing_ok: true}
   outdoor_unit: {key: outdoor_unit, domain: [select, text_sensor], optional: true}
   electric_energy: {key: total_electrical_energy, domain: [sensor], unit: kWh, optional: true}
 
@@ -71,7 +73,7 @@ flow_control:
       setpoint_kind: curve
       enabled: false
   compressor_rules: {start_margin: 3.0, stop_margin: 3.0}
-  # Start values until Sunflow learned its own (stop margin from the compressor stops, design 8.4)
+  # Start values until Sunflow learned its own (stop margin from the compressor stops, heat_pump.md 11)
   learned_defaults: {steady_swing: 0.5}
   adopt_delay: 60s
   # Start values for underfloor heating; the user sets them per heat pump

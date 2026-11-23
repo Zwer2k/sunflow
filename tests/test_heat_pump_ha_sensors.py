@@ -1,4 +1,4 @@
-"""The set value for the HA sensors (design/heat_pump.md, 13, 16 step 3 part 4.6): flow target, set value
+"""The set value for the HA sensors (design/heat_pump.md, 16): flow target, set value
 written/pending with time, reason and why it is held back, writes today; one mark shadow | active. Nothing is
 written to a heat pump: every heat pump runs in the shadow."""
 
@@ -32,7 +32,7 @@ def _status(sim: Sim, tmp_path: Path, tz: Any = BERLIN, active: bool = False) ->
     flow = FlowShadow(HeatPumpStateStore(tmp_path))
     flow.guards["hp"], flow.writers["hp"], flow.budgets["hp"] = sim.guard, sim.writer, sim.budget
     flow.flows["hp"] = FlowState(
-        strategy="fixed", base_c=None, base_at=None, correction_k=0.0, target_c=sim.target, frozen=(), reason=None,
+        strategy="fixed", correction_k=0.0, target_c=sim.target, frozen=(), reason=None,
         guard=sim.results[-1][2] if sim.results else None,
     )
     flow.active["hp"] = active

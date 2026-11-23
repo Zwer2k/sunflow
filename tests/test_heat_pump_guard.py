@@ -1,4 +1,4 @@
-"""Limits and protection layer (design/heat_pump.md, 8.3, 8.4; reworked in 0.80.27), with synthetic runs of a
+"""Limits and protection layer (design/heat_pump.md, 10, 11), with synthetic runs of a
 heat pump: restart after the compressor stayed off, lowering after a start, tracking with the learned stop
 margin, the learning phase, block on and off; learned swing, stop margin and heat output range; daily counts."""
 
@@ -49,7 +49,6 @@ class Sim:
         self.target: float | None = written
         self.room: float | None = 21.0
         self.plan = 21.0
-        self.heat_needed: float | None = None
         self.heat: float | None = None
         self.surface = "underfloor"
         self.mode = "heat"
@@ -71,7 +70,7 @@ class Sim:
         result = write_step(self.guard, self.writer, GuardInput(
             at=self.now, reading=reading, evaluation=evaluation, settings=self.settings,
             values=values(self.settings, self.learned), tv_peak_c=peak, heat_w=self.heat,
-            target_c=self.target, heat_needed_w=self.heat_needed, room_c=self.room, plan_c=self.plan, mode=self.mode,
+            target_c=self.target, room_c=self.room, plan_c=self.plan, mode=self.mode,
             surface=self.surface, learn_stops=self.learn_stops,
         ), active=self.active, budget=self.budget)
         self.results.append((self.now, max(tv, peak or tv), result))
@@ -225,7 +224,7 @@ def test_normal_writes_only_in_valid_heating() -> None:
     assert sim.writes() == []
 
 
-# Block (8.4, 8.6)
+# Block (11)
 
 
 def test_block_on_and_off_with_minimum_duration() -> None:
@@ -247,7 +246,7 @@ def test_block_on_and_off_with_minimum_duration() -> None:
 
 
 def test_block_found_on_is_kept_and_shown() -> None:
-    """A block Sunflow did not set is not released, only shown (8.6); nothing written while it lasts."""
+    """A block Sunflow did not set is not released, only shown (11); nothing written while it lasts."""
     sim = Sim(written=30.0)
     sim.room = 20.0
     found = sim.off(30, blocked=True)
@@ -307,7 +306,7 @@ def test_no_block_without_the_input() -> None:
     assert sim.writes() == []
 
 
-# Limits (8.3)
+# Limits (10)
 
 
 @pytest.mark.parametrize(("surface", "high"), [("underfloor", 40.0), ("mixed", 50.0), ("radiator", 55.0)])
@@ -377,7 +376,7 @@ def test_inactive_writes_nothing(change: dict[str, str], reason: str) -> None:
     assert reason in results[-1].inactive and sim.writes() == []
 
 
-# Learned values (8.4, 8.3)
+# Learned values (10, 11)
 
 
 def _steady_rows(count: int, swing: float = 0.3, heat: float = 2000.0) -> list[dict[str, Any]]:
@@ -506,6 +505,8 @@ async def test_recorder_notes_planned_writes(tmp_path: Path, library: Any, monke
     pump = Pump(tmp_path, library)
     pump.recorder.flow = FlowShadow(HeatPumpStateStore(tmp_path))
     pump.states["max_target_flow_temp"] = pump.states["target_supply_temperature"] = ("29.0", "°C")
+    # Heating curve 21 + 0.5·(21 − 5) = 29: nothing to change while running
+    pump.states["heating_curve"] = ("0.5", None)
     try:
         await pump.minutes(NOW, 3)
         # Pause: compressor off, Tv down; after 5 minutes Sunflow would restart it

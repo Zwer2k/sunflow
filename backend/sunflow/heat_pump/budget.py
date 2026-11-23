@@ -1,4 +1,4 @@
-"""Write budget of the set value (design/heat_pump.md, 8.5, step 3 part 4.3), after EepromGuard.
+"""Write budget of the set value (design/heat_pump.md, 12), after EepromGuard.
 
 Every write of the set value (Max T-Vorlauf, stored in the heat pump's EEPROM) counts, whatever its
 reason; the room thermostat block does not (the HPSU does not store that input, 15 point 7).
@@ -13,7 +13,7 @@ guard.py).
 
 Where the writes are counted: in the shadow virtually (VirtualLog, from the write events in
 heat_pump_samples and those of this run), never in eeprom_writes.json; once Sunflow writes for real
-(step 3 part 4.7) the writes EepromGuard records (EepromLog).
+the writes EepromGuard records (EepromLog).
 """
 
 from collections.abc import Iterable
@@ -119,7 +119,7 @@ class VirtualLog:
 
 
 class EepromLog:
-    """Writing for real (step 3 part 4.7): the writes EepromGuard recorded for the written entity.
+    """Writing for real: the writes EepromGuard recorded for the written entity.
 
     execute() records each EEPROM write itself, so add() records nothing more."""
 

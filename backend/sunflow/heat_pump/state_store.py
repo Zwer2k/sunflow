@@ -1,4 +1,4 @@
-"""Runtime state of the flow temperature control, kept in heat_pump_state.json (design/heat_pump.md, 10).
+"""Runtime state of the flow temperature control, kept in heat_pump_state.json (design/heat_pump.md, 15).
 
 Small and discardable: a missing or broken file only means starting afresh (no base, correction 0).
 Unknown keys are ignored. Written only when something changed, atomically.

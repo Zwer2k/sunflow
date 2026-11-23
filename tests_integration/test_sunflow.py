@@ -203,9 +203,9 @@ async def test_plug_in_suggestion_fires_once(hass: HomeAssistant, aioclient_mock
 HOUSE = {
     "setpoint_c": 21.0, "mode": "heat", "min_c": 18.0, "max_c": 27.0, "step_c": 0.5, "room_c": 20.6,
     "rooms_used": ["sensor.wohnzimmer"], "rooms_missing": [], "rooms_stale": [], "plan_target_c": 21.0,
-    "settling": None, "shadow": True,
+    "shadow": True,
     "heat_pumps": [{"id": "hp", "name": "HPSU", "activity": "heating", "compressor": True,
-                    "flow": {"shadow": True, "strategy": "fixed", "base_c": 31.0, "correction_k": 0.4, "target_c": 31.4,
+                    "flow": {"shadow": True, "strategy": "fixed", "curve_c": 31.0, "outside_c": 2.0, "correction_k": 0.4, "target_c": 31.4,
                              "frozen": [], "reason": None}}],
 }
 

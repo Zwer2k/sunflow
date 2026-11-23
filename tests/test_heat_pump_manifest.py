@@ -1,4 +1,4 @@
-"""Manifests of ESPHome nodes: fetching, assigning, compatibility, storing, discovery (heat_pump.md 3)."""
+"""Manifests of ESPHome nodes: fetching, assigning, compatibility, storing, discovery (heat_pump_device.md 1)."""
 
 import copy
 from dataclasses import replace

@@ -240,7 +240,7 @@ def test_excluded_table_is_not_imported(tmp_path: Path, own: ShadowStore, monkey
     assert _rows(own)["soiling_ahead"] == [("2026-10-01", "west")]
 
 
-# Heat pump samples (design/heat_pump.md, section 10)
+# Heat pump samples (design/heat_pump.md, section 15)
 
 
 def test_migration_adds_heat_pump_samples(tmp_path: Path) -> None:

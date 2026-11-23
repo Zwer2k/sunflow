@@ -1,4 +1,4 @@
-"""Configured heat pumps recognized by their manifest: reload, status, journal, MAC, API (heat_pump.md 3.4-3.6)."""
+"""Configured heat pumps recognized by their manifest: reload, status, journal, MAC, API (heat_pump_device.md 1.4-1.6)."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta

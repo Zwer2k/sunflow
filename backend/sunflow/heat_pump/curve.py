@@ -1,61 +1,43 @@
-"""Heating curve of the heating surfaces, learned from heat_pump_samples (design/heat_pump.md, 8.1, 9.2).
+"""Heating curve, learned from heat_pump_samples (design/heat_pump.md, 8).
 
-    Q = K · (Tw − T_room)^n,   Tw = (Tv + Tr)/2,   spread s = Tv − Tr = s0 + s1 · Q
+    flow = R + S · (R − A) + P
 
-n is the start value of the heating surface type (house.heating_surface) and is not learned. K and
-the spread model are fitted by a weighted ridge regression on the valid intervals of the last weeks;
-recent days weigh more (half-life). The last days are held out: the curve predicts the flow
-temperature there from the measured heat and room temperature, and is used only when it does so
-better than "the flow stays" (the flow at the first held out interval of each day) and its
-parameters are plausible.
+R is the room setpoint, A the outside temperature, S the slope, P the shift (K). Start values: the slope of
+the heat pump's own curve when the profile reads it (HPSU "Heizkurve"), else one per heating surface type;
+P = 0. Learned every hour without a waiting time: from hours of valid heating in which the room was close to
+its setpoint, the effective flow setpoint then was enough - a point (R − A, flow − R). A weighted straight
+line through them (recent days weigh more), pulled towards the start values: with few points the curve
+stays near the start, with many the data count.
 
-Only intervals of valid heating (section 4) count, without after-run, without ventilation, with the
-compressor running through the interval and long enough before it. Everything else is left out, not
-counted as zero. Computed from the table; what is kept in heat_pump_state.json is only a cache.
+Helpers shared with learned.py and the house model (rows of heat_pump_samples) live here as well.
+Computed from the table; what is kept in heat_pump_state.json is only a cache.
 """
 
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 import math
-from statistics import median
 from typing import Any
-
-import numpy as np
 
 from .defaults import (
     CURVE_COMPRESSOR_FULL,
-    CURVE_DT_MIN_K,
     CURVE_HALF_LIFE_DAYS,
-    CURVE_HEAT_MAX_W,
-    CURVE_HEAT_MIN_W,
-    CURVE_HOLDOUT_DAYS,
-    CURVE_MIN_DAYS,
-    CURVE_MIN_HELD,
-    CURVE_MIN_INTERVALS,
-    CURVE_MIN_ROW_SAMPLES,
-    CURVE_OVERTEMP_RANGE_K,
-    CURVE_RIDGE,
-    CURVE_RUN_BEFORE_S,
-    CURVE_SPREAD_RANGE_K,
-    curve_exponent,
+    CURVE_HOUR_MIN_ROWS,
+    CURVE_PRIOR_HOURS,
+    CURVE_PRIOR_X_K,
+    CURVE_ROOM_BAND_K,
+    CURVE_SHIFT_RANGE_K,
+    CURVE_SLOPE_RANGE,
+    curve_slope,
 )
 
 INTERVAL = timedelta(minutes=5)
-RUN_BEFORE = timedelta(seconds=CURVE_RUN_BEFORE_S)
+HOUR = timedelta(hours=1)
 # Cache format of a curve in heat_pump_state.json; a different one is computed anew
-CACHE_FORMAT = 1
-
-
-@dataclass(frozen=True, kw_only=True)
-class CurvePoint:
-    """One valid interval: room, flow and return temperature, heat."""
-
-    start: datetime
-    room_c: float
-    tv_c: float
-    tr_c: float
-    heat_w: float
+CACHE_FORMAT = 2
+# Where the start slope comes from
+FROM_HEAT_PUMP = "heat_pump"
+FROM_SURFACE = "surface"
 
 
 def _float(value: Any) -> float | None:
@@ -89,141 +71,101 @@ def _full(row: dict[str, Any] | None) -> bool:
 
 
 def learnable(row: dict[str, Any]) -> bool:
-    """Valid heating without after-run and without ventilation (flags of heat_pump_samples)."""
+    """Valid heating without after-run and without a fast change (flags of heat_pump_samples)."""
     flags = row.get("flags") or {}
     return flags.get("valid") is True and not flags.get("after_run") and not flags.get("ventilation")
 
 
-def select_points(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[CurvePoint]:
-    """The intervals the curve is learned from (9.1); all others are left out."""
-    by_start = {start: row for row in rows if (start := _start(row)) is not None}
-    before = int(RUN_BEFORE / INTERVAL)
+def start_slope(surface: str | None, heat_pump_slope: float | None) -> tuple[float, str]:
+    """The start slope: the heat pump's own (within the allowed range), else the heating surface type's."""
+    low, high = CURVE_SLOPE_RANGE
+    if heat_pump_slope is not None and low <= heat_pump_slope <= high:
+        return heat_pump_slope, FROM_HEAT_PUMP
+    return curve_slope(surface), FROM_SURFACE
+
+
+@dataclass(frozen=True, kw_only=True)
+class CurvePoint:
+    """One hour that was enough: room setpoint, outside and effective flow setpoint (means)."""
+
+    start: datetime
+    room_c: float
+    outside_c: float
+    flow_c: float
+
+
+def select_points(rows: list[dict[str, Any]], weights: dict[str, float], setpoint_c: float) -> list[CurvePoint]:
+    """Hours with at least CURVE_HOUR_MIN_ROWS rows of valid heating, the compressor running, the room within
+    CURVE_ROOM_BAND_K of its setpoint (the row's, else setpoint_c) and the effective setpoint and outside known."""
+    hours: dict[datetime, list[tuple[float, float, float]]] = defaultdict(list)
+    for row in rows:
+        start = _start(row)
+        if start is None or not learnable(row) or not _full(row):
+            continue
+        flow, outside, room = _float(row.get("setpoint_c")), _float(row.get("outside_c")), row_room(row, weights)
+        target = _float(row.get("room_setpoint_c")) or setpoint_c
+        if flow is None or outside is None or room is None or abs(room - target) > CURVE_ROOM_BAND_K:
+            continue
+        hours[start.replace(minute=0)].append((target, outside, flow))
     points = []
-    for start, row in sorted(by_start.items()):
-        if not learnable(row) or (row.get("samples") or 0) < CURVE_MIN_ROW_SAMPLES:
+    for start, values in sorted(hours.items()):
+        if len(values) < CURVE_HOUR_MIN_ROWS:
             continue
-        # The compressor ran through this interval and RUN_BEFORE before it
-        if not all(_full(by_start.get(start - k * INTERVAL)) for k in range(before + 1)):
-            continue
-        tv, tr, heat = _float(row.get("tv_c")), _float(row.get("tr_c")), _float(row.get("heat_w"))
-        room = row_room(row, weights)
-        if tv is None or tr is None or heat is None or room is None:
-            continue
-        if not CURVE_HEAT_MIN_W <= heat <= CURVE_HEAT_MAX_W or (tv + tr) / 2 - room < CURVE_DT_MIN_K:
-            continue
-        points.append(CurvePoint(start=start, room_c=room, tv_c=tv, tr_c=tr, heat_w=heat))
+        n = len(values)
+        points.append(CurvePoint(
+            start=start, room_c=sum(v[0] for v in values) / n, outside_c=sum(v[1] for v in values) / n,
+            flow_c=sum(v[2] for v in values) / n,
+        ))
     return points
+
+
+def fit(points: list[CurvePoint], slope0: float, now: datetime) -> tuple[float, float]:
+    """Slope and shift: weighted least squares of (flow − R) over (R − A), with CURVE_PRIOR_HOURS virtual hours
+    on the start curve (slope0, no shift) spread over CURVE_PRIOR_X_K - few points move it a little, many
+    count fully. Within CURVE_SLOPE_RANGE and ±CURVE_SHIFT_RANGE_K."""
+    prior = CURVE_PRIOR_HOURS / len(CURVE_PRIOR_X_K)
+    data = [(x, slope0 * x, prior) for x in CURVE_PRIOR_X_K]
+    for p in points:
+        age = max((now - p.start).total_seconds() / 86400, 0.0)
+        data.append((p.room_c - p.outside_c, p.flow_c - p.room_c, 0.5 ** (age / CURVE_HALF_LIFE_DAYS)))
+    sw = sum(w for _, _, w in data)
+    mx = sum(w * x for x, _, w in data) / sw
+    my = sum(w * y for _, y, w in data) / sw
+    sxx = sum(w * (x - mx) ** 2 for x, _, w in data)
+    sxy = sum(w * (x - mx) * (y - my) for x, y, w in data)
+    slope = sxy / sxx
+    low, high = CURVE_SLOPE_RANGE
+    slope = min(max(slope, low), high)
+    shift = min(max(my - slope * mx, -CURVE_SHIFT_RANGE_K), CURVE_SHIFT_RANGE_K)
+    return slope, shift
 
 
 @dataclass(frozen=True, kw_only=True)
 class Curve:
-    """The learned curve with its quality and how much data it rests on."""
+    """The heating curve in use: slope, shift, where the start slope came from and the data it rests on."""
 
-    surface: str
-    n: float
-    # W per K^n; None without enough data to fit
-    k: float | None
-    # Spread s = spread0_k + spread_k_per_kw · Q
-    spread0_k: float | None
-    spread_k_per_kw: float | None
-    intervals: int
-    days: int
-    held: int
-    # Root mean square error of the flow temperature on the held out days, and of "the flow stays"
-    error_k: float | None
-    baseline_k: float | None
-    first: datetime | None
-    last: datetime | None
+    slope: float
+    shift_k: float
+    start_slope: float
+    start_source: str
+    hours: int
     computed_at: datetime
-    # Room weights and type the curve was computed with (a change computes it anew)
+    # What it depends on besides the table (heating surface type, rooms, start slope); a change relearns it
     key: str = ""
-    # Days with intervals before the held out ones
-    train_days: int = 0
-    # Median heat of the intervals: where plausibility and the typical values are judged
-    typical_w: float | None = None
 
-    def overtemp_k(self, heat_w: float) -> float:
-        """Mean water temperature above the room for a heat."""
-        assert self.k is not None
-        return (max(heat_w, 0.0) / self.k) ** (1 / self.n)
-
-    def spread_k(self, heat_w: float) -> float:
-        """Flow minus return for a heat."""
-        return (self.spread0_k or 0.0) + (self.spread_k_per_kw or 0.0) * heat_w / 1000
-
-    def flow_c(self, room_c: float, heat_w: float) -> float:
-        """Flow temperature that gives the heat at the room temperature: T + (Q/K)^(1/n) + s(Q)/2."""
-        return room_c + self.overtemp_k(heat_w) + self.spread_k(heat_w) / 2
-
-    @property
-    def enough(self) -> bool:
-        """Enough data: training intervals and days, held out intervals."""
-        return (
-            self.k is not None
-            and self.intervals - self.held >= CURVE_MIN_INTERVALS
-            and self.train_days >= CURVE_MIN_DAYS
-            and self.held >= CURVE_MIN_HELD
-        )
-
-    def plausible_at(self, heat_w: float | None) -> bool:
-        """K positive, mean water temperature above the room and spread in their ranges at a heat."""
-        if self.k is None or self.k <= 0 or heat_w is None or heat_w <= 0:
-            return False
-        over, spread = self.overtemp_k(heat_w), self.spread_k(heat_w)
-        return (
-            CURVE_OVERTEMP_RANGE_K[0] <= over <= CURVE_OVERTEMP_RANGE_K[1]
-            and CURVE_SPREAD_RANGE_K[0] <= spread <= CURVE_SPREAD_RANGE_K[1]
-        )
-
-    @property
-    def state(self) -> str:
-        """learning (too little data), implausible, unsure (not better than "the flow stays") or ready."""
-        if not self.enough:
-            return "learning"
-        if not self.plausible_at(self.typical_w):
-            return "implausible"
-        if self.error_k is None or self.baseline_k is None or self.error_k >= self.baseline_k:
-            return "unsure"
-        return "ready"
-
-    @property
-    def usable(self) -> bool:
-        """Used for the feedforward (8.1)."""
-        return self.state == "ready"
+    def flow_c(self, room_c: float, outside_c: float) -> float:
+        """The flow the curve gives for a room setpoint and an outside temperature."""
+        return room_c + self.slope * (room_c - outside_c) + self.shift_k
 
     def as_dict(self) -> dict[str, Any]:
-        """For the cache and the status."""
-        data = asdict(self)
-        for name in ("first", "last", "computed_at"):
-            data[name] = data[name].isoformat() if data[name] else None
-        data["format"] = CACHE_FORMAT
-        return data
+        """For the cache in heat_pump_state.json."""
+        return asdict(self) | {"format": CACHE_FORMAT, "computed_at": self.computed_at.isoformat()}
 
     def status(self) -> dict[str, Any]:
-        """Learned values, quality and amount of data for the UI and the attributes (shadow)."""
-        typical = self.typical_w
+        """For the status and the UI."""
         return {
-            "shadow": True,
-            "state": self.state,
-            "surface": self.surface,
-            "n": self.n,
-            "k": round(self.k, 2) if self.k is not None else None,
-            "spread0_k": round(self.spread0_k, 3) if self.spread0_k is not None else None,
-            "spread_k_per_kw": round(self.spread_k_per_kw, 3) if self.spread_k_per_kw is not None else None,
-            "typical_heat_w": round(typical) if typical is not None else None,
-            "typical_overtemp_k": round(self.overtemp_k(typical), 2) if typical and self.k and self.k > 0 else None,
-            "typical_spread_k": round(self.spread_k(typical), 2) if typical and self.k is not None else None,
-            "error_k": round(self.error_k, 3) if self.error_k is not None else None,
-            "baseline_k": round(self.baseline_k, 3) if self.baseline_k is not None else None,
-            "intervals": self.intervals,
-            "held": self.held,
-            "days": self.days,
-            "min_intervals": CURVE_MIN_INTERVALS + CURVE_MIN_HELD,
-            "train_days": self.train_days,
-            "min_days": CURVE_MIN_DAYS,
-            "first": self.first.isoformat() if self.first else None,
-            "last": self.last.isoformat() if self.last else None,
-            "computed_at": self.computed_at.isoformat(),
+            "slope": round(self.slope, 3), "shift_k": round(self.shift_k, 2), "start_slope": round(self.start_slope, 3),
+            "start_source": self.start_source, "hours": self.hours, "computed_at": self.computed_at.isoformat(),
         }
 
     @classmethod
@@ -232,107 +174,25 @@ class Curve:
         if not isinstance(data, dict) or data.get("format") != CACHE_FORMAT:
             return None
         try:
-            times = {name: datetime.fromisoformat(data[name]) if data.get(name) else None for name in ("first", "last", "computed_at")}
-            if times["computed_at"] is None:
-                return None
             return cls(
-                surface=str(data["surface"]),
-                n=float(data["n"]),
-                k=_float(data.get("k")),
-                spread0_k=_float(data.get("spread0_k")),
-                spread_k_per_kw=_float(data.get("spread_k_per_kw")),
-                intervals=int(data["intervals"]),
-                days=int(data["days"]),
-                held=int(data["held"]),
-                error_k=_float(data.get("error_k")),
-                baseline_k=_float(data.get("baseline_k")),
-                first=times["first"],
-                last=times["last"],
-                computed_at=times["computed_at"],
-                key=str(data.get("key", "")),
-                train_days=int(data.get("train_days", 0)),
-                typical_w=_float(data.get("typical_w")),
+                slope=float(data["slope"]), shift_k=float(data["shift_k"]), start_slope=float(data["start_slope"]),
+                start_source=str(data["start_source"]), hours=int(data["hours"]),
+                computed_at=datetime.fromisoformat(data["computed_at"]), key=str(data.get("key") or ""),
             )
         except (KeyError, TypeError, ValueError):
             return None
 
 
-def _weights(points: list[CurvePoint], now: datetime) -> np.ndarray:
-    age = np.array([(now - p.start).total_seconds() / 86400 for p in points])
-    return 0.5 ** (np.maximum(age, 0.0) / CURVE_HALF_LIFE_DAYS)
+def start_curve(slope0: float, source: str, now: datetime, key: str = "") -> Curve:
+    """The curve before anything is learned: the start slope, no shift."""
+    return Curve(slope=slope0, shift_k=0.0, start_slope=slope0, start_source=source, hours=0, computed_at=now, key=key)
 
 
-def _fit(points: list[CurvePoint], n: float, now: datetime) -> tuple[float, float, float] | None:
-    """K, spread0 and spread slope from points; None without at least two points or a usable K."""
-    if len(points) < 2:
-        return None
-    w = _weights(points, now)
-    x = np.array([((p.tv_c + p.tr_c) / 2 - p.room_c) ** n for p in points])
-    q = np.array([p.heat_w for p in points])
-    # Q = K·x, ridge relative to the column's own size
-    gram = float(np.sum(w * x * x))
-    if gram <= 0:
-        return None
-    k = float(np.sum(w * x * q)) / (gram * (1 + CURVE_RIDGE))
-    if not math.isfinite(k) or k <= 0:
-        return None
-    # s = s0 + s1·Q (kW); the constant stays free
-    design = np.column_stack([q / 1000, np.ones(len(points))])
-    spread = np.array([p.tv_c - p.tr_c for p in points])
-    weighted = design * w[:, None]
-    normal = design.T @ weighted
-    penalty = np.diag([CURVE_RIDGE * normal[0, 0] + 1e-9 * float(w.sum()), 0.0])
-    slope, intercept = np.linalg.solve(normal + penalty, weighted.T @ spread)
-    return k, float(intercept), float(slope)
-
-
-def _flow(k: float, n: float, s0: float, s1: float, room: float, heat_w: float) -> float:
-    return room + (heat_w / k) ** (1 / n) + (s0 + s1 * heat_w / 1000) / 2
-
-
-def _errors(params: tuple[float, float, float], n: float, held: list[CurvePoint]) -> tuple[float | None, float | None]:
-    """RMSE of the predicted flow and of "the flow stays as at the first interval of the day"."""
-    k, s0, s1 = params
-    by_day: dict[Any, list[CurvePoint]] = defaultdict(list)
-    for point in held:
-        by_day[point.start.date()].append(point)
-    model_sq, stay_sq = [], []
-    for points in by_day.values():
-        anchor = points[0].tv_c
-        for point in points[1:]:
-            model_sq.append((_flow(k, n, s0, s1, point.room_c, point.heat_w) - point.tv_c) ** 2)
-            stay_sq.append((anchor - point.tv_c) ** 2)
-    if not model_sq:
-        return None, None
-    return math.sqrt(sum(model_sq) / len(model_sq)), math.sqrt(sum(stay_sq) / len(stay_sq))
-
-
-def learn(rows: list[dict[str, Any]], weights: dict[str, float], surface: str, now: datetime, key: str = "") -> Curve:
-    """The curve from the rows of heat_pump_samples (any order); weights: room -> weight of the configured rooms."""
-    n = curve_exponent(surface)
-    points = select_points(rows, weights)
-    cutoff = now - timedelta(days=CURVE_HOLDOUT_DAYS)
-    train = [p for p in points if p.start < cutoff]
-    held = [p for p in points if p.start >= cutoff]
-    error_k = baseline_k = None
-    if (trial := _fit(train, n, cutoff)) is not None and held:
-        error_k, baseline_k = _errors(trial, n, held)
-    params = _fit(points, n, now)
-    return Curve(
-        surface=surface,
-        n=n,
-        k=params[0] if params else None,
-        spread0_k=params[1] if params else None,
-        spread_k_per_kw=params[2] if params else None,
-        intervals=len(points),
-        days=len({p.start.date() for p in points}),
-        train_days=len({p.start.date() for p in train}),
-        held=len(held),
-        error_k=error_k,
-        baseline_k=baseline_k,
-        first=points[0].start if points else None,
-        last=points[-1].start if points else None,
-        computed_at=now,
-        key=key,
-        typical_w=median(p.heat_w for p in points) if points else None,
-    )
+def learn(
+    rows: list[dict[str, Any]], weights: dict[str, float], setpoint_c: float, slope0: float, source: str, now: datetime,
+    key: str = "",
+) -> Curve:
+    """The curve from the rows (any order), pulled towards the start slope."""
+    points = select_points(rows, weights, setpoint_c)
+    slope, shift = fit(points, slope0, now)
+    return Curve(slope=slope, shift_k=shift, start_slope=slope0, start_source=source, hours=len(points), computed_at=now, key=key)

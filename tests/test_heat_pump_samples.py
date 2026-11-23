@@ -1,4 +1,4 @@
-"""Recording the HPSU: 5 minute rows in heat_pump_samples, events, journal (design/heat_pump.md, 4, 9.1, 10)."""
+"""Recording the HPSU: 5 minute rows in heat_pump_samples, events, journal (design/heat_pump.md, 4, 13, 15)."""
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -35,7 +35,7 @@ STATES: dict[str, tuple[str, str | None]] = {
     "bypass_valve": ("0.0", "%"),
     "room_therm": ("Aus", None),
     "error_code": ("Kein Fehler", None),
-    # ESP regulation off (0): Sunflow may write (8.5)
+    # ESP regulation off (0): Sunflow may write (12)
     "supply_setpoint_regulated": ("0.0", "°C"),
 }
 
@@ -304,7 +304,7 @@ async def test_mode_off_records_and_learns_nothing(tmp_path: Path, library: Prof
 
 
 async def test_stop_event_carries_the_uart_tv(pump: Pump) -> None:
-    """The companion node (UART manifest) is bound by its manifest; its Tv goes with each compressor stop (8.4)."""
+    """The companion node (UART manifest) is bound by its manifest; its Tv goes with each compressor stop (11)."""
     from dataclasses import replace as replaced  # noqa: PLC0415
 
     from sunflow.heat_pump.manifest import DeviceManifest  # noqa: PLC0415

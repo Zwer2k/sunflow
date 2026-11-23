@@ -1,4 +1,4 @@
-"""The room heating planned with the house (design/heat_pump.md, 7; 16 step 4 part 2): band around the
+"""The room heating planned with the house (design/heat_pump.md, 14): band around the
 room setpoint, soft cost away from it, the heat pump out of the load forecast, the mode decides whether
 the battery plan plans with it or a second run only shows it."""
 

@@ -1,4 +1,4 @@
-"""The room temperature of the house: weighted mean of the room sensors (design/heat_pump.md, 6.1).
+"""The room temperature of the house: weighted mean of the room sensors (design/heat_pump.md, 6).
 
 A room counts while its sensor is available and its device reported within ROOM_STALE_AFTER. When it
 last reported comes from last_reported, read per entity over REST (`reported_times`): the states Sunflow

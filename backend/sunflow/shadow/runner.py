@@ -26,7 +26,6 @@ from sunflow.devices.site import (
     site_status,
 )
 from sunflow.ha import HAClient, HAError
-from sunflow.heat_pump.feedforward import HouseContext
 from sunflow.planning.house_model import SAMPLES, HouseModel, learn_house
 from sunflow.planning.house_plan import HouseInput, house_input
 from sunflow.planning.load_forecast import HISTORY_DAYS
@@ -876,14 +875,9 @@ class ShadowRunner:
                 if data.source != flow.house_source:
                     _LOGGER.info("House model learned from %s", data.source)
                 flow.house_source = data.source
-            flow.house = (
-                HouseContext(model=self.house_model, sun_entity=data.sun_entity, sun_bright=data.sun_bright)
-                if self.house_model is not None and data is not None
-                else None
-            )
 
     def house_input(self) -> HouseInput | None:
-        """The first heat pump with the house model and room temperature for the planning (7)."""
+        """The first heat pump with the house model and room temperature for the planning (14)."""
         return house_input(self._store.load(), self._library.profiles, self.flow_shadow, self.house_model, datetime.now(UTC))
 
     @property

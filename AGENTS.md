@@ -6,11 +6,11 @@ HA-Integration `sunflow_ems`, Geräteprofile. Aufbau siehe `README.md` („Repos
 ## Vor der Arbeit lesen
 
 - **Wärmepumpe, Heizung, Vorlauf, Räume, Hausmodell:** zuerst `design/heat_pump.md` – die
-  verbindliche Spezifikation. Die bisherige Wärmepumpen-Steuerung (inkl. SG-Ready) ist entfernt
-  (Abschnitt 16, Schritt 2a); übernommen sind nur die Raum-Temperatursensoren und das Hausmodell.
+  verbindliche Spezifikation, kompakt halten (keine Historie, keine Umsetzungsdetails, kein Widerspruch zum
+  Code). Geräteanbindung (Manifest, Profil, ESP): `design/heat_pump_device.md`.
 - **Gespeicherte Daten (SQLite, `config.json`, Migrationen):** `design/datenhaltung.md`.
-- **Umsetzung der Wärmepumpen-Regelung:** in der Reihenfolge von `heat_pump.md` Abschnitt 16; offene
-  Punkte stehen in Abschnitt 15 – nicht stillschweigend entscheiden, sondern nachfragen.
+- **Umsetzung der Wärmepumpen-Regelung:** in der Reihenfolge von `heat_pump.md` Abschnitt 17 (offene
+  Punkte und Umsetzungsstand) – nicht stillschweigend entscheiden, sondern nachfragen.
 - **Geräte und Profile:** `schema/profile.schema.json`, vorhandene Profile unter `profiles/`,
   `docs/geraete.md`.
 - **Verhalten für Nutzer:** `docs/` (Deutsch) und `docs/en/` (Englisch) beschreiben, wie Sunflow sich

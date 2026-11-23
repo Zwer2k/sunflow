@@ -1,5 +1,5 @@
 """Sensors: key figures of each PV forecast, energy and power of each PV string, and per heat pump its flow
-target, set value and writes today (design/heat_pump.md, 13)."""
+target, set value and writes today (design/heat_pump.md, 16)."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -450,7 +450,7 @@ class SunflowConsumerSensor(SunflowEntity, SensorEntity):
         }
 
 
-# Heat pumps (design/heat_pump.md, 13, step 3 part 4.6). One mark of shadow or active: the attribute mode.
+# Heat pumps (design/heat_pump.md, 16). One mark of shadow or active: the attribute mode.
 SHADOW = "shadow"
 ACTIVE = "active"
 ICON_SHADOW = "mdi:ghost-outline"

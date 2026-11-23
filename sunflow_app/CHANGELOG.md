@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.80.29
+
+- Heat pumps: the flow target now comes from a **heating curve**: flow = room setpoint + slope × (room setpoint − outside) + shift, plus the room correction. Outside is the measured outside temperature (15 minute mean). The start slope is read from the heat pump (HPSU: "Heizkurve"), else it follows the heating surface type (underfloor 0.6, mixed 1.0, radiators 1.4). The curve applies at once, without a waiting time, and is learned every hour from the hours of the last 28 days with valid heating, compressor running and the room within 0.3 K of the setpoint (few hours keep it near the start). When the learned curve changes, the correction is shifted so the flow target does not jump.
+- Removed: the base (last effective flow setpoint), the heat-based characteristic (K, n, spread), the choice between house model, recent heat and base, and the jump protection at a source change. The house model is used only for the planning.
+- Settings → Heat pump: the control chain shows outside, heating curve and flow target; the section "Learned" shows the heating curve over the outside temperature with the start curve and the learned hours. The thermostat "Haus" has the new attributes `flow_curve_temperature`, `flow_outside_temperature` and `heating_curve`.
+
 ## 0.80.28
 
 - Heat pumps: a change of the room setpoint no longer holds the correction until the room has followed (up to 24 h). As long as the heating curve is still learning, nothing else raised the flow, so the room did not follow. The correction now reacts to the new setpoint at once.

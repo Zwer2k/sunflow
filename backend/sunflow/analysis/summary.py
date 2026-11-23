@@ -55,7 +55,7 @@ def build_summary(
 
     manifest_status: link status of devices recognized by their manifest, by device id
     (ManifestManager.status); manifest_notes: manifests no device could be assigned to;
-    heat_pump_notes: heat pumps whose set value someone else writes (design/heat_pump.md, 8.5).
+    heat_pump_notes: heat pumps whose set value someone else writes (design/heat_pump.md, 12).
     """
     summary = SetupSummary(
         tariff=config.tariff.import_entity_id,
@@ -177,7 +177,7 @@ def build_summary(
 
 
 def _manifest_issues(name: str, link: dict[str, Any]) -> list[Issue]:
-    """Issues of a device recognized by its manifest (design/heat_pump.md, 3.6)."""
+    """Issues of a device recognized by its manifest (design/heat_pump_device.md, 1.6)."""
     required = [p["reason"] for p in link["problems"] if not p["optional"]]
     optional = [p["reason"] for p in link["problems"] if p["optional"]]
     issues = []

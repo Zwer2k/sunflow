@@ -1,4 +1,4 @@
-"""Foreign writers of the set value (design/heat_pump.md, 8.5, 16 step 3 part 4.4): a change of the real
+"""Foreign writers of the set value (design/heat_pump.md, 12): a change of the real
 Max T-Vorlauf Sunflow did not write is noted once per episode (journal, status, setup summary), the written
 value follows it (in the shadow the virtual one); while the ESP regulation is active nothing is written."""
 

@@ -638,7 +638,7 @@ class SunflowPlan extends LitElement {
   }
 
   _renderHouse(plan, now) {
-    // The room heating planned with the house (design/heat_pump.md, 7): in the plan or, with "Nur Lernen", only shown
+    // The room heating planned with the house (design/heat_pump.md, 14): in the plan or, with "Nur Lernen", only shown
     const house = plan.house;
     if (!house) return nothing;
     const shadow = house.mode === "shadow";

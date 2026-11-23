@@ -183,7 +183,7 @@ class ThermalLoad:
     + b·COP[t]·P[t]·dt/1000, b in K per kWh of heat. Below lower the plan pays cold_cost, above
     upper warm_cost (sun can push it there without the heat pump), per K and hour. With a target
     (the room setpoint) every kelvin away from it, up or down, costs deviation_cost per hour: without
-    a saving the plan stays on the target (design/heat_pump.md, 7).
+    a saving the plan stays on the target (design/heat_pump.md, 14).
     """
 
     name: str

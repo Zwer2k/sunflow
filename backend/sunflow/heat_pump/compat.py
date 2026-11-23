@@ -1,4 +1,4 @@
-"""Compatibility of a manifest with a profile (design/heat_pump.md, section 3.6).
+"""Compatibility of a manifest with a profile (design/heat_pump_device.md, 1.6).
 
 Sunflow checks on every load exactly what it uses: per role of the profile (companion
 included) the key, its domain, unit and value keys, and for written roles the range and

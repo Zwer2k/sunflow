@@ -194,7 +194,7 @@ def test_weeks_without_heat() -> None:
     assert not model.plausible
 
 
-# Heat source and hours with hot water or defrost (design/heat_pump.md, 9.3)
+# Heat source and hours with hot water or defrost (design/heat_pump.md, 14)
 
 HPSU = "esphome/rotex_hpsu_can"
 T0 = NOW - 4 * HOUR

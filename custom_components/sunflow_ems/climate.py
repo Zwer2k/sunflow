@@ -59,10 +59,7 @@ async def async_setup_entry(
 
 
 # Values of the learned heating curve shown as attribute
-CURVE_KEYS = (
-    "shadow", "state", "surface", "n", "k", "spread0_k", "spread_k_per_kw", "typical_heat_w",
-    "typical_overtemp_k", "typical_spread_k", "error_k", "baseline_k", "intervals", "days",
-)
+CURVE_KEYS = ("slope", "shift_k", "start_slope", "start_source", "hours")
 
 
 def _curve(curve: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -71,7 +68,7 @@ def _curve(curve: dict[str, Any] | None) -> dict[str, Any] | None:
 
 SHADOW = "shadow"
 ACTIVE = "active"
-# The set value of a heat pump (step 3 part 4.6): the App's key → attribute (prefixed setpoint_ for the
+# The set value of a heat pump (design/heat_pump.md, 16): the App's key → attribute (prefixed setpoint_ for the
 # first heat pump, plain under heat_pumps)
 SETPOINT_KEYS = {
     "written_c": "written",
@@ -184,24 +181,19 @@ class SunflowHouseClimate(SunflowEntity, ClimateEntity):
             # One mark (shadow | active); shadow is the older one, deprecated, never different from mode
             "mode": mode,
             "shadow": mode == SHADOW,
-            "setpoint_change": house.get("settling"),
             "flow_target_temperature": first.get("target_c"),
-            "flow_base_temperature": first.get("base_c"),
             "flow_correction": first.get("correction_k"),
             "flow_frozen": first.get("frozen"),
-            # Where the flow target starts from (base, house_model, heat_recent) and the curve's value
-            "flow_source": first.get("source"),
-            "flow_source_reason": first.get("source_reason"),
+            # The heating curve: its flow, the outside temperature it uses, slope and shift (learned)
             "flow_curve_temperature": first.get("curve_c"),
-            "flow_heat_needed": first.get("heat_needed_w"),
-            # The learned heating curve (shadow): K, n, spread, quality, amount of data
+            "flow_outside_temperature": first.get("outside_c"),
             "heating_curve": _curve(first.get("curve")),
             # The set value (written, in the shadow the virtual one; pending with time and reason; held: why
             # it waits or nothing is written) - display only, the switch to write for real follows in 4.7
             **{f"setpoint_{name}": value for name, value in _setpoint(first).items()},
             "heat_pumps": {
                 p["name"]: {
-                    **{k: p["flow"].get(k) for k in ("target_c", "base_c", "correction_k", "frozen", "reason", "source", "curve_c")},
+                    **{k: p["flow"].get(k) for k in ("target_c", "correction_k", "frozen", "reason", "curve_c", "outside_c")},
                     "heating_curve": _curve(p["flow"].get("curve")),
                     **_setpoint(p["flow"]),
                     "mode": _mode(p["flow"], house),

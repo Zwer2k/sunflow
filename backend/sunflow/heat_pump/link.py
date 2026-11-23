@@ -1,4 +1,4 @@
-"""Keeping devices recognized by their manifest linked and checked (design/heat_pump.md, 3.4-3.6).
+"""Keeping devices recognized by their manifest linked and checked (design/heat_pump_device.md, 1.4-1.6).
 
 The manager fetches the manifests of all nodes that offer one, assigns them to Home Assistant
 devices and adds them to the snapshot, so roles resolve through manifest keys. For configured

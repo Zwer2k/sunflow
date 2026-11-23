@@ -1,14 +1,13 @@
 """Recording heat pumps: every minute their values and states, stored as 5 minute means.
 
-Design/heat_pump.md, sections 4, 9.1 and 10: one row per heat pump and 5 minutes in the table
+Design/heat_pump.md, sections 4, 13 and 15: one row per heat pump and 5 minutes in the table
 heat_pump_samples of shadow.db. The peak of the flow temperature (tv_max, published every 30 s)
 and compressor starts and stops come from state_changed events, so none is lost between two
-samples. Rooms being aired (6.2) are taken from the shadow control each minute and noted per row
-in flags.ventilation, changes of the flow target's source (8.1) in events. The heating curve of each
-heat pump is learned from the table every hour (9.2), with the swing, start jumps and output range
-of the protection layer (8.3, 8.4); the writes it would cause are noted in events. Unknown states, faults, the room thermostat block and the heat pump limiting the flow
+samples. Rooms with a fast change (6) are taken from the shadow control each minute and noted per row
+in flags.ventilation. The heating curve of each heat pump is learned from the table every hour (8), with
+the swing, stop margin and output range of the protection layer (10, 11); the writes are noted in events. Unknown states, faults, the room thermostat block and the heat pump limiting the flow
 itself are noted once per change in the journal. The recorder itself only reads; writing to the heat pump
-is the shadow control's (shadow.py, only when the user switched it on, step 3 part 4.7), whose set value in
+is the shadow control's (shadow.py, only when the user switched it on), whose set value in
 force is noted per row (written_c).
 """
 
@@ -32,7 +31,7 @@ from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
 from .active import WriteTargets, write_targets
 from .budget import KEEP as BUDGET_KEEP
 from .curve import Curve, learn as learn_curve
-from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, FEED_HEAT_WINDOW_S, POWER_LEARN_DAYS, STOP_LEARN_DAYS
+from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, POWER_LEARN_DAYS, STOP_LEARN_DAYS
 from .learned import Learned, learn as learn_guard
 from .limits import ControlSettings
 from .manifest import bind_manifest
@@ -55,7 +54,7 @@ NUMERIC = {
     "bypass_pct": "bypass_valve",
 }
 PEAK_ROLE = "flow_temperature_max"
-# Tv of the companion node (UART; profile companion), kept with each compressor stop (8.4)
+# Tv of the companion node (UART; profile companion), kept with each compressor stop (11)
 UART_ROLE = "flow_temperature_uart"
 # Roles whose changes are followed between the samples
 EVENT_ROLES = (
@@ -118,13 +117,13 @@ class Minute:
     heat_source: str | None
     outside_c: float | None
     rooms: dict[str, float]
-    # Rooms being aired in this minute (6.2)
+    # Rooms changing fast in this minute (6)
     ventilation: tuple[str, ...] = ()
-    # Highest tv_max published since the previous minute (8.4)
+    # Highest tv_max published since the previous minute (11)
     tv_peak_c: float | None = None
-    # Parameters of the protection layer from the profile and the manifest (8.3, 8.4)
+    # Parameters of the protection layer from the profile and the manifest (10, 11)
     control: ControlSettings | None = None
-    # Entities Sunflow writes to once writing for real is switched on (step 3 part 4.7)
+    # Entities Sunflow writes to once writing for real is switched on (4)
     targets: WriteTargets | None = None
 
 
@@ -153,7 +152,7 @@ class Recording:
     noted_fault: bool | None = None
     noted_block: bool | None = None
     noted_limit: bool = False
-    # Set value Sunflow writes for real, per minute of the interval (step 3 part 4.7); empty in the shadow
+    # Set value Sunflow writes for real, per minute of the interval (12); empty in the shadow
     written: list[float] = field(default_factory=list)
     # Flow target and room setpoint per minute of the interval, for the history view (shadow and active)
     flow_targets: list[float] = field(default_factory=list)
@@ -281,13 +280,6 @@ class HeatPumpRecorder:
             minute, entities = self._sample(config, device, profile, recording, snapshot, now, aired)
             watched |= {entity_id: (device.id, role) for role, entity_id in entities.items() if role in EVENT_ROLES and entity_id}
             sampled[device.id] = (device, minute)
-            if self.flow is not None and not self.flow.recent(device.id).seeded:
-                # After a start the heat of the last hours comes from the table, then from the minutes
-                since = now - timedelta(seconds=FEED_HEAT_WINDOW_S) - INTERVAL
-                try:
-                    self.flow.recent(device.id).seed(await asyncio.to_thread(self._store.heat_pump_samples, device.id, since), now)
-                except Exception:
-                    _LOGGER.exception("Reading the recent heat failed")
             if self.flow is not None and not self.flow.budget(device.id).seeded:
                 # The writes of today so far count against the budget (virtually, from the write events);
                 # tried again next minute when the table cannot be read
@@ -340,7 +332,7 @@ class HeatPumpRecorder:
             if removed:
                 _LOGGER.info("Removed %s heat pump samples older than a year", removed)
 
-    # Heating curve (9.2)
+    # Heating curve (8)
 
     @staticmethod
     def curve_key(config: SunflowConfig) -> str:
@@ -352,10 +344,11 @@ class HeatPumpRecorder:
         """Learn the curve of every heat pump from the table, every CURVE_REFRESH or when the type or rooms changed."""
         if self.flow is None:
             return
-        key = self.curve_key(config)
         weights = {room.entity_id: room.weight for room in config.house.rooms}
         days = max(CURVE_HISTORY_DAYS, STOP_LEARN_DAYS, POWER_LEARN_DAYS)
         for device_id in list(self._recordings):
+            slope0, source = self.flow.start_slope(device_id, config)
+            key = f"{self.curve_key(config)}|{slope0:.3f}"
             current: Curve | None = self.flow.curves.get(device_id)
             curve_due = not (current is not None and current.key == key and timedelta(0) <= now - current.computed_at < CURVE_REFRESH)
             learned: Learned | None = self.flow.learned.get(device_id)
@@ -366,7 +359,9 @@ class HeatPumpRecorder:
                 rows = await asyncio.to_thread(self._store.heat_pump_samples, device_id, now - timedelta(days=days))
                 since = now - timedelta(days=CURVE_HISTORY_DAYS)
                 curve_rows = [r for r in rows if isinstance(r.get("start"), str) and r["start"] >= since.astimezone(UTC).isoformat()]
-                curve = await asyncio.to_thread(learn_curve, curve_rows, weights, config.house.heating_surface, now, key) if curve_due else None
+                curve = await asyncio.to_thread(
+                    learn_curve, curve_rows, weights, config.house.climate.setpoint_c, slope0, source, now, key,
+                ) if curve_due else None
                 stop_start = (self.flow.settings.get(device_id) or ControlSettings()).stop_margin
                 guard = await asyncio.to_thread(learn_guard, rows, now, stop_start) if guard_due else None
             except Exception:
@@ -375,8 +370,8 @@ class HeatPumpRecorder:
                 return
             recording = self._recordings.get(device_id)
             if curve is not None:
-                if (current is None or current.state != curve.state) and recording:
-                    _LOGGER.info("%s: heating curve %s (%s intervals)", recording.name, curve.state, curve.intervals)
+                if recording and (current is None or abs(current.slope - curve.slope) > 0.05 or abs(current.shift_k - curve.shift_k) > 0.5):
+                    _LOGGER.info("%s: heating curve slope %.2f, shift %.1f K (%s hours)", recording.name, curve.slope, curve.shift_k, curve.hours)
                 self.flow.set_curve(device_id, curve)
             if guard is not None:
                 self.flow.set_learned(device_id, guard)
@@ -484,7 +479,7 @@ class HeatPumpRecorder:
                 "blocked": any(m.reading.blocked for m in minutes),
                 "fault": any(m.reading.fault for m in minutes),
                 "self_limited": any(m.evaluation.self_limited for m in minutes),
-                # Rooms aired in any minute (6.2); such intervals are left out of learning the heating curve
+                # Rooms changing fast in any minute (6); such intervals are left out of learning the heating curve
                 "ventilation": sorted({r for m in minutes for r in m.ventilation}),
             },
         }

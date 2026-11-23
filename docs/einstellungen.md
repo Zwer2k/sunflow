@@ -92,7 +92,7 @@ der Browser):
 - **Anlage:** Außengerät, Innengerät, Speicher und Räume als Bild, wohin die Wärme gerade fließt, mit den
   Zuständen der Wärmepumpe.
 - **Schreiben und Schutz:** Budget, ausstehender Wert, letzte Schreibvorgänge und die Zählung je Tag.
-- **Gelernt:** Kennlinie als Diagramm (Vorlauf über der Wärme, mit Grenzen und Messpunkten), das gelernte
+- **Gelernt:** Heizkurve als Diagramm (Vorlauf über Außen, Startkurve gestrichelt, mit den gelernten Stunden), das gelernte
   Verhalten der Wärmepumpe (Abschaltgrenze, Einschaltabstand, Schwankung, Leistung), der Schalter der
   Lernphase und die Abschaltungen des Kompressors.
 
@@ -103,7 +103,7 @@ Haus). Erklärungen sind Hilfetexte: Das „?“ in der Menüleiste blendet alle
 **Modus** (oben beim Raum-Soll), drei Stufen:
 
 - **Aus:** Sunflow regelt nicht, lernt nicht und zeichnet keine Messwerte der Wärmepumpe auf (spart Platz,
-  z. B. im Sommer). Das Gelernte (Kennlinie, Hausmodell, Abschaltgrenze, Korrektur) bleibt erhalten; danach
+  z. B. im Sommer). Das Gelernte (Heizkurve, Hausmodell, Abschaltgrenze, Korrektur) bleibt erhalten; danach
   lernt Sunflow mit den älteren Daten weiter.
 - **Nur Lernen** (Standard): Sunflow zeichnet auf, lernt und zeigt an, was es schreiben würde, schreibt aber
   nichts an die Wärmepumpe.
@@ -115,7 +115,7 @@ zu der Stufe zurück, die zuletzt galt (Nur Lernen oder Lernen + Regeln). **Lern
 Sunflow eingeschaltet, mit Bestätigung, und geht nur, wenn die Wärmepumpe kompatibel und erreichbar ist,
 Messwerte da sind, die HK-Funktion auf Fest steht und die ESP-Regelung aus ist; vorher andere Regler
 abschalten, die diese Werte schreiben. Beim Einschalten übernimmt Sunflow, ohne etwas zu schreiben: Die
-Basis wird eingefroren, die Korrektur beginnt bei 0, Stellwert und Sperre gelten so, wie die Wärmepumpe sie
+Korrektur beginnt bei 0, Stellwert und Sperre gelten so, wie die Wärmepumpe sie
 gerade hat (eine fremde Sperre bleibt fremd). Geschrieben wird erst, wenn die Regeln es verlangen; jeder
 Schreibvorgang steht mit Grund im Journal. Schlägt ein Schreibvorgang fehl, nimmt Sunflow ihn zurück
 (Journal) und versucht es wieder, wenn die Regeln es verlangen. Etwa eine Minute nach dem Schreiben prüft
@@ -154,34 +154,25 @@ schnellen Änderung und die Änderungen der letzten 24 Stunden.
 **Wärmepumpe:** je Gerät Verbindung und Kompatibilität, Programm, Aktivität, Strategie (HK-Funktion),
 Bypass-Ventil, Vorlauf, Rücklauf, wirksamer Vorlauf-Soll und Max T-Vorlauf, eine aktive
 Raumthermostat-Sperre oder Störung deutlich hervorgehoben, und ob die Wärmepumpe gültig heizt – sonst
-der Grund (z. B. Warmwasser, Nachlauf, Bypass-Ventil). Darunter das **Vorlauf-Ziel** = Basis +
-Korrektur: Die Basis ist der wirksame Vorlauf-Soll aus gültigem Heizbetrieb (außerhalb gilt der letzte
-solche Wert). Die Korrektur gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens
-± 3 K; unter ± 0,2 K Abweichung wächst sie nicht); wie langsam, hängt vom Heizflächentyp ab
-(Nachstellzeit: Fußboden 6 h, gemischt 4 h, Heizkörper 2 h). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
-Raumtemperaturen fehlen oder ein Raum sich schnell ändert (Lüften, Kochen). Auf einen geänderten Raum-Soll
-reagiert sie sofort. Im
-Modus „Nur Lernen“ wirkt sie nicht zurück und kann bis an ihre Grenze laufen; im Modus Aus lernt sie nicht.
+der Grund (z. B. Warmwasser, Nachlauf, Bypass-Ventil). Darunter das **Vorlauf-Ziel** = Heizkurve +
+Korrektur.
 
-**Kennlinie:** Aus den 5-Minuten-Werten lernt Sunflow stündlich, wie viel Wärme die
-Heizflächen abgeben: Q = K · (mittlere Wassertemperatur − Raum-Ist)^n, dazu die Spreizung (Vorlauf −
-Rücklauf) abhängig von der Wärme. n kommt aus dem **Heizflächentyp** (Fußboden 1,1, gemischt 1,2,
-Heizkörper 1,3), K und die Spreizung werden gelernt – nur aus gültigem Heizbetrieb mit seit mindestens
-15 Minuten laufendem Kompressor, ohne Nachlauf und ohne schnelle Änderungen. Die letzten zwei Tage werden
-zurückgehalten: Die Kennlinie gilt erst als nutzbar, wenn sie dort den Vorlauf besser vorhersagt als
-„der Vorlauf bleibt“, ihre Werte plausibel sind und genug Daten vorliegen (mindestens 12 Stunden aus
-3 Tagen zum Lernen und 2 Stunden zum Prüfen). Angezeigt werden K, n, Spreizung, Güte und Datenumfang.
+**Heizkurve:** Vorlauf = Raum-Soll + Steilheit × (Raum-Soll − Außen) + Verschiebung. Außen ist die
+gemessene Außentemperatur, gemittelt über 15 Minuten. Die Startsteilheit liest Sunflow aus der Wärmepumpe
+(HPSU: „Heizkurve“), sonst gilt der Startwert des **Heizflächentyps** (Fußboden 0,6, gemischt 1,0,
+Heizkörper 1,4); die Verschiebung beginnt bei 0. Die Kurve gilt sofort, ohne Wartezeit. Stündlich lernt
+Sunflow Steilheit und Verschiebung aus den Stunden der letzten 28 Tage, in denen die Wärmepumpe gültig
+heizte, der Kompressor lief und der Raum höchstens 0,3 K vom Soll entfernt war: Der wirksame Vorlauf-Soll
+dieser Stunden hat gereicht. Mit wenigen Stunden bleibt die Kurve nahe am Start, mit vielen zählen die
+Daten. Ändert sich die gelernte Kurve, verschiebt Sunflow die Korrektur um den Unterschied, damit das
+Vorlauf-Ziel nicht springt; stellst du die Heizkurve der Wärmepumpe oder den Heizflächentyp um, gilt die
+neue Startkurve sofort. Ein höherer Raum-Soll hebt den Vorlauf sofort um 1 + Steilheit Kelvin je Kelvin.
 
-Ist die Kennlinie nutzbar, ist das Vorlauf-Ziel = Kennlinie + Korrektur: der Vorlauf, mit dem die
-Heizflächen beim Raum-Soll die benötigte Wärme abgeben. Die benötigte Wärme kommt aus dem Hausmodell
-(sobald es nutzbar ist), sonst aus der mittleren Wärme der letzten 3 Stunden (Pausen des Kompressors
-zählen mit 0; Warmwasser, Abtauen, Nachlauf, schnelle Änderungen und Sperre zählen nicht; mindestens 2 Stunden
-nötig). Diese Wärme entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt – die Kennlinie bildet
-dann nur den aktuellen Zustand nach, die Richtung gibt die Korrektur. Sonst gilt weiter Basis +
-Korrektur. Angezeigt wird, welche Quelle gerade gilt; wechselt sie, springt das Vorlauf-Ziel im
-Modus „Nur Lernen“ einmal, die Korrektur bleibt. Bei „Lernen + Regeln“ verschiebt es bei einem solchen
-Wechsel die Korrektur, damit das Vorlauf-Ziel nicht springt (innerhalb ihrer Grenze von ±3 K; ein Rest
-bleibt als Sprung und steht im Journal).
+**Korrektur:** gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens ± 3 K; unter
+± 0,2 K Abweichung wächst sie nicht); wie langsam, hängt vom Heizflächentyp ab (Nachstellzeit: Fußboden
+6 h, gemischt 4 h, Heizkörper 2 h). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
+Raumtemperaturen fehlen oder ein Raum sich schnell ändert (Lüften, Kochen). Im Modus „Nur Lernen“ wirkt
+sie nicht zurück und kann bis an ihre Grenze laufen; im Modus Aus lernt sie nicht.
 
 **Stellwert und Schutz (bei „Nur Lernen“: würde schreiben):** Aus dem Vorlauf-Ziel rechnet Sunflow den Stellwert (Max T-Vorlauf),
 den es schreiben würde, und die Raumthermostat-Sperre – angezeigt mit „würde schreiben“, nichts davon
@@ -253,8 +244,8 @@ meldet das im Journal und in der Zusammenfassung und regelt wieder, sobald der W
 **Haus:** Raumtemperaturen (einer oder mehrere Sensoren, wahlweise gewichtet, z. B. nach Fläche)
 und optional die Wärme ins Haus (z. B. ein Wärmemengenzähler der Heizung, sonst die Wärme der
 Wärmepumpe). Der **Heizflächentyp** (Fußbodenheizung, gemischt, Heizkörper; Standard Fußboden) gibt den
-Startwert der Kennlinie und die Nachstellzeit der Korrektur vor; nach einer Änderung wird die
-Kennlinie neu bewertet, die gemessenen Daten bleiben erhalten, die Korrektur springt nicht. Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
+Startwert der Heizkurve (falls die Wärmepumpe keinen liefert) und die Nachstellzeit der Korrektur vor;
+nach einer Änderung gilt die neue Startkurve sofort, die gemessenen Daten bleiben erhalten. Die **Außentemperatur** ist wählbar: automatisch (eigener Sensor unter Lernquellen, sonst
 der Sensor der Wärmepumpe), der Außentemperatur-Sensor der Wärmepumpe, der Fühler ihres Außengeräts
 (HPSU: TA2) oder nur der eigene Sensor. Sunflow lernt daraus ein einfaches Wärmemodell des Hauses aus den
 Stundenwerten der letzten vier Wochen. Stunden, in denen die Wärmepumpe Warmwasser bereitet oder

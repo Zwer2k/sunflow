@@ -1,4 +1,4 @@
-"""Foreign writers of the set value (design/heat_pump.md, 8.5, step 3 part 4.4).
+"""Foreign writers of the set value (design/heat_pump.md, 12).
 
 Sunflow follows the real Max T-Vorlauf of the heat pump every minute. A change it did not write itself
 (an automation, a script, the ESP regulation, by hand) is a foreign write:
@@ -7,7 +7,7 @@ Sunflow follows the real Max T-Vorlauf of the heat pump every minute. A change i
 - the first foreign change of an episode goes into the journal (warning); further ones are counted in
   the status, not noted one by one; the episode ends FOREIGN_EPISODE_S after the last change (journal);
 - while an episode runs, the setup summary names it.
-Its own writes Sunflow recognizes only once it writes for real (step 3 part 4.7): a change to the value
+Its own writes Sunflow recognizes only once it writes for real: a change to the value
 it wrote within OWN_WRITE_CONFIRM_S of that write. In the shadow every real change is foreign.
 A change smaller than half a step of the entity is no change; an unknown value is skipped (the last
 known one stays). The last value seen is kept in heat_pump_state.json, so a change while Sunflow was not
