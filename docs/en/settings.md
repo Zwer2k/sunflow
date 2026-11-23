@@ -155,7 +155,7 @@ flow setpoint from valid heating (outside it the last such value counts). The co
 out the difference between room temperature and setpoint (at most ± 3 K; it does not grow within
 ± 0.2 K); how slowly depends on the heating surface type (integral time: underfloor 6 h, mixed 4 h,
 radiators 2 h). It pauses while the heat pump does not heat validly, room temperatures are missing, a room
-changes fast (airing, cooking) or the room is still following a changed setpoint (at most 24 hours). In mode "learning only" it has no effect back and
+changes fast (airing, cooking). It reacts to a changed setpoint at once. In mode "learning only" it has no effect back and
 may run to its limit.
 
 **Heating curve:** from the 5 minute values Sunflow learns every hour how much heat the heating

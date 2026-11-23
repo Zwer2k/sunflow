@@ -348,7 +348,10 @@ class FlowShadow:
         room = self.room
         assert room is not None
         setpoint = config.house.climate.setpoint_c
-        settling = self.watch.update(setpoint, room.value_c, now)
+        # A setpoint change no longer holds the correction (0.80.28): with the base as source nothing else
+        # would raise the flow, the room would not follow. The watch is dropped with it.
+        self.watch.settling = None
+        self.watch.last_c = setpoint
         flows: dict[str, FlowState] = {}
         for device_id, (device, minute) in minutes.items():
             stored = self._store.devices.setdefault(device_id, {})
@@ -383,8 +386,6 @@ class FlowShadow:
                 frozen.append("ventilation")
             elif room.value_c is None:
                 frozen.append("rooms_missing")
-            if settling is not None:
-                frozen.append("setpoint_change")
             if config.house.climate.mode == "off":
                 # Mode off ("Aus"): the correction does not learn either
                 frozen.append("mode_off")

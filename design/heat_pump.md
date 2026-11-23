@@ -652,8 +652,7 @@ PI auf Raum-Ist gegen Planziel, addiert auf V_Ziel.
 - Integralanteil: lange Zeitkonstante (Fußboden: viele Stunden; Heizkörper schneller), Totzone ±0,2 K,
   Begrenzung ±3 K, Anti-Windup.
 - **Bedingte Integration**: eingefroren außerhalb des gültigen Heizbetriebs (Abschnitt 4), bei
-  Lüft-Ereignis, Soll-Änderung bis Raum-Ist das neue Ziel erreicht hat, fehlenden Raumdaten, Stellwert an
-  einer Grenze.
+  Lüft-Ereignis, fehlenden Raumdaten, Stellwert an einer Grenze (Soll-Änderung: seit 0.80.28 nicht mehr).
 - Integralanteil wird je Strategie gespeichert.
 
 Umsetzung (2c, Teil 2b, `heat_pump/correction.py`, Konstanten in `heat_pump/defaults.py`; Ti je
@@ -667,18 +666,15 @@ Heizflächentyp seit 3, Teil 4.1):
   Totzone ±0,2 K. Begrenzung ±3 K: ein Inkrement, das darüber hinausführt, wird abgeschnitten.
 - Ein Schritt wird gerechnet, sobald sich das Raum-Ist ändert, spätestens 30 min nach dem letzten mit
   dem letzten Raum-Ist (dann nur I-Teil); Δt höchstens 30 min, auch nach einer Lücke.
-- Eingefroren (kein gültiger Heizbetrieb, Soll-Änderung, keine Raumdaten `rooms_missing`, Lüften
+- Eingefroren (kein gültiger Heizbetrieb, keine Raumdaten `rooms_missing`, Lüften
   `ventilation` (6.2, ab 3, Teil 1), Strategie unbekannt): weder I- noch P-Inkrement; was Raum-Ist in
   der Pause tut, wird verworfen, nicht nachgeholt (kein Sprung beim Wiederaufnehmen). Nach einem
   Neustart dient der erste Wert als Bezug. Ein Strategiewechsel beginnt die Korrektur der neuen
   Strategie ebenso ohne Sprung, ebenso ein Wechsel der Räume, aus denen Raum-Ist besteht (neuer Bezug
   ohne P-Schritt).
-- Soll-Änderung (≥ 0,1 K, im Minutentakt aus der Konfiguration erkannt, egal ob über HA, UI oder API):
-  eingefroren, bis Raum-Ist das neue Ziel bis auf die Totzone erreicht (Anheben: Ist ≥ Soll − 0,2;
-  Absenken: Ist ≤ Soll + 0,2), höchstens 24 h; liegt Raum-Ist schon in der Totzone, wird nicht
-  eingefroren. Eine neue Änderung während des Wartens gilt ab dann mit neuem Ziel, neuer Richtung und
-  neuer Frist. Frist abgelaufen: Korrektur läuft weiter, ein Log-Eintrag. Status `setpoint_change` mit
-  Ziel und Richtung, kein Journal. Zustand in `heat_pump_state.json`.
+- Soll-Änderung: bis 0.80.27 eingefroren, bis Raum-Ist das neue Ziel erreicht (höchstens 24 h). Mit 0.80.28
+  entfallen (Nutzer 23.11.): Solange die Quelle die Basis ist, hebt sonst nichts den Vorlauf, der Raum folgte
+  nicht. Die Korrektur reagiert sofort; `settling` im Status bleibt leer.
 - „Stellwert an einer Grenze“ greift erst mit dem Schreiben (Schritt 3).
 - Schattenbetrieb: Die Korrektur wird gerechnet, gespeichert und angezeigt (gekennzeichnet als
   Schatten), wirkt aber nicht zurück und läuft deshalb leicht an eine Grenze. **Schritt 3:** Beim

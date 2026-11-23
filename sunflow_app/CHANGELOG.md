@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.28
+
+- Heat pumps: a change of the room setpoint no longer holds the correction until the room has followed (up to 24 h). As long as the heating curve is still learning, nothing else raised the flow, so the room did not follow. The correction now reacts to the new setpoint at once.
+
 ## 0.80.27
 
 - Heat pumps: the **protection against compressor shutdowns is rebuilt** and much simpler. Sunflow no longer predicts when the compressor switches (fixed 3 K rules, start jumps, preparing during hot water, holding until the flow is calm); it reacts instead. While the compressor runs, Max T-Vorlauf is the flow target. When the compressor has been **off for 5 minutes** although the rooms need heat (also after hot water or defrosting), Sunflow raises Max T-Vorlauf once to flow + 3 K (**restart**). 10 minutes after a start it lowers to the flow target in one step, not below the **stop margin**. During hot water and defrosting nothing is written.

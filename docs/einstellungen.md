@@ -159,8 +159,8 @@ Korrektur: Die Basis ist der wirksame Vorlauf-Soll aus gültigem Heizbetrieb (au
 solche Wert). Die Korrektur gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens
 ± 3 K; unter ± 0,2 K Abweichung wächst sie nicht); wie langsam, hängt vom Heizflächentyp ab
 (Nachstellzeit: Fußboden 6 h, gemischt 4 h, Heizkörper 2 h). Sie hält an, solange die Wärmepumpe nicht gültig heizt,
-Raumtemperaturen fehlen, ein Raum sich schnell ändert (Lüften, Kochen) oder der Raum einem geänderten Raum-Soll noch folgt (höchstens
-24 Stunden). Im
+Raumtemperaturen fehlen oder ein Raum sich schnell ändert (Lüften, Kochen). Auf einen geänderten Raum-Soll
+reagiert sie sofort. Im
 Modus „Nur Lernen“ wirkt sie nicht zurück und kann bis an ihre Grenze laufen; im Modus Aus lernt sie nicht.
 
 **Kennlinie:** Aus den 5-Minuten-Werten lernt Sunflow stündlich, wie viel Wärme die

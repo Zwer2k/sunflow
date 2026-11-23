@@ -486,7 +486,6 @@ class SunflowHeatPump extends LitElement {
     const first = this._status.devices?.[0];
     const values = first?.state?.values ?? {};
     const outside = first ? this._lastRow(first.id)?.outside_c : null;
-    const settling = house.settling;
     return html`
       <section class="card">
         <div class="controls">
@@ -519,9 +518,6 @@ class SunflowHeatPump extends LitElement {
           ? html`<p class="small warn-text">${t("Nicht berücksichtigt (nicht verfügbar oder seit über 2 h keine Meldung): {rooms}", { rooms: [...house.rooms_missing, ...house.rooms_stale].map((e) => this._roomName(e)).join(", ") })}</p>`
           : nothing}
         ${this._renderFastNow(house)}
-        ${settling
-          ? html`<p class="small muted">${t("Raum-Soll geändert auf {target} °C: Die Korrektur wartet, bis der Raum ihn erreicht (höchstens 24 h).", { target: one(settling.target_c) })}</p>`
-          : nothing}
       </section>
     `;
   }

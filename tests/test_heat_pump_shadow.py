@@ -303,7 +303,7 @@ async def test_no_base_no_flow_target(tmp_path: Path) -> None:
     assert (flow["base_c"], flow["target_c"], flow["reason"]) == (None, None, "no_base")
 
 
-async def test_base_correction_and_settling_survive_a_restart(tmp_path: Path) -> None:
+async def test_base_and_correction_survive_a_restart_a_setpoint_change_holds_nothing(tmp_path: Path) -> None:
     house = House(tmp_path)
     house.room = "20.5"
     for minute in range(6 * 60 + 1):
@@ -318,8 +318,9 @@ async def test_base_correction_and_settling_survive_a_restart(tmp_path: Path) ->
     flow = house.flow()
     assert flow["base_c"] == 31.0
     assert flow["correction_k"] == pytest.approx(0.5)
-    assert "setpoint_change" in flow["frozen"]
-    assert house.shadow.house_status()["settling"]["target_c"] == 22.0
+    # Since 0.80.28 a setpoint change does not hold the correction
+    assert flow["frozen"] == ["activity_hot_water"]
+    assert house.shadow.house_status()["settling"] is None
     stored = json.loads((tmp_path / "heat_pump_state.json").read_text())
     assert stored["devices"]["hp"]["corrections"]["fixed"] == pytest.approx(0.5)
 
