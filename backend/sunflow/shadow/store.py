@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
@@ -84,6 +84,11 @@ SCHEMA_STEPS: dict[int, list[str]] = {
         # Clearing out rows older than a year goes by start over all devices
         "CREATE INDEX heat_pump_samples_start ON heat_pump_samples (start)",
     ],
+    # Per heat pump row the flow target and the room setpoint in force (mean of the minutes), for the history view
+    10: [
+        "ALTER TABLE heat_pump_samples ADD COLUMN target_c REAL",
+        "ALTER TABLE heat_pump_samples ADD COLUMN room_setpoint_c REAL",
+    ],
 }
 # Per table whether an import takes it over; a table missing here is taken over too.
 # Only what can be thrown away may be left out.
@@ -97,7 +102,7 @@ IMPORT_TABLES: dict[str, bool] = {
 HEAT_PUMP_COLUMNS = (
     "device_id", "start", "samples", "tv_c", "tr_c", "tvbh_c", "tv_max_c", "heat_w", "heat_source", "outside_c",
     "bypass_pct", "setpoint_c", "max_setpoint_c", "written_c", "compressor", "program", "activity", "strategy",
-    "error", "rooms", "events", "flags",
+    "error", "rooms", "events", "flags", "target_c", "room_setpoint_c",
 )  # fmt: skip
 HEAT_PUMP_JSON = ("rooms", "events", "flags")
 # Heat pump samples are kept this long; older ones are deleted in blocks of this many rows

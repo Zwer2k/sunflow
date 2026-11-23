@@ -1109,6 +1109,8 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
   - `tv_max_c`: höchste Spitze im Intervall (für die Sprung-Lernwerte);
   - `written_c`: von Sunflow geschriebener Stellwert (Mittel der Minuten mit aktivem Schreiben, seit 3, Teil
     4.7; im Schatten leer);
+  - `target_c` (Vorlauf-Ziel) und `room_setpoint_c` (Raum-Soll): Mittel der Minuten, in Schatten und aktiv
+    (Schema-Schritt 10 → 11, für den Verlauf im UI; ältere Zeilen leer; Modus Aus: keine Zeilen);
   - `heat_source` (`meter`/`measured`); `compressor`: Anteil der Minuten mit laufendem Kompressor (0–1);
   - Zustände als kanonische Schlüssel (`program`, `activity`, `strategy`; häufigster Wert im Intervall);
     `error`: Schlüssel des Fehlercodes (z. B. `err_0`) oder unbekannter Text;
@@ -1129,6 +1131,10 @@ Regeln für Schemaänderungen: `datenhaltung.md`. Alle Tabellen der Wärmepumpen
     (8.5, Mindestabstand); ein Schreibvorgang über „jetzt schreiben“ trägt zusätzlich `"manual": true`.
     Ab 3, Teil 4.4 fremde Änderungen von Max T-Vorlauf `{"at", "kind": "foreign_write", "from_c",
     "value_c", "written_c" (was Sunflow bis dahin als geschrieben hatte), "regulation", "activity", "shadow"}`.
+- Verlauf im UI: `GET /api/v1/heat_pump/<id>/history?hours=24` (1–168 h): die Zeilen gekürzt auf Messwerte,
+  Stellwerte, `target_c`, `room_setpoint_c`, Zustand, Räume (nur konfigurierte) und `room_c` (gewichtetes
+  Mittel ohne Räume mit schneller Änderung), dazu die Ereignisse `write`, `start`, `stop`, `foreign_write`,
+  `unwanted_stop`, `flow_source` (auch die noch nicht gespeicherten).
 - Aufräumen: Zeilen älter als 1 Jahr löschen (im Runner einmal täglich, Blöcke zu 5000 Zeilen).
 - Lernen zurücksetzen: Zeilen des Geräts löschen und `heat_pump_state.json`-Eintrag verwerfen.
 - Export/Import: `heat_pump_samples` wird beim Import übernommen (in `IMPORT_TABLES` eintragen); der

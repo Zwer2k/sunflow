@@ -75,6 +75,28 @@ Per wallbox:
 
 ## Heat pump
 
+**Layout of the page:** At the top one sentence says what is happening now (e.g. "Hot water running – room
+control paused.") and what Sunflow wrote or would write, below it mode, room setpoint, room temperature,
+outside temperature and flow. Then per heat pump collapsible sections (the browser remembers open or closed):
+
+- **Control chain:** a diagram of how the set value comes about – room setpoint and room temperature into the
+  correction, the heat needed into the feedforward, both to the flow target, then limits, protection, writing
+  and the heat pump. Each block shows its value; held blocks are dashed, acting ones yellow. A click on a block
+  shows its details below.
+- **History:** the last 6 hours, 24 hours or 3 days as 5 minute means: flow, return, flow target, Max
+  T-Vorlauf in the heat pump (a dot per write; with "Nur Lernen" dashed what Sunflow would have written), below
+  the room temperature, the single rooms and the room setpoint; hot water, block, fast changes and compressor
+  runs as bands. Flow target and room setpoint are recorded from this version on.
+- **Plant:** outdoor unit, indoor unit, tank and rooms as a picture of where the heat flows now, with the
+  states of the heat pump.
+- **Writing and protection:** budget, pending value, latest writes and the counts per day.
+- **Learned:** the heating curve as a chart (flow over heat, with limits and measured points) and the learned
+  behaviour of the heat pump.
+
+At the end **House model** and **Settings** (margin, limits of the set value, rooms, fast change, house).
+Explanations are help texts: the "?" in the menu bar shows all of them, the "?" after a heading or a field
+only that one.
+
 **Mode** (at the top with the room setpoint), three levels:
 
 - **Off:** Sunflow does not control, does not learn and records no measurements of the heat pump (saves

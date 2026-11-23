@@ -75,6 +75,30 @@ Je Wallbox:
 
 ## Wärmepumpe
 
+**Aufbau der Seite:** Oben steht in einem Satz, was gerade passiert (z. B. „Warmwasser läuft – die
+Raumregelung pausiert.“) und was Sunflow geschrieben hat oder schreiben würde, darunter Modus, Raum-Soll,
+Raum-Ist, Außentemperatur und Vorlauf. Danach je Wärmepumpe aufklappbare Abschnitte (offen oder zu merkt sich
+der Browser):
+
+- **Regelkette:** ein Schaubild, wie der Stellwert entsteht – Raum-Soll und Raum-Ist in die Korrektur, der
+  Wärmebedarf in die Vorsteuerung, beides zum Vorlauf-Ziel, dann Grenzen, Schutz, Schreiben und die
+  Wärmepumpe. Jeder Block zeigt seinen Wert; angehaltene Blöcke sind gestrichelt, eingreifende gelb. Ein Klick
+  auf einen Block zeigt darunter seine Einzelheiten.
+- **Verlauf:** die letzten 6 Stunden, 24 Stunden oder 3 Tage als 5-Minuten-Mittel: Vorlauf, Rücklauf,
+  Vorlauf-Ziel, Max T-Vorlauf in der Wärmepumpe (ein Punkt je Schreibvorgang; bei „Nur Lernen“ gestrichelt,
+  was Sunflow geschrieben hätte), darunter Raum-Ist, die einzelnen Räume und der Raum-Soll; Warmwasser,
+  Sperre, schnelle Änderungen und Kompressorlauf als Bänder. Vorlauf-Ziel und Raum-Soll gibt es erst ab dieser
+  Version in der Aufzeichnung.
+- **Anlage:** Außengerät, Innengerät, Speicher und Räume als Bild, wohin die Wärme gerade fließt, mit den
+  Zuständen der Wärmepumpe.
+- **Schreiben und Schutz:** Budget, ausstehender Wert, letzte Schreibvorgänge und die Zählung je Tag.
+- **Gelernt:** Kennlinie als Diagramm (Vorlauf über der Wärme, mit Grenzen und Messpunkten) und das gelernte
+  Verhalten der Wärmepumpe.
+
+Am Ende **Hausmodell** und **Einstellungen** (Spielraum, Grenzen des Stellwerts, Räume, schnelle Änderung,
+Haus). Erklärungen sind Hilfetexte: Das „?“ in der Menüleiste blendet alle ein, das „?“ hinter einer
+Überschrift oder einem Feld nur diesen.
+
 **Modus** (oben beim Raum-Soll), drei Stufen:
 
 - **Aus:** Sunflow regelt nicht, lernt nicht und zeichnet keine Messwerte der Wärmepumpe auf (spart Platz,

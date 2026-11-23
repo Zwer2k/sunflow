@@ -5,6 +5,9 @@ import "../components/picker.js";
 import { confirmDialog } from "../components/dialog.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { lineChart, SERIES_COLORS } from "../components/charts.js";
+import { chainDiagram, curveChart, diagramStyles, historyChart, plantDiagram } from "../components/heat-pump-diagrams.js";
+import { toggleSheet } from "../lib/display-toggles.js";
+import { isOpen, setOpen } from "../lib/collapse.js";
 
 // Room temperature at which the cooling rate is shown (api/house.py)
 const COOLING_INSIDE_C = 20;
@@ -49,6 +52,33 @@ function sourceReasonText(reason) {
 const STATUS_EVERY_MS = 60_000;
 // Days the counts of the writes Sunflow would have caused cover
 const WRITES_DAYS = 7;
+// Hours the history can show, and how often it is read again (its rows are 5 minute means)
+const HISTORY_HOURS = [6, 24, 72];
+const HISTORY_EVERY_MS = 5 * 60_000;
+/** A temperature or kelvin value with one decimal; "–" when unknown. */
+const one = (v) => (v == null || !Number.isFinite(Number(v)) ? "–" : decimal(Number(v).toFixed(1)));
+/** A temperature without ",0" when it is whole (limits). */
+const whole = (v) => (v != null && Number.isInteger(Number(v)) ? String(v) : one(v));
+/** A signed difference in kelvin. */
+const signed = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${decimal(Math.abs(v).toFixed(1))} K`);
+// State of the learned heating curve
+const CURVE_STATES = () => ({
+  ready: t("nutzbar"),
+  learning: t("lernt noch (zu wenig Daten)"),
+  implausible: t("nicht plausibel"),
+  unsure: t("nicht besser als „Vorlauf bleibt“"),
+});
+// Short forms for the blocks of the control chain
+const FLOW_SOURCES_SHORT = () => ({ base: t("Basis"), house_model: t("aus dem Hausmodell"), heat_recent: t("Wärme der letzten 3 h") });
+const SOURCE_REASONS_SHORT = () => ({
+  no_curve: t("keine Kennlinie"),
+  curve_learning: t("Kennlinie lernt"),
+  curve_implausible: t("Kennlinie unplausibel"),
+  curve_unsure: t("Kennlinie unsicher"),
+  curve_stale: t("Kennlinie wird neu bewertet"),
+  no_heat: t("Wärme unbekannt"),
+  heat_low: t("Wärme zu klein"),
+});
 // What the protection layer is doing (design/heat_pump.md, 8.4)
 const GUARD_PHASES = () => ({
   idle: t("Pause: Startregel"),
@@ -160,7 +190,9 @@ const WRITING_REFUSED = () => ({
   esp_regulation: t("ESP-Regelung aktiv"),
 });
 
-/** The house: its rooms and what Sunflow learned from them (settings area "Wärmepumpe"). */
+/** Settings area "Wärmepumpe": status, mode and room setpoint on top, then per heat pump the control chain,
+ * the history, the plant, writing and what was learned; house model and settings at the end. Explanations
+ * carry the class "help" (shown or hidden with the "?" of the menu bar). */
 class SunflowHeatPump extends LitElement {
   static properties = {
     _candidates: { state: true },
@@ -169,6 +201,10 @@ class SunflowHeatPump extends LitElement {
     _houseModel: { state: true },
     _status: { state: true },
     _writes: { state: true },
+    _history: { state: true },
+    _hours: { state: true },
+    _selected: { state: true },
+    _open: { state: true },
     _limitsEdit: { state: true },
     _writeNow: { state: true },
     _climateBusy: { state: true },
@@ -184,6 +220,14 @@ class SunflowHeatPump extends LitElement {
     this._houseModel = null;
     this._status = null;
     this._writes = {};
+    // Per heat pump: rows and events of the last hours, and when they were read
+    this._history = {};
+    this._historyAt = {};
+    this._hours = HISTORY_HOURS[1];
+    // Per heat pump: the block of the control chain whose details show
+    this._selected = {};
+    // Bumped when a section opens or closes (the state itself is in lib/collapse.js)
+    this._open = 0;
     // Per heat pump the range of the set value being edited: { min, max } as typed
     this._limitsEdit = {};
     // Per heat pump: "write now" sent, waiting for the next tick
@@ -217,9 +261,10 @@ class SunflowHeatPump extends LitElement {
       this._status = { error: err.message, devices: [], house: null };
     }
     this._loadWrites();
+    this._loadHistory();
   }
 
-  /** Per day the writes Sunflow would have caused and the unwanted shutdowns (shadow). */
+  /** Per day the writes Sunflow caused or would have caused and the unwanted shutdowns. */
   async _loadWrites() {
     const writes = {};
     for (const device of this._status?.devices ?? []) {
@@ -233,6 +278,21 @@ class SunflowHeatPump extends LitElement {
     this._writes = writes;
   }
 
+  /** The history of every heat pump; read again every HISTORY_EVERY_MS (rows are 5 minute means). */
+  async _loadHistory(force = false) {
+    const now = Date.now();
+    for (const device of this._status?.devices ?? []) {
+      if (!force && now - (this._historyAt[device.id] ?? 0) < HISTORY_EVERY_MS) continue;
+      this._historyAt[device.id] = now;
+      try {
+        const history = await api.heatPumpHistory(device.id, this._hours);
+        this._history = { ...this._history, [device.id]: history };
+      } catch (err) {
+        this._history = { ...this._history, [device.id]: { error: err.message } };
+      }
+    }
+  }
+
   async _load() {
     try {
       this._house = await api.house();
@@ -240,6 +300,7 @@ class SunflowHeatPump extends LitElement {
     } catch (err) {
       this._error = t("Einstellungen nicht verfügbar: {error}", { error: err.message });
     }
+    this._loadCandidates();
     this._loadHouseModel();
     this._loadStatus();
   }
@@ -267,52 +328,187 @@ class SunflowHeatPump extends LitElement {
         ? html`<div class="alert error" role="alert">${this._error}</div>`
         : html`<p class="muted">${t("Lade …")}</p>`}`;
     }
+    const devices = this._status?.devices ?? [];
+    const single = devices.length === 1 ? devices[0] : null;
     return html`
-      <div class="heading">
+      <div class="title-row">
         <h1>${t("Wärmepumpe")}</h1>
-        <p class="muted small">${t("Sunflow lernt aus den Messwerten, wie das Haus auf die Heizung reagiert, und regelt den Vorlauf, wenn du es einschaltest (Modus).")}</p>
+        ${single ? html`<span class="small ${single.status === "compatible" ? "muted" : "warn-text"}">${single.name} · ${LINK()[single.status] ?? single.status}</span>` : nothing}
       </div>
+      <p class="help small">${t("Sunflow lernt aus den Messwerten, wie Haus und Wärmepumpe reagieren, und regelt den Vorlauf, wenn du „Lernen + Regeln“ einschaltest. Erklärungen blendest du oben mit „?“ ein, einzeln mit dem „?“ hinter einer Überschrift.")}</p>
       ${this._error ? html`<div class="alert error" role="alert">${this._error}</div>` : nothing}
-      ${this._renderClimate()}
-      ${(this._status?.devices ?? []).map((device) => this._renderDevice(device))}
-      ${this._renderHouse()}
+      ${this._status?.error ? html`<div class="alert error" role="alert">${t("Status nicht verfügbar: {error}", { error: this._status.error })}</div>` : nothing}
+      ${devices.map((device) => this._renderStatusLine(device, devices.length > 1))}
+      ${this._renderControls()}
+      ${devices.map((device) => this._renderDevice(device, devices.length > 1))}
+      ${this._section("house_model", t("Hausmodell"), this._houseModelSummary(), null, () => this._renderHouseModel(), false)}
+      ${this._section("settings", t("Einstellungen"), t("Spielraum, Grenzen, Räume, Heizflächen"), null, () => this._renderSettings(), false)}
     `;
   }
 
-  /** Room setpoint and mode (climate entity "Haus"), room temperature and a setpoint change being followed. */
-  _renderClimate() {
+  /** A collapsible section; open or closed is remembered per browser (lib/collapse.js). */
+  _section(id, title, summary, help, body, fallback = true) {
+    const key = `heat_pump:${id}`;
+    const open = isOpen(key, fallback);
+    const toggle = () => {
+      setOpen(key, !open);
+      this._open += 1;
+    };
+    return html`
+      <section class="sec">
+        <div class="section-head" @click=${toggle}>
+          <button class="sec-toggle" aria-expanded=${open} aria-label=${title} @click=${(e) => { e.stopPropagation(); toggle(); }}>
+            <span class="chev ${open ? "open" : ""}"></span>
+          </button>
+          <h2>${title}</h2>
+          <span class="sum">${summary ?? ""}</span>
+        </div>
+        ${open && help ? html`<p class="help small">${help}</p>` : nothing}
+        ${open ? html`<div class="sec-body">${body()}</div>` : nothing}
+      </section>
+    `;
+  }
+
+  _tile(label, value, note = null, cls = "") {
+    return html`<div class="tile ${cls}"><div class="small muted">${label}</div><div class="value">${value}</div>${note ? html`<div class="small muted">${note}</div>` : nothing}</div>`;
+  }
+
+  _roomName(entityId) {
+    return (this._candidates?.temperature ?? []).find((c) => c.entity_id === entityId)?.name ?? entityId;
+  }
+
+  /** The latest row of the history (outside temperature and rooms are not in the status). */
+  _lastRow(deviceId) {
+    const rows = this._history[deviceId]?.rows ?? [];
+    return rows.length ? rows[rows.length - 1] : null;
+  }
+
+  /** One sentence on what happens now, what Sunflow writes or would write, and marks of the state. */
+  _renderStatusLine(device, named) {
     const house = this._status?.house;
-    if (this._status?.error) return html`<div class="alert error" role="alert">${t("Status nicht verfügbar: {error}", { error: this._status.error })}</div>`;
+    const state = device.state;
+    const flow = state?.flow;
+    const guard = flow?.guard;
+    const shadow = flow ? flow.shadow !== false : !device.writing?.active;
+    const values = state?.values ?? {};
+    let tone = "";
+    let main;
+    if (house?.mode === "off") main = t("Modus Aus: Sunflow regelt nicht und lernt nicht.");
+    else if (!state) main = t("Noch keine Messwerte.");
+    else if (state.fault) {
+      tone = "error";
+      main = t("Störung der Wärmepumpe: {error}", { error: state.error ?? "–" });
+    } else if (device.status !== "compatible") {
+      tone = "warn";
+      main = t("Wärmepumpe: {state}", { state: LINK()[device.status] ?? device.status });
+    } else if (state.blocked) {
+      tone = "warn";
+      main = guard?.block_reason === "foreign"
+        ? t("Raumthermostat-Sperre aktiv, nicht von Sunflow gesetzt: Die Wärmepumpe heizt nicht. Sunflow hebt sie nicht auf.")
+        : t("Raumthermostat-Sperre aktiv: Die Wärmepumpe heizt nicht.");
+    } else if (state.activity === "hot_water") main = t("Warmwasser läuft – die Raumregelung pausiert.");
+    else if (state.activity === "defrost") main = t("Abtauen – die Raumregelung pausiert.");
+    else if (state.valid) {
+      main = flow?.target_c != null
+        ? t("Heizbetrieb: Vorlauf-Ziel {target} °C.", { target: one(flow.target_c) })
+        : t("Heizbetrieb.");
+    } else main = t("Raumregelung pausiert: {reasons}", { reasons: state.frozen.map(frozenText).join(", ") });
+    const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+    const setpoint = flow?.setpoint;
+    let sub = null;
+    if (house?.mode !== "off" && guard) {
+      if (shadow) {
+        sub = guard.setpoint_c != null
+          ? t("Nur Lernen: Sunflow würde Max T-Vorlauf {value} °C schreiben; in der Wärmepumpe stehen {real} °C.", { value: one(guard.setpoint_c), real: one(values.max_flow_setpoint) })
+          : t("Nur Lernen: Sunflow schreibt nichts an die Wärmepumpe.");
+      } else if (setpoint?.written_c != null) {
+        sub = t("Max T-Vorlauf {value} °C, geschrieben {time} ({reason}).", {
+          value: one(setpoint.written_c), time: setpoint.written_at ? time(setpoint.written_at) : "–",
+          reason: WRITE_REASONS()[setpoint.written_reason] ?? setpoint.written_reason ?? "–",
+        });
+      }
+      if (guard.floor_c != null && guard.desired_c != null && guard.floor_c > guard.desired_c + 0.05) {
+        sub = `${sub ?? ""} ${t("Der Schutz hält ihn über dem Vorlauf-Ziel ({phase}).", { phase: GUARD_PHASES()[guard.phase] ?? guard.phase })}`;
+      }
+    }
+    const curve = flow?.curve;
+    const budget = guard?.budget;
+    const chips = [
+      house?.mode === "off" ? null : shadow ? [t("Nur Lernen"), ""] : [t("Lernen + Regeln"), "ok"],
+      flow?.frozen?.length ? [t("Korrektur angehalten: {reasons}", { reasons: flow.frozen.map(frozenText).join(", ") }), ""] : null,
+      (flow?.limited ?? []).length ? [flow.limited.map((l) => LIMITS()[l] ?? l).join(", "), "warn"] : null,
+      curve ? [t("Kennlinie: {state}", { state: CURVE_STATES()[curve.state] ?? curve.state }), curve.state === "ready" ? "ok" : ""] : null,
+      budget ? [t("{used} von {per_day} Schreibvorgängen heute", { used: budget.used_today, per_day: budget.per_day }), ""] : null,
+    ].filter(Boolean);
+    return html`
+      <div class="status ${tone}" role="status">
+        <div class="status-main">${named ? html`<span class="muted">${device.name}: </span>` : nothing}${main}</div>
+        ${sub ? html`<div class="status-sub">${sub}</div>` : nothing}
+        ${chips.length ? html`<div class="chips">${chips.map(([text, cls]) => html`<span class="chip ${cls}">${text}</span>`)}</div>` : nothing}
+      </div>
+    `;
+  }
+
+  /** Mode, room setpoint and the main values; warnings about rooms stay visible. */
+  _renderControls() {
+    const house = this._status?.house;
     if (!house) return nothing;
-    const one = (v) => (v == null ? "–" : decimal(Number(v).toFixed(1)));
+    const pumps = (this._status?.devices ?? []).filter((d) => d.writing);
+    const current = house.mode === "off" ? "off" : pumps.some((d) => d.writing.active) ? "control" : "learn";
+    // Learning + control needs at least one heat pump that may be switched on
+    const refused = pumps.length && !pumps.some((d) => d.writing.active || d.writing.refused == null)
+      ? pumps.map((d) => WRITING_REFUSED()[d.writing.refused] ?? d.writing.refused).join(", ")
+      : pumps.length ? null : t("keine Wärmepumpe");
+    const modeHelp = {
+      off: t("Sunflow regelt nicht, lernt nicht und zeichnet keine Messwerte der Wärmepumpe auf; das Gelernte bleibt erhalten."),
+      learn: t("Sunflow zeichnet auf und lernt, zeigt an, was es schreiben würde, schreibt aber nichts an die Wärmepumpe."),
+      control: t("Sunflow schreibt Max T-Vorlauf (EEPROM, im Budget) und die Raumthermostat-Sperre, wenn die Regeln es verlangen. Zurückschalten stellt nichts zurück: Max T-Vorlauf und eine gesetzte Sperre bleiben stehen."),
+    }[current];
+    const mode = (value, label) => html`<button class=${current === value ? "on" : ""} aria-pressed=${current === value}
+      ?disabled=${this._climateBusy || this._busy || (value === "control" && refused != null && current !== "control")}
+      @click=${() => this._setOperation(value, current, pumps)}>${label}</button>`;
+    const step = Number(house.step_c ?? 0.5);
+    const setTo = (value) => {
+      const clamped = Math.min(Number(house.max_c), Math.max(Number(house.min_c), Math.round(value / step) * step));
+      if (clamped !== Number(house.setpoint_c)) this._setClimate({ setpoint_c: clamped });
+    };
+    const total = house.rooms_used.length + house.rooms_missing.length + house.rooms_stale.length + (house.rooms_ventilated ?? []).length;
+    const first = this._status.devices?.[0];
+    const values = first?.state?.values ?? {};
+    const outside = first ? this._lastRow(first.id)?.outside_c : null;
     const settling = house.settling;
     return html`
-      <section class="device">
-        <span class="device-title">${t("Raum-Soll")}</span>
-        <p class="small muted">${t("Auch als Thermostat „Haus“ in Home Assistant, z. B. für Zeitpläne. Aus dort entspricht Aus hier; Heizen dort kehrt zu „Nur Lernen“ bzw. „Lernen + Regeln“ zurück, je nachdem, was zuletzt galt. „Lernen + Regeln“ wird nur hier eingeschaltet.")}</p>
-        <div class="fields">
-          <label class="field">
+      <section class="card">
+        <div class="controls">
+          <div class="field">
+            <span class="field-label">${t("Modus")}</span>
+            <div class="seg" role="group" aria-label=${t("Modus")}>${mode("off", t("Aus"))}${mode("learn", t("Nur Lernen"))}${mode("control", t("Lernen + Regeln"))}</div>
+            <span class="help small">${modeHelp}</span>
+            ${refused != null && current !== "control"
+              ? html`<span class="small warn-text">${t("„Lernen + Regeln“ nicht möglich: {reason}", { reason: refused })}</span>`
+              : nothing}
+          </div>
+          <div class="field">
             <span class="field-label">${t("Raum-Soll")}</span>
-            <span class="input-unit"><input type="number" inputmode="decimal" min=${house.min_c} max=${house.max_c} step=${house.step_c}
-              .value=${String(house.setpoint_c)} ?disabled=${this._climateBusy}
-              @change=${(e) => this._setClimate({ setpoint_c: Number(e.target.value) })}> °C</span>
-            <span class="small muted">${t("{min} bis {max} °C", { min: one(house.min_c), max: one(house.max_c) })}</span>
-          </label>
-          ${this._renderMargin(house, one)}
-          ${this._renderOperation(house)}
-          <div class="tile">
-            <div class="small muted">${t("Raum-Ist")}</div>
-            <div class="value">${one(house.room_c)} °C</div>
-            <div class="small muted">${t("aus {used} von {total} Räumen", { used: house.rooms_used.length, total: house.rooms_used.length + house.rooms_missing.length + house.rooms_stale.length + (house.rooms_ventilated ?? []).length })}</div>
+            <div class="stepper">
+              <button class="secondary" aria-label=${t("kälter")} ?disabled=${this._climateBusy} @click=${() => setTo(Number(house.setpoint_c) - step)}>−</button>
+              <span class="input-unit"><input type="number" inputmode="decimal" min=${house.min_c} max=${house.max_c} step=${house.step_c}
+                .value=${String(house.setpoint_c)} ?disabled=${this._climateBusy}
+                @change=${(e) => this._setClimate({ setpoint_c: Number(e.target.value) })}> °C</span>
+              <button class="secondary" aria-label=${t("wärmer")} ?disabled=${this._climateBusy} @click=${() => setTo(Number(house.setpoint_c) + step)}>+</button>
+            </div>
+            <span class="help small">${t("Mittlere Raumtemperatur aller Räume ({min} bis {max} °C). Auch als Thermostat „Haus“ in Home Assistant, z. B. für Zeitpläne. Aus dort entspricht Aus hier; Heizen dort kehrt zu „Nur Lernen“ bzw. „Lernen + Regeln“ zurück, je nachdem, was zuletzt galt. „Lernen + Regeln“ wird nur hier eingeschaltet.", { min: one(house.min_c), max: one(house.max_c) })}</span>
+          </div>
+          <div class="tiles main-tiles">
+            ${this._tile(t("Raum-Ist"), `${one(house.room_c)} °C`, t("aus {used} von {total} Räumen", { used: house.rooms_used.length, total }))}
+            ${this._tile(t("Außen"), `${one(outside)} °C`)}
+            ${first?.state ? this._tile(t("Vorlauf"), `${one(values.flow_temperature)} °C`, t("Rücklauf {value} °C", { value: one(values.return_temperature) })) : nothing}
           </div>
         </div>
-        ${house.preheat_k != null
-          ? html`<p class="small muted">${t("Spielraum der Planung: Bei PV-Überschuss oder günstigem Strom darf Sunflow das Haus bis zu so viel über den Raum-Soll heizen bzw. es bei teurem Strom so weit darunter fallen lassen. Ohne Ersparnis bleibt es beim Raum-Soll. Die Planung nutzt den Spielraum in einer der nächsten Versionen.")}</p>`
-          : nothing}
         ${house.rooms_stale.length || house.rooms_missing.length
           ? html`<p class="small warn-text">${t("Nicht berücksichtigt (nicht verfügbar oder seit über 2 h keine Meldung): {rooms}", { rooms: [...house.rooms_missing, ...house.rooms_stale].map((e) => this._roomName(e)).join(", ") })}</p>`
           : nothing}
-        ${this._renderVentilation(house, one)}
+        ${this._renderFastNow(house)}
         ${settling
           ? html`<p class="small muted">${t("Raum-Soll geändert auf {target} °C: Die Korrektur wartet, bis der Raum ihn erreicht (höchstens 24 h).", { target: one(settling.target_c) })}</p>`
           : nothing}
@@ -320,95 +516,40 @@ class SunflowHeatPump extends LitElement {
     `;
   }
 
-  /** Margin of the planning around the room setpoint (design/heat_pump.md 6.3): preheat up to +x, lower
-   * down to -y. Stored with the setpoint; the planning uses it from step 4 part 2. */
-  _renderMargin(house, one) {
-    if (house.preheat_k == null || house.lower_k == null) return nothing;
-    const max = house.margin_max_k ?? 3;
-    const step = house.margin_step_k ?? 0.1;
-    const field = (key, label, help) => html`
-      <label class="field">
-        <span class="field-label">${label}</span>
-        <span class="input-unit"><input type="number" inputmode="decimal" min="0" max=${max} step=${step}
-          .value=${String(house[key])} ?disabled=${this._climateBusy}
-          @change=${(e) => this._setClimate({ [key]: Number(e.target.value) })}> K</span>
-        <span class="small muted">${help}</span>
-      </label>`;
-    const setpoint = Number(house.setpoint_c);
-    return html`
-      ${field("preheat_k", t("Vorheizen bis"), t("= {temp} °C (0 bis {max} K)", { temp: one(setpoint + Number(house.preheat_k)), max: one(max) }))}
-      ${field("lower_k", t("Absenken bis"), t("= {temp} °C (0 bis {max} K)", { temp: one(setpoint - Number(house.lower_k)), max: one(max) }))}
-    `;
+  /** Rooms with a fast change now (airing, cooking ...): left out of room temperature and correction. */
+  _renderFastNow(house) {
+    const active = house.ventilation ?? [];
+    if (!active.length) return nothing;
+    const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+    const hours = decimal(String((this._house?.fast_change?.max_h) ?? 2));
+    return html`<p class="small warn-text">${t("Schnelle Änderung erkannt, Raum zählt vorerst nicht und die Korrektur wartet (höchstens {hours} h): {rooms}", {
+      hours,
+      rooms: active.map((e) => t("{room} seit {time} ({from} → {low} °C)", { room: this._roomName(e.entity_id), time: time(e.since), from: one(e.start_c), low: one(e.extreme_c ?? e.low_c) })).join(", "),
+    })}</p>`;
   }
 
-  /** Rooms with a fast change now (airing, cooking ...; left out of room temperature and correction) and
-   * events of the last 24 h. */
-  _renderVentilation(house, one) {
-    const active = house.ventilation ?? [];
-    const recent = house.ventilation_recent ?? [];
-    if (!active.length && !recent.length) return nothing;
+  /** Fast changes of the last 24 h, as a list. */
+  _renderFastRecent(house) {
+    const recent = house?.ventilation_recent ?? [];
+    if (!recent.length) return nothing;
     const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
-    // Signed change; events of older versions carry only low_c/drop_k (falls)
-    const extreme = (e) => e.extreme_c ?? e.low_c;
     const change = (e) => {
       const k = e.change_k ?? -e.drop_k;
       return `${k < 0 ? "−" : "+"}${decimal(Math.abs(Number(k)).toFixed(1))}`;
     };
-    const hours = decimal(String((this._house?.fast_change?.max_h) ?? 2));
-    return html`
-      ${active.length
-        ? html`<p class="small warn-text">${t("Schnelle Änderung erkannt, Raum zählt vorerst nicht und die Korrektur wartet (höchstens {hours} h): {rooms}", {
-          hours,
-          rooms: active.map((e) => t("{room} seit {time} ({from} → {low} °C)", { room: this._roomName(e.entity_id), time: time(e.since), from: one(e.start_c), low: one(extreme(e)) })).join(", "),
-        })}</p>`
-        : nothing}
-      ${recent.length
-        ? html`<p class="small muted">${t("Schnelle Änderungen in den letzten 24 h: {events}", {
-          events: recent.map((e) => t("{room} {from}–{until} ({change} K)", { room: this._roomName(e.entity_id), from: time(e.since), until: time(e.until), change: change(e) })).join(", "),
-        })}</p>`
-        : nothing}
-    `;
-  }
-
-  /** Mode: off, learning only, learning + control - the climate mode and the switch of every heat pump
-   * (design/heat_pump.md 16 step 3). */
-  _renderOperation(house) {
-    const pumps = (this._status?.devices ?? []).filter((d) => d.writing);
-    const current = house.mode === "off" ? "off" : pumps.some((d) => d.writing.active) ? "control" : "learn";
-    // Learning + control needs at least one heat pump that may be switched on
-    const refused = pumps.length && !pumps.some((d) => d.writing.active || d.writing.refused == null)
-      ? pumps.map((d) => WRITING_REFUSED()[d.writing.refused] ?? d.writing.refused).join(", ")
-      : pumps.length ? null : t("keine Wärmepumpe");
-    const help = {
-      off: t("Sunflow regelt nicht, lernt nicht und zeichnet keine Messwerte der Wärmepumpe auf; das Gelernte bleibt erhalten."),
-      learn: t("Sunflow zeichnet auf und lernt, zeigt an, was es schreiben würde, schreibt aber nichts an die Wärmepumpe."),
-      control: t("Sunflow schreibt Max T-Vorlauf (EEPROM, im Budget) und die Raumthermostat-Sperre, wenn die Regeln es verlangen. Zurückschalten stellt nichts zurück: Max T-Vorlauf und eine gesetzte Sperre bleiben stehen."),
-    }[current];
-    return html`
-      <label class="field">
-        <span class="field-label">${t("Modus")}</span>
-        <select ?disabled=${this._climateBusy || this._busy} @change=${(e) => this._setOperation(e.target.value, current, pumps, e.target)}>
-          <option value="off" ?selected=${current === "off"}>${t("Aus")}</option>
-          <option value="learn" ?selected=${current === "learn"}>${t("Nur Lernen")}</option>
-          <option value="control" ?selected=${current === "control"} ?disabled=${refused != null && current !== "control"}>${t("Lernen + Regeln")}</option>
-        </select>
-        <span class="small muted">${help}</span>
-        ${refused != null && current !== "control"
-          ? html`<span class="small warn-text">${t("„Lernen + Regeln“ nicht möglich: {reason}", { reason: refused })}</span>`
-          : nothing}
-      </label>
-    `;
+    return html`<p class="small muted">${t("Schnelle Änderungen in den letzten 24 h: {events}", {
+      events: recent.map((e) => t("{room} {from}–{until} ({change} K)", { room: this._roomName(e.entity_id), from: time(e.since), until: time(e.until), change: change(e) })).join(", "),
+    })}</p>`;
   }
 
   /** Switch the mode. Order keeps it safe: the switch of the heat pumps first, then the climate mode. */
-  async _setOperation(value, current, pumps, select) {
+  async _setOperation(value, current, pumps) {
     if (value === current) return;
     if (value === "control" && !(await confirmDialog({
       title: t("„Lernen + Regeln“ einschalten?"),
       text: t("Sunflow schreibt dann Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe. Andere Regler, die diese Werte schreiben, vorher abschalten. Zurückschalten stellt nichts zurück."),
       confirm: t("Einschalten"),
     }))) {
-      select.value = current;
       return;
     }
     this._busy = true;
@@ -428,10 +569,6 @@ class SunflowHeatPump extends LitElement {
     }
   }
 
-  _roomName(entityId) {
-    return (this._candidates?.temperature ?? []).find((c) => c.entity_id === entityId)?.name ?? entityId;
-  }
-
   async _setClimate(changes) {
     this._climateBusy = true;
     try {
@@ -445,62 +582,663 @@ class SunflowHeatPump extends LitElement {
     }
   }
 
-  /** A heat pump: link, states, whether it heats validly, live values and the shadow flow target. */
-  _renderDevice(device) {
+  /** A heat pump: problems, then its sections (control chain, history, plant, writing, learned). */
+  _renderDevice(device, named) {
     const state = device.state;
-    const one = (v) => (v == null ? "–" : decimal(Number(v).toFixed(1)));
-    const tile = (label, value, help = null) => html`<div class="tile"><div class="small muted">${label}</div><div class="value">${value}</div>${help ? html`<div class="small muted">${help}</div>` : nothing}</div>`;
     const flow = state?.flow;
+    const id = device.id;
+    const shadow = flow ? flow.shadow !== false : true;
+    const guard = flow?.guard;
     const values = state?.values ?? {};
+    const one1 = (v) => `${one(v)} °C`;
     return html`
-      <section class="device">
-        <span class="device-title">${device.name}</span>
-        <p class="small ${device.status === "compatible" ? "muted" : "warn-text"}">${LINK()[device.status] ?? device.status}${device.mac ? ` · ${device.mac}` : ""}</p>
-        ${(device.problems ?? []).length
-          ? html`<ul class="small warn-text">${device.problems.map((p) => html`<li>${p.reason}${p.optional ? ` (${t("optional")})` : ""}</li>`)}</ul>`
-          : nothing}
-        ${state?.blocked ? html`<div class="alert warn" role="status">${t("Raumthermostat-Sperre aktiv: Die Wärmepumpe heizt nicht.")}</div>` : nothing}
-        ${state?.fault ? html`<div class="alert error" role="alert">${t("Störung der Wärmepumpe: {error}", { error: state.error ?? "–" })}</div>` : nothing}
-        ${!state
-          ? html`<p class="small muted">${t("Noch keine Messwerte.")}</p>`
-          : html`
-            <div class="tiles">
-              ${tile(t("Programm"), PROGRAMS()[state.program] ?? state.program, state.program_key ?? null)}
-              ${tile(t("Aktivität"), ACTIVITIES()[state.activity] ?? state.activity, state.compressor == null ? null : state.compressor ? t("Kompressor an") : t("Kompressor aus"))}
-              ${tile(t("Strategie"), STRATEGIES()[state.strategy] ?? state.strategy)}
-              ${tile(t("Bypass-Ventil"), state.bypass_pct == null ? "–" : `${Math.round(state.bypass_pct)} %`)}
-              ${tile(t("Vorlauf"), `${one(values.flow_temperature)} °C`, values.flow_temperature_max == null ? null : t("Spitze {value} °C", { value: one(values.flow_temperature_max) }))}
-              ${tile(t("Rücklauf"), `${one(values.return_temperature)} °C`)}
-              ${tile(t("Vorlauf-Soll (wirksam)"), `${one(values.flow_setpoint)} °C`, t("Max T-Vorlauf {value} °C", { value: one(values.max_flow_setpoint) }))}
-            </div>
-            <p class="small ${state.valid ? "muted" : "warn-text"}">${state.valid
-              ? (this._status?.house?.mode === "off" ? t("Gültiger Heizbetrieb; Modus Aus: Sunflow lernt nicht.") : t("Gültiger Heizbetrieb: Sunflow rechnet die Korrektur und lernt."))
-              : t("Eingefroren: {reasons}", { reasons: state.frozen.map(frozenText).join(", ") })}</p>
-            ${flow ? this._renderFlow(flow, one, tile) : nothing}
-            ${flow?.guard ? this._renderGuard(device.id, flow.guard, this._writes[device.id], one, tile) : nothing}`}
-        ${device.writing ? this._renderWriting(device) : nothing}
-        ${device.flow_limits ? this._renderLimits(device, one) : nothing}
-      </section>
+      ${named ? html`<div class="title-row device-name"><h2>${device.name}</h2>
+        <span class="small ${device.status === "compatible" ? "muted" : "warn-text"}">${LINK()[device.status] ?? device.status}${device.mac ? ` · ${device.mac}` : ""}</span></div>` : nothing}
+      ${(device.problems ?? []).length
+        ? html`<ul class="small warn-text">${device.problems.map((p) => html`<li>${p.reason}${p.optional ? ` (${t("optional")})` : ""}</li>`)}</ul>`
+        : nothing}
+      ${!state
+        ? html`<p class="small muted">${t("Noch keine Messwerte.")}</p>`
+        : html`
+          ${flow ? this._section(`chain:${id}`, t("Regelkette"),
+            flow.target_c == null ? "" : shadow
+              ? t("Ziel {target} → würde {value} schreiben", { target: one1(flow.target_c), value: one1(guard?.setpoint_c) })
+              : t("Ziel {target} → Max T-Vorlauf {value}", { target: one1(flow.target_c), value: one1(values.max_flow_setpoint) }),
+            t("So entsteht der Wert, den Sunflow an die Wärmepumpe schreibt (Max T-Vorlauf), von links nach rechts. Jeder Block zeigt seinen aktuellen Wert; ein Klick zeigt darunter die Einzelheiten."),
+            () => this._renderChain(device)) : nothing}
+          ${this._section(`history:${id}`, t("Verlauf"), t("letzte {hours} h", { hours: this._hours }),
+            t("Vorlauf, Vorlauf-Ziel und Max T-Vorlauf oben, die Räume unten, als 5-Minuten-Mittel. Bei Warmwasser und Abtauen springt der Vorlauf; das zählt nicht für die Regelung. Ein Punkt ist ein Schreibvorgang; bei „Nur Lernen“ zeigt die gestrichelte Linie, was Sunflow geschrieben hätte."),
+            () => this._renderHistory(device))}
+          ${this._section(`plant:${id}`, t("Anlage"),
+            [ACTIVITIES()[state.activity] ?? state.activity, state.compressor == null ? null : state.compressor ? t("Kompressor an") : t("Kompressor aus"),
+              state.bypass_pct == null ? null : t("Bypass {pct} %", { pct: Math.round(state.bypass_pct) })].filter(Boolean).join(" · "),
+            t("Zustand der Wärmepumpe und wohin die Wärme gerade fließt. Die Räume sind nach ihrem Abstand zum Raum-Soll gefärbt: grün höchstens 0,5 K, rot wärmer, blau kälter."),
+            () => this._renderPlant(device), false)}
+          ${guard ? this._section(`writing:${id}`, t("Schreiben und Schutz"), this._writingSummary(guard), null,
+            () => this._renderGuard(id, guard, this._writes[id]), false) : nothing}
+          ${flow ? this._section(`learned:${id}`, t("Gelernt"),
+            flow.curve ? t("Kennlinie: {state}", { state: CURVE_STATES()[flow.curve.state] ?? flow.curve.state }) : t("Kennlinie noch nicht berechnet"),
+            null, () => this._renderLearned(device), false) : nothing}`}
     `;
   }
 
-  /** Whether Sunflow controls this heat pump (mode "Lernen + Regeln") or why it cannot. */
-  _renderWriting(device) {
-    const writing = device.writing;
-    const off = this._status?.house?.mode === "off";
-    const text = off ? t("Modus Aus: Sunflow regelt nicht und lernt nicht.")
-      : writing.active ? t("Lernen + Regeln: Sunflow schreibt an diese Wärmepumpe.")
-      : t("Nur Lernen: Sunflow schreibt nichts an diese Wärmepumpe.");
+  // ---------- Control chain ----------
+
+  /** The blocks of the control chain with their values and whether they are held or acting. */
+  _chainBlocks(device) {
+    const house = this._status?.house ?? {};
+    const state = device.state;
+    const flow = state.flow;
+    const guard = flow.guard ?? {};
+    const values = state.values ?? {};
+    const shadow = flow.shadow !== false;
+    const curve = (flow.source ?? "base") !== "base";
+    const budget = guard.budget;
+    const total = (house.rooms_used ?? []).length + (house.rooms_missing ?? []).length + (house.rooms_stale ?? []).length + (house.rooms_ventilated ?? []).length;
+    const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+    const setpoint = flow.setpoint ?? {};
+    const raising = guard.floor_c != null && guard.desired_c != null && guard.floor_c > guard.desired_c + 0.05;
+    const outside = this._lastRow(device.id)?.outside_c;
+    return {
+      soll: { title: t("Raum-Soll"), value: `${one(house.setpoint_c)} °C`,
+        sub: house.preheat_k ? t("Vorheizen bis +{k} K", { k: one(house.preheat_k) }) : "" },
+      ist: { title: t("Raum-Ist"), value: `${one(house.room_c)} °C`, sub: t("{used} von {total} Räumen", { used: (house.rooms_used ?? []).length, total }),
+        state: (house.rooms_missing ?? []).length + (house.rooms_stale ?? []).length ? "warn" : (house.ventilation ?? []).length ? "acting" : null },
+      corr: { title: t("Korrektur"), value: signed(flow.correction_k), sub: flow.frozen.length ? t("angehalten") : t("läuft"),
+        state: flow.frozen.length ? "frozen" : (flow.limited ?? []).length ? "acting" : null },
+      heat: flow.heat_needed_w != null
+        ? { title: t("Wärmebedarf"), value: `${decimal((flow.heat_needed_w / 1000).toFixed(2))} kW`, sub: FLOW_SOURCES_SHORT()[flow.source] ?? "" }
+        : { title: t("Außen"), value: `${one(outside)} °C`, sub: t("Wärmebedarf unbekannt") },
+      ff: { title: t("Vorsteuerung"), value: `${one(curve ? flow.curve_c : flow.base_c)} °C`,
+        sub: curve ? t("Kennlinie") : t("Basis ({reason})", { reason: SOURCE_REASONS_SHORT()[flow.source_reason] ?? t("ohne Kennlinie") }) },
+      target: { title: t("Vorlauf-Ziel"), value: `${one(flow.target_c)} °C`, sub: curve ? t("Kennlinie + Korrektur") : t("Basis + Korrektur") },
+      limits: { title: t("Grenzen"), value: `${whole(guard.min_c)}–${whole(guard.max_c)} °C`,
+        sub: (guard.limited ?? flow.limited ?? []).length ? (guard.limited ?? flow.limited).map((l) => LIMITS()[l] ?? l).join(", ") : t("eingehalten"),
+        state: (guard.limited ?? flow.limited ?? []).length ? "acting" : null },
+      guard: { title: t("Schutz"), value: guard.block ? t("Sperre") : raising ? `≥ ${one(guard.floor_c)} °C` : `${one(guard.desired_c)} °C`,
+        sub: GUARD_PHASES()[guard.phase] ?? guard.phase ?? "", state: guard.block || raising ? "acting" : null },
+      writer: { title: t("Schreiben"), value: budget ? `${budget.used_today} / ${budget.per_day}` : "–",
+        sub: guard.pending ? t("ausstehend {value} °C", { value: one(guard.pending.value_c) }) : t("Budget heute"),
+        state: guard.pending?.held ? "acting" : null },
+      hp: { title: t("Wärmepumpe"), value: `${one(values.max_flow_setpoint)} °C`,
+        sub: shadow
+          ? t("Max T-Vorlauf · Nur Lernen")
+          : setpoint.written_at ? t("Max T-Vorlauf · {time}", { time: time(setpoint.written_at) }) : t("Max T-Vorlauf"),
+        state: state.fault ? "warn" : null },
+    };
+  }
+
+  _renderChain(device) {
+    const flow = device.state.flow;
+    const selected = this._selected[device.id] ?? "target";
+    const blocks = this._chainBlocks(device);
+    const detail = this._chainDetail(device, selected);
     return html`
-      <p class="small muted">${text}</p>
-      ${!writing.active && writing.refused != null
-        ? html`<p class="small warn-text">${t("„Lernen + Regeln“ nicht möglich: {reason}", { reason: WRITING_REFUSED()[writing.refused] ?? writing.refused })}</p>`
+      <div class="diagram">${chainDiagram(blocks, {
+        selected,
+        onSelect: (id) => (this._selected = { ...this._selected, [device.id]: id }),
+        live: flow.shadow === false,
+        corrFrozen: flow.frozen.length > 0,
+      })}</div>
+      <div class="detail">
+        <div class="title-row"><h3>${blocks[selected]?.title ?? ""}</h3><span class="small muted">${t("Block anklicken für Einzelheiten")}</span></div>
+        ${detail.help ? html`<p class="help small">${detail.help}</p>` : nothing}
+        <div class="tiles">${detail.tiles}</div>
+        ${detail.notes ?? nothing}
+      </div>
+    `;
+  }
+
+  /** Tiles, notes and the explanation of one block of the control chain. */
+  _chainDetail(device, id) {
+    const house = this._status?.house ?? {};
+    const state = device.state;
+    const flow = state.flow;
+    const guard = flow.guard ?? {};
+    const values = state.values ?? {};
+    const shadow = flow.shadow !== false;
+    const tile = (...args) => this._tile(...args);
+    const time = (iso) => new Date(iso).toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    const kw = (w) => (w == null ? "–" : decimal((w / 1000).toFixed(2)));
+    const curve = (flow.source ?? "base") !== "base";
+    switch (id) {
+      case "soll": {
+        const setpoint = Number(house.setpoint_c);
+        return {
+          help: t("Gewünschte mittlere Raumtemperatur. Den Spielraum nutzt die Planung: bei PV-Überschuss oder günstigem Strom bis „Vorheizen bis“ über den Raum-Soll heizen, bei teurem Strom bis „Absenken bis“ darunter fallen lassen. Ohne Ersparnis bleibt es beim Raum-Soll. Einstellbar unter „Einstellungen“."),
+          tiles: [
+            tile(t("Raum-Soll"), `${one(setpoint)} °C`),
+            house.preheat_k != null ? tile(t("Vorheizen bis"), `+${one(house.preheat_k)} K`, `= ${one(setpoint + Number(house.preheat_k))} °C`) : nothing,
+            house.lower_k != null ? tile(t("Absenken bis"), `−${one(house.lower_k)} K`, `= ${one(setpoint - Number(house.lower_k))} °C`) : nothing,
+          ],
+        };
+      }
+      case "ist": {
+        const row = this._lastRow(device.id);
+        const rooms = (this._house?.rooms ?? []).map((r) => r.entity_id);
+        const aired = new Set((house.ventilation ?? []).map((e) => e.entity_id));
+        const out = new Set([...(house.rooms_missing ?? []), ...(house.rooms_stale ?? [])]);
+        return {
+          help: t("Gewichteter Mittelwert der Raumtemperaturen (Gewicht unter „Einstellungen“). Ein Raum mit schneller Änderung (Lüften, Kochen …) zählt bis zu ihrem Ende nicht; ein Raum ohne Meldung seit 2 h fällt heraus. Sunflow regelt keine einzelnen Räume."),
+          tiles: rooms.map((e) => tile(this._roomName(e), row?.rooms?.[e] != null ? `${one(row.rooms[e])} °C` : "–",
+            aired.has(e) ? t("schnelle Änderung, zählt nicht") : out.has(e) ? t("zählt nicht (keine Meldung)") : t("Mittel der letzten 5 min"),
+            aired.has(e) || out.has(e) ? "warn" : "")),
+          notes: this._renderFastRecent(house),
+        };
+      }
+      case "corr":
+        return {
+          help: t("PI-Regler: gleicht aus, was die Vorsteuerung nicht trifft, aus der Abweichung von Raum-Soll und Raum-Ist. Angehalten, solange kein gültiger Heizbetrieb läuft (Warmwasser, Abtauen, Bypass offen, schnelle Änderung), damit er sich nicht aufschaukelt. Bei „Nur Lernen“ wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; bei „Lernen + Regeln“ beginnt sie bei 0."),
+          tiles: [
+            tile(t("Korrektur"), signed(flow.correction_k), t("höchstens ± {limit} K", { limit: decimal(String(flow.parameters.limit_k)) })),
+            tile(t("Abweichung"), house.room_c == null ? "–" : signed(Number(house.setpoint_c) - Number(house.room_c)), t("Raum-Soll − Raum-Ist")),
+            tile(t("Nachstellzeit"), `${decimal(String(flow.parameters.ti_h))} h`, SURFACES()[flow.surface] ?? flow.surface ?? ""),
+            tile(t("Totzone"), `± ${decimal(String(flow.parameters.deadband_k))} K`),
+          ],
+          notes: html`<p class="small ${flow.frozen.length ? "warn-text" : "muted"}">${flow.frozen.length
+            ? t("Korrektur angehalten: {reasons}", { reasons: flow.frozen.map(frozenText).join(", ") })
+            : t("Korrektur läuft.")}</p>
+            ${(flow.limited ?? []).length
+              ? html`<p class="small warn-text">${t("An einer Grenze, die Korrektur läuft nicht weiter darüber hinaus: {limits}", { limits: flow.limited.map((l) => LIMITS()[l] ?? l).join(", ") })}</p>`
+              : nothing}`,
+        };
+      case "heat":
+      case "ff":
+        return {
+          help: t("Die Vorsteuerung schätzt den nötigen Vorlauf. Rangfolge: Kennlinie mit der Wärme aus dem Hausmodell, sonst Kennlinie mit der Wärme der letzten 3 h, sonst die Basis (der wirksame Vorlauf-Soll im gültigen Heizbetrieb)."),
+          tiles: [
+            tile(t("Quelle"), FLOW_SOURCES()[flow.source ?? "base"] ?? flow.source, curve ? null : sourceReasonText(flow.source_reason)),
+            curve ? tile(t("Kennlinie"), `${one(flow.curve_c)} °C`, t("für {kw} kW bei Raum-Soll", { kw: kw(flow.heat_needed_w) })) : nothing,
+            tile(t("Wärmebedarf"), flow.heat_needed_w == null ? "–" : `${kw(flow.heat_needed_w)} kW`),
+            tile(t("Basis"), flow.base_c == null ? "–" : `${one(flow.base_c)} °C`, curve ? t("wirksamer Vorlauf-Soll, gilt ohne Kennlinie") : t("wirksamer Vorlauf-Soll im gültigen Heizbetrieb")),
+            tile(t("Außen"), `${one(this._lastRow(device.id)?.outside_c)} °C`),
+          ],
+          notes: html`
+            ${flow.source === "heat_recent"
+              ? html`<p class="help small">${t("Die Wärme der letzten 3 h entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt: Die Kennlinie bildet nur den aktuellen Zustand nach, die Richtung gibt die Korrektur vor.")}</p>`
+              : nothing}
+            <p class="help small">${shadow
+              ? t("Wechselt die Quelle, springt das Vorlauf-Ziel bei „Nur Lernen“ einmal; die Korrektur bleibt.")
+              : t("Wechselt die Quelle, verschiebt Sunflow die Korrektur, damit das Vorlauf-Ziel nicht springt (innerhalb ±3 K). Die Basis ist seit dem Einschalten von „Lernen + Regeln“ eingefroren.")}</p>`,
+        };
+      case "target":
+        return {
+          help: t("Der Vorlauf, den Sunflow für die Räume für richtig hält: Vorsteuerung plus Korrektur, noch ohne Grenzen und Schutz."),
+          tiles: [
+            tile(t("Vorlauf-Ziel"), `${one(flow.target_c)} °C`, flow.reason === "no_base" ? t("noch kein wirksamer Vorlauf-Soll aus gültigem Heizbetrieb") : null),
+            tile(curve ? t("= Kennlinie") : t("= Basis"), `${one(curve ? flow.curve_c : flow.base_c)} °C`),
+            tile(t("+ Korrektur"), signed(flow.correction_k)),
+          ],
+        };
+      case "limits":
+        return {
+          help: t("Der Stellwert bleibt im Bereich, den die Heizflächen vertragen (unter „Einstellungen“ je Wärmepumpe änderbar, eingeengt auf den Bereich der Wärmepumpe). Weicht das Ziel um mehr als 8 K vom wirksamen Soll bzw. der Kennlinie ab, gilt es als nicht plausibel und wird nicht geschrieben – bei Warmwasser ist das normal."),
+          tiles: [
+            tile(t("Bereich"), `${one(guard.min_c)}–${one(guard.max_c)} °C`),
+            tile(t("Vorlauf-Ziel in Grenzen"), guard.desired_c == null ? "–" : `${one(guard.desired_c)} °C`),
+            guard.implausible_k != null ? tile(t("Nicht plausibel"), signed(guard.implausible_k), t("würde nicht geschrieben"), "warn") : nothing,
+          ],
+        };
+      case "guard":
+        return {
+          help: t("Die Schutzschicht verhindert Takten: vor einem Start den Vorlauf-Soll über den Vorlauf heben, nach Warmwasser oder Abtauen den Start vorbereiten, nach dem Start halten, dann einmal absenken und nachführen. Ist das Haus deutlich zu warm oder die Mindestleistung über dem Bedarf, setzt sie die Raumthermostat-Sperre statt dauernd an und aus."),
+          tiles: [
+            tile(t("Phase"), GUARD_PHASES()[guard.phase] ?? guard.phase ?? "–"),
+            tile(t("Untergrenze Schutz"), guard.floor_c == null ? "–" : `${one(guard.floor_c)} °C`),
+            tile(t("Sperre"), guard.block ? (guard.block_reason === "foreign" ? t("an (nicht von Sunflow)") : t("an")) : t("aus"),
+              guard.block ? (BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "") + (guard.block_since ? ` · ${t("seit {time}", { time: time(guard.block_since) })}` : "") : null),
+          ],
+          notes: html`
+            ${guard.block && guard.block_reason !== "foreign"
+              ? html`<p class="small warn-text">${shadow
+                ? t("Sunflow würde die Raumthermostat-Sperre setzen: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })
+                : t("Raumthermostat-Sperre von Sunflow gesetzt: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })}</p>`
+              : nothing}
+            ${guard.inactive?.length
+              ? html`<p class="small muted">${shadow
+                ? t("Würde nichts schreiben: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })
+                : t("Schreibt nichts: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })}</p>`
+              : nothing}`,
+        };
+      case "writer":
+        return {
+          help: t("Jeder Schreibvorgang landet im EEPROM der Wärmepumpe. Darum schreibt Sunflow sparsam: Mindestabstand, Totzone, ein Tagesbudget mit Notkontingent für Schutzschritte und eine Höchstzahl je Stunde. Einzelheiten unter „Schreiben und Schutz“."),
+          tiles: this._budgetTiles(guard),
+          notes: this._renderPending(device.id, guard),
+        };
+      case "hp":
+      default:
+        return {
+          help: t("Sunflow stellt nur Max T-Vorlauf (und bei Bedarf die Raumthermostat-Sperre); den Kompressor regelt die Wärmepumpe selbst. Zurückschalten auf „Nur Lernen“ stellt nichts zurück."),
+          tiles: [
+            tile(t("Max T-Vorlauf"), `${one(values.max_flow_setpoint)} °C`, shadow
+              ? t("Nur Lernen: Sunflow würde {value} °C schreiben", { value: one(guard.setpoint_c) })
+              : flow.setpoint?.written_at ? t("geschrieben {time}", { time: time(flow.setpoint.written_at) }) : null),
+            tile(t("Vorlauf-Soll (wirksam)"), `${one(values.flow_setpoint)} °C`),
+            tile(t("Vorlauf"), `${one(values.flow_temperature)} °C`, values.flow_temperature_max == null ? null : t("Spitze {value} °C", { value: one(values.flow_temperature_max) })),
+            tile(t("Aktivität"), ACTIVITIES()[state.activity] ?? state.activity, state.compressor == null ? null : state.compressor ? t("Kompressor an") : t("Kompressor aus")),
+          ],
+          notes: this._renderAdopt(guard),
+        };
+    }
+  }
+
+  // ---------- History ----------
+
+  _renderHistory(device) {
+    const history = this._history[device.id];
+    const hours = html`<div class="seg small-seg" role="group" aria-label=${t("Zeitraum")}>
+      ${HISTORY_HOURS.map((h) => html`<button class=${this._hours === h ? "on" : ""} aria-pressed=${this._hours === h}
+        @click=${() => { this._hours = h; this._loadHistory(true); }}>${h < 48 ? t("{hours} h", { hours: h }) : t("{days} Tage", { days: h / 24 })}</button>`)}
+    </div>`;
+    if (!history) return html`${hours}<p class="small muted">${t("Lade …")}</p>`;
+    if (history.error) return html`${hours}<p class="small warn-text">${t("Verlauf nicht verfügbar: {error}", { error: history.error })}</p>`;
+    if (!history.rows?.length) return html`${hours}<p class="small muted">${t("Noch keine Messwerte in diesem Zeitraum (bei Modus Aus zeichnet Sunflow nichts auf).")}</p>`;
+    const names = Object.fromEntries((this._house?.rooms ?? []).map((r) => [r.entity_id, this._roomName(r.entity_id)]));
+    const item = (cls, text, style = "") => html`<span><i class=${cls} style=${style}></i>${text}</span>`;
+    return html`
+      ${hours}
+      <div class="legend">
+        ${item("", t("Vorlauf"), "background: var(--hp-hot)")}
+        ${item("", t("Rücklauf"), "background: var(--hp-cold); opacity: .6")}
+        ${item("", t("Vorlauf-Ziel"), "background: var(--sf-series-3)")}
+        ${item("", t("Max T-Vorlauf in der Wärmepumpe (● geschrieben)"), "background: var(--sf-text)")}
+        ${(history.events ?? []).some((e) => e.kind === "write" && e.shadow !== false && e.value_c != null)
+          ? item("dash", t("würde schreiben (Nur Lernen)"), "color: var(--sf-series-6)") : nothing}
+        ${item("", t("Raum-Ist (dünn: einzelne Räume)"), "background: var(--sf-series-1)")}
+        ${item("dash", t("Raum-Soll"), "color: var(--sf-series-4)")}
+        ${item("box", t("Warmwasser"), "background: var(--hp-dhw)")}
+        ${item("box", t("Sperre"), "background: var(--sf-muted)")}
+        ${item("box", t("schnelle Änderung"), "background: var(--hp-cold)")}
+        ${item("box", t("Kompressor an"), "background: var(--sf-ok)")}
+      </div>
+      <div class="diagram">${historyChart(history, { names })}</div>
+    `;
+  }
+
+  // ---------- Plant ----------
+
+  _renderPlant(device) {
+    const state = device.state;
+    const values = state.values ?? {};
+    const house = this._status?.house ?? {};
+    const row = this._lastRow(device.id);
+    const aired = new Set((house.ventilation ?? []).map((e) => e.entity_id));
+    const rooms = (this._house?.rooms ?? []).map((r) => ({ name: this._roomName(r.entity_id), value: row?.rooms?.[r.entity_id] ?? null, fast: aired.has(r.entity_id) }));
+    const tile = (...args) => this._tile(...args);
+    return html`
+      <div class="diagram">${plantDiagram({
+        outside: row?.outside_c, compressor: state.compressor, heatKw: row?.heat_w != null ? row.heat_w / 1000 : null,
+        flow: values.flow_temperature, ret: values.return_temperature, maxSetpoint: values.max_flow_setpoint,
+        bypass: state.bypass_pct, activity: state.activity, rooms, room: house.room_c, setpoint: house.setpoint_c, blocked: state.blocked,
+      })}</div>
+      <div class="tiles">
+        ${tile(t("Programm"), PROGRAMS()[state.program] ?? state.program, state.program_key ?? null)}
+        ${tile(t("Aktivität"), ACTIVITIES()[state.activity] ?? state.activity, state.compressor == null ? null : state.compressor ? t("Kompressor an") : t("Kompressor aus"))}
+        ${tile(t("Strategie"), STRATEGIES()[state.strategy] ?? state.strategy)}
+        ${tile(t("Bypass-Ventil"), state.bypass_pct == null ? "–" : `${Math.round(state.bypass_pct)} %`)}
+        ${tile(t("Vorlauf"), `${one(values.flow_temperature)} °C`, values.flow_temperature_max == null ? null : t("Spitze {value} °C", { value: one(values.flow_temperature_max) }))}
+        ${tile(t("Rücklauf"), `${one(values.return_temperature)} °C`)}
+        ${tile(t("Vorlauf-Soll (wirksam)"), `${one(values.flow_setpoint)} °C`, t("Max T-Vorlauf {value} °C", { value: one(values.max_flow_setpoint) }))}
+      </div>
+      <p class="small ${state.valid ? "muted" : "warn-text"}">${state.valid
+        ? (house.mode === "off" ? t("Gültiger Heizbetrieb; Modus Aus: Sunflow lernt nicht.") : t("Gültiger Heizbetrieb: Sunflow rechnet die Korrektur und lernt."))
+        : t("Eingefroren: {reasons}", { reasons: state.frozen.map(frozenText).join(", ") })}</p>
+    `;
+  }
+
+  // ---------- Writing and protection ----------
+
+  _writingSummary(guard) {
+    const budget = guard.budget;
+    const parts = [
+      budget ? t("{used}/{per_day} heute", { used: budget.used_today, per_day: budget.per_day }) : null,
+      guard.pending ? t("ausstehend {value} °C", { value: one(guard.pending.value_c) }) : t("nichts ausstehend"),
+    ];
+    return parts.filter(Boolean).join(" · ");
+  }
+
+  /** Budget of today as tiles with bars. */
+  _budgetTiles(guard) {
+    const budget = guard.budget;
+    if (!budget) return [];
+    const shadow = guard.shadow !== false;
+    const bar = (used, limit, cls = "") => html`<div class="bar ${cls}"><div style=${`width: ${Math.min(100, limit ? (used / limit) * 100 : 0)}%`}></div></div>`;
+    const emergencyUsed = budget.emergency_per_day - budget.emergency_left;
+    return [
+      html`<div class="tile"><div class="small muted">${shadow ? t("Heute (würde)") : t("Heute")}</div>
+        <div class="value">${budget.used_today} / ${budget.per_day}</div>${bar(budget.used_today, budget.per_day)}</div>`,
+      html`<div class="tile"><div class="small muted">${t("Notkontingent")}</div>
+        <div class="value">${emergencyUsed} / ${budget.emergency_per_day}</div>${bar(emergencyUsed, budget.emergency_per_day, "emergency")}
+        <div class="small muted">${t("nur Schutzschritte")}</div></div>`,
+      html`<div class="tile"><div class="small muted">${t("Letzte Stunde")}</div>
+        <div class="value">${budget.used_hour} / ${budget.per_hour}</div>${bar(budget.used_hour, budget.per_hour)}</div>`,
+    ];
+  }
+
+  /** A value waiting to be written, "write now" and a lapsed "write now". */
+  _renderPending(deviceId, guard) {
+    const time = (iso) => new Date(iso).toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    const shadow = guard.shadow !== false;
+    const pending = guard.pending;
+    const lastWriteNow = guard.write_now?.last;
+    // "write now" sent: waiting until the tick ran (cleared in _loadStatus)
+    const sent = Boolean(this._writeNow[deviceId]);
+    const pendingText = !pending
+      ? null
+      : pending.due_at
+        ? (shadow
+          ? t("ausstehend: {value} °C ({reason}), würde um {time} geschrieben", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, time: time(pending.due_at) })
+          : t("ausstehend: {value} °C ({reason}), wird um {time} geschrieben", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, time: time(pending.due_at) }))
+        : t("ausstehend: {value} °C ({reason}), wartet: {why}", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, why: (pending.held === "budget" && BUDGET_LIMITS()[pending.budget]) || (HELD()[pending.held] ?? pending.held) });
+    return html`
+      ${pendingText ? html`<p class="small">${pendingText}</p>` : nothing}
+      ${!shadow && (pending || sent)
+        ? html`<div class="actions">
+            <button class="secondary" ?disabled=${sent} @click=${() => this._sendWriteNow(deviceId)}>${t("Jetzt schreiben")}</button>
+            ${sent ? html`<span class="small muted">${t("wird geschrieben …")}</span>` : nothing}
+          </div>`
+        : nothing}
+      ${lastWriteNow && !lastWriteNow.done
+        ? html`<p class="small warn-text">${t("„Jetzt schreiben“ verfallen {time}: {why}", { time: time(lastWriteNow.at), why: HELD()[lastWriteNow.reason] ?? lastWriteNow.reason })}</p>`
         : nothing}
     `;
   }
 
+  /** Whether the heat pump took the last written value over. */
+  _renderAdopt(guard) {
+    if (guard.adopt?.state === "missing") {
+      return html`<p class="small warn-text">${t("Zuletzt geschriebener Wert {value} °C von der Wärmepumpe nicht übernommen.", { value: one(guard.adopt.value_c) })}</p>`;
+    }
+    if (guard.adopt?.state === "limited") {
+      return html`<p class="small warn-text">${t("Geschrieben {value} °C, wirksamer Vorlauf-Soll {effective} °C: die Wärmepumpe begrenzt selbst. Obergrenze des Stellwerts höchstens auf diesen Wert stellen.", { value: one(guard.adopt.value_c), effective: one(guard.adopt.effective_c) })}</p>`;
+    }
+    return nothing;
+  }
+
+  /** "Write now": the next tick writes the pending value without waiting for the spacing (only when active). */
+  async _sendWriteNow(deviceId) {
+    this._writeNow = { ...this._writeNow, [deviceId]: true };
+    try {
+      await api.heatPumpWriteNow(deviceId);
+      this._error = null;
+    } catch (err) {
+      const { [deviceId]: _, ...rest } = this._writeNow;
+      this._writeNow = rest;
+      this._error = t("„Jetzt schreiben“ nicht möglich: {error}", { error: err.message });
+    }
+  }
+
+  /** Budget, pending value, the last writes and unwanted shutdowns, counts per day. */
+  _renderGuard(deviceId, guard, writes) {
+    const time = (iso) => {
+      const at = new Date(iso);
+      return at.toDateString() === new Date().toDateString()
+        ? at.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })
+        : at.toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    };
+    const minutes = (s) => (s == null ? "–" : decimal((s / 60).toFixed(0)));
+    const shadow = guard.shadow !== false;
+    const params = guard.parameters ?? {};
+    return html`
+      ${guard.block && guard.block_reason === "foreign"
+        ? html`<div class="alert warn" role="status">${t("Raumthermostat-Sperre aktiv, nicht von Sunflow gesetzt: Die Wärmepumpe heizt nicht. Sunflow hebt sie nicht auf – bitte selbst aufheben, wenn sie nicht gewollt ist.")}</div>`
+        : nothing}
+      ${this._renderAdopt(guard)}
+      <div class="title-row"><h3>${t("Budget heute")}</h3></div>
+      <p class="help small">${t("Mindestabstand zwischen zwei Schreibvorgängen {normal} min, bei Schutzschritten (Start, Nachführen) {protect} min; dazwischen merkt Sunflow nur den letzten Wert. Die erste Änderung nach einer Ruhepause geht sofort hinaus. Bei „Nur Lernen“ zählt Sunflow, was es schreiben würde.", { normal: minutes(params.min_interval_s), protect: minutes(params.protect_interval_s) })}</p>
+      <div class="tiles">${this._budgetTiles(guard)}</div>
+      ${this._renderPending(deviceId, guard)}
+      <div class="row2">
+        <div>
+          <div class="title-row"><h3>${shadow ? t("Würde schreiben (zuletzt)") : t("Schreibvorgänge (zuletzt)")}</h3></div>
+          <p class="help small">${t("„echt“: an die Wärmepumpe geschrieben; „würde“: nur ausgerechnet (Nur Lernen).")}</p>
+          ${guard.writes?.length
+            ? html`<table>
+                <thead><tr><th>${t("Zeit")}</th><th>${t("Wert")}</th><th>${t("Grund")}</th><th></th></tr></thead>
+                <tbody>${guard.writes.slice(0, 10).map((w) => html`<tr>
+                  <td>${time(w.at)}</td>
+                  <td>${w.reason === "block_on" || w.reason === "block_off" ? "–" : html`${one(w.from_c)} → <strong>${one(w.value_c)}</strong>`}</td>
+                  <td>${WRITE_REASONS()[w.reason] ?? w.reason}${w.manual ? ` (${t("manuell")})` : ""}${w.block_reason ? ` – ${BLOCK_REASONS()[w.block_reason] ?? w.block_reason}` : ""}</td>
+                  <td><span class="tag ${w.shadow === false ? "real" : ""}">${w.shadow === false ? t("echt") : t("würde")}</span></td>
+                </tr>`)}</tbody>
+              </table>`
+            : html`<p class="small muted">${shadow ? t("würde noch nichts schreiben") : t("noch nichts geschrieben")}</p>`}
+          ${guard.unwanted_stops?.length
+            ? html`<p class="small warn-text">${t("Ungewollte Abschaltungen (zuletzt): {stops}", { stops: guard.unwanted_stops.slice(0, 5).map((s) => t("{time} bei {peak} °C (Soll {setpoint} °C)", { time: time(s.at), peak: one(s.peak_c), setpoint: one(s.setpoint_c) })).join(" · ") })}</p>`
+            : nothing}
+        </div>
+        <div>${this._renderWriteCounts(writes)}</div>
+      </div>
+    `;
+  }
+
+  /** Per day: writes by reason and unwanted shutdowns, against the budget. */
+  _renderWriteCounts(writes) {
+    if (!writes) return nothing;
+    if (writes.error) return html`<p class="small warn-text">${t("Zählung nicht verfügbar: {error}", { error: writes.error })}</p>`;
+    const budget = writes.budget ?? {};
+    const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale(), { weekday: "short", day: "2-digit", month: "2-digit" });
+    const over = (count, limit) => (limit != null && count > limit ? "warn-text" : "");
+    return html`
+      <div class="title-row"><h3>${t("Schreibvorgänge je Tag")}</h3></div>
+      <p class="help small">${t("Budget: {normal} Schreibvorgänge je Tag, dazu {emergency} nur für Schutzschritte (Start, Nachführen), höchstens {hour} je Stunde; der Tag folgt der Zeitzone von Home Assistant. Ist das Budget erschöpft, wartet ein normaler Wert; statt eines Schutzschritts würde die Raumthermostat-Sperre gesetzt. Die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
+      <table>
+        <thead><tr>
+          <th>${t("Tag")}</th><th>${t("normal")}</th><th>${t("Start")}</th><th>${t("Nachführen")}</th>
+          <th>${t("Sperre an/aus")}</th><th>${t("ungewollte Abschaltungen")}</th>
+        </tr></thead>
+        <tbody>
+          ${writes.days.map((d) => html`<tr>
+            <td>${day(d.date)}</td>
+            <td class=${over(d.setpoint, budget.per_day)}>${d.normal}</td>
+            <td class=${over(d.setpoint, (budget.per_day ?? 0) + (budget.emergency_per_day ?? 0))}>${d.start}</td>
+            <td class=${over(d.setpoint, (budget.per_day ?? 0) + (budget.emergency_per_day ?? 0))}>${d.track}</td>
+            <td>${d.block_on}/${d.block_off}</td>
+            <td class=${d.unwanted_stops ? "warn-text" : ""}>${d.unwanted_stops}</td>
+          </tr>`)}
+        </tbody>
+      </table>
+    `;
+  }
+
+  // ---------- Learned ----------
+
+  /** The heating curve as a diagram with its data, and the learned behaviour of the heat pump. */
+  _renderLearned(device) {
+    const flow = device.state.flow;
+    const curve = flow.curve;
+    const guard = flow.guard ?? {};
+    const house = this._status?.house ?? {};
+    const tile = (...args) => this._tile(...args);
+    const two = (v) => (v == null ? "–" : decimal(Number(v).toFixed(2)));
+    const minutes = (s) => (s == null ? "–" : decimal((s / 60).toFixed(0)));
+    const values = guard.values ?? {};
+    const sources = values.sources ?? {};
+    const source = (key) => VALUE_SOURCES()[sources[key]] ?? sources[key] ?? "";
+    const progress = (label, value, total) => html`<div class="small">${t("{label}: {value} von {total}", { label, value, total })}</div>
+      <div class="bar"><div style=${`width: ${Math.min(100, total ? (value / total) * 100 : 0)}%`}></div></div>`;
+    const stale = curve && flow.surface && curve.surface !== flow.surface;
+    const points = (this._history[device.id]?.rows ?? [])
+      .filter((r) => r.valid && r.heat_w != null && r.tv_c != null && (r.compressor ?? 0) >= 0.9)
+      .map((r) => ({ kw: r.heat_w / 1000, flow: r.tv_c }));
+    return html`
+      <div class="row2">
+        <div>
+          <div class="title-row"><h3>${t("Kennlinie")}</h3></div>
+          <p class="help small">${t("Welcher Vorlauf für welche Wärme nötig ist, beim Raum-Soll: Wärmeabgabe der Heizflächen Q = K · (Tw − T_Raum)^n. K und die Spreizung lernt Sunflow nur aus gültigem Heizbetrieb mit laufendem Kompressor, ohne Nachlauf und ohne schnelle Änderungen, stündlich neu; n kommt vom Heizflächentyp. Gestrichelt: noch nicht nutzbar. Punkte: Messwerte aus dem Verlauf.")}</p>
+          ${!curve
+            ? html`<p class="small muted">${t("Noch nicht berechnet.")}</p>`
+            : html`
+              <p class="small ${curve.state === "ready" && !stale ? "muted" : "warn-text"}">${t("Zustand: {state}", { state: CURVE_STATES()[curve.state] ?? curve.state })}</p>
+              ${stale ? html`<p class="small warn-text">${t("Heizflächentyp geändert: Die Kennlinie wird neu bewertet, die gemessenen Daten bleiben erhalten.")}</p>` : nothing}
+              <div class="diagram">${curveChart(curve, { roomC: house.setpoint_c, minC: guard.min_c, maxC: guard.max_c, points, usable: curve.state === "ready" })}</div>
+              ${curve.state === "learning"
+                ? html`${progress(t("Intervalle"), curve.intervals, curve.min_intervals)}${progress(t("Tage"), curve.days, curve.min_days)}`
+                : nothing}
+              <div class="tiles">
+                ${tile("K", curve.k == null ? "–" : `${decimal(Number(curve.k).toFixed(0))}`, "W/K^n")}
+                ${tile("n", decimal(String(curve.n)), SURFACES()[curve.surface] ?? curve.surface)}
+                ${tile(t("Spreizung"), `${one(curve.typical_spread_k)} K`, t("bei {kw} kW (typisch); {s0} K + {s1} K je kW", { kw: curve.typical_heat_w == null ? "–" : decimal((curve.typical_heat_w / 1000).toFixed(1)), s0: two(curve.spread0_k), s1: two(curve.spread_k_per_kw) }))}
+                ${tile(t("Güte"), curve.error_k == null ? "–" : `± ${two(curve.error_k)} K`, curve.baseline_k == null ? t("Vorlauf auf zurückgehaltenen Tagen") : t("„Vorlauf bleibt“ läge bei ± {k} K", { k: two(curve.baseline_k) }))}
+                ${tile(t("Datenumfang"), t("{count} Intervalle", { count: curve.intervals }), t("{days} Tage, davon {held} Intervalle zum Prüfen", { days: curve.days, held: curve.held }))}
+              </div>`}
+        </div>
+        <div>
+          <div class="title-row"><h3>${t("Verhalten der Wärmepumpe")}</h3></div>
+          <p class="help small">${t("Werte, mit denen die Schutzschicht Takten vermeidet. Solange zu wenig gelernt ist, gelten Startwerte.")}</p>
+          ${guard.values
+            ? html`<div class="tiles">
+                ${tile(t("Schwankung im Betrieb"), `${two(values.steady_swing)} K`, source("steady_swing"))}
+                ${["normal", "hot_water", "defrost"].map((kind) => tile(
+                  t("Sprung beim Start ({kind})", { kind: START_KINDS()[kind] }),
+                  `${two(values.start_jump?.[kind])} K`,
+                  t("{source}, beruhigt nach {minutes} min", { source: source(`start_jump.${kind}`), minutes: minutes(values.start_settle_s?.[kind]) }),
+                ))}
+                ${tile(t("Leistungsbereich"), `${decimal((values.power_min_w / 1000).toFixed(1))}–${decimal((values.power_max_w / 1000).toFixed(1))} kW`, source("power"))}
+              </div>`
+            : html`<p class="small muted">${t("Noch nichts gelernt.")}</p>`}
+        </div>
+      </div>
+    `;
+  }
+
+  // ---------- House model ----------
+
+  _houseModelSummary() {
+    const result = this._houseModel;
+    if (!result) return "";
+    return {
+      ready: t("gelernt"),
+      learning: t("lernt: {days} von {min} Tagen", { days: result.days ?? 0, min: result.min_days ?? 7 }),
+      no_rooms: t("keine Räume"),
+      no_outside: t("Außentemperatur fehlt"),
+      error: t("nicht verfügbar"),
+    }[result.state] ?? t("noch unsicher");
+  }
+
+  /** What Sunflow learned about the house, in words, with the last week measured and expected. */
+  _renderHouseModel() {
+    const result = this._houseModel;
+    if (!result) return html`<p class="small muted">${t("Lade …")}</p>`;
+    if (result.state === "no_rooms") return html`<p class="small muted">${t("Noch keine Räume: unter „Einstellungen“ hinzufügen.")}</p>`;
+    const intro = html`<p class="help small">${t("Aus den Raumtemperaturen lernt Sunflow, wie schnell das Haus auskühlt und wie stark Heizung und Sonne es erwärmen. Die Vorsteuerung und die Planung nutzen das Modell ab {min} Tagen gültigem Heizbetrieb.", { min: result.min_days ?? 7 })}</p>`;
+    const messages = {
+      no_outside: t("Es fehlt eine Außentemperatur: an der Wärmepumpe oder unter Lernquellen."),
+      error: t("Nicht verfügbar: {error}", { error: result.error ?? "" }),
+    };
+    if (messages[result.state]) return html`${intro}<p class="small muted">${messages[result.state]}</p>${this._renderHouseSource(result)}`;
+    if (result.state === "learning") {
+      const days = result.days ?? 0;
+      const min = result.min_days ?? 7;
+      return html`${intro}
+        <div class="small">${t("Tage mit Raum- und Außentemperatur: {value} von {total}", { value: days, total: min })}</div>
+        <div class="bar"><div style=${`width: ${Math.min(100, (days / min) * 100)}%`}></div></div>
+        ${this._renderHouseSource(result)}`;
+    }
+    const m = result.model;
+    const heat = {
+      meter: t("Wärme vom gewählten Sensor"),
+      measured: t("Wärme der Wärmepumpe gemessen"),
+      cop: t("Wärme aus Strom × COP der Wärmepumpe"),
+      estimated: t("Wärme aus dem Strom der Wärmepumpe geschätzt (COP aus der Außentemperatur)"),
+    }[result.heat_source] ?? t("ohne Wärmemessung – Heizung und innere Wärme lassen sich nicht trennen");
+    const tile = (...args) => this._tile(...args);
+    const name = (entityId) => this._roomName(entityId);
+    const points = result.chart ?? [];
+    const v1 = (v) => decimal(v.toFixed(1));
+    return html`
+      ${intro}
+      <p class="small ${result.state === "ready" ? "muted" : "warn-text"}">${result.state === "ready"
+        ? t("Aus {days} Tagen · {heat}", { days: result.days, heat })
+        : m.plausible
+          ? t("Noch unsicher: Die Vorhersage ist nicht besser als „die Temperatur bleibt“. Sunflow nutzt das Modell noch nicht. ({heat})", { heat })
+          : t("Noch nicht plausibel – vielleicht heizt etwas, das nicht gemessen wird, oder ein Sensor hängt in der Sonne. ({heat})", { heat })}</p>
+      <div class="tiles">
+        ${m.tau_h != null ? tile(t("Zeitkonstante"), `${Math.round(m.tau_h)} h`, t("bis zwei Drittel des Unterschieds nach außen weg sind")) : nothing}
+        ${tile(t("Abkühlung bei 0 °C außen"), `${v1(m.cooling_k_per_h_at_0)} K/h`, t("ohne Heizung und Sonne, bei {temp} °C innen", { temp: decimal(String(COOLING_INSIDE_C)) }))}
+        ${m.loss_w_per_k != null ? tile(t("Wärmeverlust"), `${Math.round(m.loss_w_per_k)} W/K`, t("bei −10 °C außen etwa {kw} kW Heizleistung", { kw: v1(m.loss_w_per_k * (COOLING_INSIDE_C + 10) / 1000) })) : nothing}
+        ${m.capacity_kwh_per_k != null ? tile(t("Wärmespeicher"), `${Math.round(m.capacity_kwh_per_k)} kWh/K`, t("Wärme für 1 K wärmer im ganzen Haus")) : nothing}
+        ${m.sun_k_per_h != null ? tile(t("Sonne"), `${m.sun_k_per_h >= 0 ? "+" : ""}${v1(m.sun_k_per_h)} K/h`, t("bei voller Sonne")) : nothing}
+        ${m.error_k != null ? tile(t("Vorhersage über 24 h"), `± ${v1(m.error_k)} K`, t("„bleibt gleich“ läge bei ± {k} K", { k: v1(m.baseline_k) })) : nothing}
+      </div>
+      ${this._renderHouseSource(result)}
+      ${result.excluded_hours
+        ? html`<p class="small muted">${result.source === "heat_pump_samples"
+          ? t("{hours} Stunden mit Warmwasser, Abtauen, Nachlauf oder schnellen Änderungen sind ausgelassen.", { hours: result.excluded_hours })
+          : t("{hours} Stunden mit Warmwasser oder Abtauen sind ausgelassen: deren Wärme ging nicht ins Haus.", { hours: result.excluded_hours })}</p>`
+        : nothing}
+      ${result.restless?.length
+        ? html`<p class="small warn-text">${t("Auffällig unruhig – vielleicht Sonne, Heizkörper oder Fenster am Sensor: {rooms}. Ein geringeres Gewicht oder ein anderer Sensor hilft.", { rooms: result.restless.map(name).join(", ") })}</p>`
+        : nothing}
+      ${points.length
+        ? html`<div class="title-row"><h3>${t("Letzte 7 Tage")}</h3></div>
+          <div class="legend">
+            <span><i style=${`background: ${SERIES_COLORS[0]}`}></i>${t("gemessen")}</span>
+            <span><i style=${`background: ${SERIES_COLORS[1]}`}></i>${t("Modell (startet jeden Tag neu)")}</span>
+          </div>
+          ${lineChart(
+            [
+              { name: t("gemessen"), color: SERIES_COLORS[0], points: points.map((p) => ({ start: p.start, end: p.end, value: p.measured })) },
+              { name: t("Modell"), color: SERIES_COLORS[1], dashed: true, points: points.map((p) => ({ start: p.start, end: p.end, value: p.model })) },
+            ],
+            {
+              label: t("Raumtemperatur der letzten 7 Tage, gemessen und vom Modell erwartet"),
+              formatY: (v) => `${decimal(v.toFixed(1))} °C`,
+              yMin: Math.floor(Math.min(...points.map((p) => p.measured)) - 1),
+              yMax: Math.ceil(Math.max(...points.map((p) => p.measured)) + 1),
+            },
+          )}`
+        : nothing}
+    `;
+  }
+
+  /** Where the house model's hours come from: Home Assistant until the heat pump's samples cover enough days. */
+  _renderHouseSource(result) {
+    if (!result.source) return nothing;
+    return html`<p class="small muted">${result.source === "heat_pump_samples"
+      ? t("Quelle: Messwerte der Wärmepumpe (5 min, {days} Tage gültiger Heizbetrieb).", { days: result.coverage_days })
+      : t("Quelle: Stundenmittel aus Home Assistant. Umstellung auf die Messwerte der Wärmepumpe ab {min} Tagen gültigem Heizbetrieb (bisher {days}).", { min: result.min_days ?? 7, days: result.coverage_days ?? 0 })}</p>`;
+  }
+
+  // ---------- Settings ----------
+
+  _renderSettings() {
+    const house = this._status?.house;
+    return html`
+      ${house?.preheat_k != null && house?.lower_k != null
+        ? html`<fieldset class="group">
+            <legend>${t("Spielraum der Planung")}</legend>
+            <p class="help small">${t("Bei PV-Überschuss oder günstigem Strom darf Sunflow das Haus bis zu so viel über den Raum-Soll heizen bzw. es bei teurem Strom so weit darunter fallen lassen. Ohne Ersparnis bleibt es beim Raum-Soll.")}</p>
+            <div class="fields">${this._renderMargin(house)}</div>
+          </fieldset>`
+        : nothing}
+      ${(this._status?.devices ?? []).filter((d) => d.flow_limits).map((d) => this._renderLimits(d, (this._status.devices.length > 1)))}
+      ${this._renderHouse()}
+    `;
+  }
+
+  /** Margin of the planning around the room setpoint (design/heat_pump.md 6.3): preheat up to +x, lower down to -y. */
+  _renderMargin(house) {
+    const max = house.margin_max_k ?? 3;
+    const step = house.margin_step_k ?? 0.1;
+    const setpoint = Number(house.setpoint_c);
+    const field = (key, label, note) => html`
+      <label class="field">
+        <span class="field-label">${label}</span>
+        <span class="input-unit"><input type="number" inputmode="decimal" min="0" max=${max} step=${step}
+          .value=${String(house[key])} ?disabled=${this._climateBusy}
+          @change=${(e) => this._setClimate({ [key]: Number(e.target.value) })}> K</span>
+        <span class="small muted">${note}</span>
+      </label>`;
+    return html`
+      ${field("preheat_k", t("Vorheizen bis"), t("= {temp} °C (0 bis {max} K)", { temp: one(setpoint + Number(house.preheat_k)), max: one(max) }))}
+      ${field("lower_k", t("Absenken bis"), t("= {temp} °C (0 bis {max} K)", { temp: one(setpoint - Number(house.lower_k)), max: one(max) }))}
+    `;
+  }
+
   /** Range of the set value (Max T-Vorlauf) per heat pump; empty: the heating surface type's start limit. */
-  _renderLimits(device, one) {
+  _renderLimits(device, named) {
     const limits = device.flow_limits;
     const edit = this._limitsEdit[device.id];
     const value = (key) => (edit ? edit[key] : toDisplay(limits[`${key}_c`], ""));
@@ -510,7 +1248,8 @@ class SunflowHeatPump extends LitElement {
       : t("Den Bereich der Wärmepumpe kennt Sunflow noch nicht (Manifest).");
     return html`
       <fieldset class="group">
-        <legend>${t("Grenzen des Stellwerts")}</legend>
+        <legend>${named ? t("Grenzen des Stellwerts: {name}", { name: device.name }) : t("Grenzen des Stellwerts")}</legend>
+        <p class="help small">${t("Max T-Vorlauf, den Sunflow schreiben darf. Höchstens ist zugleich der höchste Vorlauf für Estrich bzw. Heizflächen; nicht höher als die Grenze, die die Wärmepumpe selbst setzt. Leer: Startwert der Heizflächen ({min}–{max} °C). {entity}", { min: one(limits.default_min_c), max: one(limits.default_max_c), entity })}</p>
         <div class="fields">
           <label class="field narrow">
             <span class="field-label">${t("Mindestens")}</span>
@@ -523,7 +1262,6 @@ class SunflowHeatPump extends LitElement {
               @input=${(e) => set("max", e.target.value)}> °C</span>
           </label>
         </div>
-        <p class="small muted">${t("Max T-Vorlauf, den Sunflow schreiben darf. Höchstens ist zugleich der höchste Vorlauf für Estrich bzw. Heizflächen. Leer: Startwert der Heizflächen ({min}–{max} °C). {entity}", { min: one(limits.default_min_c), max: one(limits.default_max_c), entity })}</p>
         <p class="small muted">${t("Gilt jetzt: {min}–{max} °C", { min: one(limits.effective_min_c), max: one(limits.effective_max_c) })}</p>
         ${edit
           ? html`<div class="actions">
@@ -557,284 +1295,69 @@ class SunflowHeatPump extends LitElement {
     }
   }
 
-  /** "Write now": the next tick writes the pending value without waiting for the spacing (only when active). */
-  async _sendWriteNow(deviceId) {
-    this._writeNow = { ...this._writeNow, [deviceId]: true };
-    try {
-      await api.heatPumpWriteNow(deviceId);
-      this._error = null;
-    } catch (err) {
-      const { [deviceId]: _, ...rest } = this._writeNow;
-      this._writeNow = rest;
-      this._error = t("„Jetzt schreiben“ nicht möglich: {error}", { error: err.message });
-    }
-  }
-
-  /** Source, base or curve value, correction and flow target; shadow: computed, not written. */
-  _renderFlow(flow, one, tile) {
-    const signed = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${decimal(Math.abs(v).toFixed(1))} K`);
-    const source = flow.source ?? "base";
-    const curve = source !== "base";
-    const targetHelp = flow.reason === "no_base"
-      ? t("noch kein wirksamer Vorlauf-Soll aus gültigem Heizbetrieb")
-      : curve ? t("Kennlinie + Korrektur") : t("Basis + Korrektur");
-    const kw = (w) => decimal((w / 1000).toFixed(2));
-    return html`
-      <div class="learned">
-        <span class="field-label">${flow.shadow === false ? t("Vorlauf-Ziel") : t("Vorlauf-Ziel (nur Lernen)")}</span>
-        <div class="tiles">
-          ${tile(t("Vorlauf-Ziel"), flow.target_c == null ? "–" : `${one(flow.target_c)} °C`, targetHelp)}
-          ${tile(t("Quelle"), FLOW_SOURCES()[source] ?? source, curve ? null : sourceReasonText(flow.source_reason))}
-          ${curve
-            ? tile(t("Kennlinie"), `${one(flow.curve_c)} °C`, t("für {kw} kW bei Raum-Soll", { kw: kw(flow.heat_needed_w) }))
-            : nothing}
-          ${tile(t("Basis"), flow.base_c == null ? "–" : `${one(flow.base_c)} °C`, curve ? t("wirksamer Vorlauf-Soll, gilt ohne Kennlinie") : t("wirksamer Vorlauf-Soll im gültigen Heizbetrieb"))}
-          ${tile(t("Korrektur"), signed(flow.correction_k), t("aus Raum-Ist und Raum-Soll, Nachstellzeit {ti} h, höchstens ± {limit} K", { ti: decimal(String(flow.parameters.ti_h)), limit: decimal(String(flow.parameters.limit_k)) }))}
-        </div>
-        ${source === "heat_recent"
-          ? html`<p class="small muted">${t("Die Wärme der letzten 3 h entsteht aus dem Vorlauf, den die Wärmepumpe gerade fährt: Die Kennlinie bildet nur den aktuellen Zustand nach, die Richtung gibt die Korrektur vor.")}</p>`
-          : nothing}
-        <p class="small muted">${flow.shadow === false
-          ? t("Wechselt die Quelle, verschiebt Sunflow die Korrektur, damit das Vorlauf-Ziel nicht springt (innerhalb ±3 K).")
-          : t("Wechselt die Quelle, springt das Vorlauf-Ziel bei „Nur Lernen“ einmal; die Korrektur bleibt.")}</p>
-        <p class="small muted">${flow.frozen.length
-          ? t("Korrektur angehalten: {reasons}", { reasons: flow.frozen.map(frozenText).join(", ") })
-          : t("Korrektur läuft.")} ${flow.shadow === false
-          ? t("Die Basis ist seit dem Einschalten von „Lernen + Regeln“ eingefroren; die Korrektur hat dort bei 0 begonnen.")
-          : t("Bei „Nur Lernen“ wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; bei „Lernen + Regeln“ beginnt sie bei 0.")}</p>
-        ${(flow.limited ?? []).length
-          ? html`<p class="small warn-text">${t("An einer Grenze, die Korrektur läuft nicht weiter darüber hinaus: {limits}", { limits: flow.limited.map((l) => LIMITS()[l] ?? l).join(", ") })}</p>`
-          : nothing}
-      </div>
-      ${this._renderCurve(flow.curve, flow.surface, tile)}
-    `;
-  }
-
-  /** Set value and writes Sunflow would cause (protection layer, shadow), learned values, daily counts. */
-  _renderGuard(deviceId, guard, writes, one, tile) {
-    const time = (iso) => new Date(iso).toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
-    const two = (v) => (v == null ? "–" : decimal(Number(v).toFixed(1)));
-    const minutes = (s) => (s == null ? "–" : decimal((s / 60).toFixed(0)));
-    const last = guard.writes?.[0];
-    const values = guard.values ?? {};
-    const sources = values.sources ?? {};
-    const source = (key) => VALUE_SOURCES()[sources[key]] ?? sources[key] ?? "";
-    const writeText = (w) => w.reason === "block_on" || w.reason === "block_off"
-      ? WRITE_REASONS()[w.reason]
-      : t("{reason}: {value} °C", { reason: WRITE_REASONS()[w.reason] ?? w.reason, value: one(w.value_c) }) + (w.manual ? ` (${t("manuell")})` : "");
-    const shadow = guard.shadow !== false;
-    const pending = guard.pending;
-    const lastWriteNow = guard.write_now?.last;
-    // "write now" sent: waiting until the tick ran (cleared in _loadStatus)
-    const sent = Boolean(this._writeNow[deviceId]);
-    const pendingText = !pending
-      ? null
-      : pending.due_at
-        ? (shadow
-          ? t("ausstehend: {value} °C ({reason}), würde um {time} geschrieben", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, time: time(pending.due_at) })
-          : t("ausstehend: {value} °C ({reason}), wird um {time} geschrieben", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, time: time(pending.due_at) }))
-        : t("ausstehend: {value} °C ({reason}), wartet: {why}", { value: one(pending.value_c), reason: WRITE_REASONS()[pending.reason] ?? pending.reason, why: (pending.held === "budget" && BUDGET_LIMITS()[pending.budget]) || (HELD()[pending.held] ?? pending.held) });
-    const params = guard.parameters ?? {};
-    const budget = guard.budget;
-    return html`
-      <div class="learned">
-        <span class="field-label">${shadow ? t("Stellwert und Schutz (nur Lernen)") : t("Stellwert und Schutz")}</span>
-        <p class="small muted">${shadow
-          ? t("Sunflow rechnet aus, was es an die Wärmepumpe schreiben würde (Max T-Vorlauf und Raumthermostat-Sperre), schreibt aber nichts.")
-          : t("Sunflow schreibt Max T-Vorlauf und die Raumthermostat-Sperre an die Wärmepumpe.")}</p>
-        ${guard.adopt?.state === "missing"
-          ? html`<p class="small warn-text">${t("Zuletzt geschriebener Wert {value} °C von der Wärmepumpe nicht übernommen.", { value: one(guard.adopt.value_c) })}</p>`
-          : guard.adopt?.state === "limited"
-            ? html`<p class="small warn-text">${t("Geschrieben {value} °C, wirksamer Vorlauf-Soll {effective} °C: die Wärmepumpe begrenzt selbst. Obergrenze des Stellwerts höchstens auf diesen Wert stellen.", { value: one(guard.adopt.value_c), effective: one(guard.adopt.effective_c) })}</p>`
-            : nothing}
-        ${guard.block && guard.block_reason === "foreign"
-          ? html`<div class="alert warn" role="status">${t("Raumthermostat-Sperre aktiv, nicht von Sunflow gesetzt: Die Wärmepumpe heizt nicht. Sunflow hebt sie nicht auf – bitte selbst aufheben, wenn sie nicht gewollt ist.")}</div>`
-          : guard.block ? html`<div class="alert warn" role="status">${shadow
-            ? t("Sunflow würde die Raumthermostat-Sperre setzen: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })
-            : t("Raumthermostat-Sperre von Sunflow gesetzt: {reason}", { reason: BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "–" })}</div>` : nothing}
-        <div class="tiles">
-          ${tile(t("Stellwert"), guard.setpoint_c == null ? "–" : `${one(guard.setpoint_c)} °C`, last
-            ? (shadow ? t("würde schreiben {time}: {what}", { time: time(last.at), what: writeText(last) }) : t("geschrieben {time}: {what}", { time: time(last.at), what: writeText(last) }))
-            : (shadow ? t("würde noch nichts schreiben") : t("noch nichts geschrieben")))}
-          ${tile(t("Vorlauf-Ziel in Grenzen"), guard.desired_c == null ? "–" : `${one(guard.desired_c)} °C`, t("Grenzen {min}–{max} °C", { min: one(guard.min_c), max: one(guard.max_c) }))}
-          ${tile(t("Untergrenze Schutz"), guard.floor_c == null ? "–" : `${one(guard.floor_c)} °C`, GUARD_PHASES()[guard.phase] ?? guard.phase)}
-          ${tile(t("Sperre"), guard.block ? (guard.block_reason === "foreign" ? t("an (nicht von Sunflow)") : t("an")) : t("aus"), guard.block_since ? t("seit {time}", { time: time(guard.block_since) }) : null)}
-          ${budget
-            ? tile(
-              shadow ? t("Budget heute (nur Lernen)") : t("Budget heute"),
-              `${budget.used_today}/${budget.per_day}`,
-              t("Notkontingent übrig {emergency} von {emergency_per_day}, letzte Stunde {hour}/{per_hour}", { emergency: budget.emergency_left, emergency_per_day: budget.emergency_per_day, hour: budget.used_hour, per_hour: budget.per_hour }),
-            )
-            : nothing}
-        </div>
-        ${guard.inactive?.length
-          ? html`<p class="small muted">${shadow
-            ? t("Würde nichts schreiben: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })
-            : t("Schreibt nichts: {reasons}", { reasons: guard.inactive.map(inactiveText).join(", ") })}</p>`
-          : nothing}
-        ${pendingText ? html`<p class="small">${pendingText}</p>` : nothing}
-        ${!shadow && (pending || sent)
-          ? html`<div class="actions">
-              <button class="secondary" ?disabled=${sent} @click=${() => this._sendWriteNow(deviceId)}>${t("Jetzt schreiben")}</button>
-              ${sent ? html`<span class="small muted">${t("wird geschrieben …")}</span>` : nothing}
-            </div>`
-          : nothing}
-        ${lastWriteNow && !lastWriteNow.done
-          ? html`<p class="small warn-text">${t("„Jetzt schreiben“ verfallen {time}: {why}", { time: time(lastWriteNow.at), why: HELD()[lastWriteNow.reason] ?? lastWriteNow.reason })}</p>`
-          : nothing}
-        <p class="small muted">${t("Mindestabstand zwischen zwei Schreibvorgängen {normal} min, bei Schutzschritten (Start, Nachführen) {protect} min; dazwischen merkt Sunflow nur den letzten Wert. Die erste Änderung nach einer Ruhepause geht sofort hinaus.", { normal: minutes(params.min_interval_s), protect: minutes(params.protect_interval_s) })}</p>
-        ${guard.implausible_k != null
-          ? html`<p class="small warn-text">${t("Vorlauf-Ziel nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): würde nicht geschrieben.", { k: two(guard.implausible_k) })}</p>`
-          : nothing}
-        <div class="tiles">
-          ${tile(t("Schwankung im Betrieb"), `${two(values.steady_swing)} K`, source("steady_swing"))}
-          ${["normal", "hot_water", "defrost"].map((kind) => tile(
-            t("Sprung beim Start ({kind})", { kind: START_KINDS()[kind] }),
-            `${two(values.start_jump?.[kind])} K`,
-            t("{source}, beruhigt nach {minutes} min", { source: source(`start_jump.${kind}`), minutes: minutes(values.start_settle_s?.[kind]) }),
-          ))}
-          ${tile(t("Leistungsbereich"), `${decimal((values.power_min_w / 1000).toFixed(1))}–${decimal((values.power_max_w / 1000).toFixed(1))} kW`, source("power"))}
-        </div>
-        ${guard.writes?.length
-          ? html`<p class="small muted">${shadow
-            ? t("Würde schreiben (zuletzt): {writes}", { writes: guard.writes.slice(0, 8).map((w) => `${time(w.at)} ${writeText(w)}`).join(" · ") })
-            : t("Geschrieben (zuletzt): {writes}", { writes: guard.writes.slice(0, 8).map((w) => `${time(w.at)} ${writeText(w)}`).join(" · ") })}</p>`
-          : nothing}
-        ${guard.unwanted_stops?.length
-          ? html`<p class="small warn-text">${t("Ungewollte Abschaltungen (zuletzt): {stops}", { stops: guard.unwanted_stops.slice(0, 5).map((s) => t("{time} bei {peak} °C (Soll {setpoint} °C)", { time: time(s.at), peak: one(s.peak_c), setpoint: one(s.setpoint_c) })).join(" · ") })}</p>`
-          : nothing}
-        ${this._renderWriteCounts(writes)}
-      </div>
-    `;
-  }
-
-  /** Per day: writes Sunflow would have caused by reason and unwanted shutdowns, against the budget. */
-  _renderWriteCounts(writes) {
-    if (!writes) return nothing;
-    if (writes.error) return html`<p class="small warn-text">${t("Zählung nicht verfügbar: {error}", { error: writes.error })}</p>`;
-    const budget = writes.budget ?? {};
-    const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale(), { weekday: "short", day: "2-digit", month: "2-digit" });
-    const over = (count, limit) => (limit != null && count > limit ? "warn-text" : "");
-    return html`
-      <span class="field-label">${t("Schreibvorgänge je Tag (würde schreiben)")}</span>
-      <table>
-        <thead><tr>
-          <th>${t("Tag")}</th><th>${t("normal")}</th><th>${t("Start")}</th><th>${t("Nachführen")}</th>
-          <th>${t("Sperre an/aus")}</th><th>${t("ungewollte Abschaltungen")}</th>
-        </tr></thead>
-        <tbody>
-          ${writes.days.map((d) => html`<tr>
-            <td>${day(d.date)}</td>
-            <td class=${over(d.setpoint, budget.per_day)}>${d.normal}</td>
-            <td class=${over(d.setpoint, (budget.per_day ?? 0) + (budget.emergency_per_day ?? 0))}>${d.start}</td>
-            <td class=${over(d.setpoint, (budget.per_day ?? 0) + (budget.emergency_per_day ?? 0))}>${d.track}</td>
-            <td>${d.block_on}/${d.block_off}</td>
-            <td class=${d.unwanted_stops ? "warn-text" : ""}>${d.unwanted_stops}</td>
-          </tr>`)}
-        </tbody>
-      </table>
-      <p class="small muted">${t("Budget: {normal} Schreibvorgänge je Tag, dazu {emergency} nur für Schutzschritte (Start, Nachführen), höchstens {hour} je Stunde; der Tag folgt der Zeitzone von Home Assistant. Bei „Nur Lernen“ zählt Sunflow, was es schreiben würde, mit Mindestabstand und Budget. Ist das Budget erschöpft, wartet ein normaler Wert; statt eines Schutzschritts würde die Raumthermostat-Sperre gesetzt. Die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
-    `;
-  }
-
-  /** The learned heating curve (shadow): K, n, spread, quality and the data it rests on. */
-  _renderCurve(curve, surface, tile) {
-    if (!curve) {
-      return html`<div class="learned"><span class="field-label">${t("Kennlinie")}</span>
-        <p class="small muted">${t("Noch nicht berechnet.")}</p></div>`;
-    }
-    const two = (v) => (v == null ? "–" : decimal(Number(v).toFixed(2)));
-    const one = (v) => (v == null ? "–" : decimal(Number(v).toFixed(1)));
-    const state = {
-      ready: t("nutzbar"),
-      learning: t("lernt noch (zu wenig Daten)"),
-      implausible: t("nicht plausibel"),
-      unsure: t("nicht besser als „Vorlauf bleibt“"),
-    }[curve.state] ?? curve.state;
-    const stale = surface && curve.surface !== surface;
-    return html`
-      <div class="learned">
-        <span class="field-label">${t("Kennlinie")}</span>
-        <p class="small ${curve.state === "ready" && !stale ? "muted" : "warn-text"}">${t("Wärmeabgabe der Heizflächen Q = K · (Tw − T_Raum)^n: {state}", { state })}</p>
-        ${stale ? html`<p class="small warn-text">${t("Heizflächentyp geändert: Die Kennlinie wird neu bewertet, die gemessenen Daten bleiben erhalten.")}</p>` : nothing}
-        <div class="tiles">
-          ${tile("K", curve.k == null ? "–" : `${decimal(Number(curve.k).toFixed(0))} W/K^n`, t("gelernt"))}
-          ${tile("n", decimal(String(curve.n)), SURFACES()[curve.surface] ?? curve.surface)}
-          ${tile(t("Spreizung"), `${one(curve.typical_spread_k)} K`, t("bei {kw} kW (typisch); {s0} K + {s1} K je kW", { kw: curve.typical_heat_w == null ? "–" : decimal((curve.typical_heat_w / 1000).toFixed(1)), s0: two(curve.spread0_k), s1: two(curve.spread_k_per_kw) }))}
-          ${tile(t("Güte"), curve.error_k == null ? "–" : `± ${two(curve.error_k)} K`, curve.baseline_k == null ? t("Vorlauf auf zurückgehaltenen Tagen") : t("„Vorlauf bleibt“ läge bei ± {k} K", { k: two(curve.baseline_k) }))}
-          ${tile(t("Datenumfang"), t("{count} Intervalle", { count: curve.intervals }), t("{days} Tage, davon {held} Intervalle zum Prüfen; nötig {min} Intervalle aus {min_days} Tagen", { days: curve.days, held: curve.held, min: curve.min_intervals, min_days: curve.min_days }))}
-        </div>
-        <p class="small muted">${t("Gelernt nur aus gültigem Heizbetrieb mit laufendem Kompressor, ohne Nachlauf und ohne schnelle Änderungen; stündlich neu berechnet.")}</p>
-      </div>
-    `;
-  }
-
-  /** The house: rooms and heat into it; below what Sunflow learned from them. */
+  /** The house: rooms, fast change, heat into it, heating surfaces and outside temperature. */
   _renderHouse() {
-    if (this._candidates === null) this._loadCandidates();
     const house = this._houseEdit ?? this._house;
     const candidates = this._candidates ?? {};
     const options = (list) => (list ?? []).map((c) => ({ value: c.entity_id, label: c.name, detail: `${c.state ?? "–"} ${c.unit ?? ""}` }));
     const set = (changes) => (this._houseEdit = { ...house, ...changes });
     const setRoom = (i, changes) => set({ rooms: house.rooms.map((r, k) => (k === i ? { ...r, ...changes } : r)) });
     return html`
-      <section class="device">
-        <span class="device-title">${t("Haus")}</span>
-        <p class="small muted">${t("Aus den Raumtemperaturen lernt Sunflow, wie schnell das Haus auskühlt und wie stark Heizung und Sonne es erwärmen. Sunflow regelt keine einzelnen Räume.")}</p>
-        <fieldset class="group">
-          <legend>${t("Räume")}</legend>
-          ${house.rooms.map((room, i) => html`<div class="room">
-            <div class="field grow">
-              <span class="field-label">${t("Temperatur")}</span>
-              <sf-picker label=${t("Temperatur")} placeholder=${t("Name oder Entität suchen …")}
-                .value=${room.entity_id} .options=${options(candidates.temperature)}
-                @change=${(e) => e.detail.value && setRoom(i, { entity_id: e.detail.value })}></sf-picker>
-            </div>
-            <label class="field narrow">
-              <span class="field-label">${t("Gewicht")}</span>
-              <span class="input-unit"><input inputmode="decimal" .value=${toDisplay(room.weight, "")}
-                @change=${(e) => { const v = fromDisplay(e.target.value, ""); if (v > 0) setRoom(i, { weight: v }); }}></span>
-            </label>
-            <button class="secondary" @click=${() => set({ rooms: house.rooms.filter((_, k) => k !== i) })}>${t("Entfernen")}</button>
-          </div>`)}
-          <div><button class="secondary" @click=${() => set({ rooms: [...house.rooms, { entity_id: "", weight: 1 }] })}>${t("Raum hinzufügen")}</button></div>
-          <p class="small muted">${t("Gewicht z. B. nach Fläche; ohne Angabe zählen alle Räume gleich.")}</p>
-          ${this._renderFastChange(house, set)}
-          <div class="fields">
-            <div class="field">
-              <span class="field-label">${t("Wärme ins Haus (optional)")}</span>
-              <sf-picker label=${t("Wärme ins Haus (optional)")} empty-label=${t("aus der Wärmepumpe")} placeholder=${t("Name oder Entität suchen …")}
-                .value=${house.heat_entity ?? ""} .options=${options(candidates.power)}
-                @change=${(e) => set({ heat_entity: e.detail.value || null })}></sf-picker>
-              <span class="small muted">${t("Wärmeleistung in W, z. B. vom Wärmemengenzähler der Heizung. Ohne Angabe nimmt Sunflow die Wärme der Wärmepumpe.")}</span>
-            </div>
-            <label class="field">
-              <span class="field-label">${t("Heizflächen")}</span>
-              <select @change=${(e) => set({ heating_surface: e.target.value })}>
-                ${Object.entries(SURFACES()).map(([value, label]) => html`<option value=${value} ?selected=${(house.heating_surface ?? "underfloor") === value}>${label}</option>`)}
-              </select>
-              <span class="small muted">${t("Bestimmt den Startwert der Kennlinie (Exponent n: Fußboden 1,1, gemischt 1,2, Heizkörper 1,3).")}</span>
-              ${this._houseEdit && (this._houseEdit.heating_surface ?? "underfloor") !== (this._house.heating_surface ?? "underfloor")
-                ? html`<span class="small warn-text">${t("Nach dem Speichern wird die Kennlinie neu bewertet; die gemessenen Daten bleiben erhalten.")}</span>`
-                : nothing}
-            </label>
-            <label class="field">
-              <span class="field-label">${t("Außentemperatur")}</span>
-              <select @change=${(e) => set({ outside_source: e.target.value })}>
-                ${Object.entries(OUTSIDE_SOURCES()).map(([value, label]) => html`<option value=${value} ?selected=${(house.outside_source ?? "auto") === value}>${label}</option>`)}
-              </select>
-              <span class="small muted">${t("Für das Hausmodell und die Aufzeichnung der Wärmepumpe. Den eigenen Sensor wählst du unter Lernquellen.")}</span>
-            </label>
+      <fieldset class="group">
+        <legend>${t("Räume")}</legend>
+        <p class="help small">${t("Aus den Raumtemperaturen bildet Sunflow das Raum-Ist und lernt das Hausmodell. Gewicht z. B. nach Fläche; ohne Angabe zählen alle Räume gleich. Sunflow regelt keine einzelnen Räume.")}</p>
+        ${house.rooms.map((room, i) => html`<div class="room">
+          <div class="field grow">
+            <span class="field-label">${t("Temperatur")}</span>
+            <sf-picker label=${t("Temperatur")} placeholder=${t("Name oder Entität suchen …")}
+              .value=${room.entity_id} .options=${options(candidates.temperature)}
+              @change=${(e) => e.detail.value && setRoom(i, { entity_id: e.detail.value })}></sf-picker>
           </div>
-        </fieldset>
-        ${this._houseEdit
-          ? html`<div class="actions">
-              <button class="primary" ?disabled=${this._busy || house.rooms.some((r) => !r.entity_id)} @click=${() => this._saveHouse()}>${t("Speichern")}</button>
-              <button class="secondary" @click=${() => (this._houseEdit = null)}>${t("Abbrechen")}</button>
-            </div>`
-          : nothing}
-        ${this._renderHouseModel()}
-      </section>
+          <label class="field narrow">
+            <span class="field-label">${t("Gewicht")}</span>
+            <span class="input-unit"><input inputmode="decimal" .value=${toDisplay(room.weight, "")}
+              @change=${(e) => { const v = fromDisplay(e.target.value, ""); if (v > 0) setRoom(i, { weight: v }); }}></span>
+          </label>
+          <button class="secondary" @click=${() => set({ rooms: house.rooms.filter((_, k) => k !== i) })}>${t("Entfernen")}</button>
+        </div>`)}
+        <div><button class="secondary" @click=${() => set({ rooms: [...house.rooms, { entity_id: "", weight: 1 }] })}>${t("Raum hinzufügen")}</button></div>
+      </fieldset>
+      ${this._renderFastChange(house, set)}
+      <fieldset class="group">
+        <legend>${t("Haus")}</legend>
+        <div class="fields">
+          <div class="field">
+            <span class="field-label">${t("Wärme ins Haus (optional)")}</span>
+            <sf-picker label=${t("Wärme ins Haus (optional)")} empty-label=${t("aus der Wärmepumpe")} placeholder=${t("Name oder Entität suchen …")}
+              .value=${house.heat_entity ?? ""} .options=${options(candidates.power)}
+              @change=${(e) => set({ heat_entity: e.detail.value || null })}></sf-picker>
+            <span class="help small">${t("Wärmeleistung in W, z. B. vom Wärmemengenzähler der Heizung. Ohne Angabe nimmt Sunflow die Wärme der Wärmepumpe.")}</span>
+          </div>
+          <label class="field">
+            <span class="field-label">${t("Heizflächen")}</span>
+            <select @change=${(e) => set({ heating_surface: e.target.value })}>
+              ${Object.entries(SURFACES()).map(([value, label]) => html`<option value=${value} ?selected=${(house.heating_surface ?? "underfloor") === value}>${label}</option>`)}
+            </select>
+            <span class="help small">${t("Bestimmt den Startwert der Kennlinie (Exponent n: Fußboden 1,1, gemischt 1,2, Heizkörper 1,3).")}</span>
+            ${this._houseEdit && (this._houseEdit.heating_surface ?? "underfloor") !== (this._house.heating_surface ?? "underfloor")
+              ? html`<span class="small warn-text">${t("Nach dem Speichern wird die Kennlinie neu bewertet; die gemessenen Daten bleiben erhalten.")}</span>`
+              : nothing}
+          </label>
+          <label class="field">
+            <span class="field-label">${t("Außentemperatur")}</span>
+            <select @change=${(e) => set({ outside_source: e.target.value })}>
+              ${Object.entries(OUTSIDE_SOURCES()).map(([value, label]) => html`<option value=${value} ?selected=${(house.outside_source ?? "auto") === value}>${label}</option>`)}
+            </select>
+            <span class="help small">${t("Für das Hausmodell und die Aufzeichnung der Wärmepumpe. Den eigenen Sensor wählst du unter Lernquellen.")}</span>
+          </label>
+        </div>
+      </fieldset>
+      ${this._houseEdit
+        ? html`<div class="actions">
+            <button class="primary" ?disabled=${this._busy || house.rooms.some((r) => !r.entity_id)} @click=${() => this._saveHouse()}>${t("Speichern")}</button>
+            <button class="secondary" @click=${() => (this._houseEdit = null)}>${t("Abbrechen")}</button>
+          </div>`
+        : nothing}
     `;
   }
 
@@ -852,22 +1375,24 @@ class SunflowHeatPump extends LitElement {
         set({ fast_change: { ...current, [key]: v } });
       }}> ${unit}`;
     return html`
-      <span class="field-label">${t("Schnelle Änderung (Lüften, Kochen …)")}</span>
-      <div class="fields">
-        <div class="field">
-          <span class="field-label">${t("Beginn ab")}</span>
-          <span class="input-unit">${input("start_k", "K")} ${t("in")} ${input("start_min", "min")}</span>
+      <fieldset class="group">
+        <legend>${t("Schnelle Änderung (Lüften, Kochen …)")}</legend>
+        <p class="help small">${t("Ändert sich ein Raum so schnell, zählt er bis zum Ende nicht für das Raum-Ist und die Korrektur wartet; danach zählt er mit seinem Rückstand oder Überschuss.")}</p>
+        <div class="fields">
+          <div class="field">
+            <span class="field-label">${t("Beginn ab")}</span>
+            <span class="input-unit">${input("start_k", "K")} ${t("in")} ${input("start_min", "min")}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">${t("Vorbei bei höchstens")}</span>
+            <span class="input-unit">${input("settle_k", "K")} ${t("in")} ${input("settle_min", "min")}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">${t("Höchstens")}</span>
+            <span class="input-unit">${input("max_h", "h")}</span>
+          </div>
         </div>
-        <div class="field">
-          <span class="field-label">${t("Vorbei bei höchstens")}</span>
-          <span class="input-unit">${input("settle_k", "K")} ${t("in")} ${input("settle_min", "min")}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">${t("Höchstens")}</span>
-          <span class="input-unit">${input("max_h", "h")}</span>
-        </div>
-      </div>
-      <p class="small muted">${t("Ändert sich ein Raum so schnell, zählt er bis zum Ende nicht für das Raum-Ist und die Korrektur wartet; danach zählt er mit seinem Rückstand oder Überschuss.")}</p>
+      </fieldset>
     `;
   }
 
@@ -885,95 +1410,53 @@ class SunflowHeatPump extends LitElement {
     }
   }
 
-  /** What Sunflow learned about the house, in words, with the last week measured and expected. */
-  _renderHouseModel() {
-    const result = this._houseModel;
-    if (!result || result.state === "no_rooms") return nothing;
-    const one = (v) => decimal(v.toFixed(1));
-    const messages = {
-      no_outside: t("Es fehlt eine Außentemperatur: an der Wärmepumpe oder unter Lernquellen."),
-      error: t("Nicht verfügbar: {error}", { error: result.error ?? "" }),
-      learning: t("Lernt noch: {days} von {min} Tagen mit Raum- und Außentemperatur.", { days: result.days ?? 0, min: result.min_days ?? 7 }),
-    };
-    if (messages[result.state]) return html`<p class="small muted">${messages[result.state]}</p>${this._renderHouseSource(result)}`;
-    const m = result.model;
-    const heat = {
-      meter: t("Wärme vom gewählten Sensor"),
-      measured: t("Wärme der Wärmepumpe gemessen"),
-      cop: t("Wärme aus Strom × COP der Wärmepumpe"),
-      estimated: t("Wärme aus dem Strom der Wärmepumpe geschätzt (COP aus der Außentemperatur)"),
-    }[result.heat_source] ?? t("ohne Wärmemessung – Heizung und innere Wärme lassen sich nicht trennen");
-    const tile = (label, value, help = null) => html`<div class="tile"><div class="small muted">${label}</div><div class="value">${value}</div>${help ? html`<div class="small muted">${help}</div>` : nothing}</div>`;
-    const name = (entityId) => (this._candidates?.temperature ?? []).find((c) => c.entity_id === entityId)?.name ?? entityId;
-    const points = result.chart ?? [];
-    return html`
-      <div class="learned">
-        <span class="field-label">${t("Gelernt")}</span>
-        <p class="small ${result.state === "ready" ? "muted" : "warn-text"}">${result.state === "ready"
-          ? t("Aus {days} Tagen · {heat}", { days: result.days, heat })
-          : m.plausible
-            ? t("Noch unsicher: Die Vorhersage ist nicht besser als „die Temperatur bleibt“. Sunflow nutzt das Modell noch nicht. ({heat})", { heat })
-            : t("Noch nicht plausibel – vielleicht heizt etwas, das nicht gemessen wird, oder ein Sensor hängt in der Sonne. ({heat})", { heat })}</p>
-        <div class="tiles">
-          ${m.tau_h != null ? tile(t("Zeitkonstante"), `${Math.round(m.tau_h)} h`, t("bis zwei Drittel des Unterschieds nach außen weg sind")) : nothing}
-          ${tile(t("Abkühlung bei 0 °C außen"), `${one(m.cooling_k_per_h_at_0)} K/h`, t("ohne Heizung und Sonne, bei {temp} °C innen", { temp: decimal(String(COOLING_INSIDE_C)) }))}
-          ${m.loss_w_per_k != null ? tile(t("Wärmeverlust"), `${Math.round(m.loss_w_per_k)} W/K`, t("bei −10 °C außen etwa {kw} kW Heizleistung", { kw: one(m.loss_w_per_k * (COOLING_INSIDE_C + 10) / 1000) })) : nothing}
-          ${m.capacity_kwh_per_k != null ? tile(t("Wärmespeicher"), `${Math.round(m.capacity_kwh_per_k)} kWh/K`, t("Wärme für 1 K wärmer im ganzen Haus")) : nothing}
-          ${m.sun_k_per_h != null ? tile(t("Sonne"), `${m.sun_k_per_h >= 0 ? "+" : ""}${one(m.sun_k_per_h)} K/h`, t("bei voller Sonne")) : nothing}
-          ${m.error_k != null ? tile(t("Vorhersage über 24 h"), `± ${one(m.error_k)} K`, t("„bleibt gleich“ läge bei ± {k} K", { k: one(m.baseline_k) })) : nothing}
-        </div>
-        ${this._renderHouseSource(result)}
-        ${result.excluded_hours
-          ? html`<p class="small muted">${result.source === "heat_pump_samples"
-            ? t("{hours} Stunden mit Warmwasser, Abtauen, Nachlauf oder schnellen Änderungen sind ausgelassen.", { hours: result.excluded_hours })
-            : t("{hours} Stunden mit Warmwasser oder Abtauen sind ausgelassen: deren Wärme ging nicht ins Haus.", { hours: result.excluded_hours })}</p>`
-          : nothing}
-        ${result.restless?.length
-          ? html`<p class="small warn-text">${t("Auffällig unruhig – vielleicht Sonne, Heizkörper oder Fenster am Sensor: {rooms}. Ein geringeres Gewicht oder ein anderer Sensor hilft.", { rooms: result.restless.map(name).join(", ") })}</p>`
-          : nothing}
-        ${points.length
-          ? html`<span class="field-label">${t("Letzte 7 Tage")}</span>
-            <div class="legend small">
-              <span class="legend-item"><span class="swatch" style="background: ${SERIES_COLORS[0]}"></span>${t("gemessen")}</span>
-              <span class="legend-item"><span class="swatch" style="background: ${SERIES_COLORS[1]}"></span>${t("Modell (startet jeden Tag neu)")}</span>
-            </div>
-            ${lineChart(
-              [
-                { name: t("gemessen"), color: SERIES_COLORS[0], points: points.map((p) => ({ start: p.start, end: p.end, value: p.measured })) },
-                { name: t("Modell"), color: SERIES_COLORS[1], dashed: true, points: points.map((p) => ({ start: p.start, end: p.end, value: p.model })) },
-              ],
-              {
-                label: t("Raumtemperatur der letzten 7 Tage, gemessen und vom Modell erwartet"),
-                formatY: (v) => `${decimal(v.toFixed(1))} °C`,
-                yMin: Math.floor(Math.min(...points.map((p) => p.measured)) - 1),
-                yMax: Math.ceil(Math.max(...points.map((p) => p.measured)) + 1),
-              },
-            )}`
-          : nothing}
-      </div>
-    `;
-  }
-
-  /** Where the house model's hours come from: Home Assistant until the heat pump's samples cover enough days. */
-  _renderHouseSource(result) {
-    if (!result.source) return nothing;
-    return html`<p class="small muted">${result.source === "heat_pump_samples"
-      ? t("Quelle: Messwerte der Wärmepumpe (5 min, {days} Tage gültiger Heizbetrieb).", { days: result.coverage_days })
-      : t("Quelle: Stundenmittel aus Home Assistant. Umstellung auf die Messwerte der Wärmepumpe ab {min} Tagen gültigem Heizbetrieb (bisher {days}).", { min: result.min_days ?? 7, days: result.coverage_days ?? 0 })}</p>`;
-  }
-
-  static styles = css`
+  static styles = [toggleSheet, diagramStyles, css`
     :host { display: flex; flex-direction: column; gap: 12px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
     h1 { margin: 0; font-size: 20px; }
-    .heading { display: flex; flex-direction: column; gap: 4px; }
-    .heading p { margin: 0; }
+    h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    h3 { margin: 0; font-size: 14px; font-weight: 600; }
     .muted { color: var(--sf-muted); }
     .small { font-size: 13px; }
     p { margin: 0; }
-    .device { border: 1px solid var(--sf-border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
-    .device-title { font-weight: 600; font-size: 16px; display: block; }
+    .title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; justify-content: space-between; }
+    .title-row > :is(h1, h2, h3) { flex: 0 1 auto; }
+    .device-name { margin-top: 8px; }
+    .status { padding: 12px 14px; border-radius: 10px; background: var(--sf-subtle); border: 1px solid var(--sf-border); display: flex; flex-direction: column; gap: 4px; }
+    .status.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); border-color: transparent; }
+    .status.error { background: var(--sf-error-bg); color: var(--sf-error-text); border-color: transparent; }
+    .status-main { font-weight: 600; font-size: 15px; }
+    .status-sub { font-size: 14px; color: var(--sf-muted); }
+    .status.warn .status-sub, .status.error .status-sub { color: inherit; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .chip { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--sf-neutral-bg); color: var(--sf-neutral-text); }
+    .chip.ok { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
+    .chip.warn { background: var(--sf-warn-bg); color: var(--sf-warn-text); }
+    .card, .sec { border: 1px solid var(--sf-border); border-radius: 10px; }
+    .card { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .controls { display: grid; grid-template-columns: auto auto 1fr; gap: 16px 28px; align-items: start; }
+    .main-tiles { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+    .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--sf-border-strong); border-radius: 8px; overflow: hidden; width: fit-content; }
+    .seg button { border: 0; background: var(--sf-surface); padding: 0 14px; min-height: 40px; cursor: pointer; }
+    .seg button + button { border-left: 1px solid var(--sf-border-strong); }
+    .seg button.on { background: var(--sf-primary); color: var(--sf-on-primary); }
+    .small-seg button { min-height: 32px; padding: 0 10px; font-size: 13px; }
+    .stepper { display: flex; align-items: center; gap: 8px; }
+    .stepper .secondary { min-width: 44px; padding: 0; font-size: 18px; }
+    .stepper input { width: 5.5em; flex: none; text-align: center; font-weight: 600; }
+    .sec { display: flex; flex-direction: column; }
+    .section-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; }
+    .sec-toggle { border: 0; background: none; padding: 0; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+    .chev { width: 8px; height: 8px; border-right: 2px solid var(--sf-muted); border-bottom: 2px solid var(--sf-muted); transform: rotate(-45deg); transition: transform .15s; }
+    .chev.open { transform: rotate(45deg); }
+    .sum { margin-left: auto; color: var(--sf-muted); font-size: 13px; text-align: right; }
+    .sec > .help { padding: 0 14px 8px 44px; }
+    .sec-body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .detail { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--sf-border); padding-top: 10px; }
+    .row2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px 24px; }
+    .row2 > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .help { color: var(--sf-muted); }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
     .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
     .field-label { font-weight: 500; font-size: 13px; }
@@ -992,11 +1475,7 @@ class SunflowHeatPump extends LitElement {
     .room { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .room .grow { flex: 1 1 260px; }
     .room .narrow { flex: 0 0 90px; }
-    .input-unit input.short { width: 4.5em; }
-    .learned { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--sf-border); padding-top: 12px; }
-    .legend { display: flex; flex-wrap: wrap; gap: 16px; }
-    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
-    .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+    .input-unit input.short { width: 4.5em; flex: none; }
     .chart { width: 100%; height: auto; display: block; }
     .chart .grid { stroke: var(--sf-border); stroke-width: 1; }
     .chart .axis { fill: var(--sf-muted); font-size: 11px; }
@@ -1005,13 +1484,24 @@ class SunflowHeatPump extends LitElement {
     table { border-collapse: collapse; width: 100%; font-size: 14px; display: block; overflow-x: auto; }
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--sf-border); font-variant-numeric: tabular-nums; }
     th { font-size: 13px; color: var(--sf-muted); font-weight: 600; }
+    td:first-child { white-space: nowrap; }
+    .tag { font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--sf-neutral-bg); color: var(--sf-muted); white-space: nowrap; }
+    .tag.real { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }
     .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .tile.warn .value { color: var(--sf-warn-text); }
+    .bar { height: 8px; background: var(--sf-neutral-bg); border-radius: 4px; overflow: hidden; margin: 4px 0; }
+    .bar > div { height: 100%; background: var(--sf-primary); }
+    .bar.emergency > div { background: var(--sf-warn-text); }
     .alert.warn { padding: 10px 14px; border-radius: 8px; background: var(--sf-warn-bg, var(--sf-subtle)); color: var(--sf-warn-text); font-weight: 600; }
     .alert.error { padding: 10px 14px; border-radius: 8px; background: var(--sf-error-bg); color: var(--sf-error-text); }
     button:disabled { cursor: not-allowed; opacity: .6; }
-  `;
+    @media (max-width: 760px) {
+      .controls { grid-template-columns: 1fr; }
+      .sum { display: none; }
+    }
+  `];
 }
 
 customElements.define("sf-heat-pump", SunflowHeatPump);

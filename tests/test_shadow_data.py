@@ -252,7 +252,7 @@ def test_migration_adds_heat_pump_samples(tmp_path: Path) -> None:
     schema = _query(path, "SELECT type, name FROM sqlite_master WHERE tbl_name = 'heat_pump_samples' ORDER BY type, name")
     ShadowStore(tmp_path).close()
 
-    assert _version(path) == SCHEMA_VERSION == 10
+    assert _version(path) == SCHEMA_VERSION == 11
     assert ("table", "heat_pump_samples") in schema
     assert ("index", "heat_pump_samples_start") in schema
     assert _query(path, "SELECT type, name FROM sqlite_master WHERE tbl_name = 'heat_pump_samples' ORDER BY type, name") == schema
@@ -268,6 +268,37 @@ def test_interrupted_heat_pump_step_runs_again(tmp_path: Path) -> None:
 
     assert _query(path, "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'heat_pump_samples_start'")
     assert _query(path, "SELECT device_id, tv_c FROM heat_pump_samples") == [("hp", 30.5)]
+
+
+def test_migration_adds_flow_target_columns(tmp_path: Path) -> None:
+    """A database of version 10 (heat pump rows without flow target and room setpoint) gets both columns;
+    its rows stay, a second run changes nothing and new rows keep the values."""
+    path = _filled(tmp_path)
+    columns = "device_id, start, samples, tv_c, program, flags"
+    _sql(
+        path,
+        f"CREATE TABLE old AS SELECT {columns} FROM heat_pump_samples",
+        "DROP TABLE heat_pump_samples",
+        "CREATE TABLE heat_pump_samples (device_id TEXT, start TEXT, samples INTEGER,"
+        " tv_c REAL, tr_c REAL, tvbh_c REAL, tv_max_c REAL, heat_w REAL, heat_source TEXT, outside_c REAL,"
+        " bypass_pct REAL, setpoint_c REAL, max_setpoint_c REAL, written_c REAL, compressor REAL,"
+        " program TEXT, activity TEXT, strategy TEXT, error TEXT, rooms TEXT, events TEXT, flags TEXT,"
+        " PRIMARY KEY (device_id, start))",
+        f"INSERT INTO heat_pump_samples ({columns}) SELECT {columns} FROM old",
+        "DROP TABLE old",
+        "PRAGMA user_version = 10",
+    )
+
+    ShadowStore(tmp_path).close()
+    store = ShadowStore(tmp_path)
+    try:
+        store.store_heat_pump_samples([HEAT_PUMP | {"start": START + timedelta(minutes=5), "target_c": 29.4, "room_setpoint_c": 21.5}])
+        rows = store.heat_pump_samples("hp", START)
+    finally:
+        store.close()
+
+    assert _version(path) == SCHEMA_VERSION
+    assert [(r["tv_c"], r["target_c"], r["room_setpoint_c"]) for r in rows] == [(30.5, None, None), (30.5, 29.4, 21.5)]
 
 
 def test_heat_pump_samples_stored_and_read(tmp_path: Path) -> None:

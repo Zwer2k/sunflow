@@ -136,6 +136,9 @@ class Recording:
     noted_limit: bool = False
     # Set value Sunflow writes for real, per minute of the interval (step 3 part 4.7); empty in the shadow
     written: list[float] = field(default_factory=list)
+    # Flow target and room setpoint per minute of the interval, for the history view (shadow and active)
+    flow_targets: list[float] = field(default_factory=list)
+    room_setpoints: list[float] = field(default_factory=list)
 
 
 class HeatPumpRecorder:
@@ -243,6 +246,8 @@ class HeatPumpRecorder:
                     rows.append(row)
                 recording.minutes = []
                 recording.written = []
+                recording.flow_targets = []
+                recording.room_setpoints = []
                 # Peaks and events of intervals that are over (also of one without samples)
                 recording.peaks = {k: v for k, v in recording.peaks.items() if k >= interval}
                 recording.events = {k: v for k, v in recording.events.items() if k >= interval}
@@ -281,6 +286,10 @@ class HeatPumpRecorder:
                 guard = self.flow.guards.get(device_id)
                 if self.flow.writing_active(device_id) and guard is not None and guard.written_c is not None:
                     recording.written.append(guard.written_c)
+                if (state := self.flow.flows.get(device_id)) is not None and state.target_c is not None:
+                    recording.flow_targets.append(state.target_c)
+                if not off(config):
+                    recording.room_setpoints.append(config.house.climate.setpoint_c)
                 # The self-limit time of the states counts from Sunflow's last real write (section 4)
                 recording.tracker.written_at = self.flow.real_written_at.get(device_id)
             events, self.flow.source_events = self.flow.source_events, []
@@ -426,6 +435,9 @@ class HeatPumpRecorder:
             "outside_c": mean([m.outside_c for m in minutes]),
             # The set value in force while Sunflow writes for real (mean); None in the shadow
             "written_c": sum(recording.written) / len(recording.written) if recording.written else None,
+            # Flow target and room setpoint in force (means of the minutes); None when not computed
+            "target_c": sum(recording.flow_targets) / len(recording.flow_targets) if recording.flow_targets else None,
+            "room_setpoint_c": sum(recording.room_setpoints) / len(recording.room_setpoints) if recording.room_setpoints else None,
             "compressor": sum(compressor) / len(compressor) if compressor else None,
             "program": common([m.reading.program for m in minutes]),
             "activity": common([m.reading.activity for m in minutes]),

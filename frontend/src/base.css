@@ -32,6 +32,10 @@
   /* Shading map: less than forecast, more than forecast */
   --sf-shade-low: #c2410c;
   --sf-shade-high: #0b5cad;
+  /* Heat pump diagrams: hot flow, cold return, hot water */
+  --hp-hot: #d9480f;
+  --hp-cold: #1c7ed6;
+  --hp-dhw: #ae3ec9;
   color-scheme: light;
 }
 
@@ -69,6 +73,9 @@
     --sf-series-neutral: #6e7781;
     --sf-shade-low: #f0883e;
     --sf-shade-high: #4c9be8;
+    --hp-hot: #ff8a4c;
+    --hp-cold: #4dabf7;
+    --hp-dhw: #da77f2;
     color-scheme: dark;
   }
 }
@@ -105,6 +112,9 @@
   --sf-series-neutral: #6e7781;
   --sf-shade-low: #f0883e;
   --sf-shade-high: #4c9be8;
+  --hp-hot: #ff8a4c;
+  --hp-cold: #4dabf7;
+  --hp-dhw: #da77f2;
   color-scheme: dark;
 }
 

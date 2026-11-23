@@ -157,6 +157,8 @@ export const api = {
   setHeatPumpWriting: (deviceId, active) => request("PUT", `/heat_pump/${encodeURIComponent(deviceId)}/writing`, { active }),
   heatPumpShadowWrites: (deviceId, days = 7) =>
     request("GET", `/heat_pump/${encodeURIComponent(deviceId)}/shadow_writes?days=${days}`),
+  heatPumpHistory: (deviceId, hours = 24) =>
+    request("GET", `/heat_pump/${encodeURIComponent(deviceId)}/history?hours=${hours}`),
   setIntegrationSettings: (body) => request("PUT", "/config/integration", body),
   directStatus: () => request("GET", "/direct/status"),
   addDirect: (body) => request("POST", "/config/devices/direct", body),

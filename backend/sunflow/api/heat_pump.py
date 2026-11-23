@@ -159,6 +159,72 @@ async def shadow_writes(request: Request, device_id: str, days: int = Query(defa
     }
 
 
+# Hours the history of a heat pump covers at most
+HISTORY_HOURS_MAX = 7 * 24
+# Columns of the 5 minute rows the history view shows
+HISTORY_COLUMNS = (
+    "tv_c", "tr_c", "tv_max_c", "setpoint_c", "max_setpoint_c", "written_c", "target_c", "room_setpoint_c",
+    "outside_c", "heat_w", "compressor", "bypass_pct", "activity",
+)  # fmt: skip
+# Events the history view marks
+HISTORY_EVENTS = ("write", "start", "stop", "foreign_write", "unwanted_stop", "flow_source")
+
+
+def _room_mean(rooms: dict[str, Any] | None, weights: dict[str, float], left_out: list[str]) -> float | None:
+    """Weighted mean of the configured rooms of a row, without the rooms with a fast change (as the room temperature)."""
+    known = [(value, weights[e]) for e, value in (rooms or {}).items() if e in weights and e not in left_out and isinstance(value, int | float)]
+    total = sum(w for _, w in known)
+    return sum(v * w for v, w in known) / total if total > 0 else None
+
+
+def history_rows(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[dict[str, Any]]:
+    """The 5 minute rows reduced to what the history view draws, with the room temperature per row."""
+    result = []
+    for row in rows:
+        flags = row.get("flags") or {}
+        ventilation = list(flags.get("ventilation") or [])
+        result.append(
+            {"start": row["start"]}
+            | {column: row.get(column) for column in HISTORY_COLUMNS}
+            | {
+                "room_c": _room_mean(row.get("rooms"), weights, ventilation),
+                "rooms": {e: v for e, v in (row.get("rooms") or {}).items() if e in weights},
+                "valid": bool(flags.get("valid")),
+                "blocked": bool(flags.get("blocked")),
+                "ventilation": ventilation,
+            }
+        )
+    return result
+
+
+@router.get("/heat_pump/{device_id}/history")
+async def history(request: Request, device_id: str, hours: int = Query(default=24, ge=1, le=HISTORY_HOURS_MAX)) -> dict[str, Any]:
+    """The last hours of a heat pump for the history view: 5 minute means of flow, return, set values, flow
+    target, room setpoint and rooms (room temperature as weighted mean without rooms with a fast change),
+    states, and the events written, compressor starts and stops, foreign writes and changes of the source."""
+    config = request.app.state.store.load()
+    device = next((d for d in config.devices if d.id == device_id), None)
+    profile = _library(request).profiles.get(device.profile) if device else None
+    if device is None or profile is None or not records_heat_pump(profile):
+        raise HTTPException(status_code=404, detail="No heat pump with this id")
+    now = datetime.now(UTC)
+    since = now - timedelta(hours=hours)
+    store = getattr(getattr(request.app.state, "runner", None), "shadow", None)
+    rows = await asyncio.to_thread(store.heat_pump_samples, device_id, since) if store is not None else []
+    events = [e for row in rows for e in row.get("events") or []]
+    recorder = _recorder(request)
+    if recorder is not None:
+        events += recorder.pending_events(device_id)
+    weights = {room.entity_id: room.weight for room in config.house.rooms}
+    return {
+        "since": since.isoformat(),
+        "until": now.isoformat(),
+        "rows": history_rows(rows, weights),
+        "events": sorted((e for e in events if e.get("kind") in HISTORY_EVENTS and isinstance(e.get("at"), str)), key=lambda e: e["at"]),
+        "rooms": [{"entity_id": room.entity_id, "weight": room.weight} for room in config.house.rooms],
+    }
+
+
 @router.post("/heat_pump/{device_id}/write_now", status_code=202)
 async def write_now(request: Request, device_id: str) -> dict[str, Any]:
     """"Write now" (8.5): the next tick writes the pending set value without waiting for the minimum
