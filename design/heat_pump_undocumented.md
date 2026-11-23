@@ -1,6 +1,6 @@
 # Wärmepumpe: umgesetzt, aber nicht (genau) im Design
 
-Stand: 23.11.2026 (0.80.31). Arbeitsliste zum Durchgehen: Was der Code tut, ohne dass `heat_pump.md` oder
+Stand: 23.11.2026 (0.80.33). Arbeitsliste zum Durchgehen: Was der Code tut, ohne dass `heat_pump.md` oder
 `heat_pump_device.md` es beschreiben (oder nur ungenau). Je Punkt entscheidet der Nutzer:
 **ins Design** (bleibt, wird beschrieben), **ändern** oder **ausbauen**. Erledigte Punkte werden hier
 gestrichen; danach gilt wieder: Code = Design.
@@ -11,7 +11,6 @@ Spalte „Vorschlag“ ist nur die Einschätzung des Agenten.
 
 | # | Was | Wo | Vorschlag |
 |---|---|---|---|
-| B1 | Eine Stunde zählt erst mit mindestens 6 der 12 Fünf-Minuten-Zeilen (`CURVE_HOUR_MIN_ROWS`). | `curve.py` | ins Design |
 | B2 | Die 24 Start-Stunden liegen verteilt auf R − A = 5, 15 und 25 K (`CURVE_PRIOR_X_K`). Bestimmt, wie stark die Startsteilheit gegenüber der Startverschiebung festhält. | `curve.py` | ins Design |
 | B3 | Ein Steilheitswert 0 aus der WP gilt als „nicht gesetzt“ (dann Heizflächentyp). | `curve.py` | ins Design |
 | B4 | Neu gelernt wird außer stündlich auch sofort, wenn sich Heizflächentyp, Räume oder Raumgewichte ändern. | `samples.py` (`curve_key`) | ins Design |

@@ -16,6 +16,27 @@ HA-Integration `sunflow_ems`, Geräteprofile. Aufbau siehe `README.md` („Repos
 - **Verhalten für Nutzer:** `docs/` (Deutsch) und `docs/en/` (Englisch) beschreiben, wie Sunflow sich
   verhält. Änderungen am Verhalten dort in beiden Sprachen nachziehen.
 
+## Grundsatz: korrekte Berechnung vor zusätzlichen Regeln
+
+Ziel ist eine nachvollziehbare, möglichst korrekte Berechnung. Regeln, die nicht dokumentiert sind
+oder in vielen Abhängigkeiten zusammenwirken, führen zu verfälschten Messwerten und ungewolltem Verhalten.
+
+- **Jede Regel steht im Design.** Filter, Schwellen, Mindestmengen und Sonderfälle in Berechnungen
+  (Lernen, Regelung, Planung) gibt es nur, wenn das zugehörige Design-Dokument sie beschreibt. Was der
+  Code zusätzlich tut, wird nicht stillschweigend ergänzt, sondern dem Nutzer zur Entscheidung vorgelegt
+  (Arbeitsliste: `design/heat_pump_undocumented.md`).
+- **Eine Bedingung an genau einer Stelle.** Ob ein Messwert gültig ist, entscheidet eine einzige,
+  dokumentierte Definition (z. B. „gültiger Heizbetrieb“). Keine zweite, versteckte Prüfung derselben
+  Frage an anderer Stelle (im Backend oder im UI).
+- **Daten nicht verwerfen, sondern richtig gewichten.** Schwellen, die gültige Daten ganz ausschließen
+  (z. B. „erst ab n Werten je Stunde“), verschieben das Ergebnis zu bequemen Fällen. Gültige Werte gehen
+  mit ihrem tatsächlichen Gewicht ein.
+- **Regeln entfernen statt ergänzen.** Bei jeder Änderung prüfen, ob eine bestehende Regel überflüssig
+  ist, sich mit einer anderen überschneidet oder das Ergebnis verfälscht. Solche Regeln werden ausgebaut,
+  nicht durch weitere Regeln ausgeglichen.
+- **Belegen statt annehmen.** Wirkung einer Regel vor dem Entscheiden mit echten Daten beziffern
+  (`heat_pump_samples` über die Sunflow-API, HA-History per MCP) und das Ergebnis mit vorlegen.
+
 ## Entwicklung
 
 - Backend: `backend/`, Python ≥ 3.14 laut README, Abhängigkeiten in `backend/pyproject.toml`

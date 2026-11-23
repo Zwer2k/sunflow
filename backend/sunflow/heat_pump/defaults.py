@@ -116,15 +116,14 @@ def correction_ti_h(surface: str | None) -> float:
 
 
 # Heating curve (8), learned from heat_pump_samples every CURVE_REFRESH from the last CURVE_HISTORY_DAYS
-# (half-life CURVE_HALF_LIFE_DAYS). A point is an hour with at least CURVE_HOUR_MIN_ROWS rows of valid
-# heating, no fast change, room within CURVE_ROOM_BAND_K of its setpoint. The fit
-# is pulled to the start curve as if CURVE_PRIOR_HOURS hours on it said so, spread over CURVE_PRIOR_X_K of
-# R − A; slope within the range of the heat pump's own slope entity (manifest), else CURVE_SLOPE_RANGE; shift
-# within ±CURVE_SHIFT_RANGE_K. CURVE_SLOPE_LIMIT only bounds what config.json may hold.
+# (half-life CURVE_HALF_LIFE_DAYS). A point is a 5 minute row (worth 1/12 hour) of valid heating, no fast
+# change, room within CURVE_ROOM_BAND_K of its setpoint. The fit is pulled to the start curve as if
+# CURVE_PRIOR_HOURS hours on it said so, spread over CURVE_PRIOR_X_K of R − A; slope within the range of the
+# heat pump's own slope entity (manifest), else CURVE_SLOPE_RANGE; shift within ±CURVE_SHIFT_RANGE_K.
+# CURVE_SLOPE_LIMIT only bounds what config.json may hold.
 CURVE_REFRESH_S = 3600
 CURVE_HISTORY_DAYS = 28
 CURVE_HALF_LIFE_DAYS = 14
-CURVE_HOUR_MIN_ROWS = 6
 CURVE_ROOM_BAND_K = 0.3
 CURVE_PRIOR_HOURS = 24
 CURVE_PRIOR_X_K = (5.0, 15.0, 25.0)

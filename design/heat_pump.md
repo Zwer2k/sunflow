@@ -117,13 +117,14 @@ T-Vorlauf). Bei „Witterungsgeführt“ lernt Sunflow, schreibt aber nichts.
 - Eine Soll-Änderung um 1 K hebt den Vorlauf sofort um 1 + S Kelvin.
 
 **Lernen (stündlich, ohne Wartezeit):**
-- Datenpunkte: Stunden mit gültigem Heizbetrieb ohne schnelle Änderung, in denen Raum-Ist nahe am Raum-Soll
-  dieser Stunde lag (±0,3 K): (R − A, wirksamer Vorlauf-Soll − R). Dieser Vorlauf hat gereicht. Messwerte ohne gespeicherten Raum-Soll zählen nicht.
+- Datenpunkte: jede 5-min-Zeile mit gültigem Heizbetrieb ohne schnelle Änderung, in der Raum-Ist nahe am
+  Raum-Soll lag (±0,3 K): (R − A, wirksamer Vorlauf-Soll − R), Gewicht 1/12 Stunde. Dieser Vorlauf hat
+  gereicht. Keine Gruppierung in Stunden, keine Mindestzahl. Zeilen ohne gespeicherten Raum-Soll zählen nicht.
 - Gewichtete Ausgleichsgerade über die letzten 28 Tage (Halbwertszeit 14 Tage), **zu den Startwerten hin
   gezogen**: die Startkurve zählt wie 24 Stunden auf ihr. S bleibt im Bereich der Steilheits-Entity der WP
   (Manifest, HPSU 0–2,55; ohne sie 0–3), P in ±10 K. Derselbe Bereich gilt für den Startwert S₀.
 - **Anteil des Gelernten** = Gewicht der Datenpunkte ÷ (Gewicht + 24): anfangs 0 % (nur Startwerte), dann
-  steigend; 100 % wird nie erreicht (alle Stunden der 28 Tage ≈ 94 %). Angezeigt mit S, P und S₀, P₀.
+  steigend; 100 % wird nie erreicht (alle Zeilen der 28 Tage ≈ 94 %). Angezeigt mit S, P und S₀, P₀.
 - Ändert sich die gelernte Kurve, wird die Korrektur um alt − neu verschoben (in ±3 K): das Vorlauf-Ziel
   springt nicht, die Korrektur wandert in die Kurve. Ändern sich die Startwerte (vom Nutzer oder, ohne
   gespeicherte, über den Heizflächentyp), gilt die neue Kurve sofort ohne Verschiebung; die Datenpunkte

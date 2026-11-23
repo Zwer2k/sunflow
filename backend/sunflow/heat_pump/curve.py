@@ -4,9 +4,9 @@
 
 R is the room setpoint, A the outside temperature, S the slope, P the shift (K). Start values per heat pump
 (settable): until set, the slope of the heat pump's own curve when the profile reads it (HPSU "Heizkurve",
-then stored), else one per heating surface type; P = 0. Learned every hour without a waiting time: from hours
-of valid heating in which the room was close to its setpoint, the effective flow setpoint then was enough - a
-point (R − A, flow − R). A weighted straight line through them (recent days weigh more), pulled towards the
+then stored), else one per heating surface type; P = 0. Learned every hour without a waiting time: every 5
+minute row of valid heating in which the room was close to its setpoint is a point (R − A, flow − R) worth
+1/12 hour - the effective flow setpoint then was enough. No grouping into hours, no minimum count per hour. A weighted straight line through them (recent days weigh more), pulled towards the
 start values as if CURVE_PRIOR_HOURS hours on the start curve said so: with few points the curve stays near
 the start, with many the data count. The share of the data is learned_pct.
 
@@ -14,7 +14,6 @@ Helpers shared with learned.py and the house model (rows of heat_pump_samples) l
 Computed from the table; what is kept in heat_pump_state.json is only a cache.
 """
 
-from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 import math
@@ -22,7 +21,6 @@ from typing import Any
 
 from .defaults import (
     CURVE_HALF_LIFE_DAYS,
-    CURVE_HOUR_MIN_ROWS,
     CURVE_PRIOR_HOURS,
     CURVE_PRIOR_X_K,
     CURVE_ROOM_BAND_K,
@@ -34,7 +32,7 @@ from .defaults import (
 INTERVAL = timedelta(minutes=5)
 HOUR = timedelta(hours=1)
 # Cache format of a curve in heat_pump_state.json; a different one is computed anew
-CACHE_FORMAT = 3
+CACHE_FORMAT = 4
 # Where the start slope comes from
 FROM_HEAT_PUMP = "heat_pump"
 FROM_SURFACE = "surface"
@@ -106,7 +104,7 @@ def start_values(
 
 @dataclass(frozen=True, kw_only=True)
 class CurvePoint:
-    """One hour that was enough: room setpoint, outside and effective flow setpoint (means)."""
+    """One 5 minute row that was enough: room setpoint, outside and effective flow setpoint (means of the row)."""
 
     start: datetime
     room_c: float
@@ -115,10 +113,10 @@ class CurvePoint:
 
 
 def select_points(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[CurvePoint]:
-    """Hours with at least CURVE_HOUR_MIN_ROWS rows of valid heating without a fast change, the room within
-    CURVE_ROOM_BAND_K of the row's setpoint and the effective setpoint and outside known. Rows without a stored
-    setpoint (recorded before it was kept) do not count."""
-    hours: dict[datetime, list[tuple[float, float, float]]] = defaultdict(list)
+    """5 minute rows of valid heating without a fast change, the room within CURVE_ROOM_BAND_K of the row's
+    setpoint and the effective setpoint and outside known, oldest first. Rows without a stored setpoint
+    (recorded before it was kept) do not count."""
+    points = []
     for row in rows:
         start = _start(row)
         if start is None or not learnable(row):
@@ -127,28 +125,24 @@ def select_points(rows: list[dict[str, Any]], weights: dict[str, float]) -> list
         target = _float(row.get("room_setpoint_c"))
         if target is None or flow is None or outside is None or room is None or abs(room - target) > CURVE_ROOM_BAND_K:
             continue
-        hours[start.replace(minute=0)].append((target, outside, flow))
-    points = []
-    for start, values in sorted(hours.items()):
-        if len(values) < CURVE_HOUR_MIN_ROWS:
-            continue
-        n = len(values)
-        points.append(CurvePoint(
-            start=start, room_c=sum(v[0] for v in values) / n, outside_c=sum(v[1] for v in values) / n,
-            flow_c=sum(v[2] for v in values) / n,
-        ))
-    return points
+        points.append(CurvePoint(start=start, room_c=target, outside_c=outside, flow_c=flow))
+    return sorted(points, key=lambda p: p.start)
+
+
+# Weight of one point (a 5 minute row) in hours
+POINT_HOURS = INTERVAL / HOUR
 
 
 def fit(points: list[CurvePoint], start: Start, now: datetime, slope_range: tuple[float, float]) -> tuple[float, float, float]:
-    """Slope, shift and the share of the data (0-1): weighted least squares of (flow − R) over (R − A), with
-    CURVE_PRIOR_HOURS virtual hours on the start curve spread over CURVE_PRIOR_X_K - few points move it a
-    little, many count most; the start keeps its share. Within slope_range and ±CURVE_SHIFT_RANGE_K."""
+    """Slope, shift and the share of the data (0-1): weighted least squares of (flow − R) over (R − A), each
+    point worth POINT_HOURS times its age weight, with CURVE_PRIOR_HOURS virtual hours on the start curve spread
+    over CURVE_PRIOR_X_K - few points move it a little, many count most; the start keeps its share. Within
+    slope_range and ±CURVE_SHIFT_RANGE_K."""
     prior = CURVE_PRIOR_HOURS / len(CURVE_PRIOR_X_K)
     data = [(x, start.slope * x + start.shift_k, prior) for x in CURVE_PRIOR_X_K]
     for p in points:
         age = max((now - p.start).total_seconds() / 86400, 0.0)
-        data.append((p.room_c - p.outside_c, p.flow_c - p.room_c, 0.5 ** (age / CURVE_HALF_LIFE_DAYS)))
+        data.append((p.room_c - p.outside_c, p.flow_c - p.room_c, POINT_HOURS * 0.5 ** (age / CURVE_HALF_LIFE_DAYS)))
     sw = sum(w for _, _, w in data)
     mx = sum(w * x for x, _, w in data) / sw
     my = sum(w * y for _, y, w in data) / sw
@@ -171,7 +165,8 @@ class Curve:
     start_slope: float
     start_shift_k: float
     start_source: str
-    hours: int
+    # Hours of data the curve rests on (5 minute rows ÷ 12)
+    hours: float
     # Share of the learned hours in the curve (0-1); the rest is the start
     learned_share: float
     computed_at: datetime
@@ -194,7 +189,7 @@ class Curve:
         """For the status and the UI."""
         return {
             "slope": round(self.slope, 3), "shift_k": round(self.shift_k, 2), "start_slope": round(self.start_slope, 3),
-            "start_shift_k": round(self.start_shift_k, 2), "start_source": self.start_source, "hours": self.hours,
+            "start_shift_k": round(self.start_shift_k, 2), "start_source": self.start_source, "hours": round(self.hours, 1),
             "learned_pct": round(100 * self.learned_share), "computed_at": self.computed_at.isoformat(),
         }
 
@@ -206,7 +201,7 @@ class Curve:
         try:
             return cls(
                 slope=float(data["slope"]), shift_k=float(data["shift_k"]), start_slope=float(data["start_slope"]),
-                start_shift_k=float(data["start_shift_k"]), start_source=str(data["start_source"]), hours=int(data["hours"]),
+                start_shift_k=float(data["start_shift_k"]), start_source=str(data["start_source"]), hours=float(data["hours"]),
                 learned_share=float(data["learned_share"]),
                 computed_at=datetime.fromisoformat(data["computed_at"]), key=str(data.get("key") or ""),
             )
@@ -218,7 +213,7 @@ def start_curve(start: Start, now: datetime, key: str = "") -> Curve:
     """The curve before anything is learned: the start values."""
     return Curve(
         slope=start.slope, shift_k=start.shift_k, start_slope=start.slope, start_shift_k=start.shift_k,
-        start_source=start.source, hours=0, learned_share=0.0, computed_at=now, key=key,
+        start_source=start.source, hours=0.0, learned_share=0.0, computed_at=now, key=key,
     )
 
 
@@ -231,5 +226,5 @@ def learn(
     slope, shift, share = fit(points, start, now, slope_range)
     return Curve(
         slope=slope, shift_k=shift, start_slope=start.slope, start_shift_k=start.shift_k, start_source=start.source,
-        hours=len(points), learned_share=share, computed_at=now, key=key,
+        hours=len(points) * POINT_HOURS, learned_share=share, computed_at=now, key=key,
     )

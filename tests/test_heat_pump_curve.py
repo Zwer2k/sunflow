@@ -28,7 +28,7 @@ S_TRUE, P_TRUE, SETPOINT = 0.8, 1.5, 21.0
 START = Start(slope=0.5, shift_k=0.0, source=FROM_HEAT_PUMP)
 
 
-def _curve(slope: float, shift: float, start_slope: float = 0.5, start_shift: float = 0.0, hours: int = 50) -> Curve:
+def _curve(slope: float, shift: float, start_slope: float = 0.5, start_shift: float = 0.0, hours: float = 50.0) -> Curve:
     return Curve(slope=slope, shift_k=shift, start_slope=start_slope, start_shift_k=start_shift, start_source=FROM_HEAT_PUMP,
                  hours=hours, learned_share=0.5, computed_at=NOW)
 
@@ -79,7 +79,7 @@ def test_learned_towards_the_house_with_enough_data() -> None:
     curve = learn(_rows(14), WEIGHTS, START, NOW)
 
     assert curve.hours == 14 * 24
-    # 14 days of hours (about 240 weighted ones) against 24 on the start
+    # 14 days of rows (about 240 weighted hours) against 24 on the start
     assert 0.85 < curve.learned_share < 0.95
     assert curve.slope == pytest.approx(S_TRUE, abs=0.05)
     assert curve.shift_k == pytest.approx(P_TRUE, abs=0.5)
@@ -124,13 +124,27 @@ def test_hours_left_out(changes: dict[str, Any], offset: float) -> None:
 
 def test_compressor_share_does_not_matter() -> None:
     """Valid heating decides, not how long the compressor ran in a row (pauses, a defrost's edge)."""
-    assert len(select_points(_rows(1, compressor=0.5), WEIGHTS)) == 24
+    assert len(select_points(_rows(1, compressor=0.5), WEIGHTS)) == 288
+
+
+def test_every_row_counts_without_grouping_into_hours() -> None:
+    """A row is a point worth 1/12 hour: a broken hour (here 3 of 12 rows valid) counts with its rows."""
+    rows = _rows(1)
+    for i, row in enumerate(rows):
+        if i % 12 >= 3:
+            row["flags"] = {"valid": False}
+    curve = learn(rows, WEIGHTS, START, NOW)
+
+    assert len(select_points(rows, WEIGHTS)) == 72
+    assert curve.hours == pytest.approx(6.0)
+    # Six hours of data against 24 on the start: a fifth learned
+    assert curve.learned_share == pytest.approx(0.2, abs=0.01)
 
 
 def test_rows_without_their_setpoint_do_not_count() -> None:
     """Older rows did not keep the setpoint: the current one could be another, so they are left out."""
     assert select_points(_rows(1, room_setpoint_c=None), WEIGHTS) == []
-    assert len(select_points(_rows(1), WEIGHTS)) == 24
+    assert len(select_points(_rows(1), WEIGHTS)) == 288
 
 
 def test_limits_of_the_fit() -> None:

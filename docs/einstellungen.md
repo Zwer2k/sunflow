@@ -166,9 +166,9 @@ die Verschiebung ist dann 0 (die HPSU kennt keine). Ohne Wert der Wärmepumpe gi
 **Heizflächentyps** (Fußboden 0,6, gemischt 1,0, Heizkörper 1,4). „Aus der Wärmepumpe neu einlesen“ holt die
 Steilheit erneut, „Gelerntes übernehmen“ macht die gelernte Kurve zum Start (z. B. vor dem Sommer für den
 nächsten Herbst). Die Kurve gilt sofort, ohne Wartezeit. Stündlich lernt Sunflow Steilheit und Verschiebung
-aus den Stunden der letzten 28 Tage, in denen die Wärmepumpe gültig heizte und der Raum
-höchstens 0,3 K vom Raum-Soll dieser Stunde entfernt war: Der wirksame Vorlauf-Soll dieser Stunden hat
-gereicht. Die Startwerte zählen dabei wie 24 Stunden; angezeigt wird der **Anteil des Gelernten**: anfangs
+aus allen 5-Minuten-Werten der letzten 28 Tage, in denen die Wärmepumpe gültig heizte und der Raum höchstens
+0,3 K vom Raum-Soll entfernt war: Der wirksame Vorlauf-Soll hat dann gereicht. Jeder Wert zählt 1/12 Stunde,
+auch in Stunden mit Abtauen oder Warmwasser. Die Startwerte zählen dabei wie 24 Stunden; angezeigt wird der **Anteil des Gelernten**: anfangs
 0 %, dann steigend, höchstens etwa 94 % – die Startwerte wirken immer ein wenig mit. Ändert sich die gelernte
 Kurve, verschiebt Sunflow die Korrektur um den Unterschied, damit das Vorlauf-Ziel nicht springt; änderst du
 die Startwerte, gilt die neue Kurve sofort. Ein höherer Raum-Soll hebt den Vorlauf sofort um 1 + Steilheit

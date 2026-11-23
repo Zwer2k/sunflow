@@ -594,7 +594,7 @@ class SunflowHeatPump extends LitElement {
           ${guard ? this._section(`writing:${id}`, t("Schreiben und Schutz"), this._writingSummary(guard), null,
             () => this._renderGuard(id, guard, this._writes[id]), false) : nothing}
           ${flow ? this._section(`learned:${id}`, t("Gelernt"),
-            flow.curve ? t("Heizkurve: Steilheit {slope}, Verschiebung {shift} K, aus {hours} h", { slope: two(flow.curve.slope), shift: signedNumber(flow.curve.shift_k), hours: flow.curve.hours }) : "",
+            flow.curve ? t("Heizkurve: Steilheit {slope}, Verschiebung {shift} K, aus {hours} h", { slope: two(flow.curve.slope), shift: signedNumber(flow.curve.shift_k), hours: one(flow.curve.hours) }) : "",
             null, () => this._renderLearned(device), false) : nothing}`}
     `;
   }
@@ -750,7 +750,7 @@ class SunflowHeatPump extends LitElement {
             tile(t("Heizkurve"), `${one(flow.curve_c)} °C`, t("bei Raum-Soll {room} °C und außen {outside} °C", { room: one(house.setpoint_c), outside: one(flow.outside_c) })),
             tile(t("Steilheit"), two(c.slope), t("Start {start}", { start: two(c.start_slope) })),
             tile(t("Verschiebung"), `${signedNumber(c.shift_k)} K`, t("Start {start} K", { start: signedNumber(c.start_shift_k) })),
-            tile(t("Gelernt"), `${c.learned_pct ?? 0} %`, t("aus {hours} h beim Raum-Soll", { hours: c.hours ?? 0 })),
+            tile(t("Gelernt"), `${c.learned_pct ?? 0} %`, t("aus {hours} h beim Raum-Soll", { hours: one(c.hours ?? 0) })),
           ],
           lead: this._renderFormula(device),
           notes: flow.curve ? html`${this._renderCurveShare(flow.curve)}${this._renderCurveStart(device, flow.curve)}` : nothing,
@@ -1050,16 +1050,17 @@ class SunflowHeatPump extends LitElement {
     const values = guard.values ?? {};
     const sources = values.sources ?? {};
     const source = (key) => VALUE_SOURCES()[sources[key]] ?? sources[key] ?? "";
-    // Hours that were enough (valid heating, compressor running, room at its setpoint): effective setpoint over outside
+    // Rows that were enough (the points of the curve, 8: valid heating, no fast change, room at its setpoint):
+    // effective setpoint over outside
     const points = (this._history[device.id]?.rows ?? [])
-      .filter((r) => r.valid && (r.compressor ?? 0) >= 0.99 && r.setpoint_c != null && r.outside_c != null && r.room_c != null
+      .filter((r) => r.valid && !r.ventilation?.length && r.setpoint_c != null && r.outside_c != null && r.room_c != null
         && r.room_setpoint_c != null && Math.abs(r.room_c - r.room_setpoint_c) <= 0.3)
       .map((r) => ({ outside: r.outside_c, flow: r.setpoint_c }));
     return html`
       <div class="row2">
         <div>
           <div class="title-row"><h3>${t("Heizkurve")}</h3></div>
-          <p class="help small">${t("Vorlauf über der Außentemperatur beim aktuellen Raum-Soll. Gestrichelt: die Startkurve, durchgezogen: die gelernte. Punkte: Stunden aus dem Verlauf, in denen der Raum beim Soll lag (wirksamer Vorlauf-Soll). Ein Raum-Soll 1 K höher hebt die ganze Kurve um 1 + Steilheit Kelvin.")}</p>
+          <p class="help small">${t("Vorlauf über der Außentemperatur beim aktuellen Raum-Soll. Gestrichelt: die Startkurve, durchgezogen: die gelernte. Punkte: 5-min-Werte aus dem Verlauf, in denen der Raum beim Soll lag (wirksamer Vorlauf-Soll). Ein Raum-Soll 1 K höher hebt die ganze Kurve um 1 + Steilheit Kelvin.")}</p>
           ${!curve
             ? html`<p class="small muted">${t("Keine Heizkurve.")}</p>`
             : html`
@@ -1068,7 +1069,7 @@ class SunflowHeatPump extends LitElement {
               <div class="tiles">
                 ${tile(t("Steilheit (wirkt)"), two(curve.slope), t("Start {start}", { start: two(curve.start_slope) }))}
                 ${tile(t("Verschiebung (wirkt)"), `${signedNumber(curve.shift_k)} K`, t("Start {start} K", { start: signedNumber(curve.start_shift_k) }))}
-                ${tile(t("Gelernt aus"), t("{hours} h", { hours: curve.hours }), t("Stunden beim Raum-Soll, letzte 28 Tage"))}
+                ${tile(t("Gelernt aus"), t("{hours} h", { hours: one(curve.hours) }), t("Stunden beim Raum-Soll, letzte 28 Tage"))}
               </div>
               <p class="small muted">${t("Startwerte einstellbar in der Regelkette: Block „Heizkurve“ anklicken.")}</p>`}
         </div>

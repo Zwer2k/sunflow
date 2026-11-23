@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.33
+
+- The heating curve learns from every 5 minute row (worth 1/12 hour) instead of whole hours with at least 6 valid rows: hours broken by defrost or hot water count with their valid rows. "Learned from" shows hours with one decimal. The curve is computed anew once after the update.
+
 ## 0.80.32
 
 - Heat pumps: learning the heating curve no longer requires the compressor to run through every 5 minute row; valid heating decides. Rows with a short pause or the edge of a defrost no longer drop out on their own.
