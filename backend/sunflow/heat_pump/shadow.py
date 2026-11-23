@@ -219,7 +219,22 @@ class FlowShadow:
 
     def heat_pump_slope(self, device_id: str) -> float | None:
         """The slope of the heat pump's own curve as last read (within the allowed range), None without one."""
-        return usable_slope(_float(self._slopes.get(device_id)))
+        return usable_slope(_float(self._slopes.get(device_id)), self.slope_range(device_id))
+
+    def slope_range(self, device_id: str) -> tuple[float, float]:
+        """Range of the slope: that of the heat pump's own slope entity, else the default (8)."""
+        return (self.settings.get(device_id) or ControlSettings()).slope_range
+
+    def refresh_curve(self, device_id: str, config: SunflowConfig, now: datetime) -> None:
+        """New start values: the curve and the flow target at once, not only with the next tick (8). The
+        correction stays; the next tick takes over from here."""
+        self._config = config
+        flow = self.flows.get(device_id)
+        if flow is None or flow.outside_c is None:
+            return
+        curve_c = self.curve(device_id, config, now).flow_c(config.house.climate.setpoint_c, flow.outside_c)
+        flow.curve_c = curve_c
+        flow.target_c = curve_c + flow.correction_k if flow.correction_k is not None else None
 
     def start(self, device_id: str, config: SunflowConfig) -> Start:
         """Start values of the heating curve (8): the stored ones, else the heat pump's slope, else the heating

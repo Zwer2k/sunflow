@@ -14,6 +14,8 @@ from typing import Any
 from .budget import BudgetLimits
 from .defaults import (
     ADOPT_DELAY_S,
+    CURVE_SLOPE_RANGE,
+    CURVE_SLOPE_STEP,
     BLOCK_MIN_S,
     DEADBAND_K,
     DEFAULT_SETPOINT_STEP_K,
@@ -29,6 +31,9 @@ from .defaults import (
     WRITE_PROTECT_INTERVAL_S,
 )
 from .manifest import entities_by_key
+
+# Role of the heat pump's own heating curve slope (its entity's range is the slope's range, 8)
+SLOPE_ROLE = "heating_curve_slope"
 from .states import FIXED, duration
 
 _EPS = 1e-9
@@ -72,6 +77,15 @@ class ControlSettings:
     user_max: float | None = None
     # Time the heat pump needs to take a written set value over (profile adopt_delay, 12)
     adopt_delay_s: float = ADOPT_DELAY_S
+    # Range and step of the heating curve's slope (8): those of the heat pump's own slope entity (manifest),
+    # else the defaults
+    slope_min: float = CURVE_SLOPE_RANGE[0]
+    slope_max: float = CURVE_SLOPE_RANGE[1]
+    slope_step: float = CURVE_SLOPE_STEP
+
+    @property
+    def slope_range(self) -> tuple[float, float]:
+        return self.slope_min, self.slope_max
 
     @classmethod
     def from_profile(
@@ -88,6 +102,12 @@ class ControlSettings:
         entity = entities_by_key(manifest).get(key) if key else None
         step = _number((entity or {}).get("step"), 0.0)
         writes = flow.get("writes") or {}
+        slope_key = (profile.get("roles", {}).get(SLOPE_ROLE) or {}).get("key")
+        slope = entities_by_key(manifest).get(slope_key) if slope_key else None
+        slope_min, slope_max = _optional((slope or {}).get("min")), _optional((slope or {}).get("max"))
+        if slope_min is None or slope_max is None or slope_min >= slope_max:
+            slope_min, slope_max = CURVE_SLOPE_RANGE
+        slope_step = _number((slope or {}).get("step"), 0.0)
         return cls(
             start_margin=_number(rules.get("start_margin"), START_MARGIN_K),
             stop_margin=_number(rules.get("stop_margin"), STOP_MARGIN_K),
@@ -107,6 +127,9 @@ class ControlSettings:
             user_min=user_min,
             user_max=user_max,
             adopt_delay_s=duration(flow.get("adopt_delay"), ADOPT_DELAY_S).total_seconds(),
+            slope_min=slope_min,
+            slope_max=slope_max,
+            slope_step=slope_step if slope_step > 0 else CURVE_SLOPE_STEP,
         )
 
 

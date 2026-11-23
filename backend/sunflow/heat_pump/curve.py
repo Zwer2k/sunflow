@@ -79,10 +79,10 @@ def learnable(row: dict[str, Any]) -> bool:
     return flags.get("valid") is True and not flags.get("after_run") and not flags.get("ventilation")
 
 
-def usable_slope(value: float | None) -> float | None:
-    """A slope within the allowed range, else None."""
-    low, high = CURVE_SLOPE_RANGE
-    return value if value is not None and low <= value <= high else None
+def usable_slope(value: float | None, slope_range: tuple[float, float]) -> float | None:
+    """A slope the heat pump reports as start value: above 0 (0 = not set) and within the range, else None."""
+    low, high = slope_range
+    return value if value is not None and value > 0 and low <= value <= high else None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -104,8 +104,8 @@ def start_values(
     curve); while none is stored, the heat pump's own slope, else the heating surface type's; shift 0."""
     if slope is not None:
         return Start(slope=slope, shift_k=shift_k or 0.0, source=source or FROM_USER)
-    if (own := usable_slope(heat_pump_slope)) is not None:
-        return Start(slope=own, shift_k=shift_k or 0.0, source=FROM_HEAT_PUMP)
+    if heat_pump_slope is not None and heat_pump_slope > 0:
+        return Start(slope=heat_pump_slope, shift_k=shift_k or 0.0, source=FROM_HEAT_PUMP)
     return Start(slope=curve_slope(surface), shift_k=shift_k or 0.0, source=FROM_SURFACE)
 
 
@@ -145,10 +145,10 @@ def select_points(rows: list[dict[str, Any]], weights: dict[str, float]) -> list
     return points
 
 
-def fit(points: list[CurvePoint], start: Start, now: datetime) -> tuple[float, float, float]:
+def fit(points: list[CurvePoint], start: Start, now: datetime, slope_range: tuple[float, float]) -> tuple[float, float, float]:
     """Slope, shift and the share of the data (0-1): weighted least squares of (flow − R) over (R − A), with
     CURVE_PRIOR_HOURS virtual hours on the start curve spread over CURVE_PRIOR_X_K - few points move it a
-    little, many count most; the start keeps its share. Within CURVE_SLOPE_RANGE and ±CURVE_SHIFT_RANGE_K."""
+    little, many count most; the start keeps its share. Within slope_range and ±CURVE_SHIFT_RANGE_K."""
     prior = CURVE_PRIOR_HOURS / len(CURVE_PRIOR_X_K)
     data = [(x, start.slope * x + start.shift_k, prior) for x in CURVE_PRIOR_X_K]
     for p in points:
@@ -160,7 +160,7 @@ def fit(points: list[CurvePoint], start: Start, now: datetime) -> tuple[float, f
     sxx = sum(w * (x - mx) ** 2 for x, _, w in data)
     sxy = sum(w * (x - mx) * (y - my) for x, y, w in data)
     slope = sxy / sxx
-    low, high = CURVE_SLOPE_RANGE
+    low, high = slope_range
     slope = min(max(slope, low), high)
     shift = min(max(my - slope * mx, -CURVE_SHIFT_RANGE_K), CURVE_SHIFT_RANGE_K)
     share = 1.0 - CURVE_PRIOR_HOURS / sw
@@ -227,10 +227,13 @@ def start_curve(start: Start, now: datetime, key: str = "") -> Curve:
     )
 
 
-def learn(rows: list[dict[str, Any]], weights: dict[str, float], start: Start, now: datetime, key: str = "") -> Curve:
+def learn(
+    rows: list[dict[str, Any]], weights: dict[str, float], start: Start, now: datetime,
+    slope_range: tuple[float, float] = CURVE_SLOPE_RANGE, key: str = "",
+) -> Curve:
     """The curve from the rows (any order), pulled towards the start values."""
     points = select_points(rows, weights)
-    slope, shift, share = fit(points, start, now)
+    slope, shift, share = fit(points, start, now, slope_range)
     return Curve(
         slope=slope, shift_k=shift, start_slope=start.slope, start_shift_k=start.shift_k, start_source=start.source,
         hours=len(points), learned_share=share, computed_at=now, key=key,

@@ -119,7 +119,8 @@ def correction_ti_h(surface: str | None) -> float:
 # (half-life CURVE_HALF_LIFE_DAYS). A point is an hour with at least CURVE_HOUR_MIN_ROWS rows of valid
 # heating, compressor running (CURVE_COMPRESSOR_FULL), room within CURVE_ROOM_BAND_K of its setpoint. The fit
 # is pulled to the start curve as if CURVE_PRIOR_HOURS hours on it said so, spread over CURVE_PRIOR_X_K of
-# R − A; slope within CURVE_SLOPE_RANGE, shift within ±CURVE_SHIFT_RANGE_K.
+# R − A; slope within the range of the heat pump's own slope entity (manifest), else CURVE_SLOPE_RANGE; shift
+# within ±CURVE_SHIFT_RANGE_K. CURVE_SLOPE_LIMIT only bounds what config.json may hold.
 CURVE_REFRESH_S = 3600
 CURVE_HISTORY_DAYS = 28
 CURVE_HALF_LIFE_DAYS = 14
@@ -128,7 +129,9 @@ CURVE_HOUR_MIN_ROWS = 6
 CURVE_ROOM_BAND_K = 0.3
 CURVE_PRIOR_HOURS = 24
 CURVE_PRIOR_X_K = (5.0, 15.0, 25.0)
-CURVE_SLOPE_RANGE = (0.2, 3.0)
+CURVE_SLOPE_RANGE = (0.0, 3.0)
+CURVE_SLOPE_LIMIT = 10.0
+CURVE_SLOPE_STEP = 0.01
 CURVE_SHIFT_RANGE_K = 10.0
 
 # Limits (10). The set value stays within the start limits of the heating surface type (HEATING_SURFACES)

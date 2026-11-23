@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.80.31
+
+- Heat pumps: the start values of the heating curve are now set in the **control chain**: click the block "Heating curve"; below the chain the formula with the current numbers, the learned share and the start values follow. Under "Learned" they are only shown. The formula is no longer drawn into the chain.
+- The slope may take the range of the heat pump's own curve (HPSU "Heizkurve": 0–2.55), else 0–3; the learned slope stays within it too.
+- After saving new start values, curve and flow target are shown at once instead of after up to two minutes.
+
 ## 0.80.30
 
 - Heat pumps: the **start values of the heating curve** (slope and shift) can be set per heat pump under Settings → Heat pump → Learned. While none are set, Sunflow reads the slope once from the heat pump (HPSU "Heizkurve") and keeps it, the shift is 0; afterwards the stored values apply, whatever the heat pump reports. "Read again from the heat pump" and "Take over learned" (the learned curve becomes the start, e.g. for next autumn) set them in one click. A change applies at once; the learned hours stay and are fitted anew towards the new start values.

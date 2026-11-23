@@ -360,7 +360,7 @@ class HeatPumpRecorder:
                 since = now - timedelta(days=CURVE_HISTORY_DAYS)
                 curve_rows = [r for r in rows if isinstance(r.get("start"), str) and r["start"] >= since.astimezone(UTC).isoformat()]
                 curve = await asyncio.to_thread(
-                    learn_curve, curve_rows, weights, start, now, key,
+                    learn_curve, curve_rows, weights, start, now, self.flow.slope_range(device_id), key,
                 ) if curve_due else None
                 stop_start = (self.flow.settings.get(device_id) or ControlSettings()).stop_margin
                 guard = await asyncio.to_thread(learn_guard, rows, now, stop_start) if guard_due else None

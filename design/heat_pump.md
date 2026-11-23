@@ -109,7 +109,8 @@ T-Vorlauf). Bei „Witterungsgeführt“ lernt Sunflow, schreibt aber nichts.
   Verschiebung). Ohne Wert der WP gilt S₀ je Heizflächentyp (Fußboden 0,6, gemischt 1,0, Heizkörper 1,4),
   nicht gespeichert. Danach gelten die gespeicherten Werte, egal was die WP meldet.
 - Startwerte ändern: eingeben, „aus der WP neu einlesen“ (S₀ wie gemeldet, P₀ = 0) oder „Gelerntes
-  übernehmen“ (S, P der gelernten Kurve, z. B. als Start für die nächste Heizperiode).
+  übernehmen“ (S, P der gelernten Kurve, z. B. als Start für die nächste Heizperiode). Wirkt sofort, auch in
+  der Anzeige.
 - Physik: Das Haus verliert Wärme proportional zu R − A, die Heizflächen geben sie etwa proportional zu
   Vorlauf − R ab; für Fußboden genügt eine Gerade. Begrenzung durch die Grenzen (10).
 - Eine Soll-Änderung um 1 K hebt den Vorlauf sofort um 1 + S Kelvin.
@@ -119,7 +120,8 @@ T-Vorlauf). Bei „Witterungsgeführt“ lernt Sunflow, schreibt aber nichts.
   Raum-Ist nahe am Raum-Soll dieser Stunde lag (±0,3 K): (R − A, wirksamer Vorlauf-Soll − R). Dieser Vorlauf
   hat gereicht. Messwerte ohne gespeicherten Raum-Soll zählen nicht.
 - Gewichtete Ausgleichsgerade über die letzten 28 Tage (Halbwertszeit 14 Tage), **zu den Startwerten hin
-  gezogen**: die Startkurve zählt wie 24 Stunden auf ihr. S bleibt in 0,2–3,0, P in ±10 K.
+  gezogen**: die Startkurve zählt wie 24 Stunden auf ihr. S bleibt im Bereich der Steilheits-Entity der WP
+  (Manifest, HPSU 0–2,55; ohne sie 0–3), P in ±10 K. Derselbe Bereich gilt für den Startwert S₀.
 - **Anteil des Gelernten** = Gewicht der Datenpunkte ÷ (Gewicht + 24): anfangs 0 % (nur Startwerte), dann
   steigend; 100 % wird nie erreicht (alle Stunden der 28 Tage ≈ 94 %). Angezeigt mit S, P und S₀, P₀.
 - Ändert sich die gelernte Kurve, wird die Korrektur um alt − neu verschoben (in ±3 K): das Vorlauf-Ziel
@@ -221,9 +223,10 @@ verwerfbarer Cache. Bei „Aus“ wird nichts aufgezeichnet und nichts gelernt.
 - Thermostat „Haus“: Raum-Soll, Raum-Ist, Aus/Heizen; Attribute Vorlauf-Ziel, Stellwert, Planziel, Grund.
 - Sensoren je WP: Vorlauf-Ziel, Stellwert, Schreibvorgänge heute; dazu die Prognose-Sensoren (7).
 - UI (Einstellungen → Wärmepumpe): Statuszeile, Modus, Raum-Soll; je WP Regelkette (Raum-Ist und Raum-Soll
-  → Korrektur, Raum-Soll und Außen → Heizkurve, daneben die Formel mit den aktuellen Zahlen), Verlauf,
-  Anlage, Schreiben und Schutz, Gelernt (Heizkurve mit Anteil des Gelernten und Startwerten, Abschaltgrenze,
-  Stopps, Lernphase); Hausmodell; Einstellungen. Erklärtexte über „?“.
+  → Korrektur, Raum-Soll und Außen → Heizkurve; ein Klick auf einen Block zeigt darunter Einzelheiten, bei
+  der Heizkurve die Formel mit den aktuellen Zahlen, den Anteil des Gelernten und die Startwerte zum
+  Einstellen), Verlauf, Anlage, Schreiben und Schutz, Gelernt (Heizkurve, Anteil des Gelernten, Startwerte
+  nur angezeigt, Abschaltgrenze, Stopps, Lernphase); Hausmodell; Einstellungen. Erklärtexte über „?“.
 
 ## 17. Offene Punkte und Umsetzungsstand
 

@@ -92,7 +92,7 @@ der Browser):
 - **Anlage:** Außengerät, Innengerät, Speicher und Räume als Bild, wohin die Wärme gerade fließt, mit den
   Zuständen der Wärmepumpe.
 - **Schreiben und Schutz:** Budget, ausstehender Wert, letzte Schreibvorgänge und die Zählung je Tag.
-- **Gelernt:** Heizkurve als Diagramm (Vorlauf über Außen, Startkurve gestrichelt, mit den gelernten Stunden), Anteil des Gelernten, Startwerte zum Einstellen, das gelernte
+- **Gelernt:** Heizkurve als Diagramm (Vorlauf über Außen, Startkurve gestrichelt, mit den gelernten Stunden), Anteil des Gelernten, Startwerte (eingestellt werden sie in der Regelkette), das gelernte
   Verhalten der Wärmepumpe (Abschaltgrenze, Einschaltabstand, Schwankung, Leistung), der Schalter der
   Lernphase und die Abschaltungen des Kompressors.
 
@@ -157,10 +157,11 @@ Raumthermostat-Sperre oder Störung deutlich hervorgehoben, und ob die Wärmepum
 der Grund (z. B. Warmwasser, Nachlauf, Bypass-Ventil). Darunter das **Vorlauf-Ziel** = Heizkurve +
 Korrektur.
 
-**Heizkurve:** Vorlauf = Raum-Soll + Steilheit × (Raum-Soll − Außen) + Verschiebung; die Formel steht mit den
-aktuellen Zahlen neben der Regelkette. Außen ist die gemessene Außentemperatur, gemittelt über 15 Minuten.
-Die **Startwerte** (Steilheit und Verschiebung) stellst du unter „Gelernt“ je Wärmepumpe ein. Solange keine
-gesetzt sind, liest Sunflow die Steilheit einmal aus der Wärmepumpe (HPSU: „Heizkurve“) und merkt sie sich;
+**Heizkurve:** Vorlauf = Raum-Soll + Steilheit × (Raum-Soll − Außen) + Verschiebung. Ein Klick auf den Block
+„Heizkurve“ der Regelkette zeigt darunter die Formel mit den aktuellen Zahlen, den Anteil des Gelernten und
+die **Startwerte** (Steilheit und Verschiebung) zum Einstellen; die Steilheit im Bereich der Wärmepumpe (HPSU
+0–2,55). Außen ist die gemessene Außentemperatur, gemittelt über 15 Minuten. Solange keine
+Startwerte gesetzt sind, liest Sunflow die Steilheit einmal aus der Wärmepumpe (HPSU: „Heizkurve“) und merkt sie sich;
 die Verschiebung ist dann 0 (die HPSU kennt keine). Ohne Wert der Wärmepumpe gilt der Startwert des
 **Heizflächentyps** (Fußboden 0,6, gemischt 1,0, Heizkörper 1,4). „Aus der Wärmepumpe neu einlesen“ holt die
 Steilheit erneut, „Gelerntes übernehmen“ macht die gelernte Kurve zum Start (z. B. vor dem Sommer für den

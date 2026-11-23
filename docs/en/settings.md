@@ -90,7 +90,7 @@ outside temperature and flow. Then per heat pump collapsible sections (the brows
 - **Plant:** outdoor unit, indoor unit, tank and rooms as a picture of where the heat flows now, with the
   states of the heat pump.
 - **Writing and protection:** budget, pending value, latest writes and the counts per day.
-- **Learned:** the heating curve as a chart (flow over outside, start curve dashed, with the learned hours), the learned share, the start values to set, the learned
+- **Learned:** the heating curve as a chart (flow over outside, start curve dashed, with the learned hours), the learned share, the start values (set in the control chain), the learned
   behaviour of the heat pump (stop margin, start margin, swing, output), the switch of the learning phase
   and the compressor stops.
 
@@ -152,9 +152,10 @@ bypass valve, flow, return, effective flow setpoint and Max T-Vorlauf, an active
 a fault clearly highlighted, and whether the heat pump heats validly – otherwise why not (e.g. hot water,
 after-run, bypass valve). Below it the **flow target** = heating curve + correction.
 
-**Heating curve:** flow = room setpoint + slope × (room setpoint − outside) + shift; the formula with the
-current numbers is shown next to the control chain. Outside is the measured outside temperature, averaged
-over 15 minutes. You set the **start values** (slope and shift) per heat pump under "Learned". While none are
+**Heating curve:** flow = room setpoint + slope × (room setpoint − outside) + shift. A click on the block
+"Heating curve" of the control chain shows below it the formula with the current numbers, the learned share
+and the **start values** (slope and shift) to set; the slope within the heat pump's range (HPSU 0–2.55).
+Outside is the measured outside temperature, averaged over 15 minutes. While none are
 set, Sunflow reads the slope once from the heat pump (HPSU: "Heizkurve") and keeps it; the shift is then 0
 (the HPSU has none). Without a value from the heat pump the start value of the **heating surface type**
 applies (underfloor 0.6, mixed 1.0, radiators 1.4). "Read again from the heat pump" fetches the slope anew,

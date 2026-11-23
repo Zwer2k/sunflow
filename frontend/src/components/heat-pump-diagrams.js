@@ -11,7 +11,7 @@ const one = (v) => (v == null || !Number.isFinite(Number(v)) ? "–" : decimal(N
 
 // ---------- Control chain ----------
 
-// Position and width of each block in the chain (viewBox 1000 × 358)
+// Position and width of each block in the chain (viewBox 1000 × 340)
 const CHAIN_LAYOUT = {
   ist: [20, 20, 150], soll: [20, 125, 150], heat: [20, 230, 150],
   corr: [230, 60, 170], ff: [230, 220, 170],
@@ -24,9 +24,8 @@ const BLOCK_H = 74;
  * The control chain: room temperature and room setpoint into the correction, room setpoint and outside into
  * the heating curve, both into the flow target, then limits, protection, writing and the heat pump. blocks:
  * per id { title, value, sub, state } (state "frozen", "acting", "warn" or null); a click selects a block.
- * formula: lines of the heating curve with the current numbers, shown above the flow target.
  */
-export function chainDiagram(blocks, { selected = null, onSelect = () => {}, live = false, corrFrozen = false, formula = [] } = {}) {
+export function chainDiagram(blocks, { selected = null, onSelect = () => {}, live = false, corrFrozen = false } = {}) {
   const wire = (d, { frozen = false, on = false } = {}) => svg`<path class="wire ${frozen ? "frozen" : ""} ${on ? "live" : ""}" d=${d}
     marker-end=${on ? "url(#hp-arrow-on)" : "url(#hp-arrow)"}></path>`;
   const block = (id) => {
@@ -42,7 +41,7 @@ export function chainDiagram(blocks, { selected = null, onSelect = () => {}, liv
       <text x=${x + 12} y=${y + 65} class="t-muted" font-size="11">${clip(b.sub ?? "", w)}</text>
     </g>`;
   };
-  return svg`<svg class="diagram-svg chain" viewBox="0 0 1000 358" role="img" aria-label=${t("Regelkette")}>
+  return svg`<svg class="diagram-svg chain" viewBox="0 0 1000 340" role="img" aria-label=${t("Regelkette")}>
     <defs>
       <marker id="hp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0,0 L10,5 L0,10 z" style="fill: var(--sf-muted)"></path></marker>
@@ -68,18 +67,11 @@ export function chainDiagram(blocks, { selected = null, onSelect = () => {}, liv
     <text x="110" y="326" font-size="11" class="t-muted">${t("Rückwirkung: Vorlauf → Räume → Raum-Ist (Stunden)")}</text>
     ${Object.keys(CHAIN_LAYOUT).map(block)}
     <g class="key">
-      <rect x="640" y="340" width="22" height="12" rx="3" class="key-frozen"></rect>
-      <text x="668" y="350" font-size="11" class="t-muted">${t("angehalten")}</text>
-      <rect x="790" y="340" width="22" height="12" rx="3" class="key-acting"></rect>
-      <text x="818" y="350" font-size="11" class="t-muted">${t("greift gerade ein")}</text>
+      <rect x="440" y="28" width="22" height="12" rx="3" class="key-frozen"></rect>
+      <text x="468" y="38" font-size="11" class="t-muted">${t("angehalten")}</text>
+      <rect x="560" y="28" width="22" height="12" rx="3" class="key-acting"></rect>
+      <text x="588" y="38" font-size="11" class="t-muted">${t("greift gerade ein")}</text>
     </g>
-    ${formula.length
-      ? svg`<g class="formula">
-          <rect x="440" y="14" width="540" height=${16 + formula.length * 22} rx="8"></rect>
-          ${formula.map((line, i) => svg`<text x="454" y=${35 + i * 22} font-size=${i === 0 ? 15 : i === formula.length - 1 ? 11 : 13.5}
-            class=${i === formula.length - 1 ? "t-muted" : ""} font-weight=${i === 0 ? 700 : 400}>${line}</text>`)}
-        </g>`
-      : nothing}
   </svg>`;
 }
 
@@ -400,7 +392,6 @@ export const diagramStyles = css`
   .key-frozen { fill: var(--sf-subtle); stroke: var(--sf-border-strong); stroke-dasharray: 4 3; }
   .key-acting { fill: var(--sf-warn-bg); stroke: var(--sf-warn-text); }
   .sum { fill: var(--sf-surface); stroke: var(--sf-muted); stroke-width: 2; }
-  .formula rect { fill: var(--sf-subtle); stroke: var(--sf-border); }
   .wire { fill: none; stroke: var(--sf-muted); stroke-width: 2; }
   .wire.frozen { stroke-dasharray: 4 4; opacity: .6; }
   .wire.live { stroke: var(--sf-primary); stroke-width: 2.5; }

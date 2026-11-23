@@ -16,7 +16,7 @@ from pydantic import (
 
 from sunflow.heat_pump.defaults import (
     CURVE_SHIFT_RANGE_K,
-    CURVE_SLOPE_RANGE,
+    CURVE_SLOPE_LIMIT,
     FAST_MAX_H,
     FAST_MAX_H_RANGE,
     FAST_SETTLE_K,
@@ -393,8 +393,7 @@ class DeviceConfig(BaseModel):
     @classmethod
     def _curve_slope(cls, value: object) -> object:
         # Outside the allowed range or no number: not set, without an error
-        low, high = CURVE_SLOPE_RANGE
-        return value if isinstance(value, (int, float)) and not isinstance(value, bool) and low <= value <= high else None
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= CURVE_SLOPE_LIMIT else None
 
     @field_validator("curve_shift_start", mode="before")
     @classmethod

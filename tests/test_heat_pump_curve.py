@@ -133,9 +133,9 @@ def test_limits_of_the_fit() -> None:
     points = select_points(_rows(14), WEIGHTS)
     wild = [p.__class__(start=p.start, room_c=p.room_c, outside_c=p.outside_c, flow_c=p.flow_c + 30) for p in points]
 
-    slope, shift, _share = fit(wild, START, NOW)
+    slope, shift, _share = fit(wild, START, NOW, (0.0, 2.55))
 
-    assert 0.2 <= slope <= 3.0 and shift == 10.0
+    assert 0.0 <= slope <= 2.55 and shift == 10.0
 
 
 def test_cache_round_trip() -> None:
@@ -303,7 +303,7 @@ async def test_start_values_api_and_read_once_from_the_heat_pump(tmp_path: Path,
         pump.recorder.flow.set_curve("hp", _curve(0.42, -0.3, start_slope=0.8, start_shift=0.0))
         learned = client.post("/api/v1/heat_pump/hp/curve_start/learned").json()
         refused = [client.put("/api/v1/heat_pump/hp/curve_start", json=body).status_code
-                   for body in ({"slope": 0.1, "shift_k": 0}, {"slope": 0.5, "shift_k": 11}, {"slope": 0.5})]
+                   for body in ({"slope": 2.6, "shift_k": 0}, {"slope": -0.1, "shift_k": 0}, {"slope": 0.5, "shift_k": 11}, {"slope": 0.5})]
         missing = client.put("/api/v1/heat_pump/nope/curve_start", json={"slope": 0.5, "shift_k": 0}).status_code
         pump.recorder.flow._slopes["hp"] = None
         no_value = client.post("/api/v1/heat_pump/hp/curve_start/heat_pump")
@@ -311,13 +311,40 @@ async def test_start_values_api_and_read_once_from_the_heat_pump(tmp_path: Path,
         pump.store.close()
 
     assert (nothing.status_code, nothing.json()["detail"]["reason"]) == (409, "nothing_learned")
-    assert before == {"slope": None, "shift_k": None, "source": None}
+    assert before == {"slope": None, "shift_k": None, "source": None, "slope_min": 0.0, "slope_max": 2.55, "slope_step": 0.01, "shift_max_k": 10.0}
     assert (read.curve_slope_start, read.curve_shift_start, read.curve_start_source) == (0.5, 0.0, "heat_pump")
     assert set_ == {"slope": 0.3, "shift_k": -1.0, "source": "user"}
     assert (kept.curve_slope_start, kept.curve_start_source) == (0.3, "user")
     assert again == {"slope": 0.8, "shift_k": 0.0, "source": "heat_pump"}
     assert learned == {"slope": 0.42, "shift_k": -0.3, "source": "learned"}
-    assert refused == [422, 422, 422] and missing == 404
+    assert refused == [422, 422, 422, 422] and missing == 404
     assert (no_value.status_code, no_value.json()["detail"]["reason"]) == (409, "no_value")
     stored = ConfigStore(tmp_path / "config", lambda: library.profiles).load().devices[0]
     assert (stored.curve_slope_start, stored.curve_shift_start, stored.curve_start_source) == (0.42, -0.3, "learned")
+
+
+def test_slope_range_from_the_heat_pumps_entity() -> None:
+    """The slope's range and step are those of the heat pump's slope entity in the manifest (HPSU 0-2.55)."""
+    from sunflow.heat_pump.limits import ControlSettings  # noqa: PLC0415
+
+    profile = {"roles": {"heating_curve_slope": {"key": "heating_curve"}}}
+    manifest = {"entities": [{"key": "heating_curve", "min": 0, "max": 2.55, "step": 0.01}]}
+    with_entity = ControlSettings.from_profile(profile, manifest)
+    without = ControlSettings.from_profile(profile, None)
+
+    assert (with_entity.slope_min, with_entity.slope_max, with_entity.slope_step) == (0.0, 2.55, 0.01)
+    assert without.slope_range == (0.0, 3.0)
+
+
+async def test_new_start_values_show_at_once(tmp_path: Path) -> None:
+    """refresh_curve: curve and flow target follow new start values without waiting for the next tick."""
+    house = House(tmp_path)
+    before = await house.tick(NOW)
+    house.device.curve_slope_start, house.device.curve_shift_start, house.device.curve_start_source = 0.3, 0.0, "user"
+    house.shadow.refresh_curve("hp", house.config, NOW)
+    after = house.shadow.flow_status("hp")
+
+    # 23 + 0.3 · 21 = 29.3
+    assert (before["curve_c"], after["curve_c"]) == (33.5, pytest.approx(29.3))
+    assert after["target_c"] == pytest.approx(29.3 + after["correction_k"])
+    assert after["curve"]["start_slope"] == 0.3
