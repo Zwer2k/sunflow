@@ -117,14 +117,13 @@ def correction_ti_h(surface: str | None) -> float:
 
 # Heating curve (8), learned from heat_pump_samples every CURVE_REFRESH from the last CURVE_HISTORY_DAYS
 # (half-life CURVE_HALF_LIFE_DAYS). A point is an hour with at least CURVE_HOUR_MIN_ROWS rows of valid
-# heating, compressor running (CURVE_COMPRESSOR_FULL), room within CURVE_ROOM_BAND_K of its setpoint. The fit
+# heating, no fast change, room within CURVE_ROOM_BAND_K of its setpoint. The fit
 # is pulled to the start curve as if CURVE_PRIOR_HOURS hours on it said so, spread over CURVE_PRIOR_X_K of
 # R − A; slope within the range of the heat pump's own slope entity (manifest), else CURVE_SLOPE_RANGE; shift
 # within ±CURVE_SHIFT_RANGE_K. CURVE_SLOPE_LIMIT only bounds what config.json may hold.
 CURVE_REFRESH_S = 3600
 CURVE_HISTORY_DAYS = 28
 CURVE_HALF_LIFE_DAYS = 14
-CURVE_COMPRESSOR_FULL = 0.99
 CURVE_HOUR_MIN_ROWS = 6
 CURVE_ROOM_BAND_K = 0.3
 CURVE_PRIOR_HOURS = 24
@@ -174,10 +173,12 @@ PEAK_LOOKBACK_S = 5 * 60
 # Wanted off (block): the room is BLOCK_ROOM_ABOVE_K above its target; released when back within ROOM_DEADBAND_K
 BLOCK_ROOM_ABOVE_K = 0.5
 # Steady swing learned from heat_pump_samples: rows of steady running (the row and SWING_STEADY_ROWS before
-# with the compressor on, no start), at least SWING_MIN_ROWS, their SWING_QUANTILE of tv_max − tv.
+# with the compressor on in at least STEADY_COMPRESSOR_SHARE of their minutes, no start), at least SWING_MIN_ROWS,
+# their SWING_QUANTILE of tv_max − tv.
 SWING_MIN_ROWS = 288
 SWING_QUANTILE = 0.95
 SWING_STEADY_ROWS = 3
+STEADY_COMPRESSOR_SHARE = 0.99
 # Stop margin learned from the compressor stops of the last STOP_LEARN_DAYS: a stop is classified by what
 # follows within STOP_CLASSIFY_S (defrost, hot water) or the block; the unexplained ones with Tv above the
 # effective setpoint within STOP_MARGIN_RANGE_K count, their STOP_QUANTILE from STOP_MIN_EVENTS on (a margin

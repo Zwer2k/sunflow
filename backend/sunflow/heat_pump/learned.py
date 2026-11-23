@@ -18,13 +18,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from .curve import INTERVAL, _float, _full, _start
+from .curve import INTERVAL, _float, _start
 from .defaults import (
     POWER_HEAT_MAX_W,
     POWER_HEAT_MIN_W,
     POWER_MAX_QUANTILE,
     POWER_MIN_QUANTILE,
     POWER_MIN_ROWS,
+    STEADY_COMPRESSOR_SHARE,
     STOP_CLASSIFY_S,
     STOP_LEARN_DAYS,
     STOP_MARGIN_RANGE_K,
@@ -56,6 +57,11 @@ def quantile(values: list[float], share: float) -> float:
     """The value below which share of the values lie (no interpolation)."""
     ordered = sorted(values)
     return ordered[int(share * (len(ordered) - 1))]
+
+
+def _full(row: dict[str, Any] | None) -> bool:
+    """The compressor ran through the row (at least STEADY_COMPRESSOR_SHARE of its minutes)."""
+    return row is not None and (_float(row.get("compressor")) or 0.0) >= STEADY_COMPRESSOR_SHARE
 
 
 def steady_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -161,8 +161,7 @@ set, Sunflow reads the slope once from the heat pump (HPSU: "Heizkurve") and kee
 applies (underfloor 0.6, mixed 1.0, radiators 1.4). "Read again from the heat pump" fetches the slope anew,
 "Take over learned" makes the learned curve the start (e.g. before summer for next autumn). The curve
 applies at once, without a waiting time. Every hour Sunflow learns slope and shift from the hours of the last
-28 days in which the heat pump heated validly, the compressor ran and the room was within 0.3 K of that
-hour's room setpoint: the effective flow setpoint of those hours was enough. The start values count like 24
+28 days in which the heat pump heated validly and the room was within 0.3 K of that hour's room setpoint: the effective flow setpoint of those hours was enough. The start values count like 24
 hours; the **learned share** is shown: 0 % at first, then rising, at most about 94 % – the start values
 always act a little. When the learned curve changes, Sunflow shifts the correction by the difference so the
 flow target does not jump; when you change the start values, the new curve applies at once. A higher room

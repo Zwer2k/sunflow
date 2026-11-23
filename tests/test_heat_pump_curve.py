@@ -114,13 +114,17 @@ def test_learning_pulls_to_a_shifted_start() -> None:
     [
         pytest.param({"flags": {"valid": False}}, 0.0, id="not valid"),
         pytest.param({"flags": {"valid": True, "ventilation": [ROOM]}}, 0.0, id="fast change"),
-        pytest.param({"compressor": 0.5}, 0.0, id="compressor pausing"),
         pytest.param({"outside_c": None}, 0.0, id="no outside"),
         pytest.param({}, 0.5, id="room not at its setpoint"),
     ],
 )
 def test_hours_left_out(changes: dict[str, Any], offset: float) -> None:
     assert select_points(_rows(1, room_offset=offset, **changes), WEIGHTS) == []
+
+
+def test_compressor_share_does_not_matter() -> None:
+    """Valid heating decides, not how long the compressor ran in a row (pauses, a defrost's edge)."""
+    assert len(select_points(_rows(1, compressor=0.5), WEIGHTS)) == 24
 
 
 def test_rows_without_their_setpoint_do_not_count() -> None:

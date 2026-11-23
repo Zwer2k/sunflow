@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.32
+
+- Heat pumps: learning the heating curve no longer requires the compressor to run through every 5 minute row; valid heating decides. Rows with a short pause or the edge of a defrost no longer drop out on their own.
+
 ## 0.80.31
 
 - Heat pumps: the start values of the heating curve are now set in the **control chain**: click the block "Heating curve"; below the chain the formula with the current numbers, the learned share and the start values follow. Under "Learned" they are only shown. The formula is no longer drawn into the chain.

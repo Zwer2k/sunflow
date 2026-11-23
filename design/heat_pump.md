@@ -2,7 +2,8 @@
 
 Stand: 23.11.2026. Verbindliche Beschreibung, wie Sunflow eine Wärmepumpe regelt. Code und Dokument
 entsprechen sich; was noch nicht umgesetzt ist, steht in Abschnitt 17. Geräteanbindung (Manifest, Profil,
-ESPHome-Komponenten): `heat_pump_device.md`. Speicherregeln: `datenhaltung.md`.
+ESPHome-Komponenten): `heat_pump_device.md`. Speicherregeln: `datenhaltung.md`. Umgesetztes, das hier noch
+fehlt und zu klären ist: `heat_pump_undocumented.md`.
 
 ## 1. Ziel
 
@@ -116,9 +117,8 @@ T-Vorlauf). Bei „Witterungsgeführt“ lernt Sunflow, schreibt aber nichts.
 - Eine Soll-Änderung um 1 K hebt den Vorlauf sofort um 1 + S Kelvin.
 
 **Lernen (stündlich, ohne Wartezeit):**
-- Datenpunkte: Stunden mit gültigem Heizbetrieb, laufendem Kompressor, ohne schnelle Änderung, in denen
-  Raum-Ist nahe am Raum-Soll dieser Stunde lag (±0,3 K): (R − A, wirksamer Vorlauf-Soll − R). Dieser Vorlauf
-  hat gereicht. Messwerte ohne gespeicherten Raum-Soll zählen nicht.
+- Datenpunkte: Stunden mit gültigem Heizbetrieb ohne schnelle Änderung, in denen Raum-Ist nahe am Raum-Soll
+  dieser Stunde lag (±0,3 K): (R − A, wirksamer Vorlauf-Soll − R). Dieser Vorlauf hat gereicht. Messwerte ohne gespeicherten Raum-Soll zählen nicht.
 - Gewichtete Ausgleichsgerade über die letzten 28 Tage (Halbwertszeit 14 Tage), **zu den Startwerten hin
   gezogen**: die Startkurve zählt wie 24 Stunden auf ihr. S bleibt im Bereich der Steilheits-Entity der WP
   (Manifest, HPSU 0–2,55; ohne sie 0–3), P in ±10 K. Derselbe Bereich gilt für den Startwert S₀.

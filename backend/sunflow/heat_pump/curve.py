@@ -21,7 +21,6 @@ import math
 from typing import Any
 
 from .defaults import (
-    CURVE_COMPRESSOR_FULL,
     CURVE_HALF_LIFE_DAYS,
     CURVE_HOUR_MIN_ROWS,
     CURVE_PRIOR_HOURS,
@@ -67,10 +66,6 @@ def row_room(row: dict[str, Any], weights: dict[str, float]) -> float | None:
             total += number * weights[entity_id]
             weight += weights[entity_id]
     return total / weight if weight > 0 else None
-
-
-def _full(row: dict[str, Any] | None) -> bool:
-    return row is not None and (_float(row.get("compressor")) or 0.0) >= CURVE_COMPRESSOR_FULL
 
 
 def learnable(row: dict[str, Any]) -> bool:
@@ -120,13 +115,13 @@ class CurvePoint:
 
 
 def select_points(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[CurvePoint]:
-    """Hours with at least CURVE_HOUR_MIN_ROWS rows of valid heating, the compressor running, the room within
+    """Hours with at least CURVE_HOUR_MIN_ROWS rows of valid heating without a fast change, the room within
     CURVE_ROOM_BAND_K of the row's setpoint and the effective setpoint and outside known. Rows without a stored
     setpoint (recorded before it was kept) do not count."""
     hours: dict[datetime, list[tuple[float, float, float]]] = defaultdict(list)
     for row in rows:
         start = _start(row)
-        if start is None or not learnable(row) or not _full(row):
+        if start is None or not learnable(row):
             continue
         flow, outside, room = _float(row.get("setpoint_c")), _float(row.get("outside_c")), row_room(row, weights)
         target = _float(row.get("room_setpoint_c"))
