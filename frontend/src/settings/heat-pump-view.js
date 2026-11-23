@@ -772,7 +772,7 @@ class SunflowHeatPump extends LitElement {
         };
       case "limits":
         return {
-          help: t("Der Stellwert bleibt im Bereich, den die Heizflächen vertragen (unter „Einstellungen“ je Wärmepumpe änderbar, eingeengt auf den Bereich der Wärmepumpe). Weicht das Ziel um mehr als 8 K vom wirksamen Soll bzw. der Kennlinie ab, gilt es als nicht plausibel und wird nicht geschrieben – bei Warmwasser ist das normal."),
+          help: t("Der Stellwert bleibt im Bereich, den die Heizflächen vertragen (unter „Einstellungen“ je Wärmepumpe änderbar, eingeengt auf den Bereich der Wärmepumpe). Weicht das Ziel um mehr als 8 K vom wirksamen Soll (bei „Lernen + Regeln“ von der Basis) bzw. der Kennlinie ab, gilt es als nicht plausibel und wird nicht geschrieben."),
           tiles: [
             tile(t("Bereich"), `${one(guard.min_c)}–${one(guard.max_c)} °C`),
             tile(t("Vorlauf-Ziel in Grenzen"), guard.desired_c == null ? "–" : `${one(guard.desired_c)} °C`),

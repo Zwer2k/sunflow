@@ -182,7 +182,10 @@ heat pump. The set value stays within the **limits of the set value**, which can
 (at least/at most; at most is also the highest flow for the screed or heating surfaces). Empty, the
 start value of the heating surface type applies (underfloor 25–40 °C, mixed 25–50 °C, radiators
 30–55 °C); the entity's range always narrows it further. A flow target more than 8 K away from the
-effective flow setpoint (or the heating curve) would not be written (journal entry). When the flow
+effective flow setpoint (or the heating curve) would not be written (journal entry). With **Lernen +
+Regeln** the reference is the base instead of the effective flow setpoint: the effective setpoint is then the
+value Sunflow wrote itself – after raising it for protection (e.g. after defrosting) lowering it to the flow
+target would otherwise be blocked. When the flow
 target reaches a limit or the heat pump its maximum or minimum output, the correction does not move
 further beyond it.
 

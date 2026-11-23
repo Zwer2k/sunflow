@@ -169,6 +169,9 @@ class GuardInput:
     heat_w: float | None = None
     target_c: float | None = None
     curve_c: float | None = None
+    # The base of the flow target (8.1): reference of the plausibility while Sunflow writes for real, when the
+    # effective setpoint is Sunflow's own (raised) set value and no independent reference any more (8.3)
+    base_c: float | None = None
     heat_needed_w: float | None = None
     room_c: float | None = None
     plan_c: float | None = None
@@ -499,7 +502,10 @@ class Guard:
             if target <= low + _EPS:
                 limited.append("limit_min")
                 result.freeze_down = True
-            distance = implausible(target, data.reading.values.get("flow_setpoint"), data.curve_c)
+            # Writing for real the effective setpoint follows Sunflow's own protection steps (raised by up to the
+            # start jump): it would block lowering again after them; the frozen base stands in for it
+            effective = data.base_c if data.writing else data.reading.values.get("flow_setpoint")
+            distance = implausible(target, effective, data.curve_c)
             if distance is not None:
                 limited.append("implausible")
                 result.implausible_k = round(distance, 2)
@@ -518,7 +524,7 @@ class Guard:
         if result.implausible_k is not None and not self.implausible:
             values = {"target": number(target or 0.0), "k": number(result.implausible_k)}
             if data.writing:
-                message = t("Vorlauf-Ziel {target} °C nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): Sunflow schreibt es nicht.", **values)
+                message = t("Vorlauf-Ziel {target} °C nicht plausibel ({k} K von der Basis bzw. der Kennlinie): Sunflow schreibt es nicht.", **values)
             else:
                 message = t("Vorlauf-Ziel {target} °C nicht plausibel ({k} K vom wirksamen Soll bzw. der Kennlinie): Sunflow würde es nicht schreiben.", **values)
             result.notes.append((message, True))

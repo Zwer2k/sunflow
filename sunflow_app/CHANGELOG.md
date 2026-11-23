@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.26
+
+- Heat pumps, **Lernen + Regeln**: after Sunflow had raised Max T-Vorlauf by more than 8 K for protection (e.g. after defrosting), it did not lower it again to the flow target ("flow target not plausible") and the set value stayed up. With writing switched on, the plausibility check now compares the flow target with the base instead of the effective flow setpoint, which is then Sunflow's own value.
+
 ## 0.80.25
 
 - Heat pumps: Settings → Heat pump has a **new layout**. At the top one sentence says what is happening now and what Sunflow writes or would write, followed by mode (three buttons), room setpoint (with −/+), room temperature, outside temperature and flow. Per heat pump collapsible sections follow: **Control chain** (a diagram from room setpoint and room temperature through correction, feedforward, flow target, limits, protection and writing to the heat pump, each block with its current value; held blocks dashed, acting ones yellow; a click shows the details), **History** (6 h, 24 h or 3 days: flow, return, flow target, Max T-Vorlauf with every write, what Sunflow would have written, rooms and room setpoint, with bands for hot water, block, fast changes and compressor runs), **Plant** (picture of where the heat flows now), **Writing and protection** and **Learned** (heating curve as a chart). House model and settings are at the end. The explanations are now help texts: the "?" in the menu bar shows or hides them, the "?" after a heading or field shows a single one.

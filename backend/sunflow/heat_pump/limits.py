@@ -4,8 +4,9 @@
   of the heating surface type (HEATING_SURFACES); never outside the written entity's own range
   (manifest min/max).
 - Rounding to the entity's step (manifest), always the safe way where it protects (up).
-- Plausibility: a flow target further than PLAUSIBLE_BAND_K from the effective setpoint, and from the
-  curve's value when the curve is used, is not written.
+- Plausibility: a flow target further than PLAUSIBLE_BAND_K from the effective setpoint (writing for real:
+  from the base, since the effective setpoint is then Sunflow's own), and from the curve's value when the
+  curve is used, is not written.
 The heat output range is learned in learned.py; the write budget is in budget.py.
 """
 

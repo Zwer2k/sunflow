@@ -421,7 +421,7 @@ class FlowShadow:
                 stored["start_c"], stored["start_at"] = start, now.isoformat()
             target = start + correction_k if start is not None and correction_k is not None else None
             reason = "no_base" if start is None else "strategy_unknown" if correction_k is None else None
-            result = await self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now)
+            result = await self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now, base)
             stored["guard"] = self.guard(device_id).as_dict()
             flows[device_id] = FlowState(
                 strategy=strategy, base_c=base, base_at=base_at, correction_k=correction_k, target_c=target,
@@ -557,7 +557,7 @@ class FlowShadow:
 
     async def _guard_step(
         self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",
-        target: float | None, feed: Feed, room_c: float | None, now: datetime,
+        target: float | None, feed: Feed, room_c: float | None, now: datetime, base: float | None = None,
     ) -> GuardResult | None:
         """The protection layer for this minute: set value and writes Sunflow causes (in the shadow virtually)."""
         guard = self.guard(device_id)
@@ -576,7 +576,7 @@ class FlowShadow:
                 at=now, reading=minute.reading, evaluation=minute.evaluation, settings=settings,
                 values=guard_values(settings, self.learned.get(device_id), guard.bumps, now),
                 tv_peak_c=minute.tv_peak_c, heat_w=minute.heat_w, target_c=target,
-                curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w,
+                curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w, base_c=base,
                 room_c=room_c, plan_c=config.house.climate.setpoint_c, mode=config.house.climate.mode,
                 surface=config.house.heating_surface,
             ), active=active, budget=budget)

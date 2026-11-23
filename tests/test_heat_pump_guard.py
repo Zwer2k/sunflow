@@ -49,6 +49,7 @@ class Sim:
         self.room: float | None = 21.0
         self.plan = 21.0
         self.heat_needed: float | None = None
+        self.base: float | None = None
         self.heat: float | None = None
         self.surface = "underfloor"
         self.mode = "heat"
@@ -70,7 +71,7 @@ class Sim:
         result = write_step(self.guard, self.writer, GuardInput(
             at=self.now, reading=reading, evaluation=evaluation, settings=self.settings,
             values=values(self.settings, self.learned, self.guard.bumps, self.now), tv_peak_c=peak, heat_w=self.heat,
-            target_c=self.target, heat_needed_w=self.heat_needed, room_c=self.room, plan_c=self.plan, mode=self.mode,
+            target_c=self.target, heat_needed_w=self.heat_needed, base_c=self.base, room_c=self.room, plan_c=self.plan, mode=self.mode,
             surface=self.surface,
         ), active=self.active, budget=self.budget)
         self.results.append((self.now, max(tv, peak or tv), result))
@@ -415,6 +416,30 @@ def test_implausible_target_is_not_written_and_noted_once() -> None:
     assert result.implausible_k == pytest.approx(9.0) and result.freeze_up
     assert sim.writes() == []
     assert len([n for n in sim.notes() if "nicht plausibel" in n]) == 1
+
+
+def test_own_raised_setpoint_does_not_make_the_target_implausible() -> None:
+    """Writing for real, the effective setpoint is Sunflow's own protection step (e.g. 39.6 °C after a defrost):
+    the plausibility compares with the base instead, so the set value is lowered again once Tv is calm."""
+    shadow = Sim(written=39.6)
+    shadow.target = shadow.base = 29.4
+    shadow.run([31.0] * 8)
+    active = Sim(written=39.6)
+    active.active = True
+    active.target = active.base = 29.4
+    active.run([31.0] * 8)
+    # The base itself far from the target (e.g. a curve far off) still counts as implausible
+    stale = Sim(written=39.6)
+    stale.active = True
+    stale.target, stale.base = 39.0, 29.4
+    last = stale.minute(31.0)
+
+    assert shadow.results[-1][2].implausible_k == pytest.approx(-10.2)
+    assert shadow.writes() == []
+    assert all(r.implausible_k is None for _, _, r in active.results)
+    [(reason, value)] = active.writes()
+    assert reason == "normal" and value < 39.6
+    assert last.implausible_k == pytest.approx(9.6)
 
 
 def test_power_limits_freeze_the_correction_in_their_direction() -> None:

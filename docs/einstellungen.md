@@ -188,7 +188,10 @@ geht an die Wärmepumpe. Der Stellwert bleibt in den **Grenzen des Stellwerts**,
 einstellbar sind (Mindestens/Höchstens; Höchstens ist zugleich der höchste Vorlauf für Estrich bzw.
 Heizflächen). Leer gilt der Startwert des Heizflächentyps (Fußboden 25–40 °C, gemischt 25–50 °C,
 Heizkörper 30–55 °C); der Bereich der Entity engt immer weiter ein. Ein Vorlauf-Ziel, das mehr als 8 K
-vom wirksamen Vorlauf-Soll (bzw. der Kennlinie) abweicht, würde nicht geschrieben (Eintrag im Journal).
+vom wirksamen Vorlauf-Soll (bzw. der Kennlinie) abweicht, würde nicht geschrieben (Eintrag im Journal). Bei
+**Lernen + Regeln** ist der Bezug statt des wirksamen Vorlauf-Solls die Basis: Der wirksame Soll ist dann der
+Wert, den Sunflow selbst geschrieben hat – nach einer Anhebung zum Schutz (z. B. nach dem Abtauen) würde
+sonst das Absenken auf das Vorlauf-Ziel blockiert.
 Erreicht das Vorlauf-Ziel eine Grenze oder die Wärmepumpe ihre Höchst- bzw. Mindestleistung, läuft die
 Korrektur nicht weiter darüber hinaus.
 

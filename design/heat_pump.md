@@ -708,6 +708,10 @@ Umsetzung (3, Teil 3, nur Schatten; `heat_pump/limits.py`, `heat_pump/learned.py
 - Plausibilität: Bezug ist der aktuelle wirksame Vorlauf-Soll und, wenn die Quelle die Kennlinie ist,
   deren Wert; weicht V_Ziel von einem davon mehr als 8 K (`PLAUSIBLE_BAND_K`) ab, wird kein normaler
   Wert geschrieben (Schutzschritte bleiben), Journal einmal je Episode.
+  Bei aktivem Schreiben (ab 0.80.26) ist der Bezug statt des wirksamen Solls die eingefrorene Basis
+  (`GuardInput.base_c`): Der wirksame Soll folgt dann Sunflows eigenen Schutzschritten (z. B. nach dem
+  Abtauen um mehr als 8 K angehoben); mit ihm als Bezug galt das Vorlauf-Ziel danach als nicht plausibel, das
+  Absenken war gesperrt und Max T-Vorlauf blieb oben stehen.
 - Leistungsbereich: Startwerte aus dem Profil (`heat_power`), gelernt aus Zeilen im Dauerlauf (gültiger
   Heizbetrieb, Kompressor in der Zeile und den 3 Zeilen davor durchgehend an, kein Start), ab 288 Zeilen
   der letzten 28 Tage: Mindestleistung = 5-%-Quantil der Wärme, Höchstleistung nur angehoben
@@ -1422,7 +1426,7 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
      Vorbereiten, Nachführen) sind wirkungslos, kosten aber Budget: Die Abschaltgrenze liegt am
      wirksamen Soll + 3 K, nicht am geschriebenen Wert – Sunflow hält sich für geschützt, die HPSU schaltet
      ab, und das Lernen erhöht die Sprungwerte für einen Fehler, der kein Sprung war; (c) die
-     Plausibilität (Bezug wirksamer Soll) und „nicht schreiben, wenn schon gesetzt“ vergleichen mit einem
+     Plausibilität (Bezug wirksamer Soll; aktiv seit 0.80.26 die Basis) und „nicht schreiben, wenn schon gesetzt“ vergleichen mit einem
      Wert, den die HPSU nie übernimmt, sodass derselbe Wert wieder und wieder geschrieben würde.
    **Vorschlag (nicht umgesetzt):** Die Obergrenze des Stellwerts = Minimum aus Nutzer-/Startgrenze,
    Manifest-`max` und der eigenen Grenze der HPSU. Dazu (1) im Profil eine optionale Rolle für „Max Temp

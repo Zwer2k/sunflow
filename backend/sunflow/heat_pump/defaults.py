@@ -159,7 +159,8 @@ FEED_HEAT_MIN_W = CURVE_HEAT_MIN_W
 # Limits (8.3). The set value stays within the start limits of the heating surface type (HEATING_SURFACES)
 # and the entity's own range (manifest min/max). Without a step in the manifest the coarsest allowed one
 # counts (rounding then still goes the safe way). A flow target further than PLAUSIBLE_BAND_K from the
-# effective setpoint (and from the curve's value, when the curve is used) is not plausible: not written.
+# effective setpoint (writing for real: the base) and from the curve's value, when the curve is used, is not
+# plausible: not written.
 PLAUSIBLE_BAND_K = 8.0
 # Range a user setting of the set value limits (DeviceConfig.flow_min_c/flow_max_c) may name at all; within
 # it the entity's range from the manifest still narrows the setting
