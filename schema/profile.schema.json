@@ -199,6 +199,7 @@
       "additionalProperties": false,
       "properties": {
         "profile": {"type": "string", "pattern": "^[a-z0-9_]+/[a-z0-9_]+$"},
+        "manifest": {"description": "Manifest id of the companion node; Sunflow binds the companion roles on the one device carrying it.", "type": "string", "pattern": "^[a-z0-9_]+$"},
         "roles": {
           "type": "object",
           "minProperties": 1,

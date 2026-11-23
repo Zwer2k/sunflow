@@ -175,18 +175,17 @@ def test_spacing_from_the_profile(library: Any) -> None:
 # Through the protection layer (shadow)
 
 
-def test_start_after_a_normal_write_waits_for_the_protection_spacing() -> None:
+def test_tracking_after_a_normal_write_waits_for_the_protection_spacing() -> None:
     sim = Sim(written=30.0)
     sim.target = 31.0
-    # Lowered to the target once Tv is calm (a few minutes)
     normal_at = next(sim.results[-1][0] for _ in range(10) if sim.minute(30.0).writes)
-    # Pause right after: the start rule wants 31.1, the protection spacing of 2 min holds it back
-    paused = sim.run([28.0] * 3, compressor=False, activity="idle")
+    # Tv jumps right after: tracking wants 32.0 (34 − 3 + 0.5, a swing above), the protection spacing holds it back
+    tracking = sim.run([34.0] * 3)
 
-    assert sim.writes() == [("normal", 31.0), ("start", 31.1)]
-    start_at = next(at for at, _, r in sim.results if r.writes and r.writes[0]["reason"] == "start")
-    assert start_at - normal_at == 2 * MIN
-    assert paused[0].pending is not None and paused[0].pending.reason == "start"
+    assert sim.writes() == [("normal", 31.0), ("track", 32.0)]
+    track_at = next(at for at, _, r in sim.results if r.writes and r.writes[0]["reason"] == "track")
+    assert track_at - normal_at == 2 * MIN
+    assert tracking[0].pending is not None and tracking[0].pending.reason == "track"
     # Shadow: events as before, no journal for the virtual writes
     assert all(w["shadow"] for _, _, r in sim.results for w in r.writes)
     assert not any("geschrieben" in n for n in sim.notes())

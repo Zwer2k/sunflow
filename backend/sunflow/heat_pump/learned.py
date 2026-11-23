@@ -2,14 +2,16 @@
 
 - steady_swing: how far Tv peaks above its mean in steady running (rows with the compressor on through
   the row and SWING_STEADY_ROWS before, no start among them): a high quantile of tv_max − tv.
-- start_jump, start_settle per kind of start (normal, after hot water, after defrost): from the events
-  `start_jump` the shadow control notes for each start (jump above the reference Tv, time until Tv was
-  calm again); a high quantile once there are JUMP_MIN_EVENTS of a kind.
+- Stop margin: every compressor stop is recorded as an event ("stop", samples.py) with Tv, its peak, Tv of
+  the UART node, the effective setpoint and the activity before. Each is classified: a defrost or hot water
+  following within STOP_CLASSIFY_S, the block, another activity before it - or unexplained. Unexplained
+  stops at a Tv above the setpoint within STOP_MARGIN_RANGE_K are the heat pump's own shutdown rule: the
+  stop margin is their low quantile, once there are STOP_MIN_EVENTS (a margin above the profile's start
+  value needs STOP_MIN_EVENTS_ABOVE, the safe direction is taken sooner).
 - Heat output range: the minimum is a low quantile of the heat in steady running; the maximum is only
   raised above the start value by a high quantile (mild weeks do not show it).
-Until there is enough data the profile's start values count. After an unwanted shutdown the value
-concerned is raised at once ("bump", kept in heat_pump_state.json); the raise fades over weeks.
-Computed from the table every hour; what is kept in heat_pump_state.json is only a cache.
+Until there is enough data the profile's start values count. Computed from the table every hour; what is
+kept in heat_pump_state.json is only a cache.
 """
 
 from dataclasses import dataclass, field
@@ -18,25 +20,36 @@ from typing import Any
 
 from .curve import INTERVAL, _float, _full, _start
 from .defaults import (
-    BUMP_DECAY_K_PER_DAY,
     CURVE_HEAT_MAX_W,
     CURVE_HEAT_MIN_W,
-    JUMP_MIN_EVENTS,
-    JUMP_QUANTILE,
     POWER_MAX_QUANTILE,
     POWER_MIN_QUANTILE,
     POWER_MIN_ROWS,
+    STOP_CLASSIFY_S,
+    STOP_LEARN_DAYS,
+    STOP_MARGIN_RANGE_K,
+    STOP_MIN_EVENTS,
+    STOP_MIN_EVENTS_ABOVE,
+    STOP_QUANTILE,
+    STOPS_SHOWN,
     SWING_MIN_ROWS,
     SWING_QUANTILE,
     SWING_STEADY_ROWS,
 )
 from .limits import ControlSettings
 
-NORMAL = "normal"
-START_KINDS = (NORMAL, "hot_water", "defrost")
-START_JUMP_EVENT = "start_jump"
 # Cache format in heat_pump_state.json; a different one is computed anew
-CACHE_FORMAT = 1
+CACHE_FORMAT = 2
+STOP_EVENT = "stop"
+# Classes of a compressor stop
+DEFROST = "defrost"
+HOT_WATER = "hot_water"
+BLOCK = "block"
+OTHER = "other"
+UNEXPLAINED = "unexplained"
+# Too recent to tell what followed it
+PENDING = "pending"
+STOP_CLASSES = (UNEXPLAINED, DEFROST, HOT_WATER, BLOCK, OTHER, PENDING)
 
 
 def quantile(values: list[float], share: float) -> float:
@@ -62,6 +75,52 @@ def steady_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def classify_stops(rows: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
+    """Every compressor stop of the rows with its class and how far Tv was above the effective setpoint;
+    a stop whose following STOP_CLASSIFY_S are not stored yet is pending."""
+    activities = sorted((start, row.get("activity")) for row in rows if (start := _start(row)) is not None)
+    window = timedelta(seconds=STOP_CLASSIFY_S)
+    stops = []
+    for row in rows:
+        for event in row.get("events") or []:
+            if not isinstance(event, dict) or event.get("kind") != STOP_EVENT:
+                continue
+            try:
+                at = datetime.fromisoformat(event["at"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            # The rows overlapping the stop and the following STOP_CLASSIFY_S
+            after = {activity for start, activity in activities if at - INTERVAL < start <= at + window}
+            if event.get("blocked"):
+                kind = BLOCK
+            elif DEFROST in after:
+                kind = DEFROST
+            elif HOT_WATER in after:
+                kind = HOT_WATER
+            elif event.get("activity") not in (None, "heating"):
+                kind = OTHER
+            elif now is not None and at > now - window - INTERVAL:
+                kind = PENDING
+            else:
+                kind = UNEXPLAINED
+            tv, peak, setpoint = _float(event.get("tv_c")), _float(event.get("tv_max_c")), _float(event.get("setpoint_c"))
+            top = max((v for v in (tv, peak) if v is not None), default=None)
+            uart = _float(event.get("tv_uart_c"))
+            stops.append({
+                "at": event["at"], "kind": kind, "tv_c": tv, "peak_c": top, "tv_uart_c": uart, "tvbh_c": _float(event.get("tvbh_c")),
+                "setpoint_c": setpoint, "max_setpoint_c": _float(event.get("max_setpoint_c")),
+                "margin_k": round(top - setpoint, 2) if top is not None and setpoint is not None else None,
+                "margin_uart_k": round(uart - setpoint, 2) if uart is not None and setpoint is not None else None,
+            })
+    return sorted(stops, key=lambda s: s["at"])
+
+
+def stop_margins(stops: list[dict[str, Any]]) -> list[float]:
+    """Margins of the unexplained stops above the setpoint: where the heat pump's own rule switched off."""
+    low, high = STOP_MARGIN_RANGE_K
+    return [s["margin_k"] for s in stops if s["kind"] == UNEXPLAINED and s["margin_k"] is not None and low <= s["margin_k"] <= high]
+
+
 @dataclass(frozen=True, kw_only=True)
 class Learned:
     """What was learned, None where the data are not enough yet, and what it rests on."""
@@ -69,20 +128,23 @@ class Learned:
     computed_at: datetime
     steady_swing: float | None = None
     swing_rows: int = 0
-    start_jump: dict[str, float] = field(default_factory=dict)
-    start_settle_s: dict[str, float] = field(default_factory=dict)
-    starts: dict[str, int] = field(default_factory=dict)
+    # Stop margin: the low quantile of the unexplained stops' margins; their count; per class the stops
+    stop_margin: float | None = None
+    stop_samples: int = 0
+    stop_counts: dict[str, int] = field(default_factory=dict)
+    # The latest stops, newest first (status, UI)
+    stops: list[dict[str, Any]] = field(default_factory=list)
     power_min_w: float | None = None
     power_max_w: float | None = None
     power_rows: int = 0
 
     def as_dict(self) -> dict[str, Any]:
-        """For the cache in heat_pump_state.json."""
+        """For the cache in heat_pump_state.json and the status."""
         return {
             "format": CACHE_FORMAT, "computed_at": self.computed_at.isoformat(), "steady_swing": self.steady_swing,
-            "swing_rows": self.swing_rows, "start_jump": self.start_jump, "start_settle_s": self.start_settle_s,
-            "starts": self.starts, "power_min_w": self.power_min_w, "power_max_w": self.power_max_w,
-            "power_rows": self.power_rows,
+            "swing_rows": self.swing_rows, "stop_margin": self.stop_margin, "stop_samples": self.stop_samples,
+            "stop_counts": self.stop_counts, "stops": self.stops, "power_min_w": self.power_min_w,
+            "power_max_w": self.power_max_w, "power_rows": self.power_rows,
         }
 
     @classmethod
@@ -95,9 +157,10 @@ class Learned:
                 computed_at=datetime.fromisoformat(data["computed_at"]),
                 steady_swing=_float(data.get("steady_swing")),
                 swing_rows=int(data.get("swing_rows") or 0),
-                start_jump={k: float(v) for k, v in (data.get("start_jump") or {}).items() if k in START_KINDS},
-                start_settle_s={k: float(v) for k, v in (data.get("start_settle_s") or {}).items() if k in START_KINDS},
-                starts={k: int(v) for k, v in (data.get("starts") or {}).items() if k in START_KINDS},
+                stop_margin=_float(data.get("stop_margin")),
+                stop_samples=int(data.get("stop_samples") or 0),
+                stop_counts={k: int(v) for k, v in (data.get("stop_counts") or {}).items() if k in STOP_CLASSES},
+                stops=[s for s in data.get("stops") or [] if isinstance(s, dict)],
                 power_min_w=_float(data.get("power_min_w")),
                 power_max_w=_float(data.get("power_max_w")),
                 power_rows=int(data.get("power_rows") or 0),
@@ -106,8 +169,9 @@ class Learned:
             return None
 
 
-def learn(rows: list[dict[str, Any]], now: datetime) -> Learned:
-    """Swing, start jumps and settling times, heat output range from the rows (oldest first)."""
+def learn(rows: list[dict[str, Any]], now: datetime, start_stop_margin: float | None = None) -> Learned:
+    """Swing, stop margin and heat output range from the rows (oldest first); start_stop_margin: the
+    profile's value (a learned margin above it needs more stops)."""
     steady = steady_rows(rows)
     swings = []
     heats = []
@@ -117,86 +181,66 @@ def learn(rows: list[dict[str, Any]], now: datetime) -> Learned:
             swings.append(max(peak - tv, 0.0))
         if heat is not None and CURVE_HEAT_MIN_W <= heat <= CURVE_HEAT_MAX_W:
             heats.append(heat)
-    jumps: dict[str, list[float]] = {}
-    settles: dict[str, list[float]] = {}
-    for row in rows:
-        for event in row.get("events") or []:
-            if not isinstance(event, dict) or event.get("kind") != START_JUMP_EVENT or event.get("start_kind") not in START_KINDS:
-                continue
-            kind = event["start_kind"]
-            if (jump := _float(event.get("jump_k"))) is not None:
-                jumps.setdefault(kind, []).append(max(jump, 0.0))
-            if (settle := _float(event.get("settle_s"))) is not None:
-                settles.setdefault(kind, []).append(max(settle, 0.0))
+    since = (now - timedelta(days=STOP_LEARN_DAYS)).isoformat()
+    stops = [s for s in classify_stops(rows, now) if s["at"] >= since]
+    margins = stop_margins(stops)
+    margin = round(quantile(margins, STOP_QUANTILE), 2) if len(margins) >= STOP_MIN_EVENTS else None
+    if margin is not None and start_stop_margin is not None and margin > start_stop_margin and len(margins) < STOP_MIN_EVENTS_ABOVE:
+        margin = None
+    counts = {kind: sum(1 for s in stops if s["kind"] == kind) for kind in STOP_CLASSES}
     return Learned(
         computed_at=now,
         steady_swing=round(quantile(swings, SWING_QUANTILE), 2) if len(swings) >= SWING_MIN_ROWS else None,
         swing_rows=len(swings),
-        start_jump={k: round(quantile(v, JUMP_QUANTILE), 2) for k, v in jumps.items() if len(v) >= JUMP_MIN_EVENTS},
-        start_settle_s={k: round(quantile(v, JUMP_QUANTILE)) for k, v in settles.items() if len(v) >= JUMP_MIN_EVENTS},
-        starts={k: len(v) for k, v in jumps.items()},
+        stop_margin=margin,
+        stop_samples=len(margins),
+        stop_counts=counts,
+        stops=list(reversed(stops[-STOPS_SHOWN:])),
         power_min_w=round(quantile(heats, POWER_MIN_QUANTILE)) if len(heats) >= POWER_MIN_ROWS else None,
         power_max_w=round(quantile(heats, POWER_MAX_QUANTILE)) if len(heats) >= POWER_MIN_ROWS else None,
         power_rows=len(heats),
     )
 
 
-def bump_value(bump: Any, now: datetime) -> float:
-    """What is left of a raise after an unwanted shutdown ({"k", "at"}); 0 when faded or unreadable."""
-    try:
-        k, at = float(bump["k"]), datetime.fromisoformat(bump["at"])
-    except (KeyError, TypeError, ValueError):
-        return 0.0
-    days = max((now - at) / timedelta(days=1), 0.0)
-    return max(k - BUMP_DECAY_K_PER_DAY * days, 0.0)
-
-
 @dataclass(frozen=True, kw_only=True)
 class Values:
-    """The values the protection layer uses now: learned (else start value), raised by a bump."""
+    """The values the protection layer uses now: learned, else the profile's start value."""
 
     steady_swing: float
-    start_jump: dict[str, float]
-    start_settle_s: dict[str, float]
+    start_margin: float
+    stop_margin: float
     power_min_w: float
     power_max_w: float
-    # Where each comes from: start, learned, raised
+    # Where each comes from: start, learned
     sources: dict[str, str]
 
     def as_dict(self) -> dict[str, Any]:
         """For the status."""
         return {
             "steady_swing": round(self.steady_swing, 2),
-            "start_jump": {k: round(v, 2) for k, v in self.start_jump.items()},
-            "start_settle_s": {k: round(v) for k, v in self.start_settle_s.items()},
+            "start_margin": round(self.start_margin, 2),
+            "stop_margin": round(self.stop_margin, 2),
             "power_min_w": round(self.power_min_w), "power_max_w": round(self.power_max_w),
             "sources": self.sources,
         }
 
 
-def values(settings: ControlSettings, learned: Learned | None, bumps: dict[str, Any], now: datetime) -> Values:
-    """Learned values where there are enough data, else the start values; raised by what is left of a bump."""
-    sources: dict[str, str] = {}
-
-    def pick(name: str, start: float, learned_value: float | None) -> float:
-        value, source = (learned_value, "learned") if learned_value is not None else (start, "start")
-        raised = bump_value(bumps.get(name), now)
-        if raised > value:
-            value, source = raised, "raised"
-        sources[name] = source
-        return value
-
-    swing = pick("steady_swing", settings.steady_swing, learned.steady_swing if learned else None)
-    jumps = {k: pick(f"start_jump.{k}", settings.start_jump, (learned.start_jump if learned else {}).get(k)) for k in START_KINDS}
-    settles = {}
-    for kind in START_KINDS:
-        learned_settle = (learned.start_settle_s if learned else {}).get(kind)
-        settles[kind] = learned_settle if learned_settle is not None else settings.start_settle_s
-        sources[f"start_settle.{kind}"] = "learned" if learned_settle is not None else "start"
+def values(settings: ControlSettings, learned: Learned | None) -> Values:
+    """Learned values where there are enough data, else the start values of the profile."""
+    swing = learned.steady_swing if learned and learned.steady_swing is not None else None
+    stop = learned.stop_margin if learned and learned.stop_margin is not None else None
     power_min = learned.power_min_w if learned and learned.power_min_w is not None else settings.power_min_w
     power_max = max(settings.power_max_w, learned.power_max_w) if learned and learned.power_max_w is not None else settings.power_max_w
-    sources["power"] = "learned" if learned and learned.power_min_w is not None else "start"
     return Values(
-        steady_swing=swing, start_jump=jumps, start_settle_s=settles,
-        power_min_w=power_min, power_max_w=max(power_max, power_min), sources=sources,
+        steady_swing=swing if swing is not None else settings.steady_swing,
+        start_margin=settings.start_margin,
+        stop_margin=stop if stop is not None else settings.stop_margin,
+        power_min_w=power_min,
+        power_max_w=max(power_max, power_min),
+        sources={
+            "steady_swing": "learned" if swing is not None else "start",
+            "start_margin": "start",
+            "stop_margin": "learned" if stop is not None else "start",
+            "power": "learned" if learned and learned.power_min_w is not None else "start",
+        },
     )

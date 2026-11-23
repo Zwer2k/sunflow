@@ -81,18 +81,29 @@ const SOURCE_REASONS_SHORT = () => ({
 });
 // What the protection layer is doing (design/heat_pump.md, 8.4)
 const GUARD_PHASES = () => ({
-  idle: t("Pause: Startregel"),
-  hot_water: t("Warmwasser: Start danach vorbereiten"),
+  idle: t("Kompressor aus, keine Wärme nötig"),
+  off: t("Kompressor aus: wartet auf Wiederanlauf"),
+  restart: t("Wiederanlauf"),
+  hot_water: t("Warmwasser: nichts schreiben"),
   defrost: t("Abtauen: nichts schreiben"),
-  start_hold: t("nach dem Start: halten"),
+  starting: t("nach dem Start: abwarten"),
   running: t("Heizbetrieb"),
   blocked: t("Sperre: Wärmepumpe aus"),
   inactive: t("schreibt nicht"),
 });
+// Classes of a compressor stop (learned.py)
+const STOP_KINDS = () => ({
+  unexplained: t("Abschaltregel"),
+  defrost: t("Abtauen"),
+  hot_water: t("Warmwasser"),
+  block: t("Sperre"),
+  other: t("andere Aktivität"),
+  pending: t("noch offen"),
+});
 // Reasons of a write Sunflow would cause
 const WRITE_REASONS = () => ({
   normal: t("normal"),
-  start: t("Start"),
+  start: t("Wiederanlauf"),
   track: t("Nachführen"),
   block_on: t("Sperre an"),
   block_off: t("Sperre aus"),
@@ -114,8 +125,6 @@ const BUDGET_LIMITS = () => ({
 // Why the block would be set
 const BLOCK_REASONS = () => ({
   room_warm: t("Raum deutlich über dem Ziel"),
-  min_power: t("Mindestleistung über dem Bedarf"),
-  budget: t("Schreibbudget erschöpft (statt Schutzschritt)"),
   foreign: t("nicht von Sunflow gesetzt"),
 });
 // Limits the flow target or the heat pump reached (8.3)
@@ -124,10 +133,8 @@ const LIMITS = () => ({
   limit_min: t("Stellwert an der Untergrenze"),
   power_max: t("Wärmepumpe an der Höchstleistung"),
   power_min: t("Wärmepumpe an der Mindestleistung"),
-  implausible: t("Vorlauf-Ziel nicht plausibel"),
 });
-const START_KINDS = () => ({ normal: t("normal"), hot_water: t("nach Warmwasser"), defrost: t("nach Abtauen") });
-const VALUE_SOURCES = () => ({ start: t("Startwert"), learned: t("gelernt"), raised: t("nach Abschaltung erhöht") });
+const VALUE_SOURCES = () => ({ start: t("Startwert"), learned: t("gelernt") });
 /** Why Sunflow would write nothing, in words. */
 function inactiveText(reason) {
   const fixed = {
@@ -427,8 +434,10 @@ class SunflowHeatPump extends LitElement {
           reason: WRITE_REASONS()[setpoint.written_reason] ?? setpoint.written_reason ?? "–",
         });
       }
-      if (guard.floor_c != null && guard.desired_c != null && guard.floor_c > guard.desired_c + 0.05) {
-        sub = `${sub ?? ""} ${t("Der Schutz hält ihn über dem Vorlauf-Ziel ({phase}).", { phase: GUARD_PHASES()[guard.phase] ?? guard.phase })}`;
+      if (guard.phase === "off" && guard.restart_at) {
+        sub = `${sub ?? ""} ${t("Kompressor aus: Wiederanlauf um {time}, falls er nicht selbst startet.", { time: time(guard.restart_at) })}`;
+      } else if (guard.phase === "starting" && guard.run_since) {
+        sub = `${sub ?? ""} ${t("Nach dem Start: Sunflow senkt ab {time} auf das Vorlauf-Ziel.", { time: time(new Date(Date.parse(guard.run_since) + 10 * 60_000).toISOString()) })}`;
       }
     }
     const curve = flow?.curve;
@@ -439,6 +448,7 @@ class SunflowHeatPump extends LitElement {
       (flow?.limited ?? []).length ? [flow.limited.map((l) => LIMITS()[l] ?? l).join(", "), "warn"] : null,
       curve ? [t("Kennlinie: {state}", { state: CURVE_STATES()[curve.state] ?? curve.state }), curve.state === "ready" ? "ok" : ""] : null,
       budget ? [t("{used} von {per_day} Schreibvorgängen heute", { used: budget.used_today, per_day: budget.per_day }), ""] : null,
+      device.learn_stops ? [t("Lernphase Abschaltgrenze"), "warn"] : null,
     ].filter(Boolean);
     return html`
       <div class="status ${tone}" role="status">
@@ -637,7 +647,7 @@ class SunflowHeatPump extends LitElement {
     const total = (house.rooms_used ?? []).length + (house.rooms_missing ?? []).length + (house.rooms_stale ?? []).length + (house.rooms_ventilated ?? []).length;
     const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
     const setpoint = flow.setpoint ?? {};
-    const raising = guard.floor_c != null && guard.desired_c != null && guard.floor_c > guard.desired_c + 0.05;
+    const restarting = guard.phase === "off" || guard.phase === "restart";
     const outside = this._lastRow(device.id)?.outside_c;
     return {
       soll: { title: t("Raum-Soll"), value: `${one(house.setpoint_c)} °C`,
@@ -655,8 +665,12 @@ class SunflowHeatPump extends LitElement {
       limits: { title: t("Grenzen"), value: `${whole(guard.min_c)}–${whole(guard.max_c)} °C`,
         sub: (guard.limited ?? flow.limited ?? []).length ? (guard.limited ?? flow.limited).map((l) => LIMITS()[l] ?? l).join(", ") : t("eingehalten"),
         state: (guard.limited ?? flow.limited ?? []).length ? "acting" : null },
-      guard: { title: t("Schutz"), value: guard.block ? t("Sperre") : raising ? `≥ ${one(guard.floor_c)} °C` : `${one(guard.desired_c)} °C`,
-        sub: GUARD_PHASES()[guard.phase] ?? guard.phase ?? "", state: guard.block || raising ? "acting" : null },
+      guard: {
+        title: t("Schutz"),
+        value: guard.block ? t("Sperre") : restarting ? `↑ ${one(guard.floor_c)} °C` : guard.floor_c != null ? `≥ ${one(guard.floor_c)} °C` : t("Lernphase"),
+        sub: GUARD_PHASES()[guard.phase] ?? guard.phase ?? "",
+        state: guard.block || restarting ? "acting" : null,
+      },
       writer: { title: t("Schreiben"), value: budget ? `${budget.used_today} / ${budget.per_day}` : "–",
         sub: guard.pending ? t("ausstehend {value} °C", { value: one(guard.pending.value_c) }) : t("Budget heute"),
         state: guard.pending?.held ? "acting" : null },
@@ -772,19 +786,22 @@ class SunflowHeatPump extends LitElement {
         };
       case "limits":
         return {
-          help: t("Der Stellwert bleibt im Bereich, den die Heizflächen vertragen (unter „Einstellungen“ je Wärmepumpe änderbar, eingeengt auf den Bereich der Wärmepumpe). Weicht das Ziel um mehr als 8 K vom wirksamen Soll (bei „Lernen + Regeln“ von der Basis) bzw. der Kennlinie ab, gilt es als nicht plausibel und wird nicht geschrieben."),
+          help: t("Der Stellwert bleibt im Bereich, den die Heizflächen vertragen (unter „Einstellungen“ je Wärmepumpe änderbar, eingeengt auf den Bereich der Wärmepumpe)."),
           tiles: [
             tile(t("Bereich"), `${one(guard.min_c)}–${one(guard.max_c)} °C`),
             tile(t("Vorlauf-Ziel in Grenzen"), guard.desired_c == null ? "–" : `${one(guard.desired_c)} °C`),
-            guard.implausible_k != null ? tile(t("Nicht plausibel"), signed(guard.implausible_k), t("würde nicht geschrieben"), "warn") : nothing,
           ],
         };
       case "guard":
         return {
-          help: t("Die Schutzschicht verhindert Takten: vor einem Start den Vorlauf-Soll über den Vorlauf heben, nach Warmwasser oder Abtauen den Start vorbereiten, nach dem Start halten, dann einmal absenken und nachführen. Ist das Haus deutlich zu warm oder die Mindestleistung über dem Bedarf, setzt sie die Raumthermostat-Sperre statt dauernd an und aus."),
+          help: t("Sunflow sagt nicht voraus, wann der Kompressor schaltet, sondern reagiert: Ist er 5 Minuten aus, obwohl die Räume Wärme brauchen (auch nach Warmwasser oder Abtauen), hebt Sunflow den Stellwert auf Vorlauf + Einschaltabstand (Wiederanlauf). Nach einem Start wartet es 10 Minuten und senkt dann in einem Schritt auf das Vorlauf-Ziel – nicht tiefer als die Abschaltgrenze erlaubt (höchster Vorlauf − Abschaltgrenze + Schwankung). In der Lernphase senkt es bis aufs Vorlauf-Ziel und lässt den Kompressor abschalten, um die Grenze zu lernen. Ist das Haus deutlich zu warm, setzt es die Raumthermostat-Sperre."),
           tiles: [
-            tile(t("Phase"), GUARD_PHASES()[guard.phase] ?? guard.phase ?? "–"),
-            tile(t("Untergrenze Schutz"), guard.floor_c == null ? "–" : `${one(guard.floor_c)} °C`),
+            tile(t("Phase"), GUARD_PHASES()[guard.phase] ?? guard.phase ?? "–",
+              guard.phase === "off" && guard.restart_at ? t("Wiederanlauf um {time}", { time: time(guard.restart_at) }) : null),
+            tile(guard.phase === "off" || guard.phase === "restart" ? t("Wiederanlauf auf") : t("Untergrenze"),
+              guard.floor_c == null ? "–" : `${one(guard.floor_c)} °C`,
+              guard.floor_c == null && device.learn_stops ? t("Lernphase: keine Untergrenze") : null),
+            tile(t("Abschaltgrenze"), `${one(guard.values?.stop_margin)} K`, VALUE_SOURCES()[guard.values?.sources?.stop_margin] ?? ""),
             tile(t("Sperre"), guard.block ? (guard.block_reason === "foreign" ? t("an (nicht von Sunflow)") : t("an")) : t("aus"),
               guard.block ? (BLOCK_REASONS()[guard.block_reason] ?? guard.block_reason ?? "") + (guard.block_since ? ` · ${t("seit {time}", { time: time(guard.block_since) })}` : "") : null),
           ],
@@ -847,6 +864,7 @@ class SunflowHeatPump extends LitElement {
           ? item("dash", t("würde schreiben (Nur Lernen)"), "color: var(--sf-series-6)") : nothing}
         ${item("", t("Raum-Ist (dünn: einzelne Räume)"), "background: var(--sf-series-1)")}
         ${item("dash", t("Raum-Soll"), "color: var(--sf-series-4)")}
+        <span><i class="cross"></i>${t("Kompressor aus")}</span>
         ${item("box", t("Warmwasser"), "background: var(--hp-dhw)")}
         ${item("box", t("Sperre"), "background: var(--sf-muted)")}
         ${item("box", t("schnelle Änderung"), "background: var(--hp-cold)")}
@@ -969,7 +987,7 @@ class SunflowHeatPump extends LitElement {
     }
   }
 
-  /** Budget, pending value, the last writes and unwanted shutdowns, counts per day. */
+  /** Budget, pending value, the last writes, counts per day. */
   _renderGuard(deviceId, guard, writes) {
     const time = (iso) => {
       const at = new Date(iso);
@@ -986,7 +1004,7 @@ class SunflowHeatPump extends LitElement {
         : nothing}
       ${this._renderAdopt(guard)}
       <div class="title-row"><h3>${t("Budget heute")}</h3></div>
-      <p class="help small">${t("Mindestabstand zwischen zwei Schreibvorgängen {normal} min, bei Schutzschritten (Start, Nachführen) {protect} min; dazwischen merkt Sunflow nur den letzten Wert. Die erste Änderung nach einer Ruhepause geht sofort hinaus. Bei „Nur Lernen“ zählt Sunflow, was es schreiben würde.", { normal: minutes(params.min_interval_s), protect: minutes(params.protect_interval_s) })}</p>
+      <p class="help small">${t("Mindestabstand zwischen zwei Schreibvorgängen {normal} min, bei Schutzschritten (Wiederanlauf, Nachführen) {protect} min; dazwischen merkt Sunflow nur den letzten Wert. Die erste Änderung nach einer Ruhepause geht sofort hinaus. Bei „Nur Lernen“ zählt Sunflow, was es schreiben würde.", { normal: minutes(params.min_interval_s), protect: minutes(params.protect_interval_s) })}</p>
       <div class="tiles">${this._budgetTiles(guard)}</div>
       ${this._renderPending(deviceId, guard)}
       <div class="row2">
@@ -1004,16 +1022,13 @@ class SunflowHeatPump extends LitElement {
                 </tr>`)}</tbody>
               </table>`
             : html`<p class="small muted">${shadow ? t("würde noch nichts schreiben") : t("noch nichts geschrieben")}</p>`}
-          ${guard.unwanted_stops?.length
-            ? html`<p class="small warn-text">${t("Ungewollte Abschaltungen (zuletzt): {stops}", { stops: guard.unwanted_stops.slice(0, 5).map((s) => t("{time} bei {peak} °C (Soll {setpoint} °C)", { time: time(s.at), peak: one(s.peak_c), setpoint: one(s.setpoint_c) })).join(" · ") })}</p>`
-            : nothing}
         </div>
         <div>${this._renderWriteCounts(writes)}</div>
       </div>
     `;
   }
 
-  /** Per day: writes by reason and unwanted shutdowns, against the budget. */
+  /** Per day: writes by reason and compressor stops, against the budget. */
   _renderWriteCounts(writes) {
     if (!writes) return nothing;
     if (writes.error) return html`<p class="small warn-text">${t("Zählung nicht verfügbar: {error}", { error: writes.error })}</p>`;
@@ -1022,11 +1037,11 @@ class SunflowHeatPump extends LitElement {
     const over = (count, limit) => (limit != null && count > limit ? "warn-text" : "");
     return html`
       <div class="title-row"><h3>${t("Schreibvorgänge je Tag")}</h3></div>
-      <p class="help small">${t("Budget: {normal} Schreibvorgänge je Tag, dazu {emergency} nur für Schutzschritte (Start, Nachführen), höchstens {hour} je Stunde; der Tag folgt der Zeitzone von Home Assistant. Ist das Budget erschöpft, wartet ein normaler Wert; statt eines Schutzschritts würde die Raumthermostat-Sperre gesetzt. Die Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
+      <p class="help small">${t("Budget: {normal} Schreibvorgänge je Tag, dazu {emergency} nur für Schutzschritte (Wiederanlauf, Nachführen), höchstens {hour} je Stunde; der Tag folgt der Zeitzone von Home Assistant. Ist das Budget erschöpft, wartet der Wert. Die Raumthermostat-Sperre zählt nicht (nicht im EEPROM).", { normal: budget.per_day ?? "–", emergency: budget.emergency_per_day ?? "–", hour: budget.per_hour ?? "–" })}</p>
       <table>
         <thead><tr>
-          <th>${t("Tag")}</th><th>${t("normal")}</th><th>${t("Start")}</th><th>${t("Nachführen")}</th>
-          <th>${t("Sperre an/aus")}</th><th>${t("ungewollte Abschaltungen")}</th>
+          <th>${t("Tag")}</th><th>${t("normal")}</th><th>${t("Wiederanlauf")}</th><th>${t("Nachführen")}</th>
+          <th>${t("Sperre an/aus")}</th><th>${t("Kompressor-Stopps")}</th>
         </tr></thead>
         <tbody>
           ${writes.days.map((d) => html`<tr>
@@ -1035,7 +1050,7 @@ class SunflowHeatPump extends LitElement {
             <td class=${over(d.setpoint, (budget.per_day ?? 0) + (budget.emergency_per_day ?? 0))}>${d.start}</td>
             <td class=${over(d.setpoint, (budget.per_day ?? 0) + (budget.emergency_per_day ?? 0))}>${d.track}</td>
             <td>${d.block_on}/${d.block_off}</td>
-            <td class=${d.unwanted_stops ? "warn-text" : ""}>${d.unwanted_stops}</td>
+            <td>${d.stops ?? "–"}</td>
           </tr>`)}
         </tbody>
       </table>
@@ -1052,7 +1067,6 @@ class SunflowHeatPump extends LitElement {
     const house = this._status?.house ?? {};
     const tile = (...args) => this._tile(...args);
     const two = (v) => (v == null ? "–" : decimal(Number(v).toFixed(2)));
-    const minutes = (s) => (s == null ? "–" : decimal((s / 60).toFixed(0)));
     const values = guard.values ?? {};
     const sources = values.sources ?? {};
     const source = (key) => VALUE_SOURCES()[sources[key]] ?? sources[key] ?? "";
@@ -1086,20 +1100,73 @@ class SunflowHeatPump extends LitElement {
         </div>
         <div>
           <div class="title-row"><h3>${t("Verhalten der Wärmepumpe")}</h3></div>
-          <p class="help small">${t("Werte, mit denen die Schutzschicht Takten vermeidet. Solange zu wenig gelernt ist, gelten Startwerte.")}</p>
+          <p class="help small">${t("Werte, mit denen Sunflow Abschaltungen vermeidet. Solange zu wenig gelernt ist, gelten die Startwerte des Geräteprofils.")}</p>
           ${guard.values
             ? html`<div class="tiles">
+                ${tile(t("Abschaltgrenze"), `${two(values.stop_margin)} K`, t("{source}; aus {count} Abschaltungen", { source: source("stop_margin"), count: guard.learned?.stop_samples ?? 0 }))}
+                ${tile(t("Einschaltabstand"), `${two(values.start_margin)} K`, t("Wiederanlauf auf Vorlauf + diesen Wert"))}
                 ${tile(t("Schwankung im Betrieb"), `${two(values.steady_swing)} K`, source("steady_swing"))}
-                ${["normal", "hot_water", "defrost"].map((kind) => tile(
-                  t("Sprung beim Start ({kind})", { kind: START_KINDS()[kind] }),
-                  `${two(values.start_jump?.[kind])} K`,
-                  t("{source}, beruhigt nach {minutes} min", { source: source(`start_jump.${kind}`), minutes: minutes(values.start_settle_s?.[kind]) }),
-                ))}
                 ${tile(t("Leistungsbereich"), `${decimal((values.power_min_w / 1000).toFixed(1))}–${decimal((values.power_max_w / 1000).toFixed(1))} kW`, source("power"))}
               </div>`
             : html`<p class="small muted">${t("Noch nichts gelernt.")}</p>`}
+          ${this._renderLearnStops(device)}
         </div>
       </div>
+      ${this._renderStops(guard.learned)}
+    `;
+  }
+
+  /** The learning phase of the stop margin: a switch the user ends when enough stops are recorded. */
+  _renderLearnStops(device) {
+    const on = Boolean(device.learn_stops);
+    return html`
+      <div class="field">
+        <span class="field-label">${t("Lernphase Abschaltgrenze")}</span>
+        <div class="seg" role="group" aria-label=${t("Lernphase Abschaltgrenze")}>
+          <button class=${on ? "on" : ""} aria-pressed=${on} ?disabled=${this._busy} @click=${() => this._setLearnStops(device.id, true)}>${t("an")}</button>
+          <button class=${on ? "" : "on"} aria-pressed=${!on} ?disabled=${this._busy} @click=${() => this._setLearnStops(device.id, false)}>${t("aus")}</button>
+        </div>
+        <span class="help small">${t("An: Sunflow senkt nach jedem Start bis aufs Vorlauf-Ziel und lässt den Kompressor abschalten, wenn er will – nach 5 Minuten startet es ihn wieder. So zeigt die Wärmepumpe, ab wann sie abschaltet. Aus, wenn genug Abschaltungen aufgezeichnet sind: dann bleibt Sunflow über der gelernten Grenze.")}</span>
+      </div>
+    `;
+  }
+
+  async _setLearnStops(deviceId, active) {
+    this._busy = true;
+    try {
+      await api.setHeatPumpLearnStops(deviceId, active);
+      this._error = null;
+    } catch (err) {
+      this._error = t("Lernphase nicht umgeschaltet: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+      await this._loadStatus();
+    }
+  }
+
+  /** Compressor stops of the last days with their class and how far Tv was above the effective setpoint. */
+  _renderStops(learned) {
+    const stops = learned?.stops ?? [];
+    const counts = learned?.stop_counts ?? {};
+    const time = (iso) => new Date(iso).toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    const k = (v) => (v == null ? "–" : `${v >= 0 ? "+" : "−"}${decimal(Math.abs(v).toFixed(1))}`);
+    return html`
+      <div class="title-row"><h3>${t("Abschaltungen des Kompressors")}</h3>
+        <span class="small muted">${Object.entries(counts).filter(([, n]) => n).map(([kind, n]) => `${STOP_KINDS()[kind] ?? kind} ${n}`).join(" · ")}</span></div>
+      <p class="help small">${t("Jeder Stopp des Kompressors im Heizbetrieb, eingeordnet nach dem, was folgte: Abtauen, Warmwasser, Sperre – sonst „Abschaltregel“. Nur diese zählen für die Abschaltgrenze. „über Soll“: Vorlauf (Spitze) − wirksamer Vorlauf-Soll; UART: derselbe Abstand mit dem Vorlauf des UART-Knotens. Stündlich neu ausgewertet.")}</p>
+      ${stops.length
+        ? html`<table>
+            <thead><tr><th>${t("Zeit")}</th><th>${t("Art")}</th><th>${t("Vorlauf")}</th><th>${t("Soll")}</th><th>${t("über Soll")}</th><th>UART</th></tr></thead>
+            <tbody>${stops.map((s) => html`<tr>
+              <td>${time(s.at)}</td>
+              <td class=${s.kind === "unexplained" ? "warn-text" : ""}>${STOP_KINDS()[s.kind] ?? s.kind}</td>
+              <td>${one(s.peak_c)} °C</td>
+              <td>${one(s.setpoint_c)} °C</td>
+              <td>${k(s.margin_k)} K</td>
+              <td>${k(s.margin_uart_k)} K</td>
+            </tr>`)}</tbody>
+          </table>`
+        : html`<p class="small muted">${t("Noch keine Abschaltungen aufgezeichnet.")}</p>`}
     `;
   }
 
@@ -1485,6 +1552,7 @@ class SunflowHeatPump extends LitElement {
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--sf-border); font-variant-numeric: tabular-nums; }
     th { font-size: 13px; color: var(--sf-muted); font-weight: 600; }
     td:first-child { white-space: nowrap; }
+    .legend i.cross { width: 10px; height: 10px; background: linear-gradient(45deg, transparent 42%, var(--sf-error-text) 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, var(--sf-error-text) 42% 58%, transparent 58%); }
     .tag { font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--sf-neutral-bg); color: var(--sf-muted); white-space: nowrap; }
     .tag.real { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }

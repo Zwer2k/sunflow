@@ -4,9 +4,6 @@
   of the heating surface type (HEATING_SURFACES); never outside the written entity's own range
   (manifest min/max).
 - Rounding to the entity's step (manifest), always the safe way where it protects (up).
-- Plausibility: a flow target further than PLAUSIBLE_BAND_K from the effective setpoint (writing for real:
-  from the base, since the effective setpoint is then Sunflow's own), and from the curve's value when the
-  curve is used, is not written.
 The heat output range is learned in learned.py; the write budget is in budget.py.
 """
 
@@ -22,13 +19,9 @@ from .defaults import (
     DEFAULT_SETPOINT_STEP_K,
     HEATING_SURFACE_DEFAULT,
     HEATING_SURFACES,
-    PLAUSIBLE_BAND_K,
-    SHUTDOWN_RESOLUTION_K,
     POWER_MAX_KW_DEFAULT,
     POWER_MIN_KW_DEFAULT,
-    START_JUMP_K,
     START_MARGIN_K,
-    START_SETTLE_S,
     STEADY_SWING_K,
     STOP_MARGIN_K,
     WRITE_INTERVAL_FLOOR_S,
@@ -56,10 +49,8 @@ class ControlSettings:
 
     start_margin: float = START_MARGIN_K
     stop_margin: float = STOP_MARGIN_K
-    # Start values of the learned values (8.4)
+    # Start value of the learned swing (8.4)
     steady_swing: float = STEADY_SWING_K
-    start_jump: float = START_JUMP_K
-    start_settle_s: float = START_SETTLE_S
     # Heat output range (start values, W)
     power_min_w: float = POWER_MIN_KW_DEFAULT * 1000
     power_max_w: float = POWER_MAX_KW_DEFAULT * 1000
@@ -101,8 +92,6 @@ class ControlSettings:
             start_margin=_number(rules.get("start_margin"), START_MARGIN_K),
             stop_margin=_number(rules.get("stop_margin"), STOP_MARGIN_K),
             steady_swing=_number(learned.get("steady_swing"), STEADY_SWING_K),
-            start_jump=_number(learned.get("start_jump"), START_JUMP_K),
-            start_settle_s=duration(learned.get("start_settle"), START_SETTLE_S).total_seconds(),
             power_min_w=_number(power.get("min"), POWER_MIN_KW_DEFAULT) * 1000,
             power_max_w=_number(power.get("max"), POWER_MAX_KW_DEFAULT) * 1000,
             block_min_s=duration(block.get("min_duration"), BLOCK_MIN_S).total_seconds(),
@@ -119,11 +108,6 @@ class ControlSettings:
             user_max=user_max,
             adopt_delay_s=duration(flow.get("adopt_delay"), ADOPT_DELAY_S).total_seconds(),
         )
-
-    @property
-    def shutdown_guard(self) -> float:
-        """What a lower bound against the shutdown keeps below it: stop margin − one tenth (3.0 → 2.9)."""
-        return self.stop_margin - SHUTDOWN_RESOLUTION_K
 
 
 def surface_range(surface: str | None) -> tuple[float, float]:
@@ -167,15 +151,3 @@ def round_near(value: float, step: float) -> float:
 def clamp(value: float, low: float, high: float, step: float) -> float:
     """Within [low, high] on the step grid: never above high, never below low."""
     return min(max(value, round_up(low, step)), round_down(high, step))
-
-
-def implausible(target_c: float, effective_c: float | None, curve_c: float | None) -> float | None:
-    """How far the flow target lies from the furthest reference when beyond PLAUSIBLE_BAND_K (signed), else None."""
-    worst = None
-    for reference in (effective_c, curve_c):
-        if reference is None:
-            continue
-        distance = target_c - reference
-        if abs(distance) > PLAUSIBLE_BAND_K + _EPS and (worst is None or abs(distance) > abs(worst)):
-            worst = distance
-    return worst

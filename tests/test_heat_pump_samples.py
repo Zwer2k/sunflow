@@ -301,3 +301,35 @@ async def test_mode_off_records_and_learns_nothing(tmp_path: Path, library: Prof
     assert "mode_off" in flow["frozen"] and flow["correction_k"] == 0.0
     assert task is None or task.done()
     assert len(again) > 1
+
+
+async def test_stop_event_carries_the_uart_tv(pump: Pump) -> None:
+    """The companion node (UART manifest) is bound by its manifest; its Tv goes with each compressor stop (8.4)."""
+    from dataclasses import replace as replaced  # noqa: PLC0415
+
+    from sunflow.heat_pump.manifest import DeviceManifest  # noqa: PLC0415
+
+    uart = {"id": "rotex_hpsu_uart", "entities": [{"key": "tv", "domain": "sensor", "name": "TV"}]}
+    found = DeviceManifest(service="hpsu_uart_rotex_uart_manifest", node="hpsu_uart", component="uart", manifest=uart, hash="x", ha_device_id="dev_uart")
+    entity = {"entity_id": "sensor.hpsu_uart_tv", "unique_id": "AA:BB/0/sensor/TV", "original_name": "TV", "platform": "esphome",
+              "device_id": "dev_uart", "disabled_by": None}
+    plain = pump.snapshot
+
+    def snapshot() -> Snapshot:
+        snap = plain()
+        return replaced(
+            snap, entities=[*snap.entities, entity], manifests=snap.manifests | {"dev_uart": {"rotex_hpsu_uart": found}},
+            states=snap.states | {"sensor.hpsu_uart_tv": pump._state("30.6", "°C")},
+        )
+
+    pump.snapshot = snapshot  # type: ignore[method-assign]
+    await pump.tick(NOW)
+    pump.recorder.on_state_changed({"data": {
+        "entity_id": "sensor.hpsu_uart_tv", "old_state": {"state": "30.6"},
+        "new_state": {"state": "33.1", "attributes": {"unit_of_measurement": "°C"}, "last_updated": (NOW + MIN).isoformat()},
+    }})
+    pump.event("status_kompressor", "on", "off", NOW + 2 * MIN)
+    await pump.minutes(NOW + MIN, 5)
+
+    [event] = [e for e in pump.rows()[0]["events"] if e["kind"] == "stop"]
+    assert (event["tv_uart_c"], event["tvbh_c"], event["activity"], event["blocked"]) == (33.1, 30.2, "heating", False)

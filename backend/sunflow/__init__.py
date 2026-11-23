@@ -1,4 +1,4 @@
 """Sunflow backend."""
 
-__version__ = "0.80.26"
+__version__ = "0.80.27"
 API_VERSION = "v1"

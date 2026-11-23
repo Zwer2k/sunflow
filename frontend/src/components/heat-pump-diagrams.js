@@ -249,6 +249,8 @@ export function historyChart(history, { names = {} } = {}) {
   const writes = events.filter((e) => e.kind === "write" && e.value_c != null);
   const real = writes.filter((e) => e.shadow === false);
   const virtual = writes.filter((e) => e.shadow !== false);
+  // Compressor stops in heating (a cross at Tv)
+  const stops = events.filter((e) => e.kind === "stop" && (e.activity == null || e.activity === "heating") && (e.tv_c != null || e.tv_max_c != null));
   const flowRange = range(
     rows.flatMap((r) => [r.tv_c, r.tr_c, r.target_c, r.max_setpoint_c]).concat(writes.map((e) => e.value_c)), 1, 8,
   ) ?? [20, 40];
@@ -307,6 +309,13 @@ export function historyChart(history, { names = {} } = {}) {
     ${line(rows.map((r) => [mid(r), r.max_setpoint_c]), y1, "ln setpoint")}
     ${real.map((e) => svg`<circle class="dot" cx=${x(Date.parse(e.at))} cy=${y1(e.value_c)} r="3.5"><title>${clock.format(new Date(e.at))}: ${one(e.from_c)} → ${one(e.value_c)} °C</title></circle>`)}
     ${virtual.map((e) => svg`<circle class="dot hollow" cx=${x(Date.parse(e.at))} cy=${y1(e.value_c)} r="3.5"><title>${clock.format(new Date(e.at))}: ${t("würde schreiben")} ${one(e.value_c)} °C</title></circle>`)}
+    ${stops.map((e) => {
+      const at = Date.parse(e.at);
+      const v = Math.max(...[e.tv_c, e.tv_max_c].filter((x) => x != null));
+      const cx = x(at);
+      const cy = y1(Math.min(flowRange[1], Math.max(flowRange[0], v)));
+      return svg`<path class="stop-mark" d=${`M${cx - 4},${cy - 4} L${cx + 4},${cy + 4} M${cx - 4},${cy + 4} L${cx + 4},${cy - 4}`}><title>${clock.format(new Date(at))}: ${t("Kompressor aus bei {tv} °C (Soll {setpoint} °C)", { tv: one(v), setpoint: one(e.setpoint_c) })}</title></path>`;
+    })}
     ${roomIds.map((e) => line(rows.map((r) => [mid(r), r.rooms?.[e]]), y2, "ln single"))}
     ${line(rows.map((r) => [mid(r), r.room_setpoint_c]), y2, "ln room-set")}
     ${line(rows.map((r) => [mid(r), r.room_c]), y2, "ln room")}
@@ -417,6 +426,7 @@ export const diagramStyles = css`
   .ln.curve { stroke: var(--sf-series-2); stroke-width: 2.5; }
   .ln.curve.unsure { stroke-dasharray: 6 3; }
   .dot { fill: var(--sf-text); }
+  .stop-mark { stroke: var(--sf-error-text); stroke-width: 2; fill: none; }
   .dot.hollow { fill: var(--sf-surface); stroke: var(--sf-series-6); stroke-width: 1.5; }
   .dot.point { fill: var(--sf-series-1); opacity: .45; }
   .dot.typical { fill: var(--sf-series-2); }

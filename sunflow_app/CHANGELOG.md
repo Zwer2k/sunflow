@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.80.27
+
+- Heat pumps: the **protection against compressor shutdowns is rebuilt** and much simpler. Sunflow no longer predicts when the compressor switches (fixed 3 K rules, start jumps, preparing during hot water, holding until the flow is calm); it reacts instead. While the compressor runs, Max T-Vorlauf is the flow target. When the compressor has been **off for 5 minutes** although the rooms need heat (also after hot water or defrosting), Sunflow raises Max T-Vorlauf once to flow + 3 K (**restart**). 10 minutes after a start it lowers to the flow target in one step, not below the **stop margin**. During hot water and defrosting nothing is written.
+- The stop margin is **learned from real stops**: every compressor stop is recorded with flow, flow of the UART node (if present), setpoint and what followed (defrosting, hot water, block – else "shutdown rule"); the table **Compressor stops** in the section "Learned" shows them. In the **learning phase** (switch there, on at first) Sunflow lowers straight to the flow target and lets the compressor stop, so the heat pump shows where it switches off; switch it off once enough stops are recorded.
+- Removed: the plausibility check (±8 K), the block instead of a protection step when the budget is used up, the block for "minimum output above the need", the learned start jumps and the raise after an "unwanted shutdown". The daily table counts compressor stops instead. The history chart marks compressor stops with a cross.
+
 ## 0.80.26
 
 - Heat pumps, **Lernen + Regeln**: after Sunflow had raised Max T-Vorlauf by more than 8 K for protection (e.g. after defrosting), it did not lower it again to the flow target ("flow target not plausible") and the set value stayed up. With writing switched on, the plausibility check now compares the flow target with the base instead of the effective flow setpoint, which is then Sunflow's own value.

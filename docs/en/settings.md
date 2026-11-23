@@ -90,8 +90,9 @@ outside temperature and flow. Then per heat pump collapsible sections (the brows
 - **Plant:** outdoor unit, indoor unit, tank and rooms as a picture of where the heat flows now, with the
   states of the heat pump.
 - **Writing and protection:** budget, pending value, latest writes and the counts per day.
-- **Learned:** the heating curve as a chart (flow over heat, with limits and measured points) and the learned
-  behaviour of the heat pump.
+- **Learned:** the heating curve as a chart (flow over heat, with limits and measured points), the learned
+  behaviour of the heat pump (stop margin, start margin, swing, output), the switch of the learning phase
+  and the compressor stops.
 
 At the end **House model** and **Settings** (margin, limits of the set value, rooms, fast change, house).
 Explanations are help texts: the "?" in the menu bar shows all of them, the "?" after a heading or a field
@@ -100,7 +101,7 @@ only that one.
 **Mode** (at the top with the room setpoint), three levels:
 
 - **Off:** Sunflow does not control, does not learn and records no measurements of the heat pump (saves
-  space, e.g. in summer). What it learned (heating curve, house model, jumps, correction) is kept; afterwards
+  space, e.g. in summer). What it learned (heating curve, house model, stop margin, correction) is kept; afterwards
   Sunflow goes on learning with the older data.
 - **Learning only** (default): Sunflow records, learns and shows what it would write, but writes nothing to
   the heat pump.
@@ -181,33 +182,38 @@ T-Vorlauf) it would write and the room thermostat block – shown as "would writ
 heat pump. The set value stays within the **limits of the set value**, which can be set per heat pump
 (at least/at most; at most is also the highest flow for the screed or heating surfaces). Empty, the
 start value of the heating surface type applies (underfloor 25–40 °C, mixed 25–50 °C, radiators
-30–55 °C); the entity's range always narrows it further. A flow target more than 8 K away from the
-effective flow setpoint (or the heating curve) would not be written (journal entry). With **Lernen +
-Regeln** the reference is the base instead of the effective flow setpoint: the effective setpoint is then the
-value Sunflow wrote itself – after raising it for protection (e.g. after defrosting) lowering it to the flow
-target would otherwise be blocked. When the flow
+30–55 °C); the entity's range always narrows it further. When the flow
 target reaches a limit or the heat pump its maximum or minimum output, the correction does not move
 further beyond it.
 
-The heat pump starts the compressor when the setpoint is at least 3 K above the flow, and stops it when
-the flow is 3 K above the setpoint. So Sunflow would: in a pause raise the set value so that the heat
-pump starts (flow + 3 K, or enough that the jump of the flow after the start does not stop it); during
-hot water prepare the set value for the start afterwards; after a start hold it until the flow is calm,
-then lower it once; while running follow it up when the flow comes close to the shutdown limit. Heat it
-does not want (room 0.5 K above the setpoint, or the heat pump's minimum output above the need) it would
-switch off with the room thermostat block – each state for at least 20 minutes. A room thermostat block
-Sunflow did not set (by hand, an automation, another controller) is not released by Sunflow: it is shown
-prominently in the heat pump section and noted in the journal, and Sunflow controls again only once it is
-released. The swing of the flow
-while running, the jump after a start (normal, after hot water, after defrost), the time until it is
-calm and the heat pump's output range are learned from the recording; until there are enough data,
-cautious start values apply. When the compressor stops unwantedly (flow 3 K above the setpoint without
-block, hot water or defrost), the journal says so and the value concerned is raised at once; without
-further incidents it goes back over weeks. The table **Writes per day** counts for the last 7 days what
-Sunflow would have written (normal, start, tracking, block on/off) and the unwanted shutdowns – to
-compare with the planned budget of 48 normal writes and 24 for start and tracking per day. The **minimum
+**Protection against shutdowns (since 0.80.27):** Sunflow does not predict when the compressor switches,
+it reacts to it. While the compressor runs in heating, the set value is the flow target. When the
+compressor has been **off for 5 minutes** although the rooms need heat (room temperature below setpoint +
+0.5 K, no block, no hot water and no defrosting right now) – whatever the reason, also after hot water or
+defrosting –, Sunflow raises the set value in one step to flow + start margin (profile, 3 K for the HPSU):
+**restart**. After a start it waits 10 minutes and then lowers to the flow target in one step – not below
+what the **stop margin** allows (highest flow of the last 5 minutes − stop margin + swing); when the flow
+rises above that, it follows. During hot water and defrosting Sunflow writes nothing.
+
+Sunflow learns the stop margin from real stops: each compressor stop is recorded with the flow (also the
+UART node's, if there is one), the flow setpoint and the context, and classified – defrosting or hot
+water follows, block, other activity, else "shutdown rule". The flow − setpoint distances of the
+shutdown-rule stops (from 5, of the last 14 days) give the margin; one larger than the profile's (3 K)
+only from 10. Until then the profile value applies. In the **learning phase** (switch in the section
+"Learned", on at first) Sunflow lowers to the flow target and lets the compressor stop, so the heat pump
+shows when it switches off; the restart brings it back. You switch it off once enough stops are recorded.
+The table **Compressor stops** shows the latest stops with their kind and distance.
+
+Heat Sunflow does not want (room 0.5 K above the setpoint) it switches off with the room thermostat block –
+each state for at least 20 minutes. A room thermostat block Sunflow did not set (by hand, an automation,
+another controller) is not released by Sunflow: it is shown prominently in the heat pump section and noted
+in the journal, and Sunflow controls again only once it is released. The swing of the flow while running
+and the heat pump's output range are learned from the recording as well. The table **Writes per day**
+counts for the last 7 days the writes (normal, restart, tracking, block on/off) and the compressor stops in
+heating – to
+compare with the budget of 48 normal writes and 24 for restart and tracking per day. The **minimum
 spacing** between two writes of the set value already applies with "learning only" (from the device profile, for the
-HPSU 5 minutes, for protection steps – start and tracking – 2 minutes): the first change after a calm
+HPSU 5 minutes, for protection steps – restart and tracking – 2 minutes): the first change after a calm
 spell goes out at once, further changes within that time are only kept, and once it has passed Sunflow
 writes the latest value if it still differs (a normal value by more than 0.5 K, a protection step with any
 raise). A waiting value is shown as "pending … would be written at …". The **budget** applies with "learning only"
@@ -216,9 +222,8 @@ most 6 in any hour; the day follows Home Assistant's time zone): Sunflow counts 
 recorded writes, the counter of real EEPROM writes stays untouched; writing for real, the real writes in
 that counter count. When the daily budget is used up, a
 normal value waits ("pending … waits: daily budget used up") until the next day; protection steps go on
-from the emergency quota. When that is used up too or the hourly limit is reached, Sunflow would set the
-room thermostat block instead of the protection step and release it once a protection step may be
-written again (at the earliest after its minimum duration). The journal notes each kind of exhaustion
+from the emergency quota. When that is used up too or the hourly limit is reached, a protection step waits
+as well (warning in the journal). The journal notes each kind of exhaustion
 once a day. The tile **Budget today** (with "learning only" counting what Sunflow would write) shows the day's use, the emergency quota left and the
 last hour. The button **Write now** skips the spacing for the pending value (not the budget) and is not
 offered with "learning only". The room thermostat block counts neither against the

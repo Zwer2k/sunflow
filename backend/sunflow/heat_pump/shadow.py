@@ -18,9 +18,9 @@ Shadow: everything is computed, stored and shown, nothing is written to a heat p
 not act, the correction has no effect back and may run to its limit; it is marked as shadow and starts
 at 0 when Sunflow takes over (step 3), with the base frozen then.
 
-Protection layer (8.3, 8.4, step 3 part 3, guard.py): from the flow target the set value Sunflow would
-write and the writes it would cause (start, tracking, block, ...), still only computed; at a limit the
-correction does not move further beyond it.
+Protection layer (8.3, 8.4, guard.py, reworked in 0.80.27): from the flow target the set value Sunflow
+writes and the writes it causes (normal, restart after the compressor stayed off, tracking, block); at a
+limit the correction does not move further beyond it.
 
 Write layer (8.5, step 3 part 4.2, writer.py): when the wanted set value is written - leading edge,
 minimum spacing, deadband except for protection steps, "write now". In the shadow it acts on the
@@ -188,6 +188,8 @@ class FlowShadow:
         self.guards: dict[str, Guard] = {}
         self.learned: dict[str, Learned] = {}
         self.settings: dict[str, ControlSettings] = {}
+        # Per heat pump: the learning phase of the stop margin is on (DeviceConfig.flow_learn_stops)
+        self._learn_stops: dict[str, bool] = {}
         # Write layer per heat pump (8.5) and the heat pumps Sunflow writes to for real: the user's switch
         # (DeviceConfig.flow_active, step 3 part 4.7), set every tick; off: shadow
         self.writers: dict[str, Writer] = {}
@@ -222,7 +224,7 @@ class FlowShadow:
         self._store.devices.setdefault(device_id, {})["curve"] = curve.as_dict()
 
     def set_learned(self, device_id: str, learned: Learned) -> None:
-        """Newly learned swing, jumps and heat output range; kept as cache with the next save."""
+        """Newly learned swing, stop margin and heat output range; kept as cache with the next save."""
         self.learned[device_id] = learned
         self._store.devices.setdefault(device_id, {})["learned"] = learned.as_dict()
 
@@ -421,7 +423,7 @@ class FlowShadow:
                 stored["start_c"], stored["start_at"] = start, now.isoformat()
             target = start + correction_k if start is not None and correction_k is not None else None
             reason = "no_base" if start is None else "strategy_unknown" if correction_k is None else None
-            result = await self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now, base)
+            result = await self._guard_step(config, device_id, device, minute, target, feed, room.value_c, now)
             stored["guard"] = self.guard(device_id).as_dict()
             flows[device_id] = FlowState(
                 strategy=strategy, base_c=base, base_at=base_at, correction_k=correction_k, target_c=target,
@@ -557,12 +559,13 @@ class FlowShadow:
 
     async def _guard_step(
         self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",
-        target: float | None, feed: Feed, room_c: float | None, now: datetime, base: float | None = None,
+        target: float | None, feed: Feed, room_c: float | None, now: datetime,
     ) -> GuardResult | None:
         """The protection layer for this minute: set value and writes Sunflow causes (in the shadow virtually)."""
         guard = self.guard(device_id)
         settings = minute.control or ControlSettings()
         self.settings[device_id] = settings
+        self._learn_stops[device_id] = device.flow_learn_stops
         active = self.writing_active(device_id)
         targets = minute.targets or WriteTargets()
         budget = self.budget(device_id)
@@ -574,10 +577,10 @@ class FlowShadow:
         try:
             result = write_step(guard, self.writer(device_id), GuardInput(
                 at=now, reading=minute.reading, evaluation=minute.evaluation, settings=settings,
-                values=guard_values(settings, self.learned.get(device_id), guard.bumps, now),
+                values=guard_values(settings, self.learned.get(device_id)),
                 tv_peak_c=minute.tv_peak_c, heat_w=minute.heat_w, target_c=target,
-                curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w, base_c=base,
-                room_c=room_c, plan_c=config.house.climate.setpoint_c, mode=config.house.climate.mode,
+                curve_c=feed.curve_c if feed.source != BASE else None, heat_needed_w=feed.heat_w,
+                learn_stops=device.flow_learn_stops, room_c=room_c, plan_c=config.house.climate.setpoint_c, mode=config.house.climate.mode,
                 surface=config.house.heating_surface,
             ), active=active, budget=budget)
         except Exception:
@@ -762,7 +765,7 @@ class FlowShadow:
         }
 
     def guard_status(self, device_id: str) -> dict[str, Any] | None:
-        """Set value and writes Sunflow would cause (8.3, 8.4, shadow), learned values, unwanted shutdowns."""
+        """Set value and writes Sunflow causes or would cause (8.3, 8.4), learned values and compressor stops."""
         flow = self.flows.get(device_id)
         guard = self.guards.get(device_id)
         result = flow.guard if flow else None
@@ -784,12 +787,12 @@ class FlowShadow:
             "limited": list(result.limited),
             "freeze_up": result.freeze_up,
             "freeze_down": result.freeze_down,
-            "implausible_k": result.implausible_k,
-            "calm": result.calm,
+            "off_since": result.off_since.isoformat() if result.off_since else None,
+            "restart_at": result.restart_at.isoformat() if result.restart_at else None,
+            "run_since": guard.run_since.isoformat() if guard.run_since else None,
             "block": guard.block,
             "block_since": guard.block_at.isoformat() if guard.block_at else None,
             "block_reason": guard.block_reason,
-            "start": guard.start.as_dict() if guard.start else None,
             "written_at": guard.written_at.isoformat() if guard.written_at else None,
             # Write layer (8.5): a value waiting for the spacing or the budget, the last "write now"
             "pending": result.pending.as_dict() if result.pending else None,
@@ -804,8 +807,9 @@ class FlowShadow:
             # Writing for real (step 3 part 4.7): whether the heat pump took the last write over
             "adopt": self.adopt_checks[device_id].status() if device_id in self.adopt_checks else None,
             "writes": list(reversed(guard.recent_writes)),
-            "unwanted_stops": list(reversed(guard.recent_stops)),
-            "values": guard_values(settings, learned, guard.bumps, now).as_dict(),
+            "values": guard_values(settings, learned).as_dict(),
+            # Learning phase of the stop margin (the user's switch, DeviceConfig.flow_learn_stops)
+            "learn_stops": self._learn_stops.get(device_id, False),
             "learned": learned.as_dict() if learned else None,
             "parameters": {
                 "start_margin_k": settings.start_margin, "stop_margin_k": settings.stop_margin,

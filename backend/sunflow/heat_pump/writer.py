@@ -1,7 +1,7 @@
 """Writing the set value (design/heat_pump.md, 8.5, step 3 part 4.2), a layer behind the protection layer.
 
 The protection layer (guard.py) computes every minute the set value it wants and whether that is a
-protection step (start, tracking); this layer decides when it is written:
+protection step (restart, tracking); this layer decides when it is written:
 - the first change after a calm spell at once (leading edge);
 - within the minimum spacing only the latest value is kept (pending), written once the spacing passed,
   if it still differs from the written one - 5 min for normal writes, 2 min for protection steps
@@ -12,8 +12,8 @@ protection step (start, tracking); this layer decides when it is written:
 - "write now" skips the spacing (not the budget) for one tick; the wish lapses when nothing can be
   written in the next tick (nothing pending, budget, no valid state, writing not active), with the reason
   in the status and the journal.
-- the budget (budget.py, step 3 part 4.3): a value it holds back waits without a time (held budget);
-  a protection step held back sets the block instead (guard.py), each exhaustion once a day in the journal.
+- the budget (budget.py, step 3 part 4.3): a value it holds back waits without a time (held budget); a
+  protection step held back is noted once per episode, each exhaustion once a day in the journal.
 In the shadow it works on the virtual writes (counted virtually against the budget) and adds nothing to
 the journal for a write (events as before); a real write gets a journal entry with its reason. The call to
 the heat pump itself is the shadow control's (shadow.py, step 3 part 4.7, only when the user switched it on).
@@ -100,7 +100,7 @@ def reason_text(reason: str, manual: bool = False) -> str:
         return t("manuell (jetzt schreiben)")
     return {
         "normal": t("Vorlauf-Ziel"),
-        "start": t("Schutzschritt Start"),
+        "start": t("Wiederanlauf"),
         "track": t("Schutzschritt Nachführen"),
     }.get(reason, reason)
 
@@ -210,25 +210,19 @@ def budget_text(limit: str, limits: Any, shadow: bool) -> str:
         )
     elif limit == EMERGENCY:
         message = t(
-            "Notkontingent für heute erschöpft ({n} Schreibvorgänge zusätzlich): Raumthermostat-Sperre statt Schutzschritt.",
+            "Notkontingent für heute erschöpft ({n} Schreibvorgänge zusätzlich): Wiederanlauf und Nachführen erst morgen wieder.",
             n=limits.emergency_per_day,
         )
     elif limit == HOUR:
-        message = t("Höchstens {n} Schreibvorgänge je Stunde erreicht: Werte warten, Raumthermostat-Sperre statt Schutzschritt.", n=limits.per_hour)
+        message = t("Höchstens {n} Schreibvorgänge je Stunde erreicht: Werte warten.", n=limits.per_hour)
     else:
         message = t("Budget erschöpft")
     return t("Nur Lernen: {message}", message=message) if shadow else message
 
 
 def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bool = False, budget: Budget | None = None) -> "GuardResult":
-    """One minute: the protection layer decides what it wants, the write layer when it is written.
-
-    A protection step the budget holds back sets the block instead (guard.budget_block); the block the
-    budget set is released once a protection step may be written again."""
+    """One minute: the protection layer decides what it wants, the write layer when it is written."""
     data = replace(data, writing=active)
-    if budget is not None:
-        free = budget(Request(value_c=0.0, reason="start", protect=True), data.at) is None
-        data = replace(data, protect_budget=free)
     result = guard.step(data)
     outcome = writer.step(
         now=data.at, request=result.request, written_c=guard.written_c, written_at=guard.written_at,
@@ -243,15 +237,10 @@ def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bo
             budget.wrote(data.at)
     pending = outcome.pending
     if pending is not None and pending.held == BUDGET:
-        if pending.protect:
-            blocked = guard.budget_block(result, data)
-            if blocked:
-                # The block protects instead: nothing waits for the budget any more
-                writer.pending = pending = None
-            elif guard.budget_unprotected(data):
-                message = t("Schutzschritt wegen des Budgets nicht möglich, die Raumthermostat-Sperre ebenfalls nicht (keine Sperre oder ihre Mindestdauer): die Wärmepumpe kann abschalten.")
-                result.notes.append((t("Nur Lernen: {message}", message=message) if not active else message, True))
-        limit = outcome.pending.budget if outcome.pending is not None else None
+        if pending.protect and guard.budget_unprotected(data):
+            message = t("Wiederanlauf bzw. Nachführen wegen des Budgets nicht möglich: Der Kompressor kann aus bleiben oder abschalten.")
+            result.notes.append((t("Nur Lernen: {message}", message=message) if not active else message, True))
+        limit = pending.budget
         if isinstance(budget, WriteBudget) and limit is not None and budget.notice(limit, data.at):
             result.notes.append((budget_text(limit, budget.limits, not active), True))
     result.pending = pending

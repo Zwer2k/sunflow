@@ -87,7 +87,7 @@ def house_input(
         inside_c=room.value_c if room is not None else None,
         outside_c=minute.outside_c if fresh else None,
         program=minute.reading.program if fresh else None,
-        max_heat_w=guard_values(settings, learned, {}, now).power_max_w,
+        max_heat_w=guard_values(settings, learned).power_max_w,
         writing=device.flow_active,
     )
 

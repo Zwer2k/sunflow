@@ -54,6 +54,8 @@ class Hpsu:
     delay: timedelta = timedelta(seconds=60)
     jump_k: float = 4.0
     cool_k: float = 0.3
+    # Share of the way to its setpoint Tv makes each minute
+    follow: float = 0.5
     pending: tuple[float, datetime] | None = None
     started_at: datetime | None = None
     stops: list[datetime] = field(default_factory=list)
@@ -79,7 +81,7 @@ class Hpsu:
             if since <= MIN:
                 self.tv += self.jump_k
             else:
-                self.tv += (self.effective - 0.5 - self.tv) * 0.5
+                self.tv += (self.effective - 0.5 - self.tv) * self.follow
             if self.tv >= self.effective + 3.0:
                 self.compressor = False
                 self.stops.append(now)
@@ -439,15 +441,17 @@ async def test_mode_off_writes_nothing_and_takes_over_anew(tmp_path: Path) -> No
 
 
 async def test_simulation_block_pause_start_without_self_caused_shutdown(tmp_path: Path) -> None:
-    """Running, the room gets warm (block), cools again (release), the HPSU starts on Sunflow's start value,
-    holds, is lowered once; all through the fake Home Assistant, within the budget, no unwanted shutdown."""
-    plant = Plant(tmp_path, Hpsu(max_setpoint=27.0, tv=26.5, cool_k=0.1))
+    """Running, the room gets warm (block), cools again (release), the compressor stays off: Sunflow restarts it
+    after 5 minutes, leaves it 10 minutes, lowers once above the shutdown bound; all through the fake Home
+    Assistant, within the budget, no shutdown (learning phase off)."""
+    plant = Plant(tmp_path, Hpsu(max_setpoint=27.0, tv=26.5, cool_k=0.02))
+    plant.device.flow_learn_stops = False
     await plant.run(10)
     plant.device.flow_active = True
     await plant.run(10)
     plant.room = 21.6
     await plant.run(15)
-    # Released after the block's minimum duration (20 min): Tv 24.5, the HPSU would not start on 27 °C
+    # Released after the block's minimum duration (20 min): the HPSU would not start on 27 °C by itself
     plant.room = 21.1
     await plant.run(60)
 
@@ -456,16 +460,38 @@ async def test_simulation_block_pause_start_without_self_caused_shutdown(tmp_pat
     writes = plant.writes()
     assert block_calls == ["An", "Aus"]
     reasons = [r for r, _ in writes if r in ("normal", "start", "track")]
-    # One start: at most two writes of the set value (start value, lowered once)
-    assert reasons[0] == "start" and len(reasons) <= 2
-    assert writes[:3] == [("block_on", True), ("block_off", False), ("start", 27.6)]
+    # One restart: two writes of the set value (restart, lowered once)
+    assert reasons == ["start", "normal"]
+    assert writes[:3] == [("block_on", True), ("block_off", False), ("start", 29.0)]
+    restart = next(f for f in plant.flows if f["guard"]["phase"] == "restart")
+    assert restart["guard"]["restart_at"] is not None
     assert len(setpoint_calls) == len(reasons) == len(plant.eeprom_times())
     assert plant.hpsu.stops == []
-    assert [e for e in plant.events if e["kind"] in ("unwanted_stop", "foreign_write")] == []
+    assert [e for e in plant.events if e["kind"] == "foreign_write"] == []
     assert plant.hpsu.compressor and not plant.hpsu.blocked
     # The real write events carry shadow false; the budget counts them per hour
     assert all(e["shadow"] is False for e in plant.events if e["kind"] == "write")
     assert plant.flows[-1]["guard"]["budget"]["used_today"] == len(setpoint_calls)
+
+
+async def test_simulation_learning_phase_lets_it_stop_and_restarts(tmp_path: Path) -> None:
+    """Learning the stop margin: lowered straight to the flow target, the HPSU switches off (Tv ≥ setpoint + 3 K);
+    5 minutes later Sunflow restarts it, 10 minutes after the start it lowers again."""
+    plant = Plant(tmp_path, Hpsu(max_setpoint=35.0, tv=34.0, follow=0.1))
+    await plant.run(5)
+    plant.device.flow_active = True
+    await plant.run(2)
+    plant.flow._store.devices["hp"]["base_c"] = 29.0
+    await plant.run(60)
+
+    writes = [(r, v) for r, v in plant.writes() if r in ("normal", "start", "track")]
+    assert plant.hpsu.stops, "the learning phase lets the compressor stop"
+    assert writes[0] == ("normal", 29.0) and ("start", writes[1][1]) == writes[1]
+    # Each stop is followed by a restart 5 to 6 minutes later
+    starts = [datetime.fromisoformat(e["at"]) for e in plant.events if e["kind"] == "write" and e["reason"] == "start"]
+    for stop in plant.hpsu.stops[: len(starts)]:
+        assert any(timedelta(minutes=5) <= at - stop <= timedelta(minutes=6) for at in starts)
+    assert all(r != "track" for r, _ in writes)
 
 
 # API

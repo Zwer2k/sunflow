@@ -158,10 +158,7 @@ FEED_HEAT_MIN_W = CURVE_HEAT_MIN_W
 
 # Limits (8.3). The set value stays within the start limits of the heating surface type (HEATING_SURFACES)
 # and the entity's own range (manifest min/max). Without a step in the manifest the coarsest allowed one
-# counts (rounding then still goes the safe way). A flow target further than PLAUSIBLE_BAND_K from the
-# effective setpoint (writing for real: the base) and from the curve's value, when the curve is used, is not
-# plausible: not written.
-PLAUSIBLE_BAND_K = 8.0
+# counts (rounding then still goes the safe way).
 # Range a user setting of the set value limits (DeviceConfig.flow_min_c/flow_max_c) may name at all; within
 # it the entity's range from the manifest still narrows the setting
 FLOW_LIMIT_LOW_C = 15.0
@@ -179,49 +176,39 @@ POWER_MIN_QUANTILE = 0.05
 POWER_MAX_QUANTILE = 0.99
 POWER_AT_LIMIT_SHARE = 0.05
 
-# Protection layer (8.4). Fallbacks when the profile leaves them out (compressor_rules, learned_defaults,
-# heating_block.min_duration).
+# Protection layer (8.4, reworked in 0.80.27). Fallbacks when the profile leaves them out (compressor_rules,
+# learned_defaults, heating_block.min_duration).
 START_MARGIN_K = 3.0
 STOP_MARGIN_K = 3.0
 STEADY_SWING_K = 0.5
-START_JUMP_K = 6.0
-START_SETTLE_S = 5 * 60
 BLOCK_MIN_S = 20 * 60
-# Temperatures have one decimal: a lower bound against the shutdown keeps this below it ("− 2.9")
-SHUTDOWN_RESOLUTION_K = 0.1
-# Tv is calm ("flat") when it moved by at most steady_swing over this window
-TV_FLAT_WINDOW_S = 5 * 60
-# Tracking in running operation: the peak of the last TRACK_LOOKBACK counts; a raise goes TRACK_HEADROOM
-# above the bound, so a slowly rising Tv does not cause a write every minute
-TRACK_LOOKBACK_S = 5 * 60
-TRACK_HEADROOM_K = DEADBAND_K
-# A start within START_AFTER of the end of hot water or defrost is a start after it; the jump and
-# settling time of a start are measured for at most START_OBSERVE_MAX
-START_AFTER_S = 30 * 60
-START_OBSERVE_MAX_S = 30 * 60
-# Unwanted shutdown: the compressor stops in heating while Tv peaked (within STOP_LOOKBACK before) at
-# least effective setpoint + stop margin − STOP_TOLERANCE, and neither the block nor hot water or
-# defrost stopped it
-STOP_LOOKBACK_S = 3 * 60
-STOP_TOLERANCE_K = 0.2
-# Wanted off (block): the room is BLOCK_ROOM_ABOVE_K above its target; released when back within
-# ROOM_DEADBAND_K. Minimum output above the need: released when the room is ROOM_DEADBAND_K below.
+# Restart: the compressor off this long although heat is wanted (also after hot water or defrost) - Sunflow
+# raises the set value to Tv + start margin. Heat is wanted while the room is below its target + RESTART_DEMAND_K.
+RESTART_AFTER_S = 5 * 60
+RESTART_DEMAND_K = 0.5
+# After a start the set value is left alone this long, then lowered to the flow target in one step
+LOWER_AFTER_S = 10 * 60
+# The shutdown bound counts the peak of Tv over the last PEAK_LOOKBACK_S of running
+PEAK_LOOKBACK_S = 5 * 60
+# Wanted off (block): the room is BLOCK_ROOM_ABOVE_K above its target; released when back within ROOM_DEADBAND_K
 BLOCK_ROOM_ABOVE_K = 0.5
-# Learned jump and swing values (from heat_pump_samples): starts of the last JUMP_LEARN_DAYS, at least
-# JUMP_MIN_EVENTS per kind of start, their JUMP_QUANTILE; steady swing from rows of steady running
-# (the row and SWING_STEADY_ROWS before with the compressor on, no start), at least SWING_MIN_ROWS,
-# their SWING_QUANTILE of tv_max − tv.
-JUMP_LEARN_DAYS = 28
-JUMP_MIN_EVENTS = 5
-JUMP_QUANTILE = 0.9
+# Steady swing learned from heat_pump_samples: rows of steady running (the row and SWING_STEADY_ROWS before
+# with the compressor on, no start), at least SWING_MIN_ROWS, their SWING_QUANTILE of tv_max − tv.
 SWING_MIN_ROWS = 288
 SWING_QUANTILE = 0.95
 SWING_STEADY_ROWS = 3
-# After an unwanted shutdown the value concerned is raised at once to what was seen plus BUMP_EXTRA_K;
-# without further incidents the raise fades by BUMP_DECAY_K_PER_DAY (weeks)
-BUMP_EXTRA_K = 0.5
-BUMP_DECAY_K_PER_DAY = 0.1
-# Shown in the status: the latest planned writes and unwanted shutdowns
+# Stop margin learned from the compressor stops of the last STOP_LEARN_DAYS: a stop is classified by what
+# follows within STOP_CLASSIFY_S (defrost, hot water) or the block; the unexplained ones with Tv above the
+# effective setpoint within STOP_MARGIN_RANGE_K count, their STOP_QUANTILE from STOP_MIN_EVENTS on (a margin
+# above the profile's from STOP_MIN_EVENTS_ABOVE). The status shows the latest STOPS_SHOWN stops.
+STOP_LEARN_DAYS = 14
+STOP_CLASSIFY_S = 10 * 60
+STOP_MARGIN_RANGE_K = (0.5, 8.0)
+STOP_QUANTILE = 0.1
+STOP_MIN_EVENTS = 5
+STOP_MIN_EVENTS_ABOVE = 10
+STOPS_SHOWN = 30
+# Shown in the status: the latest planned writes
 GUARD_RECENT_MAX = 20
 
 # Foreign writers (8.5, step 3 part 4.4). A change of the set value by someone else starts an episode

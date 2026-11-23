@@ -327,7 +327,7 @@ Sommer ≠ Kühlen. Genaue Unterschiede Sommer/Bereitschaft: offener Punkt 2 (Ab
 | kanonisch | Sunflow |
 |---|---|
 | `heating` | regeln, lernen |
-| `hot_water` | **einfrieren**: nicht lernen, Korrektur halten; geschrieben wird nur die Vorbereitung auf den Start nach Warmwasser (8.4) |
+| `hot_water` | **einfrieren**: nicht lernen, Korrektur halten; nichts geschrieben; danach zählt die Wartezeit des Wiederanlaufs (8.4) |
 | `defrost` | einfrieren + Nachlauf (Parameter, Start 10 min) |
 | `standby` / idle | Kompressor aus: nur Startregel bei Heizbedarf |
 | `unknown` | einfrieren |
@@ -343,7 +343,7 @@ das Wasser den kurzen Weg nimmt, sind Tv, TvBH und Tr für den Heizkreis nicht a
   beim Wechsel auf Heizen; der Kompressor startet einige Minuten später, Tv schwankt danach noch
   eine Weile (Größenordnung 20 min).
 - Aktivität `heating` mit BPV > 0 % oder innerhalb der Beruhigungszeit gilt als Übergang → einfrieren.
-- Die Startregel (8.4) gilt davon unabhängig: Sie hängt am Kompressor, nicht am Ventil.
+- Der Wiederanlauf (8.4) gilt davon unabhängig: Er hängt am Kompressor, nicht am Ventil.
 
 Zusätzliche Eingänge: Kompressor läuft (`status_kompressor`), Störung (`error_code`). Störung = Fehlercode
 beginnt mit `E` (Übersetzungsschlüssel `err_E…`; ein Text, den das Manifest nicht kennt, zählt, wenn er
@@ -365,7 +365,7 @@ einfrieren. Alle Bedingungen gleichzeitig:
   sobald der wirksame Soll wieder innerhalb der Totzone liegt. Fehlt einer der beiden Werte: nicht
   gültig. Bei anderer Strategie greift das Kriterium nicht (S2 später);
 - Gerät erreichbar und kompatibel (3.6).
-Die Startregel (8.4) und Schutzschritte gelten unabhängig davon.
+Wiederanlauf und Nachführen (8.4) gelten unabhängig davon.
 
 Journal: nur bei unbekanntem Zustandswert (einmal je Wert), Beginn und Ende einer Störung, Sperre an und
 aus, Beginn von „HPSU begrenzt den Vorlauf selbst“. Wechsel gültig ↔ nicht gültig (z. B. jedes Abtauen)
@@ -690,10 +690,11 @@ Heizflächentyp seit 3, Teil 4.1):
   Heizkörper höher; nie außerhalb der Grenzen der Entity (Manifest `min`/`max`).
 - Leistungsbereich der Wärmepumpe (Heizleistung min/max, Start HPSU 0,6 / 6 kW; die Klasse des
   Außengeräts steht im Manifest `outdoor_unit`): begrenzt die Wärme in der Planung, und die
-  Mindestleistung erkennt „Mindestleistung > Bedarf“ (Takten absehbar → Sperre statt Nachführen, 8.4).
-  Später aus den Messwerten (`thermal_power` im Dauerlauf) gelernt.
-- Plausibilität: V_Ziel außerhalb eines Bands um den Wert der gelernten Kennlinie bzw. letzten wirksamen
-  Soll (Start ±8 K) → nicht schreiben, Journal.
+  Mindestleistung friert die Korrektur nach unten ein. Aus den Messwerten (`thermal_power` im Dauerlauf)
+  gelernt.
+- Plausibilitätsprüfung (±8 K um wirksamen Soll bzw. Kennlinie): mit 0.80.27 entfallen. Das Vorlauf-Ziel
+  ist Basis bzw. Kennlinie + Korrektur (höchstens ±3 K); der wirksame Soll ist bei aktivem Schreiben
+  Sunflows eigener Wert und kein unabhängiger Bezug (blockierte das Absenken nach einer Anhebung).
 
 Umsetzung (3, Teil 3, nur Schatten; `heat_pump/limits.py`, `heat_pump/learned.py`, Konstanten in
 `heat_pump/defaults.py`):
@@ -705,151 +706,77 @@ Umsetzung (3, Teil 3, nur Schatten; `heat_pump/limits.py`, `heat_pump/learned.py
   beide. Eingabe erlaubt 15–70 °C, auf Zehntel gerundet; min muss unter max liegen (auch mit dem Startwert
   der leeren Seite), sonst 422. Rundung auf `step` der Entity (ohne Angabe die gröbste erlaubte Schrittweite 0,5 K):
   Vorlauf-Ziel zum nächsten Schritt, Schutzwerte aufwärts, alles höchstens bis zur Obergrenze.
-- Plausibilität: Bezug ist der aktuelle wirksame Vorlauf-Soll und, wenn die Quelle die Kennlinie ist,
-  deren Wert; weicht V_Ziel von einem davon mehr als 8 K (`PLAUSIBLE_BAND_K`) ab, wird kein normaler
-  Wert geschrieben (Schutzschritte bleiben), Journal einmal je Episode.
-  Bei aktivem Schreiben (ab 0.80.26) ist der Bezug statt des wirksamen Solls die eingefrorene Basis
-  (`GuardInput.base_c`): Der wirksame Soll folgt dann Sunflows eigenen Schutzschritten (z. B. nach dem
-  Abtauen um mehr als 8 K angehoben); mit ihm als Bezug galt das Vorlauf-Ziel danach als nicht plausibel, das
-  Absenken war gesperrt und Max T-Vorlauf blieb oben stehen.
 - Leistungsbereich: Startwerte aus dem Profil (`heat_power`), gelernt aus Zeilen im Dauerlauf (gültiger
   Heizbetrieb, Kompressor in der Zeile und den 3 Zeilen davor durchgehend an, kein Start), ab 288 Zeilen
   der letzten 28 Tage: Mindestleistung = 5-%-Quantil der Wärme, Höchstleistung nur angehoben
   (99-%-Quantil, wenn darüber), weil milde Wochen sie nicht zeigen.
 - Grenze erreicht (Grund im Status `limited`): V_Ziel an Ober-/Untergrenze (`limit_max`/`limit_min`),
   gemessene Wärme bei laufendem Kompressor innerhalb 5 % an der Höchst-/Mindestleistung
-  (`power_max`/`power_min`), nicht plausibel (`implausible`). Die Korrektur ist dann **in Richtung der
+  (`power_max`/`power_min`). Die Korrektur ist dann **in Richtung der
   Grenze** eingefroren (Inkremente dorthin werden verworfen wie ein eingefrorener Schritt, in
   Gegenrichtung zählen sie), damit sie nicht an der Grenze hängen bleibt; ausgewertet wird die Grenze der
   vorigen Minute.
 
-### 8.4 3-K-Schaltregeln (Profilparameter)
+### 8.4 Schutzschicht: Wiederanlauf und Abschaltgrenze (neu ab 0.80.27)
 
-`start_margin` (Kompressor startet, wenn Soll ≥ Tv + 3,0 K), `stop_margin` (aus, wenn Tv ≥ Soll + 3,0 K).
-Die HPSU schaltet exakt an diesen Grenzen; Temperaturen haben eine Nachkommastelle. Keine Reserve.
+Die frühere Schutzschicht sagte das Schalten des Kompressors aus festen 3-K-Regeln und gelernten
+Startsprüngen voraus (Starten, Vorbereiten bei Warmwasser, Halten, einmal Absenken, Nachführen, Sperre
+bei Mindestleistung oder Budget, „ungewollte Abschaltung“ mit Erhöhung). Im ersten aktiven Betrieb war
+das undurchsichtig und nicht stabil: nach dem Abtauen hoch angehoben, dann wegen „Tv nicht ruhig“
+(der Vorlauf stieg gerade wegen des hohen Solls) und der Plausibilitätsprüfung nicht mehr abgesenkt.
+Die Schaltschwellen der HPSU sind außerdem nicht sicher bekannt (welcher Tv-Fühler, ob genau 3 K).
+Entscheidung des Nutzers: ersetzen durch eine reaktive, einfache Regel, die die Schwelle aus echten
+Abschaltungen lernt. Ziel: möglichst keine Abschaltungen, möglichst wenige Schreibvorgänge.
 
-Das Risiko der 3-K-Abschaltung liegt fast nur beim **Kompressorstart**, nicht im laufenden Betrieb
-(beobachtet an einer HPSU):
-- Laufender Heizbetrieb: Tv schwankt nur wenig (einige Zehntel Kelvin).
-- Start: Tv springt kurz nach dem Start (innerhalb etwa einer Minute) um mehrere Kelvin über den Wert vor
-  dem Start und fällt dann zurück; nach Warmwasser startet die HPSU selbst.
-- Ungewollte Abschaltungen entstehen typischerweise kurz nach dem Start nach Warmwasser, wenn der Soll
-  vor/beim Start abgesenkt ist; danach läuft der Kompressor lange nicht wieder an, weil die Startregel
-  nicht erfüllt ist.
-
-**Von Sunflow im Betrieb gelernt, je Anlage** (statt fester Abstände). Sunflow misst diese Werte an der
-jeweiligen Wärmepumpe laufend selbst und passt seine Abstände daran an. Die Werte in Klammern sind nur
-vorsichtige Startwerte, die gelten, bis genug eigene Messungen vorliegen:
-- `steady_swing`: Schwankung von Tv im eingeschwungenen Heizbetrieb (0,5 K);
-- `start_jump`, `start_settle`: Höhe und Dauer des Sprungs nach einem Start, getrennt für Start nach
-  Warmwasser, nach Abtauen und normal (6,0 K bzw. 5 min).
-- Grundlage: Sensor `tv_max` der CAN-Komponente (Pflichtrolle). Die Komponente liest Tv alle 2 s,
-  veröffentlicht aber im Intervall von `tv` (z. B. 30 s) **beide zusammen**: `tv` = letzter Messwert,
-  `tv_max` = höchster Messwert seit der vorigen Veröffentlichung (inklusive des letzten). Damit gehen
-  Spitzen zwischen zwei Tv-Werten nicht verloren, ohne dass HA mehr Werte speichert.
-  Fenster ohne gültige Messung: keine Veröffentlichung. Gleicher Wert zweimal → HA legt keinen neuen
-  Eintrag an; Bedeutung bleibt (gilt bis zum nächsten Wert).
-- Zeitbezug: `tv_max` mit Zeitstempel T = Maximum im Zeitraum (vorige Veröffentlichung, T]. `tv` und
-  `tv_max` kommen als zwei getrennte Zustandsänderungen kurz nacheinander an; Sunflow kann dazwischen
-  lesen. Deshalb kein Paar-Vergleich zum selben Zeitpunkt: `tv_max` wird als eigene Zeitreihe ausgewertet
-  (Spitze je Intervall), und Entscheidungen nutzen vorsichtig `max(tv, tv_max)` der jeweils neuesten Werte.
-- Ungewollte Abschaltung (Kompressor aus, Tv ≥ Soll + 3,0, nicht von Sunflow gewollt) → Journal, betroffener
-  Wert sofort erhöht; ohne Vorfälle sinkt er langsam (Wochen). Ziel: keine Vorfälle.
-
-**Ablauf:**
-- **Starten**: Heizbedarf und Kompressor aus → Stellwert ≥ max(Tv + start_margin, Tv + `start_jump` −
-  2,9). Die Startregel allein deckt einen Sprung bis 5,9 K; ist `start_jump` größer, gilt der zweite Wert.
-- **Vor Warmwasser-Ende vorbereiten**: Während Warmwasser (Max T-Vorlauf wirkt dann nicht auf den
-  Heizbetrieb; einmal beobachten) den Stellwert so setzen, dass der Start nach Warmwasser sicher ist:
-  ≥ Tv vor dem Warmwasser + `start_jump` (nach Warmwasser) − 2,9. Ist er schon hoch genug, nichts schreiben.
-- **Halten**: nach einem Start den Stellwert nicht senken, bis `start_settle` vorbei ist und Tv flach ist.
-- **Danach einmal absenken** auf `max(V_Ziel, Tv + steady_swing − 2,9)` – ein Schritt statt vieler.
-- **Nachführen** (laufender Betrieb): erreicht Tv + `steady_swing` die Abschaltgrenze Soll + 3,0 (z. B.
-  Mindestleistung > Bedarf), Stellwert anheben, soweit das Notkontingent reicht; sonst Sperre (unten).
-- Geschrieben wird nur, wenn nötig: Schutzschritt (Untergrenze über aktuellem Soll) oder lohnende Änderung
-  (≥ Totzone) bei ruhigem Tv. Nicht schreiben, solange Tv noch schwankt.
-- Pro Start damit höchstens zwei Schreibvorgänge (vorbereiten/halten, einmal absenken).
-
-- **Rundung**: Stellwerte auf die Schrittweite der Entity aus dem Manifest (`step`, Max T-Vorlauf: 0,1 °C)
-  runden, und zwar immer in die sichere Richtung – bei Starten und bei der Untergrenze gegen Abschalten
-  **aufrunden**. Die Schrittweite kommt aus dem Manifest, nicht aus der Zahl der Nachkommastellen: sie kann
-  auch z. B. 0,5 sein.
-- **Gewollt aus**: Plant Sunflow keine Wärme (Raum über Ziel, Absenken, teurer Strom), schaltet es den
-  Kompressor immer über die Raumthermostat-Sperre aus (unten). Max T-Vorlauf wird nie absichtlich unter
-  die Abschaltgrenze gesetzt.
-- **Sperre über den Raumthermostat-Eingang** (`room_therm`, HPSU „Raum Thermostat“): `on` = zu warm,
-  die HPSU heizt nicht (Kompressor/Heizung/Vorlauf gesperrt); `off` = freigegeben. Dafür ist der Eingang
-  in der HPSU gedacht. Sunflow nutzt ihn für jedes gewollte Aus – z. B. Mindestleistung > Bedarf, Raum
-  deutlich über Ziel, Strom zu teuer (Planung). Freigabe: `off`, danach Startregel (Stellwert ≥ Tv + 3 K).
-  Mindestdauer je Zustand (Start 20 min) gegen Takten. Bei Ende der Steuerung und Ausfall wird sie nicht
-  zurückgenommen (8.6).
-- Nicht verhinderbar: Takten, wenn Mindestleistung > Bedarf und Budget erschöpft → Journal-Ereignis.
-
-Umsetzung (3, Teil 3, nur Schatten; `heat_pump/guard.py`, gelernte Werte `heat_pump/learned.py`,
-Konstanten in `heat_pump/defaults.py`). Sunflow schreibt nichts; „geschrieben“ ist hier der Wert, den
-Sunflow zuletzt geschrieben hätte (virtuell, Start beim vorgefundenen Max T-Vorlauf), ebenso die Sperre
-(Start beim vorgefundenen Zustand). Tv und Kompressor sind die echten der Wärmepumpe. Jeden Takt:
-- Unterer Schutzwert „− 2,9“ = `stop_margin` − 0,1 (`SHUTDOWN_RESOLUTION_K`).
-- **Start:** Beginn von Heizen mit laufendem Kompressor (Kompressorstart oder Wechsel von Warmwasser/
-  Abtauen auf Heizen). Art: nach Warmwasser bzw. Abtauen, wenn das innerhalb von 30 min endete
-  (`START_AFTER_S`), sonst normal. Bezug: Tv vor dem Warmwasser bzw. Abtauen (letzter Tv bei Heizen/
-  Bereitschaft mit BPV 0), sonst Tv der Minute vor dem Start. Die erste Minute nach einem Neustart von
-  Sunflow ist kein Start.
-- **Pause** (Programm Heizen, Kompressor aus, nicht gesperrt): Untergrenze max(Tv + `start_margin`, Tv +
-  `start_jump` − 2,9); innerhalb von 30 min nach Warmwasser/Abtauen stattdessen die Vorbereitung (unten),
-  weil die HPSU dann selbst startet. Jedes Aus, das nicht über die Sperre gewollt ist, gilt als Heizbedarf.
-- **Warmwasser:** Untergrenze Tv vor dem Warmwasser + `start_jump` (nach Warmwasser) − 2,9; Abtauen:
-  nichts (8.5), der Start danach wird mit seinem Bezug geschützt.
-- **Halten:** ab dem Start Untergrenze Bezug + `start_jump` der Art − 2,9; Ende, wenn `start_settle` der Art
-  vorbei und Tv ruhig ist (Spanne von Tv inklusive `tv_max` über 5 min ≤ `steady_swing`,
-  `TV_FLAT_WINDOW_S`). Während des Haltens wird nur nachgeführt, wenn die Spitze selbst die Grenze
-  erreicht (Spitze − 2,9 statt Spitze + Schwankung − 2,9, der Sprung ist schon eingerechnet).
-- **Normal** (laufender Betrieb nach dem Halten, gültiger Heizbetrieb, Tv ruhig, plausibel): Ziel
-  max(V_Ziel in Grenzen, Spitze der letzten 5 min + `steady_swing` − 2,9); geschrieben, wenn es um mehr als
-  die Totzone vom geschriebenen abweicht. Das erste solche Schreiben nach einem Start ist das einmalige
-  Absenken.
-- **Nachführen:** Spitze der letzten 5 min + `steady_swing` − 2,9 über dem geschriebenen Wert → anheben auf
-  diesen Wert + 0,5 K (`TRACK_HEADROOM_K`), damit ein steigender Tv nicht jede Minute einen
-  Schreibvorgang auslöst. Ist der Bedarf `Q*` (8.1) bekannt und kleiner als die Mindestleistung, und die
-  Sperre darf schalten → Sperre statt Nachführen (`min_power`).
-- **Sperre** (nur mit Rolle `heating_block`): an, wenn Raum-Ist ≥ Planziel + 0,5 K (`BLOCK_ROOM_ABOVE_K`,
-  `room_warm`) oder wie oben `min_power`; aus bei `room_warm`, wenn Raum-Ist ≤ Planziel + 0,2 K, bei
-  `min_power`, wenn ≤ Planziel − 0,2 K; ohne Raum-Ist aus. Jeder Zustand mindestens `min_duration` (20 min).
-  Gesperrt: kein Stellwert.
-- **Fremde Sperre** (`foreign`, seit 0.80.11): Eine Sperre, die Sunflow nicht gesetzt hat (beim Start
-  vorgefunden oder später von Hand, durch eine Automation oder einen anderen Regler gesetzt), hebt Sunflow
-  nicht auf (8.6). Phase `blocked`, kein Stellwert, keine eigene Sperr-Entscheidung; Journal (Warnung)
-  einmal beim Erkennen, im Status `block_reason` = `foreign`, im UI deutlich als „nicht von Sunflow
-  gesetzt“. Hebt sie jemand anders auf, regelt Sunflow wieder; die Mindestdauer läuft ab dann. Im
-  Schatten ist jede echte Sperre fremd; ab Teil 4 ist eine Sperre, die Sunflow selbst geschrieben hat,
-  nicht fremd. Der frühere Wert `adopted` in `heat_pump_state.json` wird als `foreign` gelesen.
+**Regeln** (`heat_pump/guard.py`, Konstanten in `heat_pump/defaults.py`):
+- **Normal:** Läuft der Kompressor im Heizbetrieb, ist der Stellwert das Vorlauf-Ziel (in Grenzen),
+  geschrieben nur bei Abweichung über der Totzone und nur bei gültigem Heizbetrieb (4).
+- **Wiederanlauf:** Ist der Kompressor 5 min aus (`RESTART_AFTER_S`), obwohl Wärme gewollt ist, hebt Sunflow
+  den Stellwert in einem Schritt auf Tv + Einschaltabstand (`start_margin`, Profil, Start 3 K; aufgerundet,
+  höchstens bis zur Obergrenze). Den Grund des Aus muss Sunflow nicht kennen. Wärme gewollt: Modus Heizen,
+  Programm Heizen, keine Sperre, kein Warmwasser und kein Abtauen gerade, Raum-Ist < Planziel + 0,5 K
+  (`RESTART_DEMAND_K`; ohne Raum-Ist: gewollt). Die 5 min zählen ab dem Aus bzw. ab dem Ende von
+  Warmwasser/Abtauen bzw. der Sperre. Liegt der Wert nicht über dem geschriebenen, wird nichts geschrieben
+  (ein fallender Tv löst keinen zweiten Wiederanlauf aus). Grund `start`, Schutzschritt.
+- **Nach dem Start:** 10 min nichts absenken (`LOWER_AFTER_S`, Phase `starting`), dann in einem Schritt auf
+  max(V_Ziel, Untergrenze). Kein Warten auf „ruhig“ mehr.
+- **Untergrenze (Abschaltgrenze):** höchster Tv (inkl. `tv_max`) der letzten 5 min laufenden Betriebs −
+  Abschaltgrenze + Schwankung (`steady_swing`). Steigt Tv darüber, wird nachgeführt: auf Untergrenze +
+  Schwankung (Grund `track`, Schutzschritt).
+- **Lernphase** (`DeviceConfig.flow_learn_stops`, Standard an, `PUT /api/v1/heat_pump/<id>/learn_stops`, UI
+  im Abschnitt „Gelernt“): keine Untergrenze, kein Nachführen – Sunflow senkt bis aufs Vorlauf-Ziel und lässt
+  den Kompressor abschalten, damit die Wärmepumpe zeigt, wann sie abschaltet; der Wiederanlauf holt ihn
+  zurück. Der Nutzer beendet sie, wenn genug Abschaltungen aufgezeichnet sind.
+- **Gewollt aus:** Raumthermostat-Sperre bei Raum-Ist ≥ Planziel + 0,5 K (`room_warm`), aufgehoben bei
+  ≤ Planziel + 0,2 K, Mindestdauer je Zustand (`min_duration`, 20 min). Fremde Sperre (`foreign`) wird nie
+  aufgehoben (8.6). Sperrgründe älterer Versionen (`min_power`, `budget`) werden als `room_warm` gelesen.
 - **Kein Schreiben** (Status `inactive`): Modus `off`, Strategie ≠ `fixed`, Gerät nicht nutzbar, Programm ≠
-  Heizen, unbekannte Aktivität, Störung, Tv oder Max T-Vorlauf unbekannt, ESP-Regelung aktiv
-  (`esp_regulation`, seit 3, Teil 4.4, 8.5).
-- **Ungewollte Abschaltung:** Kompressor an → aus, vorher Aktivität Heizen, nicht Warmwasser/Abtauen danach,
-  keine (echte) Sperre, höchste Spitze der letzten 3 min (inklusive der Veröffentlichungen seit der letzten
-  Minute) ≥ wirksamer Soll + `stop_margin` − 0,2 K (`STOP_TOLERANCE_K`). Innerhalb von 30 min nach einem
-  Start wird `start_jump` dieser Art erhöht (gesehen: Spitze − Bezug), sonst `steady_swing` (Spitze − Mittel
-  von Tv der letzten 5 min); jeweils auf das Gesehene + 0,5 K (`BUMP_EXTRA_K`), wenn das mehr ist als der
-  aktuelle Wert. Die Erhöhung sinkt um 0,1 K je Tag (`BUMP_DECAY_K_PER_DAY`) und wird in
-  `heat_pump_state.json` gehalten. Im Schatten sind das Abschaltungen der heutigen Regelung.
-- **Gelernt** (stündlich mit der Kennlinie, Cache `devices.<id>.learned`): `steady_swing` = 95-%-Quantil
-  von `tv_max_c − tv_c` der Dauerlauf-Zeilen (ab 288); `start_jump`, `start_settle` je Art = 90-%-Quantil
-  der Ereignisse `start_jump` der letzten 28 Tage (ab 5 je Art), sonst die Startwerte aus dem Profil.
-- Ergebnis: Stellwert (virtuell geschrieben), Vorlauf-Ziel in Grenzen, Schutz-Untergrenze, Phase (`idle`,
-  `hot_water`, `defrost`, `start_hold`, `running`, `blocked`, `inactive`), Sperre, die letzten 20
-  geplanten Schreibvorgänge und ungewollten Abschaltungen, gelernte Werte mit Herkunft (`start`,
-  `learned`, `raised`) im Status `state.flow.guard`; Ereignisse in `heat_pump_samples` (10); Journal bei
-  ungewollter Abschaltung (Warnung), Sperr-Entscheidung („Schatten: Sunflow würde die
-  Raumthermostat-Sperre setzen/aufheben …“) und nicht plausiblem V_Ziel.
-- Zählung je Tag (Zeitzone von HA): `GET /api/v1/heat_pump/<id>/shadow_writes?days=7` aus den Ereignissen;
-  normal, Start, Nachführen, Sperre an/aus, ungewollte Abschaltungen, dazu das Budget des Profils. Seit
-  Teil 4.2 mit Mindestabstand (8.5), noch ohne Budget (Teil 4.3), daher eine Obergrenze dessen, was aktiv
-  geschrieben würde.
-- Seit Teil 4.2 schreibt die Schutzschicht nicht mehr selbst: Sie liefert je Takt den gewünschten Stellwert
-  mit Grund (`normal`, `start`, `track`; Schutzschritt = `start`/`track`), die Schreibschicht (8.5)
-  entscheidet, wann er geschrieben wird. Sperre an/aus geht nicht durch die Schreibschicht (eigene
-  Mindestdauer, kein EEPROM).
+  Heizen, unbekannte Aktivität, Störung, Tv oder Max T-Vorlauf unbekannt, ESP-Regelung aktiv.
+- Während Warmwasser und Abtauen wird nichts geschrieben.
+- **Budget** (8.5): Hält es einen Wiederanlauf oder ein Nachführen zurück, wartet der Wert; Journal einmal
+  je Episode. Keine Sperre mehr als Ersatz.
+
+**Lernen der Abschaltgrenze** (`heat_pump/learned.py`, stündlich, Cache `devices.<id>.learned` Format 2):
+- Jede Kompressor-Abschaltung ist ein Ereignis `stop` in `heat_pump_samples` (10) mit Tv, `tv_max`, wirksamem
+  Soll, Max T-Vorlauf, dazu seit 0.80.27 `tvbh_c`, `tv_uart_c` (Tv des UART-Knotens, Profil-Companion mit
+  `manifest`, Rolle `flow_temperature_uart`), `activity` und `blocked` der Minute davor.
+- Einordnung: Abtauen oder Warmwasser innerhalb von 10 min danach (`STOP_CLASSIFY_S`, aus den Zeilen),
+  Sperre, andere Aktivität davor, zu jung zum Einordnen (`pending`) – sonst **ungeklärt** (die Abschaltregel
+  der Wärmepumpe).
+- Abstand = max(Tv, `tv_max`) − wirksamer Soll (auch mit dem UART-Tv, nur zur Auswertung).
+  Abschaltgrenze = 10-%-Quantil der ungeklärten Abstände zwischen 0,5 und 8 K der letzten 14 Tage, ab
+  5 Abschaltungen; größer als der Profilwert erst ab 10 (die sichere Richtung zuerst). Bis dahin der
+  Profilwert (`stop_margin`, 3 K).
+- Status `guard.values` (`stop_margin`, `start_margin`, `steady_swing`, Leistung, Herkunft), `guard.learned`
+  (`stop_margin`, `stop_samples`, `stop_counts`, die letzten 30 Abschaltungen), `learn_stops`, Phase
+  (`idle`, `off`, `restart`, `starting`, `running`, `hot_water`, `defrost`, `blocked`, `inactive`),
+  `off_since`, `restart_at`, `run_since`, `floor_c` (Untergrenze bzw. Wiederanlauf-Wert).
+- Zählung je Tag (`shadow_writes`): normal, Wiederanlauf (`start`), Nachführen, Sperre an/aus,
+  Kompressor-Stopps im Heizbetrieb (`stops`; ersetzt `unwanted_stops`).
+- Entfallen: `start_jump`/`start_settle` (Profil `learned_defaults`, Lernen, Status), `bumps`, Ereignisse
+  `unwanted_stop` und `start_jump` (ältere Zeilen behalten sie), `PLAUSIBLE_BAND_K`.
+- Offen (15, Punkt 12): nach der Lernphase prüfen, welcher Tv-Fühler und welche Schwelle gelten, und ob der
+  Einschaltabstand ebenfalls gelernt werden soll.
 
 ### 8.5 Schreiben
 
@@ -928,12 +855,9 @@ Wärmepumpe):
   unberührt. Aktiv (ab 4.7): `EepromLog` liest die Zeiten, die `EepromGuard` je Entity mitschreibt
   (Schlüssel `times`, 26 h; Tageszähler wie bisher).
 - Hält das Budget einen Wert zurück: `guard.pending` mit `held` `budget`, `due_at` leer; ein normaler Wert
-  wartet. Ein Schutzschritt, den das Budget zurückhält (Notkontingent erschöpft oder 6/h), setzt statt
-  dessen die Raumthermostat-Sperre (Grund `budget`, Ereignis `block_on`, zählt nicht), sofern die Rolle da
-  ist, keine fremde Sperre gilt und die Mindestdauer seit dem letzten Wechsel um ist; aufgehoben wird sie
-  nach der Mindestdauer, sobald ein Schutzschritt wieder geschrieben werden dürfte (dann gelten wieder die
-  Regeln 8.4). Geht auch die Sperre nicht, bleibt der Schutzschritt ausstehend und das Journal warnt einmal
-  je Episode.
+  wartet. Ein Schutzschritt (Wiederanlauf, Nachführen), den das Budget zurückhält (Notkontingent erschöpft
+  oder 6/h), wartet ebenso; das Journal warnt einmal je Episode. (Bis 0.80.26 setzte Sunflow statt dessen die
+  Raumthermostat-Sperre, Grund `budget`; mit der neuen Schutzschicht 8.4 entfallen.)
 - Journal: jede Art der Erschöpfung (`day`, `emergency`, `hour`) einmal je lokalem Tag, im Schatten mit
   „Schatten:“. Status `guard.budget` (`per_day`, `emergency_per_day`, `per_hour`, `used_today`, `used_hour`,
   `normal_left`, `emergency_left`, `hour_left`, `normal`/`protect` = was gerade zurückhält, `day_start`,
@@ -1005,7 +929,7 @@ Journal) und regelt erst wieder, wenn sie aufgehoben ist (8.4, „Fremde Sperre�
 | Kennlinie (K, n, Spreizung) | 8.1, 9.2 | gemeinsam |
 | Hausmodell | 9.3 | gemeinsam |
 | Versatz je Raum | 6.1 | gemeinsam |
-| Sprung- und Schwankungswerte (`steady_swing`, `start_jump`, `start_settle`) | 8.4 | gemeinsam |
+| Schwankung und Abschaltgrenze (`steady_swing`, `stop_margin`) | 8.4 | gemeinsam |
 | Leistungsbereich der WP | 8.3 | gemeinsam |
 | Prognose-Korrektur (Prognose ↔ Messung) | 7 | gemeinsam |
 | Korrektur (Integralanteil) | 8.2 | je Strategie |
@@ -1217,7 +1141,7 @@ flow_control:
               write: {role: max_flow_setpoint, storage: eeprom}}
     weather: {when: {strategy_select: weather_dependent}, setpoint_kind: curve, enabled: false}
   compressor_rules: {start_margin: 3.0, stop_margin: 3.0}
-  learned_defaults: {steady_swing: 0.5, start_jump: 6.0, start_settle: 5min}
+  learned_defaults: {steady_swing: 0.5}          # seit 0.80.27 ohne start_jump/start_settle (8.4)
   adopt_delay: 60s
   limits: {min: 25, max: 40}                  # Startwerte Fußboden, Nutzer stellt ein
   heat_power: {min: 0.6, max: 6.0}            # kW, Startwerte; später gelernt
@@ -1496,6 +1420,12 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
     langsames Abkühlen oder einzelne Sensorschritte noch auslösen und ob der schnelle Teil mit `settle_k`/
     `settle_min` passend endet (zu früh: Korrektur springt nach dem Ende; zu spät: Rückstand zählt verspätet).
     Die Werte sind im UI einstellbar; geänderte Startwerte mit dem Nutzer klären.
+12. **Abschaltregel der HPSU aus der Lernphase auswerten** (8.4, seit 0.80.27; Entscheidung des Nutzers
+    offen): Nach 1–2 Tagen Lernphase die Abschaltungen (`guard.learned.stops`, Ereignisse `stop` in
+    `heat_pump_samples`) ansehen: Welcher Tv-Fühler gilt (CAN `tv`, `tv_max`, TVBH, UART-Tv)? Liegt die Grenze
+    fest (z. B. 3 K) oder streut sie? Gibt es Abschaltungen unter dem Soll, die keine Abtau-/Warmwasser-
+    Beginne sind? Danach entscheidet der Nutzer das Ende der Lernphase und ob die Regel (Quantil, Reserve,
+    Fühler) angepasst wird; ebenso, ob der Einschaltabstand gelernt werden soll.
 
 ## 16. Reihenfolge
 
@@ -1682,7 +1612,12 @@ Budget, Rundung auf `step`), Lüft-Erkennung mit 15-min-Sensoren, Prognose-Korre
         (`test_mode_off_learns_nothing_from_a_shutdown`).
       - **Später:** veraltetes climate-Attribut `shadow` entfernen (seit 0.80.17 ersetzt durch `mode`), mit
         Hinweis im CHANGELOG und in der Doku; vorher prüfen, dass Karten und Automationen `mode` nutzen.
-      - **Todo (offener Punkt 8):** in den ersten Tagen des aktiven Betriebs per MCP (HA-History) und aus
+      - **Schutzschicht ersetzt (0.80.27, Entscheidung des Nutzers 23.11.):** Nach dem ersten aktiven Betrieb
+        (Stellwert nach dem Abtauen hoch angehoben und nicht mehr abgesenkt) die vorausschauenden 3-K-Regeln
+        durch Wiederanlauf nach 5 min Aus, einmal Absenken 10 min nach dem Start und eine aus echten
+        Abschaltungen gelernte Abschaltgrenze ersetzt, mit Lernphase (8.4, Punkt 12). Punkt 8 (Vorbereiten
+        während Warmwasser) entfällt damit: Sunflow schreibt während Warmwasser nichts mehr.
+      - **Todo (offener Punkt 8, durch 0.80.27 entfallen):** in den ersten Tagen des aktiven Betriebs per MCP (HA-History) und aus
         `heat_pump_samples` prüfen, ob der während Warmwasser geschriebene Stellwert (Vorbereiten, 8.4)
         beim Start danach gilt: Ereignisse `write` mit Phase `hot_water`, danach `start` mit
         `max_setpoint_c`/`setpoint_c` und keine `unwanted_stop` kurz nach dem Start; Warmwasser läuft

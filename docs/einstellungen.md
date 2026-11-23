@@ -92,8 +92,9 @@ der Browser):
 - **Anlage:** Außengerät, Innengerät, Speicher und Räume als Bild, wohin die Wärme gerade fließt, mit den
   Zuständen der Wärmepumpe.
 - **Schreiben und Schutz:** Budget, ausstehender Wert, letzte Schreibvorgänge und die Zählung je Tag.
-- **Gelernt:** Kennlinie als Diagramm (Vorlauf über der Wärme, mit Grenzen und Messpunkten) und das gelernte
-  Verhalten der Wärmepumpe.
+- **Gelernt:** Kennlinie als Diagramm (Vorlauf über der Wärme, mit Grenzen und Messpunkten), das gelernte
+  Verhalten der Wärmepumpe (Abschaltgrenze, Einschaltabstand, Schwankung, Leistung), der Schalter der
+  Lernphase und die Abschaltungen des Kompressors.
 
 Am Ende **Hausmodell** und **Einstellungen** (Spielraum, Grenzen des Stellwerts, Räume, schnelle Änderung,
 Haus). Erklärungen sind Hilfetexte: Das „?“ in der Menüleiste blendet alle ein, das „?“ hinter einer
@@ -102,7 +103,7 @@ Haus). Erklärungen sind Hilfetexte: Das „?“ in der Menüleiste blendet alle
 **Modus** (oben beim Raum-Soll), drei Stufen:
 
 - **Aus:** Sunflow regelt nicht, lernt nicht und zeichnet keine Messwerte der Wärmepumpe auf (spart Platz,
-  z. B. im Sommer). Das Gelernte (Kennlinie, Hausmodell, Sprungwerte, Korrektur) bleibt erhalten; danach
+  z. B. im Sommer). Das Gelernte (Kennlinie, Hausmodell, Abschaltgrenze, Korrektur) bleibt erhalten; danach
   lernt Sunflow mit den älteren Daten weiter.
 - **Nur Lernen** (Standard): Sunflow zeichnet auf, lernt und zeigt an, was es schreiben würde, schreibt aber
   nichts an die Wärmepumpe.
@@ -187,34 +188,41 @@ den es schreiben würde, und die Raumthermostat-Sperre – angezeigt mit „wür
 geht an die Wärmepumpe. Der Stellwert bleibt in den **Grenzen des Stellwerts**, die je Wärmepumpe
 einstellbar sind (Mindestens/Höchstens; Höchstens ist zugleich der höchste Vorlauf für Estrich bzw.
 Heizflächen). Leer gilt der Startwert des Heizflächentyps (Fußboden 25–40 °C, gemischt 25–50 °C,
-Heizkörper 30–55 °C); der Bereich der Entity engt immer weiter ein. Ein Vorlauf-Ziel, das mehr als 8 K
-vom wirksamen Vorlauf-Soll (bzw. der Kennlinie) abweicht, würde nicht geschrieben (Eintrag im Journal). Bei
-**Lernen + Regeln** ist der Bezug statt des wirksamen Vorlauf-Solls die Basis: Der wirksame Soll ist dann der
-Wert, den Sunflow selbst geschrieben hat – nach einer Anhebung zum Schutz (z. B. nach dem Abtauen) würde
-sonst das Absenken auf das Vorlauf-Ziel blockiert.
+Heizkörper 30–55 °C); der Bereich der Entity engt immer weiter ein.
 Erreicht das Vorlauf-Ziel eine Grenze oder die Wärmepumpe ihre Höchst- bzw. Mindestleistung, läuft die
 Korrektur nicht weiter darüber hinaus.
 
-Die Wärmepumpe schaltet den Kompressor ein, wenn der Soll mindestens 3 K über dem Vorlauf liegt, und aus,
-wenn der Vorlauf 3 K über dem Soll liegt. Sunflow würde deshalb: in einer Pause den Stellwert so anheben,
-dass die Wärmepumpe startet (Vorlauf + 3 K, bzw. so, dass der Sprung des Vorlaufs nach dem Start nicht
-abschaltet); während Warmwasser den Stellwert für den Start danach vorbereiten; nach einem Start halten,
-bis der Vorlauf ruhig ist, und dann einmal absenken; im Betrieb nachführen, wenn der Vorlauf der
-Abschaltgrenze nahekommt. Wärme, die es nicht will (Raum 0,5 K über dem Raum-Soll, oder die
-Mindestleistung der Wärmepumpe liegt über dem Bedarf), würde es über die Raumthermostat-Sperre
-abschalten – jeder Zustand mindestens 20 Minuten. Eine Raumthermostat-Sperre, die nicht Sunflow gesetzt
-hat (von Hand, eine Automation, ein anderer Regler), hebt Sunflow nicht auf: Sie wird im Bereich
-Wärmepumpe deutlich angezeigt und im Journal vermerkt, und Sunflow regelt erst wieder, wenn sie
-aufgehoben ist. Die Schwankung des Vorlaufs im Betrieb, der Sprung nach
-einem Start (normal, nach Warmwasser, nach Abtauen), die Zeit bis zur Ruhe und der Leistungsbereich der
-Wärmepumpe werden aus der Aufzeichnung gelernt; bis genug Daten da sind, gelten vorsichtige Startwerte.
-Schaltet der Kompressor ungewollt ab (Vorlauf 3 K über dem Soll ohne Sperre, Warmwasser oder Abtauen),
-steht das im Journal, und der betroffene Wert wird sofort erhöht; ohne weitere Vorfälle sinkt er über
-Wochen zurück. Die Tabelle **Schreibvorgänge je Tag** zählt für die letzten 7 Tage, was Sunflow
-geschrieben hätte (normal, Start, Nachführen, Sperre an/aus), und die ungewollten Abschaltungen – zum
-Vergleich mit dem geplanten Budget von 48 normalen und 24 Schreibvorgängen für Start und Nachführen je
+**Schutz vor Abschaltungen (seit 0.80.27):** Sunflow sagt nicht voraus, wann der Kompressor schaltet,
+sondern reagiert darauf. Läuft der Kompressor im Heizbetrieb, ist der Stellwert das Vorlauf-Ziel. Ist der
+Kompressor **5 Minuten aus**, obwohl die Räume Wärme brauchen (Raum-Ist unter Raum-Soll + 0,5 K, keine
+Sperre, kein Warmwasser und kein Abtauen gerade) – egal warum, auch nach Warmwasser oder Abtauen –, hebt
+Sunflow den Stellwert in einem Schritt auf Vorlauf + Einschaltabstand (Profil, bei der HPSU 3 K):
+**Wiederanlauf**. Nach einem Start wartet es 10 Minuten und senkt dann in einem Schritt auf das
+Vorlauf-Ziel – nicht tiefer als die **Abschaltgrenze** erlaubt (höchster Vorlauf der letzten 5 Minuten −
+Abschaltgrenze + Schwankung); steigt der Vorlauf darüber, führt es den Stellwert nach. Während Warmwasser
+und Abtauen schreibt Sunflow nichts.
+
+Die Abschaltgrenze lernt Sunflow aus echten Abschaltungen: Jeder Stopp des Kompressors wird mit Vorlauf
+(auch dem des UART-Knotens, falls vorhanden), Vorlauf-Soll und Umfeld aufgezeichnet und eingeordnet –
+Abtauen oder Warmwasser folgt, Sperre, andere Aktivität, sonst „Abschaltregel“. Aus den Abständen
+Vorlauf − Soll der Abschaltregel-Stopps (ab 5, aus den letzten 14 Tagen) ergibt sich die Grenze; eine
+größere als die des Profils (3 K) erst ab 10. Bis dahin gilt der Profilwert. In der **Lernphase**
+(Schalter im Abschnitt „Gelernt“, zu Beginn an) senkt Sunflow bis aufs Vorlauf-Ziel und lässt den
+Kompressor abschalten, damit die Wärmepumpe zeigt, wann sie abschaltet; der Wiederanlauf holt ihn zurück.
+Du schaltest sie aus, wenn genug Abschaltungen aufgezeichnet sind. Die Tabelle **Abschaltungen des
+Kompressors** zeigt die letzten Stopps mit Art und Abstand.
+
+Wärme, die Sunflow nicht will (Raum 0,5 K über dem Raum-Soll), schaltet es über die
+Raumthermostat-Sperre ab – jeder Zustand mindestens 20 Minuten. Eine Raumthermostat-Sperre, die nicht
+Sunflow gesetzt hat (von Hand, eine Automation, ein anderer Regler), hebt Sunflow nicht auf: Sie wird im
+Bereich Wärmepumpe deutlich angezeigt und im Journal vermerkt, und Sunflow regelt erst wieder, wenn sie
+aufgehoben ist. Die Schwankung des Vorlaufs im Betrieb und der Leistungsbereich der Wärmepumpe werden
+ebenfalls aus der Aufzeichnung gelernt. Die Tabelle **Schreibvorgänge je Tag** zählt für die letzten 7
+Tage die Schreibvorgänge (normal, Wiederanlauf, Nachführen, Sperre an/aus) und die Kompressor-Stopps im
+Heizbetrieb – zum Vergleich mit dem Budget von 48 normalen und 24 Schreibvorgängen für Wiederanlauf und
+Nachführen je
 Tag. Schon bei „Nur Lernen“ gilt dabei der **Mindestabstand** zwischen zwei Schreibvorgängen auf den Stellwert
-(aus dem Geräteprofil, bei der HPSU 5 Minuten, für Schutzschritte – Start und Nachführen – 2 Minuten): Die
+(aus dem Geräteprofil, bei der HPSU 5 Minuten, für Schutzschritte – Wiederanlauf und Nachführen – 2 Minuten): Die
 erste Änderung nach einer Ruhepause geht sofort hinaus, weitere Änderungen in dieser Zeit merkt Sunflow
 nur, und nach Ablauf schreibt es den letzten Wert, falls er noch abweicht (ein normaler Wert um mehr als
 0,5 K, ein Schutzschritt bei jeder Anhebung). Ein wartender Wert wird als „ausstehend … würde um …
@@ -224,9 +232,8 @@ Zeitzone von Home Assistant): Sunflow zählt dafür virtuell aus den aufgezeichn
 Zähler für echte EEPROM-Schreibvorgänge bleibt unberührt; bei aktivem Schreiben zählen die echten
 Schreibvorgänge aus diesem Zähler. Ist das Tagesbudget erschöpft, wartet ein
 normaler Wert („ausstehend … wartet: Tagesbudget erschöpft“) bis zum nächsten Tag; Schutzschritte gehen
-über das Notkontingent weiter. Ist auch dieses erschöpft oder die Höchstzahl je Stunde erreicht, würde
-Sunflow statt des Schutzschritts die Raumthermostat-Sperre setzen und sie aufheben, sobald wieder ein
-Schutzschritt geschrieben werden darf (frühestens nach ihrer Mindestdauer). Das Journal vermerkt jede Art
+über das Notkontingent weiter. Ist auch dieses erschöpft oder die Höchstzahl je Stunde erreicht, wartet
+auch ein Schutzschritt (Warnung im Journal). Das Journal vermerkt jede Art
 der Erschöpfung einmal am Tag. Die Kachel **Budget heute** (bei „Nur Lernen“ gezählt, was Sunflow schreiben würde) zeigt den Verbrauch des Tages, das
 übrige Notkontingent und die letzte Stunde. Die Taste **Jetzt schreiben** überspringt den Mindestabstand
 für den ausstehenden Wert (nicht das Budget) und wird bei „Nur Lernen“ nicht angeboten. Die

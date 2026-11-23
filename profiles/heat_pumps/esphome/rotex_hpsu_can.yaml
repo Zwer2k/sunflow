@@ -40,7 +40,10 @@ roles:
 
 companion:
   profile: esphome/rotex_hpsu_uart
+  manifest: rotex_hpsu_uart
   roles:
+    # Tv as the UART node reads it: kept with each compressor stop to learn which Tv the heat pump switches by
+    flow_temperature_uart: {key: tv, domain: [sensor], unit: "°C", optional: true, missing_ok: true}
     compressor_current: {key: inv_prim_current, domain: [sensor], unit: A, optional: true}
     compressor_speed: {key: inv_freq, domain: [sensor], unit: rpm, optional: true}
 
@@ -68,7 +71,8 @@ flow_control:
       setpoint_kind: curve
       enabled: false
   compressor_rules: {start_margin: 3.0, stop_margin: 3.0}
-  learned_defaults: {steady_swing: 0.5, start_jump: 6.0, start_settle: 5min}
+  # Start values until Sunflow learned its own (stop margin from the compressor stops, design 8.4)
+  learned_defaults: {steady_swing: 0.5}
   adopt_delay: 60s
   # Start values for underfloor heating; the user sets them per heat pump
   limits: {min: 25, max: 40}

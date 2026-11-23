@@ -24,7 +24,7 @@ from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.control.journal import ControlJournal
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import manifest_id
-from sunflow.devices.resolver import UNAVAILABLE_STATES, normalize, preview
+from sunflow.devices.resolver import UNAVAILABLE_STATES, device_entities, normalize, preview
 from sunflow.i18n import t
 from sunflow.planning.house_model import outside_entity
 from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
@@ -32,9 +32,10 @@ from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
 from .active import WriteTargets, write_targets
 from .budget import KEEP as BUDGET_KEEP
 from .curve import Curve, learn as learn_curve
-from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, FEED_HEAT_WINDOW_S, JUMP_LEARN_DAYS, POWER_LEARN_DAYS
+from .defaults import CURVE_HISTORY_DAYS, CURVE_REFRESH_S, FEED_HEAT_WINDOW_S, POWER_LEARN_DAYS, STOP_LEARN_DAYS
 from .learned import Learned, learn as learn_guard
 from .limits import ControlSettings
+from .manifest import bind_manifest
 from .shadow import FlowShadow
 from .states import UNKNOWN, Evaluation, HeatingTracker, Reading, StateSettings, canonical, read, value_key
 
@@ -54,8 +55,26 @@ NUMERIC = {
     "bypass_pct": "bypass_valve",
 }
 PEAK_ROLE = "flow_temperature_max"
+# Tv of the companion node (UART; profile companion), kept with each compressor stop (8.4)
+UART_ROLE = "flow_temperature_uart"
 # Roles whose changes are followed between the samples
-EVENT_ROLES = (PEAK_ROLE, "compressor", "activity", "flow_temperature", "flow_setpoint", "max_flow_setpoint")
+EVENT_ROLES = (
+    PEAK_ROLE, "compressor", "activity", "flow_temperature", "flow_temperature_bh", "flow_setpoint", "max_flow_setpoint", UART_ROLE,
+)
+
+
+def companion_entities(profile: dict[str, Any], snapshot: Snapshot) -> dict[str, str | None]:
+    """Role -> entity of the profile's companion node (e.g. the UART node next to the CAN node): the one
+    device carrying the companion's manifest; nothing when there is none or more than one."""
+    companion = profile.get("companion") or {}
+    wanted = companion.get("manifest")
+    if not wanted or not companion.get("roles"):
+        return {}
+    found = [(device_id, manifests[wanted]) for device_id, manifests in (snapshot.manifests or {}).items() if wanted in manifests]
+    if len(found) != 1:
+        return {}
+    device_id, manifest = found[0]
+    return bind_manifest({"roles": companion["roles"]}, manifest.manifest, device_entities(snapshot, device_id))
 
 
 def interval_start(moment: datetime) -> datetime:
@@ -183,6 +202,7 @@ class HeatPumpRecorder:
         if role == "compressor":
             before, after = old.get("state"), new.get("state")
             if {before, after} == {"on", "off"}:
+                last = recording.last
                 recording.events.setdefault(interval_start(at), []).append(
                     {
                         "at": at.astimezone(UTC).isoformat(),
@@ -191,6 +211,12 @@ class HeatPumpRecorder:
                         "tv_max_c": recording.current.get(PEAK_ROLE),
                         "setpoint_c": recording.current.get("flow_setpoint"),
                         "max_setpoint_c": recording.current.get("max_flow_setpoint"),
+                        # For learning the stop margin (learned.py): TVBH, Tv of the UART node, the activity and
+                        # block of the minute before
+                        "tvbh_c": recording.current.get("flow_temperature_bh"),
+                        "tv_uart_c": recording.current.get(UART_ROLE),
+                        "activity": last.reading.activity if last is not None else None,
+                        "blocked": last.reading.blocked if last is not None else None,
                     }
                 )
             return
@@ -328,7 +354,7 @@ class HeatPumpRecorder:
             return
         key = self.curve_key(config)
         weights = {room.entity_id: room.weight for room in config.house.rooms}
-        days = max(CURVE_HISTORY_DAYS, JUMP_LEARN_DAYS, POWER_LEARN_DAYS)
+        days = max(CURVE_HISTORY_DAYS, STOP_LEARN_DAYS, POWER_LEARN_DAYS)
         for device_id in list(self._recordings):
             current: Curve | None = self.flow.curves.get(device_id)
             curve_due = not (current is not None and current.key == key and timedelta(0) <= now - current.computed_at < CURVE_REFRESH)
@@ -341,7 +367,8 @@ class HeatPumpRecorder:
                 since = now - timedelta(days=CURVE_HISTORY_DAYS)
                 curve_rows = [r for r in rows if isinstance(r.get("start"), str) and r["start"] >= since.astimezone(UTC).isoformat()]
                 curve = await asyncio.to_thread(learn_curve, curve_rows, weights, config.house.heating_surface, now, key) if curve_due else None
-                guard = await asyncio.to_thread(learn_guard, rows, now) if guard_due else None
+                stop_start = (self.flow.settings.get(device_id) or ControlSettings()).stop_margin
+                guard = await asyncio.to_thread(learn_guard, rows, now, stop_start) if guard_due else None
             except Exception:
                 # Tried again with the next tick
                 _LOGGER.exception("Learning the heating curve failed")
@@ -368,6 +395,10 @@ class HeatPumpRecorder:
         recording.manifest = found.manifest if found else None
         values = preview(profile, snapshot, device.ha_device_id, {k: o.model_dump() for k, o in device.role_overrides.items()})
         entities = {v.role: v.entity_id for v in values}
+        for role, entity_id in companion_entities(profile, snapshot).items():
+            entities[role] = entity_id
+            if (value := _number(snapshot.states.get(entity_id) if entity_id else None, "°C")) is not None:
+                recording.current[role] = value
         if recording.manifest is None or all(v.raw_state is None or v.raw_state in UNAVAILABLE_STATES for v in values):
             # Nothing to read (node away, no manifest): no sample
             return None, entities

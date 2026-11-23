@@ -118,6 +118,8 @@ async def heat_pump_status(request: Request) -> dict[str, Any]:
                 "profile_version": {"configured": device.profile_version, "current": profile["version"]},
                 # The user's switch: Sunflow writes to the heat pump for real (16 step 3 part 4.7)
                 "writing": {"active": device.flow_active, "refused": writing_refused(request, device.id) if not device.flow_active else None},
+                # Learning phase of the stop margin (8.4): Sunflow lowers straight to the flow target
+                "learn_stops": device.flow_learn_stops,
             }
             | status.get(device.id, {"status": "pending", "usable": False, "problems": [], "manifest": None})
             # Program, activity, block, fault, whether it heats validly (section 4) and the shadow
@@ -167,7 +169,7 @@ HISTORY_COLUMNS = (
     "outside_c", "heat_w", "compressor", "bypass_pct", "activity",
 )  # fmt: skip
 # Events the history view marks
-HISTORY_EVENTS = ("write", "start", "stop", "foreign_write", "unwanted_stop", "flow_source")
+HISTORY_EVENTS = ("write", "start", "stop", "foreign_write", "flow_source")
 
 
 def _room_mean(rooms: dict[str, Any] | None, weights: dict[str, float], left_out: list[str]) -> float | None:
@@ -291,6 +293,23 @@ async def set_writing(request: Request, device_id: str, body: Writing) -> dict[s
         # "Lernen + Regeln" plans the battery with the heat pump, "Nur Lernen" without (7)
         _replan(request)
     return {"active": device.flow_active}
+
+
+@router.put("/heat_pump/{device_id}/learn_stops")
+async def set_learn_stops(request: Request, device_id: str, body: Writing) -> dict[str, Any]:
+    """Switch the learning phase of the stop margin on or off (8.4): on, Sunflow lowers the set value straight
+    to the flow target and lets the compressor stop, to learn where it does; off, it keeps above the learned
+    (or the profile's) shutdown bound. The user decides when the phase ends."""
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    device = next((d for d in config.devices if d.id == device_id), None)
+    profile = _library(request).profiles.get(device.profile) if device else None
+    if device is None or profile is None or not records_heat_pump(profile):
+        raise HTTPException(status_code=404, detail="No heat pump with this id")
+    if device.flow_learn_stops != body.active:
+        device.flow_learn_stops = body.active
+        store.save(config)
+    return {"active": device.flow_learn_stops}
 
 
 class FlowLimits(BaseModel):

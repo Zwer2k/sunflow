@@ -152,9 +152,9 @@ def test_normal_value_waits_without_a_time_once_the_budget_is_used_up() -> None:
 
 
 def _pause(sim: Sim) -> None:
-    """Running, then a pause: the start rule wants a protection step."""
+    """Running, then the compressor off for 6 minutes: Sunflow wants a restart (protection step)."""
     sim.run([30.0] * 6)
-    sim.run([29.5, 29.0, 28.5, 28.0], compressor=False, activity="idle")
+    sim.run([29.5, 29.0, 28.5, 28.0, 28.0, 28.0], compressor=False, activity="idle")
 
 
 def test_protection_step_from_the_emergency_quota() -> None:
@@ -162,52 +162,36 @@ def test_protection_step_from_the_emergency_quota() -> None:
     sim.budget = _exhausted(per_day=2, emergency=1, used=2)
     _pause(sim)
 
-    assert sim.writes() == [("start", 32.6)]
+    assert sim.writes() == [("start", 31.0)]
     assert sim.budget.status(sim.now, virtual=True)["emergency_left"] == 0
 
 
-def test_block_instead_of_a_protection_step_when_the_emergency_quota_is_used_up() -> None:
+def test_without_budget_the_restart_waits_and_is_noted_once() -> None:
+    """Emergency quota used up: no block instead any more - the restart waits for the budget, noted once."""
     sim = Sim(written=30.0)
-    sim.budget = _exhausted(per_day=2, emergency=1, used=3)
-    _pause(sim)
-
-    assert sim.writes() == [("block_on", True)]
-    assert (sim.guard.block, sim.guard.block_reason) == (True, "budget")
-    last = sim.results[-1][2]
-    assert last.phase == "blocked" and last.pending is None
-    notes = sim.notes()
-    assert "Nur Lernen: Sunflow würde die Raumthermostat-Sperre setzen (Schreibbudget erschöpft)." in notes
-    assert any(n.startswith("Nur Lernen: Notkontingent für heute erschöpft (1 Schreibvorgänge zusätzlich)") for n in notes)
-
-
-def test_budget_block_released_once_a_protection_step_may_be_written() -> None:
-    sim = Sim(written=30.0)
-    # The hourly limit: six writes in the last 50 minutes
-    sim.budget = _budget([NOW - 50 * MIN + i * MIN for i in range(6)])
-    _pause(sim)
-    blocked_at = sim.guard.block_at
-    assert sim.writes() == [("block_on", True)]
-    # Still blocked while the hour is not over (and for the minimum duration)
-    sim.run([28.0] * 10, compressor=False, activity="idle")
-    assert sim.guard.block is True
-    # Minimum duration passed and the first write left the hour: released, then the start step
-    sim.run([28.0] * 12, compressor=False, activity="idle")
-
-    # Tv 28 °C now: max(28 + 3, 28 + 6 − 2.9)
-    assert sim.writes() == [("block_on", True), ("block_off", False), ("start", 31.1)]
-    assert sim.guard.block is False and sim.now - blocked_at >= timedelta(minutes=20)
-
-
-def test_without_a_block_the_protection_step_waits_and_is_noted_once() -> None:
-    sim = Sim(written=30.0, has_block=False)
     sim.budget = _exhausted(per_day=2, emergency=1, used=3)
     _pause(sim)
     sim.run([28.0] * 3, compressor=False, activity="idle")
 
     assert sim.writes() == []
+    assert sim.guard.block is False
     assert sim.results[-1][2].pending.held == "budget"
-    unprotected = [n for n in sim.notes() if "Schutzschritt wegen des Budgets nicht möglich" in n]
+    notes = sim.notes()
+    unprotected = [n for n in notes if "Wiederanlauf bzw. Nachführen wegen des Budgets nicht möglich" in n]
     assert len(unprotected) == 1 and unprotected[0].startswith("Nur Lernen: ")
+    assert any(n.startswith("Nur Lernen: Notkontingent für heute erschöpft (1 Schreibvorgänge zusätzlich)") for n in notes)
+
+
+def test_restart_once_the_hour_allows_it_again() -> None:
+    sim = Sim(written=30.0)
+    # The hourly limit: six writes in the last 45 minutes
+    sim.budget = _budget([NOW - 45 * MIN + i * MIN for i in range(6)])
+    _pause(sim)
+    assert sim.writes() == []
+    # The first write leaves the hour: the restart goes out
+    sim.run([28.0] * 6, compressor=False, activity="idle")
+
+    assert sim.writes() == [("start", 31.0)]
 
 
 def test_a_foreign_block_is_not_taken_over_by_the_budget() -> None:

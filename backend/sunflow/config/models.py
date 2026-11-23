@@ -370,6 +370,9 @@ class DeviceConfig(BaseModel):
     # Heat pumps: Sunflow writes the set value and the room thermostat block to the heat pump for real
     # (design/heat_pump.md, 16 step 3 part 4.7); off: shadow operation. Switched on only by the user.
     flow_active: bool = False
+    # Heat pumps: learning phase of the stop margin (design/heat_pump.md, 8.4): Sunflow lowers straight to the
+    # flow target, so the heat pump shows where it switches the compressor off; ended by the user.
+    flow_learn_stops: bool = True
 
     @field_validator("flow_active", mode="before")
     @classmethod

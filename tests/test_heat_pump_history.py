@@ -49,9 +49,10 @@ async def test_rows_keep_flow_target_and_room_setpoint(tmp_path: Path, library: 
     monkeypatch.setattr("sunflow.api.heat_pump.datetime", Clock)
     pump = Pump(tmp_path, library)
     pump.recorder.flow = FlowShadow(HeatPumpStateStore(tmp_path))
+    pump.states["max_target_flow_temp"] = pump.states["target_supply_temperature"] = ("29.0", "°C")
     try:
         await pump.minutes(NOW, 3)
-        # Pause: the start rule would raise Max T-Vorlauf (a write event)
+        # Pause: after 5 minutes Sunflow would restart the compressor (a write event)
         pump.states["status_kompressor"] = ("off", None)
         pump.states["mode_of_operating"] = ("Bereitschaft", None)
         pump.states["tv"] = ("28.0", "°C")

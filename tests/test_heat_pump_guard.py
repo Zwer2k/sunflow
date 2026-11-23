@@ -1,6 +1,6 @@
-"""Limits and protection layer in shadow (design/heat_pump.md, 8.3, 8.4, 16 step 3 part 3), with synthetic
-runs of a heat pump: start from a pause, start after hot water, defrost, block on and off, tracking a
-rising Tv, unwanted shutdowns; learned swing, jumps and heat output range; daily counts."""
+"""Limits and protection layer (design/heat_pump.md, 8.3, 8.4; reworked in 0.80.27), with synthetic runs of a
+heat pump: restart after the compressor stayed off, lowering after a start, tracking with the learned stop
+margin, the learning phase, block on and off; learned swing, stop margin and heat output range; daily counts."""
 
 from datetime import UTC, datetime, timedelta
 import json
@@ -17,10 +17,10 @@ from sunflow.api.heat_pump import router
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.config.store import ConfigStore
 from sunflow.heat_pump.correction import Correction
-from sunflow.heat_pump.defaults import BUMP_DECAY_K_PER_DAY, BUMP_EXTRA_K, JUMP_MIN_EVENTS, SWING_MIN_ROWS
+from sunflow.heat_pump.defaults import STOP_MIN_EVENTS, STOP_MIN_EVENTS_ABOVE, SWING_MIN_ROWS
 from sunflow.heat_pump.guard import Guard, GuardInput, GuardResult, daily_counts
-from sunflow.heat_pump.learned import Learned, learn, values
-from sunflow.heat_pump.limits import ControlSettings, clamp, implausible, round_up, setpoint_range
+from sunflow.heat_pump.learned import Learned, classify_stops, learn, values
+from sunflow.heat_pump.limits import ControlSettings, clamp, round_up, setpoint_range
 from sunflow.heat_pump.shadow import FlowShadow
 from sunflow.heat_pump.state_store import HeatPumpStateStore
 from sunflow.heat_pump.states import Evaluation, Reading
@@ -42,6 +42,7 @@ class Sim:
         self.budget: Any = None
         self.settings = ControlSettings(step=0.1, **settings)
         self.learned = learned
+        self.learn_stops = False
         self.now = NOW
         self.real_setpoint = written
         self.effective = written
@@ -49,7 +50,6 @@ class Sim:
         self.room: float | None = 21.0
         self.plan = 21.0
         self.heat_needed: float | None = None
-        self.base: float | None = None
         self.heat: float | None = None
         self.surface = "underfloor"
         self.mode = "heat"
@@ -70,9 +70,9 @@ class Sim:
         evaluation = Evaluation(valid=valid, frozen=() if valid else ("activity_idle",))
         result = write_step(self.guard, self.writer, GuardInput(
             at=self.now, reading=reading, evaluation=evaluation, settings=self.settings,
-            values=values(self.settings, self.learned, self.guard.bumps, self.now), tv_peak_c=peak, heat_w=self.heat,
-            target_c=self.target, heat_needed_w=self.heat_needed, base_c=self.base, room_c=self.room, plan_c=self.plan, mode=self.mode,
-            surface=self.surface,
+            values=values(self.settings, self.learned), tv_peak_c=peak, heat_w=self.heat,
+            target_c=self.target, heat_needed_w=self.heat_needed, room_c=self.room, plan_c=self.plan, mode=self.mode,
+            surface=self.surface, learn_stops=self.learn_stops,
         ), active=self.active, budget=self.budget)
         self.results.append((self.now, max(tv, peak or tv), result))
         self.now += MIN
@@ -80,6 +80,10 @@ class Sim:
 
     def run(self, tvs: list[float], **kwargs: Any) -> list[GuardResult]:
         return [self.minute(tv, **kwargs) for tv in tvs]
+
+    def off(self, minutes: int, tv: float = 27.0, **kwargs: Any) -> list[GuardResult]:
+        """The compressor off in heating (pause)."""
+        return self.run([tv] * minutes, compressor=False, activity="idle", **kwargs)
 
     def writes(self) -> list[tuple[str, float | bool | None]]:
         return [(w["reason"], w.get("value_c", w.get("block"))) for _, _, r in self.results for w in r.writes]
@@ -91,102 +95,137 @@ class Sim:
         return [m for _, _, r in self.results for m, _ in r.notes]
 
 
-def _no_self_caused_shutdown(sim: Sim, since: int = 0) -> None:
-    """While running, Tv (with its peaks) stayed below what Sunflow would have written + 3 K."""
-    written = None
-    for _, tv, result in sim.results[since:]:
-        if written is not None and result.phase in ("running", "start_hold"):
-            assert tv < written + 3.0, (tv, written)
-        written = result.setpoint_c
+# Restart: the compressor stays off although heat is wanted
 
 
-# Start from a pause, hold, lower once
-
-
-def test_start_from_pause_hold_and_lower_once() -> None:
-    sim = Sim(written=30.0)
-    sim.run([30.0] * 6)
-    # Pause: the start rule raises the set value to max(Tv + 3, Tv + jump − 2.9)
-    sim.run([29.5, 29.0, 28.5, 28.0], compressor=False, activity="idle")
-    # The heat pump starts: Tv jumps by 5.5 K within the first minute and settles
-    sim.minute(28.0)
-    sim.minute(33.0, peak=33.5)
-    sim.run([31.5, 30.6, 30.4, 30.5, 30.4, 30.5, 30.4, 30.5, 30.4, 30.5, 30.4])
-
-    assert sim.writes() == [("start", 32.6), ("normal", 30.0)]
-    phases = [r.phase for _, _, r in sim.results]
-    assert phases[6] == "idle" and "start_hold" in phases and phases[-1] == "running"
-    [jump] = sim.events("start_jump")
-    assert (jump["start_kind"], jump["ref_c"], jump["jump_k"]) == ("normal", 28.0, 5.5)
-    assert 120 <= jump["settle_s"] <= 240
-    _no_self_caused_shutdown(sim)
-
-
-def test_hold_does_not_lower_before_start_settle() -> None:
-    """A long settling time learned: the set value stays up although Tv is calm and the target is lower."""
-    learned = Learned(computed_at=NOW, start_settle_s={"normal": 15 * 60})
-    sim = Sim(written=30.0, learned=learned)
-    sim.minute(28.0, compressor=False, activity="idle")
-    sim.minute(28.0)
-    sim.run([30.5] * 12)
-
-    assert sim.writes() == [("start", 31.1)]
-    assert sim.results[-1][2].phase == "start_hold"
-    sim.run([30.5] * 4)
-    assert sim.writes() == [("start", 31.1), ("normal", 30.0)]
-
-
-# Start after hot water: prepared during hot water, at most two writes
-
-
-def test_start_after_hot_water_prepared_during_hot_water() -> None:
-    sim = Sim(written=30.0)
-    sim.run([30.0] * 6)
-    hot_water = sim.run([45.0] * 15, activity="hot_water", bypass=100.0, valid=False)
-    # Hot water ends: transition with the bypass valve, then the heat pump starts by itself
-    sim.run([40.0, 38.0, 36.0], compressor=False, activity="idle", bypass=50.0, valid=False)
-    sim.minute(35.0, peak=35.6, valid=False)
-    sim.run([33.0, 31.5, 30.8, 30.6, 30.5, 30.6, 30.5, 30.6, 30.5], valid=False)
-    sim.run([30.5, 30.6, 30.5])
-
-    assert hot_water[0].phase == "hot_water"
-    # Tv before hot water 30 + jump after hot water 6 − 2.9, then lowered once in valid heating
-    assert sim.writes() == [("start", 33.1), ("normal", 30.0)]
-    assert [w["phase"] for _, _, r in sim.results for w in r.writes] == ["hot_water", "running"]
-    [jump] = sim.events("start_jump")
-    assert (jump["start_kind"], jump["ref_c"], jump["jump_k"]) == ("hot_water", 30.0, 5.6)
-    # Without preparing, 35.6 would have reached the shutdown limit 30 + 3
-    assert 35.6 >= 30.0 + 3.0
-    _no_self_caused_shutdown(sim)
-
-
-def test_nothing_prepared_when_already_high_enough() -> None:
-    sim = Sim(written=34.0)
-    sim.target = 34.0
+def test_restart_after_five_minutes_off() -> None:
+    """Whatever stopped it: after 5 minutes off Sunflow raises the set value to Tv + start margin, once."""
+    sim = Sim(written=28.0)
     sim.run([30.0] * 3)
-    sim.run([45.0] * 5, activity="hot_water", bypass=100.0, valid=False)
+    waiting = sim.off(5, tv=27.0)
+    restart = sim.minute(26.8, compressor=False, activity="idle")
+    later = sim.off(6, tv=26.5)
+
+    assert [r.phase for r in waiting] == ["off"] * 5 and all(not r.writes for r in waiting)
+    assert waiting[0].restart_at == waiting[0].off_since + FIVE
+    assert restart.phase == "restart"
+    # 26.8 + 3 K, rounded up; Tv falling further asks for less: no second write
+    assert sim.writes() == [("start", 29.8)]
+    assert all(not r.writes for r in later)
+
+
+def test_restart_raises_above_the_written_value() -> None:
+    sim = Sim(written=28.0)
+    sim.off(5, tv=27.0)
+    sim.minute(27.0, compressor=False, activity="idle")
+
+    assert sim.writes() == [("start", 30.0)]
+
+
+def test_no_restart_while_the_room_is_warm() -> None:
+    """Room at its target + 0.5 K (no block input): off is wanted, nothing raised."""
+    sim = Sim(written=28.0, has_block=False)
+    sim.room = 21.5
+    results = sim.off(12, tv=27.0)
+
+    assert sim.writes() == [] and {r.phase for r in results} == {"idle"}
+    # The room cools: restart at once, the compressor has long been off
+    sim.room = 21.2
+    sim.minute(27.0, compressor=False, activity="idle")
+    assert sim.writes() == [("start", 30.0)]
+
+
+def test_hot_water_and_defrost_start_the_wait_anew() -> None:
+    """Nothing written during hot water or defrost; the 5 minutes count from their end."""
+    sim = Sim(written=28.0)
+    sim.run([45.0] * 15, compressor=True, activity="hot_water", bypass=100.0)
+    sim.run([25.0] * 5, compressor=False, activity="defrost")
+    assert sim.writes() == []
+    waiting = sim.off(5, tv=27.0)
+    sim.minute(27.0, compressor=False, activity="idle")
+
+    assert all(r.phase == "off" for r in waiting)
+    assert sim.writes() == [("start", 30.0)]
+
+
+def test_user_maximum_caps_the_restart() -> None:
+    sim = Sim(written=28.0, user_max=29.5)
+    sim.off(6, tv=27.0)
+
+    assert sim.writes() == [("start", 29.5)]
+    assert sim.results[-1][2].limits == (25.0, 29.5)
+
+
+# Lowering after a start, tracking, learning phase
+
+
+def test_lowered_once_after_the_start() -> None:
+    """After a restart the set value stays for 10 minutes, then goes to the flow target in one step."""
+    sim = Sim(written=28.0)
+    sim.target = 29.0
+    sim.off(6, tv=27.0)
+    sim.real_setpoint = sim.effective = 30.0
+    starting = sim.run([29.0, 30.5, 31.0, 30.8, 30.6, 30.4, 30.3, 30.2, 30.1, 30.0])
+    after = sim.run([30.0] * 3)
+
+    assert {r.phase for r in starting} == {"starting"}
+    assert sim.writes() == [("start", 30.0), ("normal", 29.0)]
+    assert after[0].phase == "running"
+
+
+def test_lowering_keeps_above_the_shutdown_bound() -> None:
+    """Not below peak − stop margin + swing: Tv 33.5 keeps the set value at 31.0, not at the target 29."""
+    sim = Sim(written=35.0)
+    sim.target = 29.0
+    sim.run([33.5] * 12)
+
+    assert sim.writes() == [("normal", 31.0)]
+
+
+def test_learning_phase_lowers_straight_to_the_target() -> None:
+    """Learning the stop margin: down to the flow target although Tv is far above it, no tracking."""
+    sim = Sim(written=35.0)
+    sim.learn_stops = True
+    sim.target = 29.0
+    sim.run([33.5] * 12)
+    sim.run([round(33.5 + 0.2 * i, 1) for i in range(20)])
+
+    assert sim.writes() == [("normal", 29.0)]
+    assert sim.results[-1][2].floor_c is None
+
+
+def test_tracking_a_rising_tv_with_headroom() -> None:
+    sim = Sim(written=30.0)
+    tvs = [round(30.0 + 0.1 * i, 1) for i in range(60)]
+    sim.run(tvs)
+
+    assert {reason for reason, _ in sim.writes()} == {"track"}
+    # A swing above the bound: not a write every few minutes
+    assert 5 <= len(sim.writes()) <= 7
+    for at, tv, result in sim.results:
+        assert result.setpoint_c is None or tv < result.setpoint_c + 3.0
+
+
+def test_learned_stop_margin_counts() -> None:
+    learned = Learned(computed_at=NOW, stop_margin=2.0, stop_samples=6)
+    sim = Sim(written=35.0, learned=learned)
+    sim.target = 29.0
+    sim.run([33.5] * 12)
+
+    # 33.5 − 2.0 + 0.5
+    assert sim.writes() == [("normal", 32.0)]
+
+
+def test_normal_writes_only_in_valid_heating() -> None:
+    sim = Sim(written=35.0)
+    sim.target = 29.0
+    sim.learn_stops = True
+    sim.run([30.0] * 12, valid=False)
 
     assert sim.writes() == []
 
 
-# Defrost
-
-
-def test_defrost_writes_nothing_and_start_after_it_is_protected() -> None:
-    sim = Sim(written=31.0)
-    sim.target = 31.0
-    sim.run([31.0] * 6)
-    defrost = sim.run([22.0] * 6, activity="defrost", bypass=100.0, valid=False)
-    after = sim.run([24.0, 26.0, 28.0, 30.0, 31.0, 31.0, 31.1, 31.0, 31.1, 31.0, 31.0])
-
-    assert all(r.writes == [] and r.phase == "defrost" for r in defrost)
-    assert after[0].phase == "start_hold"
-    assert sim.writes() == [("start", 34.1), ("normal", 31.0)]
-    [jump] = sim.events("start_jump")
-    assert (jump["start_kind"], jump["ref_c"]) == ("defrost", 31.0)
-
-
-# Block on and off (wanted off)
+# Block (8.4, 8.6)
 
 
 def test_block_on_and_off_with_minimum_duration() -> None:
@@ -196,12 +235,12 @@ def test_block_on_and_off_with_minimum_duration() -> None:
     sim.room = 21.1
     during = sim.run([30.0] * 19)
     released = sim.minute(30.0)
-    restart = sim.minute(27.0, compressor=False, activity="idle")
+    after = sim.minute(27.0, compressor=False, activity="idle")
 
     assert blocked.phase == "blocked" and all(r.phase == "blocked" and not r.writes for r in during)
     assert released.writes[0]["reason"] == "block_off"
-    assert sim.writes() == [("block_on", True), ("block_off", False), ("start", 30.1)]
-    assert restart.phase == "idle"
+    assert sim.writes() == [("block_on", True), ("block_off", False)]
+    assert after.phase == "off"
     notes = sim.notes()
     assert notes[0].startswith("Nur Lernen: Sunflow würde die Raumthermostat-Sperre setzen (Raum 21,6 °C, 0,6 K über dem Ziel")
     assert notes[1].startswith("Nur Lernen: Sunflow würde die Raumthermostat-Sperre aufheben")
@@ -211,7 +250,7 @@ def test_block_found_on_is_kept_and_shown() -> None:
     """A block Sunflow did not set is not released, only shown (8.6); nothing written while it lasts."""
     sim = Sim(written=30.0)
     sim.room = 20.0
-    found = sim.run([27.0] * 30, compressor=False, activity="idle", blocked=True)
+    found = sim.off(30, blocked=True)
 
     assert sim.writes() == []
     assert all(r.phase == "blocked" for r in found)
@@ -222,19 +261,21 @@ def test_block_found_on_is_kept_and_shown() -> None:
 
 def test_block_set_by_someone_else_later_is_not_released() -> None:
     """Set by hand while Sunflow controls (also over its own virtual block): kept until released outside."""
-    sim = Sim(written=30.0)
+    sim = Sim(written=28.0)
     sim.room = 21.6
     sim.minute(30.0)
     assert sim.guard.block_reason == "room_warm"
     sim.room = 20.0
-    during = sim.run([27.0] * 40, compressor=False, activity="idle", blocked=True)
+    during = sim.off(40, blocked=True)
 
     assert sim.writes() == [("block_on", True)]
     assert all(r.phase == "blocked" for r in during) and sim.guard.block_reason == "foreign"
-    # Released outside: Sunflow controls again, the start rule applies
-    after = sim.minute(27.0, compressor=False, activity="idle")
+    # Released outside: the wait for a restart starts there
+    sim.off(5)
     assert (sim.guard.block, sim.guard.block_reason) == (False, None)
-    assert after.phase == "idle" and sim.writes()[-1] == ("start", 30.1)
+    assert sim.writes() == [("block_on", True)]
+    sim.off(1)
+    assert sim.writes()[-1] == ("start", 30.0)
 
 
 def test_released_foreign_block_counts_for_the_minimum_duration() -> None:
@@ -250,17 +291,12 @@ def test_released_foreign_block_counts_for_the_minimum_duration() -> None:
     assert late.writes[0]["reason"] == "block_on" and sim.guard.block_reason == "room_warm"
 
 
-def test_foreign_block_in_state_file_and_old_name() -> None:
-    """Kept over a restart without a second journal entry; the earlier name "adopted" is read as foreign."""
-    sim = Sim(written=30.0)
-    sim.minute(27.0, compressor=False, activity="idle", blocked=True)
-    again = Guard(sim.guard.as_dict())
-    assert again.block_reason == "foreign"
-    old = Guard({**sim.guard.as_dict(), "block_reason": "adopted"})
-    assert old.block_reason == "foreign"
-    sim.guard = old
-    sim.minute(27.0, compressor=False, activity="idle", blocked=True)
-    assert sim.notes() == sim.notes()[:1] and sim.writes() == []
+@pytest.mark.parametrize("old", ["adopted", "min_power", "budget"])
+def test_block_reasons_of_older_versions(old: str) -> None:
+    """"adopted" is read as foreign; blocks of the old rules become the room rule's."""
+    guard = Guard({"block": True, "block_at": NOW.isoformat(), "block_reason": old})
+
+    assert guard.block_reason == ("foreign" if old == "adopted" else "room_warm")
 
 
 def test_no_block_without_the_input() -> None:
@@ -269,93 +305,6 @@ def test_no_block_without_the_input() -> None:
     sim.minute(30.0)
 
     assert sim.writes() == []
-
-
-# Tracking a rising Tv
-
-
-def test_tracking_a_rising_tv() -> None:
-    sim = Sim(written=30.0)
-    tvs = [round(30.0 + 0.1 * i, 1) for i in range(60)]
-    sim.run(tvs)
-
-    reasons = {reason for reason, _ in sim.writes()}
-    assert reasons == {"track"}
-    # A headroom above the bound: not a write every minute
-    assert 5 <= len(sim.writes()) <= 8
-    _no_self_caused_shutdown(sim)
-
-
-def test_minimum_output_above_need_blocks_instead_of_tracking() -> None:
-    sim = Sim(written=30.0)
-    sim.heat_needed = 300.0
-    sim.run([round(30.0 + 0.1 * i, 1) for i in range(30)])
-
-    assert sim.writes() == [("block_on", True)]
-    assert sim.guard.block_reason == "min_power"
-    assert "Mindestleistung 0,6 kW über dem Bedarf 0,3 kW" in sim.notes()[0]
-
-
-# Unwanted shutdowns
-
-
-def test_unwanted_shutdown_in_running_operation_raises_the_swing() -> None:
-    sim = Sim(written=30.0)
-    sim.run([30.0] * 9)
-    sim.minute(30.0, peak=33.1)
-    sim.minute(30.2, compressor=False, activity="idle")
-
-    [stop] = sim.events("unwanted_stop")
-    assert (stop["during"], stop["raised"], stop["peak_c"], stop["setpoint_c"]) == ("running", "steady_swing", 33.1, 30.0)
-    assert stop["value"] == pytest.approx(3.1 + BUMP_EXTRA_K)
-    raised = values(sim.settings, None, sim.guard.bumps, sim.now)
-    assert (raised.steady_swing, raised.sources["steady_swing"]) == (pytest.approx(3.6, abs=0.01), "raised")
-    # Fades over weeks
-    later = values(sim.settings, None, sim.guard.bumps, sim.now + timedelta(days=10))
-    assert later.steady_swing == pytest.approx(3.6 - 10 * BUMP_DECAY_K_PER_DAY, abs=0.01)
-    assert values(sim.settings, None, sim.guard.bumps, sim.now + timedelta(days=60)).steady_swing == 0.5
-    assert sim.notes()[0].startswith("Ungewollte Abschaltung des Kompressors im laufenden Betrieb: Vorlauf 33,1 °C")
-
-
-def test_mode_off_learns_nothing_from_a_shutdown() -> None:
-    """Mode off ("Aus"): a stop at the shutdown limit raises no jump or swing."""
-    sim = Sim(written=30.0)
-    sim.mode = "off"
-    sim.run([30.0] * 9)
-    sim.minute(30.0, peak=33.1)
-    sim.minute(30.2, compressor=False, activity="idle")
-
-    assert sim.events("unwanted_stop") == [] and sim.guard.bumps == {}
-
-
-def test_unwanted_shutdown_during_a_start_raises_its_jump() -> None:
-    sim = Sim(written=30.0)
-    sim.minute(27.0, compressor=False, activity="idle")
-    sim.real_setpoint = sim.effective = 30.0
-    sim.minute(27.0)
-    sim.minute(31.0, peak=33.2)
-    sim.minute(32.0, compressor=False, activity="idle")
-
-    [stop] = sim.events("unwanted_stop")
-    assert (stop["during"], stop["raised"]) == ("normal", "start_jump.normal")
-    assert values(sim.settings, None, sim.guard.bumps, sim.now).start_jump["normal"] == pytest.approx(33.2 - 27.0 + BUMP_EXTRA_K, abs=0.01)
-
-
-@pytest.mark.parametrize(
-    ("peak", "kwargs"),
-    [
-        pytest.param(32.5, {"activity": "idle"}, id="below the limit"),
-        pytest.param(33.5, {"activity": "idle", "blocked": True}, id="block"),
-        pytest.param(33.5, {"activity": "hot_water", "bypass": 100.0}, id="hot water"),
-    ],
-)
-def test_stops_that_are_not_unwanted(peak: float, kwargs: dict[str, Any]) -> None:
-    sim = Sim(written=30.0)
-    sim.run([30.0] * 3)
-    sim.minute(30.0, peak=peak)
-    sim.minute(30.0, compressor=False, **kwargs)
-
-    assert sim.events("unwanted_stop") == []
 
 
 # Limits (8.3)
@@ -394,54 +343,6 @@ def test_user_limits_within_the_entity_range() -> None:
     assert setpoint_range("radiator", ControlSettings(user_max=28.0)) == (28.0, 28.0)
 
 
-def test_user_maximum_caps_the_protection_layer() -> None:
-    """The start rule wants more than the screed may get: the set value stays at the user's maximum."""
-    sim = Sim(written=30.0, user_max=32.0)
-    sim.run([30.0] * 3)
-    sim.run([29.5, 29.0], compressor=False, activity="idle")
-
-    assert sim.writes() == [("start", 32.0)]
-    assert all(r.setpoint_c is None or r.setpoint_c <= 32.0 for _, _, r in sim.results)
-    assert sim.results[-1][2].limits == (25.0, 32.0)
-
-
-def test_implausible_target_is_not_written_and_noted_once() -> None:
-    sim = Sim(written=30.0)
-    sim.target = 39.0
-    sim.run([30.0] * 8)
-
-    assert implausible(39.0, 30.0, None) == pytest.approx(9.0)
-    assert implausible(37.0, 30.0, None) is None
-    result = sim.results[-1][2]
-    assert result.implausible_k == pytest.approx(9.0) and result.freeze_up
-    assert sim.writes() == []
-    assert len([n for n in sim.notes() if "nicht plausibel" in n]) == 1
-
-
-def test_own_raised_setpoint_does_not_make_the_target_implausible() -> None:
-    """Writing for real, the effective setpoint is Sunflow's own protection step (e.g. 39.6 °C after a defrost):
-    the plausibility compares with the base instead, so the set value is lowered again once Tv is calm."""
-    shadow = Sim(written=39.6)
-    shadow.target = shadow.base = 29.4
-    shadow.run([31.0] * 8)
-    active = Sim(written=39.6)
-    active.active = True
-    active.target = active.base = 29.4
-    active.run([31.0] * 8)
-    # The base itself far from the target (e.g. a curve far off) still counts as implausible
-    stale = Sim(written=39.6)
-    stale.active = True
-    stale.target, stale.base = 39.0, 29.4
-    last = stale.minute(31.0)
-
-    assert shadow.results[-1][2].implausible_k == pytest.approx(-10.2)
-    assert shadow.writes() == []
-    assert all(r.implausible_k is None for _, _, r in active.results)
-    [(reason, value)] = active.writes()
-    assert reason == "normal" and value < 39.6
-    assert last.implausible_k == pytest.approx(9.6)
-
-
 def test_power_limits_freeze_the_correction_in_their_direction() -> None:
     sim = Sim(written=30.0)
     sim.heat = 5900.0
@@ -469,11 +370,11 @@ def test_correction_does_not_move_beyond_a_limit() -> None:
     [({"mode": "off"}, "mode_off"), ({"strategy": "weather"}, "strategy_weather")],
 )
 def test_inactive_writes_nothing(change: dict[str, str], reason: str) -> None:
-    sim = Sim(written=30.0)
+    sim = Sim(written=28.0)
     sim.mode = change.get("mode", "heat")
-    result = sim.minute(27.0, compressor=False, activity="idle", strategy=change.get("strategy", "fixed"))
+    results = sim.off(8, strategy=change.get("strategy", "fixed"))
 
-    assert reason in result.inactive and result.writes == []
+    assert reason in results[-1].inactive and sim.writes() == []
 
 
 # Learned values (8.4, 8.3)
@@ -482,48 +383,85 @@ def test_inactive_writes_nothing(change: dict[str, str], reason: str) -> None:
 def _steady_rows(count: int, swing: float = 0.3, heat: float = 2000.0) -> list[dict[str, Any]]:
     return [
         {"start": (NOW - (count - i) * FIVE).isoformat(), "samples": 5, "tv_c": 30.0, "tv_max_c": 30.0 + swing * (i % 3) / 2,
-         "heat_w": heat + 10 * (i % 50), "compressor": 1.0, "flags": {"valid": True}, "events": []}
+         "heat_w": heat + 10 * (i % 50), "compressor": 1.0, "activity": "heating", "flags": {"valid": True}, "events": []}
         for i in range(count)
     ]
 
 
-def test_learned_from_the_table() -> None:
+def _stop(at: datetime, margin: float, **extra: Any) -> dict[str, Any]:
+    return {"at": at.isoformat(), "kind": "stop", "tv_c": 30.0 + margin - 0.1, "tv_max_c": 30.0 + margin, "setpoint_c": 30.0,
+            "max_setpoint_c": 30.0, "tvbh_c": 30.0 + margin, "tv_uart_c": 30.0 + margin - 0.3, "activity": "heating", "blocked": False} | extra
+
+
+def _with_stops(rows: list[dict[str, Any]], stops: list[tuple[int, dict[str, Any]]]) -> list[dict[str, Any]]:
+    """Each stop into the row it falls in (index from the end)."""
+    for back, event in stops:
+        rows[-back]["events"].append(event)
+    return rows
+
+
+def test_stops_are_classified() -> None:
+    rows = _steady_rows(40)
+    at = lambda back: datetime.fromisoformat(rows[-back]["start"]) + timedelta(minutes=2)  # noqa: E731
+    rows[-28]["activity"] = "defrost"
+    rows[-18]["activity"] = "hot_water"
+    _with_stops(rows, [
+        (30, _stop(at(30), 2.5)),
+        (20, _stop(at(20), 1.0)),
+        (12, _stop(at(12), 2.2, blocked=True)),
+        (10, _stop(at(10), 2.4, activity="hot_water")),
+        (8, _stop(at(8), 2.1)),
+        (1, _stop(at(1), 2.0)),
+    ])
+
+    stops = classify_stops(rows, NOW)
+
+    assert [s["kind"] for s in stops] == ["defrost", "hot_water", "block", "other", "unexplained", "pending"]
+    assert (stops[4]["margin_k"], stops[4]["margin_uart_k"]) == (2.1, pytest.approx(1.8))
+
+
+def test_stop_margin_learned_from_unexplained_stops() -> None:
     rows = _steady_rows(SWING_MIN_ROWS + 10)
-    jumps = [4.0, 4.5, 5.0, 5.5, 6.5, 4.2]
-    rows[-1]["events"] = [
-        {"kind": "start_jump", "start_kind": "hot_water", "jump_k": j, "settle_s": 300 + 60 * i} for i, j in enumerate(jumps)
-    ] + [{"kind": "start_jump", "start_kind": "normal", "jump_k": 3.0, "settle_s": 120}]
+    margins = [2.4, 2.1, 2.6, 2.2, 2.3, 0.2, 9.0]
+    _with_stops(rows, [(20 + 3 * i, _stop(datetime.fromisoformat(rows[-(20 + 3 * i)]["start"]) + MIN, m)) for i, m in enumerate(margins)])
 
-    learned = learn(rows, NOW)
+    learned = learn(rows, NOW, start_stop_margin=3.0)
 
-    assert learned.steady_swing == pytest.approx(0.3)
-    assert learned.start_jump == {"hot_water": 5.5}
-    assert learned.start_settle_s == {"hot_water": 540}
-    assert learned.starts == {"hot_water": 6, "normal": 1}
-    assert learned.power_min_w is not None and 2000 <= learned.power_min_w <= 2050
-    used = values(ControlSettings(), learned, {}, NOW)
-    # Learned replaces the start value, a kind without enough starts keeps it; the maximum is only raised
-    assert (used.steady_swing, used.start_jump["hot_water"], used.start_jump["normal"]) == (pytest.approx(0.3), 5.5, 6.0)
-    assert used.power_max_w == 6000.0
+    # Margins outside 0.5–8 K do not count; the low quantile of the others
+    assert (learned.stop_samples, learned.stop_margin) == (5, 2.1)
+    assert learned.stop_counts["unexplained"] == 7
+    assert learned.stops[0]["at"] > learned.stops[-1]["at"]
+    used = values(ControlSettings(), learned)
+    assert (used.stop_margin, used.sources["stop_margin"], used.steady_swing) == (2.1, "learned", pytest.approx(0.3))
     assert Learned.from_dict(learned.as_dict()) == learned
-    assert len(jumps) >= JUMP_MIN_EVENTS
+    assert len(margins) - 2 >= STOP_MIN_EVENTS
+
+
+def test_a_larger_stop_margin_needs_more_stops() -> None:
+    """The safe direction first: above the profile's value only from STOP_MIN_EVENTS_ABOVE stops."""
+    rows = _steady_rows(80)
+    few = [(10 + 3 * i, _stop(datetime.fromisoformat(rows[-(10 + 3 * i)]["start"]) + MIN, 3.5)) for i in range(STOP_MIN_EVENTS)]
+
+    assert learn(_with_stops(rows, few), NOW, start_stop_margin=3.0).stop_margin is None
+    rows = _steady_rows(80)
+    many = [(10 + 3 * i, _stop(datetime.fromisoformat(rows[-(10 + 3 * i)]["start"]) + MIN, 3.5)) for i in range(STOP_MIN_EVENTS_ABOVE)]
+    assert learn(_with_stops(rows, many), NOW, start_stop_margin=3.0).stop_margin == 3.5
 
 
 def test_too_little_data_keeps_the_start_values() -> None:
     learned = learn(_steady_rows(20), NOW)
 
-    used = values(ControlSettings(), learned, {}, NOW)
-    assert (learned.steady_swing, learned.power_min_w) == (None, None)
-    assert (used.steady_swing, used.start_jump["normal"], used.start_settle_s["normal"], used.power_min_w) == (0.5, 6.0, 300, 600)
-    assert used.sources["steady_swing"] == "start"
+    used = values(ControlSettings(), learned)
+    assert (learned.steady_swing, learned.power_min_w, learned.stop_margin) == (None, None, None)
+    assert (used.steady_swing, used.start_margin, used.stop_margin, used.power_min_w) == (0.5, 3.0, 3.0, 600)
+    assert used.sources["stop_margin"] == "start"
 
 
 def test_settings_from_the_profile_and_manifest(library: Any) -> None:
     settings = ControlSettings.from_profile(library.profiles[PROFILE], joined())
 
     assert (settings.step, settings.entity_min, settings.entity_max) == (0.1, 20.0, 90.0)
-    assert (settings.start_margin, settings.stop_margin, settings.shutdown_guard) == (3.0, 3.0, pytest.approx(2.9))
-    assert (settings.steady_swing, settings.start_jump, settings.start_settle_s) == (0.5, 6.0, 300)
+    assert (settings.start_margin, settings.stop_margin, settings.steady_swing) == (3.0, 3.0, 0.5)
     assert (settings.power_min_w, settings.power_max_w, settings.block_min_s, settings.has_block) == (600, 6000, 1200, True)
     # Without a manifest: the coarsest allowed step, rounding stays safe
     assert ControlSettings.from_profile(library.profiles[PROFILE], None).step == 0.5
@@ -540,15 +478,16 @@ def test_daily_counts_in_local_time() -> None:
         {"at": "2026-11-21T11:00:00+00:00", "kind": "write", "reason": "normal"},
         {"at": "2026-11-21T11:30:00+00:00", "kind": "write", "reason": "block_on"},
         {"at": "2026-11-20T23:30:00+00:00", "kind": "write", "reason": "track"},
-        {"at": "2026-11-20T22:30:00+00:00", "kind": "unwanted_stop"},
+        {"at": "2026-11-20T22:30:00+00:00", "kind": "stop", "activity": "heating"},
+        {"at": "2026-11-20T22:40:00+00:00", "kind": "stop", "activity": "hot_water"},
         {"at": "2026-11-21T09:00:00+00:00", "kind": "flow_source"},
     ]
 
     today, yesterday = daily_counts(events, tz, 2, NOW)
 
     assert (today["date"], today["start"], today["normal"], today["track"], today["block_on"]) == ("2026-11-21", 1, 1, 1, 1)
-    assert (today["setpoint"], today["protect"], today["block"], today["unwanted_stops"]) == (3, 2, 1, 0)
-    assert (yesterday["date"], yesterday["unwanted_stops"], yesterday["setpoint"]) == ("2026-11-20", 1, 0)
+    assert (today["setpoint"], today["protect"], today["block"], today["stops"]) == (3, 2, 1, 0)
+    assert (yesterday["date"], yesterday["stops"], yesterday["setpoint"]) == ("2026-11-20", 1, 0)
 
 
 # Through the recorder: events in heat_pump_samples, journal, status, counts
@@ -560,22 +499,24 @@ async def test_recorder_notes_planned_writes(tmp_path: Path, library: Any, monke
     class Clock(datetime):
         @classmethod
         def now(cls, tz: Any = None) -> datetime:
-            return (NOW + 12 * MIN).astimezone(tz)
+            return (NOW + 20 * MIN).astimezone(tz)
 
     # The counts per day run up to "today": the API's clock at the time of the run, not the real one
     monkeypatch.setattr("sunflow.api.heat_pump.datetime", Clock)
     pump = Pump(tmp_path, library)
     pump.recorder.flow = FlowShadow(HeatPumpStateStore(tmp_path))
+    pump.states["max_target_flow_temp"] = pump.states["target_supply_temperature"] = ("29.0", "°C")
     try:
         await pump.minutes(NOW, 3)
-        # Pause: compressor off, Tv down; the start rule would raise Max T-Vorlauf
+        # Pause: compressor off, Tv down; after 5 minutes Sunflow would restart it
+        pump.event("status_kompressor", "on", "off", NOW + 3 * MIN - timedelta(seconds=20))
         pump.states["status_kompressor"] = ("off", None)
         pump.states["mode_of_operating"] = ("Bereitschaft", None)
         pump.states["tv"] = ("28.0", "°C")
-        await pump.minutes(NOW + 3 * MIN, 2)
+        await pump.minutes(NOW + 3 * MIN, 7)
         # The room well above the setpoint: the block
         pump.extra["sensor.wohnzimmer"] = pump._state("21.6", "°C")
-        await pump.minutes(NOW + 5 * MIN, 6)
+        await pump.minutes(NOW + 10 * MIN, 6)
         rows = pump.rows()
         status = pump.recorder.status()["hp"]["flow"]["guard"]
         app = FastAPI()
@@ -596,14 +537,17 @@ async def test_recorder_notes_planned_writes(tmp_path: Path, library: Any, monke
     finally:
         pump.store.close()
 
-    writes = [e for row in rows for e in row["events"] if e["kind"] == "write"]
-    assert [(w["reason"], w.get("value_c")) for w in writes] == [("start", 31.1), ("block_on", None)]
+    events = [e for row in rows for e in row["events"]]
+    writes = [e for e in events if e["kind"] == "write"]
+    assert [(w["reason"], w.get("value_c")) for w in writes] == [("start", 31.0), ("block_on", None)]
     assert all(w["shadow"] for w in writes)
-    assert (status["shadow"], status["block"], status["block_reason"], status["setpoint_c"]) == (True, True, "room_warm", 31.1)
-    assert status["values"]["steady_swing"] == 0.5
+    [stop] = [e for e in events if e["kind"] == "stop"]
+    assert (stop["activity"], stop["blocked"], stop["tvbh_c"], stop["tv_uart_c"]) == ("heating", False, 30.2, None)
+    assert (status["shadow"], status["block"], status["block_reason"], status["setpoint_c"]) == (True, True, "room_warm", 31.0)
+    assert status["values"]["stop_margin"] == 3.0 and status["learn_stops"] is True
     assert any(n.startswith("Nur Lernen: Sunflow würde die Raumthermostat-Sperre setzen") for n in pump.notes())
     today = answer["days"][0]
-    assert (today["start"], today["block_on"], today["setpoint"]) == (1, 1, 1)
+    assert (today["start"], today["block_on"], today["setpoint"], today["stops"]) == (1, 1, 1, 1)
     assert answer["budget"] == {"per_day": 48, "emergency_per_day": 24, "per_hour": 6}
     # Nothing written to the heat pump: Max T-Vorlauf as it was
     assert rows[-1]["written_c"] is None
@@ -653,6 +597,31 @@ async def test_flow_limits_setting(tmp_path: Path, library: Any) -> None:
     assert (device.flow_min_c, device.flow_max_c) == (None, None)
 
 
+async def test_learn_stops_switch(tmp_path: Path, library: Any) -> None:
+    """PUT /heat_pump/<id>/learn_stops switches the learning phase; on by default, shown in the status."""
+    from test_heat_pump_samples import Pump  # noqa: PLC0415
+
+    pump = Pump(tmp_path, library)
+    try:
+        await pump.minutes(NOW, 1)
+        client, store = _limits_api(tmp_path, library, pump.recorder)
+        config = store.load()
+        config.devices = pump.config.devices
+        store.save(config)
+
+        before = client.get("/api/v1/heat_pump/status").json()["devices"][0]["learn_stops"]
+        answer = client.put("/api/v1/heat_pump/hp/learn_stops", json={"active": False}).json()
+        after = client.get("/api/v1/heat_pump/status").json()["devices"][0]["learn_stops"]
+        refused = client.put("/api/v1/heat_pump/hp/learn_stops", json={"active": "no"}).status_code
+        missing = client.put("/api/v1/heat_pump/nope/learn_stops", json={"active": True}).status_code
+    finally:
+        pump.store.close()
+
+    assert (before, answer, after) == (True, {"active": False}, False)
+    assert (refused, missing) == (422, 404)
+    assert ConfigStore(tmp_path / "config", lambda: library.profiles).load().devices[0].flow_learn_stops is False
+
+
 @pytest.mark.parametrize("stored", [300, "x", True, 10.0])
 def test_broken_flow_limit_in_config_counts_as_not_set(tmp_path: Path, stored: Any) -> None:
     """A hand-edited limit outside the allowed range does not stop loading; the start limit applies."""
@@ -682,17 +651,15 @@ async def test_recorder_uses_the_user_limits(tmp_path: Path, library: Any) -> No
 
 
 def test_state_survives_a_restart() -> None:
-    """Written value, block, Tv before hot water and raises are kept in heat_pump_state.json."""
-    sim = Sim(written=30.0)
-    sim.run([30.0] * 9)
-    sim.minute(30.0, peak=33.1)
-    sim.minute(30.2, compressor=False, activity="idle")
+    """Written value, block and the latest writes are kept in heat_pump_state.json; old keys are dropped."""
+    sim = Sim(written=28.0)
+    sim.off(6)
     sim.room = 21.6
-    sim.minute(30.0, compressor=False, activity="idle")
+    sim.off(1)
 
-    again = Guard(sim.guard.as_dict())
+    again = Guard(sim.guard.as_dict() | {"start": {"kind": 1}, "bumps": {"x": 1}})
 
     assert (again.written_c, again.block, again.block_reason) == (sim.guard.written_c, True, "room_warm")
-    assert again.bumps == sim.guard.bumps and again.bumps["steady_swing"]["k"] == pytest.approx(3.6)
-    assert [w["reason"] for w in again.recent_writes] == [w["reason"] for w in sim.guard.recent_writes]
-    assert Guard({"written_c": "x", "start": {"kind": 1}}).written_c is None
+    assert [w["reason"] for w in again.recent_writes] == ["start", "block_on"]
+    assert "bumps" not in again.as_dict() and "start" not in again.as_dict()
+    assert Guard({"written_c": "x"}).written_c is None
