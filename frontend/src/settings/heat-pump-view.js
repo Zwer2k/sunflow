@@ -31,7 +31,7 @@ const FAST_CHANGE_RANGES = {
   start_k: [0.2, 5, false], start_min: [5, 120, true], settle_k: [0.1, 5, false], settle_min: [10, 180, true], max_h: [0.5, 12, false],
 };
 // Where the start slope of the heating curve comes from (design/heat_pump.md, 8)
-const SLOPE_SOURCES = () => ({ heat_pump: t("von der Wärmepumpe"), surface: t("Startwert des Heizflächentyps") });
+const SLOPE_SOURCES = () => ({ heat_pump: t("aus der Wärmepumpe gelesen"), surface: t("Startwert des Heizflächentyps"), user: t("eingestellt"), learned: t("aus dem Gelernten übernommen") });
 // Status of the latest values; refreshed while the view is open
 const STATUS_EVERY_MS = 60_000;
 // Days the counts of the writes Sunflow would have caused cover
@@ -182,6 +182,7 @@ class SunflowHeatPump extends LitElement {
     _selected: { state: true },
     _open: { state: true },
     _limitsEdit: { state: true },
+    _curveEdit: { state: true },
     _writeNow: { state: true },
     _climateBusy: { state: true },
     _error: { state: true },
@@ -206,6 +207,7 @@ class SunflowHeatPump extends LitElement {
     this._open = 0;
     // Per heat pump the range of the set value being edited: { min, max } as typed
     this._limitsEdit = {};
+    this._curveEdit = {};
     // Per heat pump: "write now" sent, waiting for the next tick
     this._writeNow = {};
     this._climateBusy = false;
@@ -621,15 +623,16 @@ class SunflowHeatPump extends LitElement {
         state: flow.frozen.length ? "frozen" : (flow.limited ?? []).length ? "acting" : null },
       heat: { title: t("Außen"), value: `${one(flow.outside_c)} °C`, sub: t("Mittel der letzten 15 min"), state: flow.outside_c == null ? "warn" : null },
       ff: { title: t("Heizkurve"), value: `${one(flow.curve_c)} °C`,
-        sub: flow.curve ? t("Steilheit {slope}, {shift} K", { slope: two(flow.curve.slope), shift: signedNumber(flow.curve.shift_k) }) : "" },
+        sub: flow.curve ? t("{pct} % gelernt", { pct: flow.curve.learned_pct ?? 0 }) : "" },
       target: { title: t("Vorlauf-Ziel"), value: `${one(flow.target_c)} °C`, sub: t("Heizkurve + Korrektur") },
       limits: { title: t("Grenzen"), value: `${whole(guard.min_c)}–${whole(guard.max_c)} °C`,
         sub: (guard.limited ?? flow.limited ?? []).length ? (guard.limited ?? flow.limited).map((l) => LIMITS()[l] ?? l).join(", ") : t("eingehalten"),
         state: (guard.limited ?? flow.limited ?? []).length ? "acting" : null },
       guard: {
         title: t("Schutz"),
-        value: guard.block ? t("Sperre") : restarting ? `↑ ${one(guard.floor_c)} °C` : guard.floor_c != null ? `≥ ${one(guard.floor_c)} °C` : t("Lernphase"),
-        sub: GUARD_PHASES()[guard.phase] ?? guard.phase ?? "",
+        value: guard.block ? t("Sperre") : restarting && guard.floor_c != null ? `↑ ${one(guard.floor_c)} °C` : `${one(guard.setpoint_c)} °C`,
+        sub: [GUARD_PHASES()[guard.phase] ?? guard.phase, device.learn_stops ? t("Lernphase an") : guard.floor_c != null && !restarting ? t("≥ {value} °C", { value: one(guard.floor_c) }) : null]
+          .filter(Boolean).join(" · "),
         state: guard.block || restarting ? "acting" : null,
       },
       writer: { title: t("Schreiben"), value: budget ? `${budget.used_today} / ${budget.per_day}` : "–",
@@ -654,6 +657,7 @@ class SunflowHeatPump extends LitElement {
         onSelect: (id) => (this._selected = { ...this._selected, [device.id]: id }),
         live: flow.shadow === false,
         corrFrozen: flow.frozen.length > 0,
+        formula: this._formula(device),
       })}</div>
       <div class="detail">
         <div class="title-row"><h3>${blocks[selected]?.title ?? ""}</h3><span class="small muted">${t("Block anklicken für Einzelheiten")}</span></div>
@@ -662,6 +666,20 @@ class SunflowHeatPump extends LitElement {
         ${detail.notes ?? nothing}
       </div>
     `;
+  }
+
+  /** The heating curve with the current numbers, shown next to the chain. */
+  _formula(device) {
+    const flow = device.state.flow;
+    const c = flow.curve;
+    const room = this._status?.house?.setpoint_c;
+    const lines = [t("Vorlauf = R + S · (R − A) + P")];
+    if (c && room != null && flow.outside_c != null) {
+      lines.push(`= ${one(room)} + ${two(c.slope)} · (${one(room)} − ${one(flow.outside_c)}) ${c.shift_k < 0 ? "−" : "+"} ${decimal(Math.abs(c.shift_k).toFixed(1))} = ${one(flow.curve_c)} °C`);
+      lines.push(t("+ Korrektur {corr} = Vorlauf-Ziel {target} °C", { corr: signed(flow.correction_k), target: one(flow.target_c) }));
+    }
+    lines.push(t("R Raum-Soll · A Außen · S Steilheit · P Verschiebung"));
+    return lines;
   }
 
   /** Tiles, notes and the explanation of one block of the control chain. */
@@ -725,12 +743,12 @@ class SunflowHeatPump extends LitElement {
       case "ff": {
         const c = flow.curve ?? {};
         return {
-          help: t("Heizkurve: Vorlauf = Raum-Soll + Steilheit × (Raum-Soll − Außen) + Verschiebung. Die Startsteilheit kommt von der Wärmepumpe (bei der HPSU „Heizkurve“), sonst vom Heizflächentyp. Steilheit und Verschiebung lernt Sunflow stündlich aus Stunden, in denen der Raum beim Soll lag – mit wenigen Daten bleibt die Kurve nahe am Start. Ändert sich die gelernte Kurve, wird die Korrektur so verschoben, dass das Vorlauf-Ziel nicht springt."),
+          help: t("Heizkurve: Vorlauf = Raum-Soll + Steilheit × (Raum-Soll − Außen) + Verschiebung. Es wirken die Startwerte (unter „Gelernt“ einstellbar) und, je mehr Stunden beim Raum-Soll vorliegen, die gelernten Werte. Ändert sich die gelernte Kurve, wird die Korrektur so verschoben, dass das Vorlauf-Ziel nicht springt."),
           tiles: [
             tile(t("Heizkurve"), `${one(flow.curve_c)} °C`, t("bei Raum-Soll {room} °C und außen {outside} °C", { room: one(house.setpoint_c), outside: one(flow.outside_c) })),
-            tile(t("Steilheit"), two(c.slope), t("Start {start} ({source})", { start: two(c.start_slope), source: SLOPE_SOURCES()[c.start_source] ?? c.start_source ?? "–" })),
-            tile(t("Verschiebung"), `${signedNumber(c.shift_k)} K`),
-            tile(t("Gelernt aus"), t("{hours} h", { hours: c.hours ?? 0 }), t("Stunden beim Raum-Soll")),
+            tile(t("Steilheit"), two(c.slope), t("Start {start}", { start: two(c.start_slope) })),
+            tile(t("Verschiebung"), `${signedNumber(c.shift_k)} K`, t("Start {start} K", { start: signedNumber(c.start_shift_k) })),
+            tile(t("Gelernt"), `${c.learned_pct ?? 0} %`, t("aus {hours} h beim Raum-Soll", { hours: c.hours ?? 0 })),
           ],
         };
       }
@@ -1031,7 +1049,7 @@ class SunflowHeatPump extends LitElement {
     // Hours that were enough (valid heating, compressor running, room at its setpoint): effective setpoint over outside
     const points = (this._history[device.id]?.rows ?? [])
       .filter((r) => r.valid && (r.compressor ?? 0) >= 0.99 && r.setpoint_c != null && r.outside_c != null && r.room_c != null
-        && Math.abs(r.room_c - (r.room_setpoint_c ?? house.setpoint_c)) <= 0.3)
+        && r.room_setpoint_c != null && Math.abs(r.room_c - r.room_setpoint_c) <= 0.3)
       .map((r) => ({ outside: r.outside_c, flow: r.setpoint_c }));
     return html`
       <div class="row2">
@@ -1042,11 +1060,13 @@ class SunflowHeatPump extends LitElement {
             ? html`<p class="small muted">${t("Keine Heizkurve.")}</p>`
             : html`
               <div class="diagram">${curveChart(curve, { roomC: house.setpoint_c, minC: guard.min_c, maxC: guard.max_c, points, outsideC: flow.outside_c })}</div>
+              ${this._renderCurveShare(curve)}
               <div class="tiles">
-                ${tile(t("Steilheit"), two(curve.slope), t("Start {start} ({source})", { start: two(curve.start_slope), source: SLOPE_SOURCES()[curve.start_source] ?? curve.start_source }))}
-                ${tile(t("Verschiebung"), `${signedNumber(curve.shift_k)} K`, t("Start 0 K"))}
+                ${tile(t("Steilheit (wirkt)"), two(curve.slope), t("Start {start}", { start: two(curve.start_slope) }))}
+                ${tile(t("Verschiebung (wirkt)"), `${signedNumber(curve.shift_k)} K`, t("Start {start} K", { start: signedNumber(curve.start_shift_k) }))}
                 ${tile(t("Gelernt aus"), t("{hours} h", { hours: curve.hours }), t("Stunden beim Raum-Soll, letzte 28 Tage"))}
-              </div>`}
+              </div>
+              ${this._renderCurveStart(device, curve)}`}
         </div>
         <div>
           <div class="title-row"><h3>${t("Verhalten der Wärmepumpe")}</h3></div>
@@ -1064,6 +1084,88 @@ class SunflowHeatPump extends LitElement {
       </div>
       ${this._renderStops(guard.learned)}
     `;
+  }
+
+  /** How much the learned hours shape the curve, the rest are the start values. */
+  _renderCurveShare(curve) {
+    const pct = Math.max(0, Math.min(100, curve.learned_pct ?? 0));
+    return html`
+      <div class="share" role="img" aria-label=${t("Gelernt {learned} %, Startwerte {start} %", { learned: pct, start: 100 - pct })}>
+        <div class="share-bar"><span class="share-learned" style=${`width: ${pct}%`}></span></div>
+        <div class="small"><strong>${t("Gelernt {pct} %", { pct })}</strong> · ${t("Startwerte {pct} %", { pct: 100 - pct })}</div>
+        <p class="help small">${t("Die Startwerte zählen wie 24 Stunden auf der Startkurve, jede gelernte Stunde beim Raum-Soll kommt dazu (ältere weniger, Halbwertszeit 14 Tage, höchstens 28 Tage). So wirken anfangs nur die Startwerte, mit der Zeit immer mehr das Gelernte – ganz verschwinden die Startwerte nie (höchstens etwa 94 % gelernt). Sie halten die Kurve stabil, wenn die Daten nur wenige Außentemperaturen abdecken.")}</p>
+      </div>`;
+  }
+
+  /** Start values of the heating curve: editable, read from the heat pump or taken over from the learned curve. */
+  _renderCurveStart(device, curve) {
+    const stored = device.curve_start ?? {};
+    const edit = this._curveEdit[device.id];
+    const value = (key) => (edit ? edit[key] : toDisplay(key === "slope" ? curve.start_slope : curve.start_shift_k, ""));
+    const set = (key, text) => (this._curveEdit = { ...this._curveEdit, [device.id]: { slope: value("slope"), shift: value("shift"), [key]: text } });
+    const own = device.state?.flow?.heat_pump_slope;
+    return html`
+      <div class="group">
+        <div class="title-row"><h3>${t("Startwerte")}</h3>
+          <span class="small muted">${SLOPE_SOURCES()[stored.source ?? curve.start_source] ?? ""}</span></div>
+        <p class="help small">${t("Die Kurve, zu der das Lernen hinzieht. Ohne eigene Werte liest Sunflow die Steilheit einmal aus der Wärmepumpe (HPSU „Heizkurve“; eine Verschiebung kennt sie nicht, dann 0 K). Eine Änderung wirkt sofort; die gelernten Stunden bleiben und werden neu verrechnet. „Gelerntes übernehmen“ macht die gelernte Kurve zum Start, z. B. vor dem Sommer für den nächsten Herbst.")}</p>
+        <div class="fields">
+          <label class="field narrow">
+            <span class="field-label">${t("Steilheit S")}</span>
+            <span class="input-unit"><input inputmode="decimal" .value=${value("slope")} @input=${(e) => set("slope", e.target.value)}></span>
+          </label>
+          <label class="field narrow">
+            <span class="field-label">${t("Verschiebung P")}</span>
+            <span class="input-unit"><input inputmode="decimal" .value=${value("shift")} @input=${(e) => set("shift", e.target.value)}> K</span>
+          </label>
+        </div>
+        <div class="actions">
+          ${edit
+            ? html`<button class="primary" ?disabled=${this._busy} @click=${() => this._saveCurveStart(device.id)}>${t("Speichern")}</button>
+                <button class="secondary" @click=${() => { const { [device.id]: _, ...rest } = this._curveEdit; this._curveEdit = rest; }}>${t("Abbrechen")}</button>`
+            : nothing}
+          <button class="secondary" ?disabled=${this._busy || own == null} @click=${() => this._takeCurveStart(device.id, "heat_pump")}>
+            ${own == null ? t("Aus der Wärmepumpe neu einlesen") : t("Aus der Wärmepumpe neu einlesen ({slope})", { slope: two(own) })}</button>
+          <button class="secondary" ?disabled=${this._busy || !curve.hours} @click=${() => this._takeCurveStart(device.id, "learned")}>${t("Gelerntes übernehmen")}</button>
+        </div>
+      </div>`;
+  }
+
+  async _saveCurveStart(deviceId) {
+    const edit = this._curveEdit[deviceId];
+    const slope = fromDisplay(edit.slope, "");
+    const shift = fromDisplay(edit.shift, "");
+    if (slope == null || shift == null || slope < 0.2 || slope > 3 || Math.abs(shift) > 10) {
+      this._error = t("Startwerte: Steilheit 0,2–3, Verschiebung −10 bis +10 K.");
+      return;
+    }
+    this._busy = true;
+    try {
+      await api.setHeatPumpCurveStart(deviceId, slope, shift);
+      const { [deviceId]: _, ...rest } = this._curveEdit;
+      this._curveEdit = rest;
+      this._error = null;
+      await this._loadStatus();
+    } catch (err) {
+      this._error = t("Startwerte konnten nicht gespeichert werden: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  async _takeCurveStart(deviceId, origin) {
+    this._busy = true;
+    try {
+      await api.takeHeatPumpCurveStart(deviceId, origin);
+      const { [deviceId]: _, ...rest } = this._curveEdit;
+      this._curveEdit = rest;
+      this._error = null;
+      await this._loadStatus();
+    } catch (err) {
+      this._error = t("Startwerte nicht übernommen: {error}", { error: err.message });
+    } finally {
+      this._busy = false;
+    }
   }
 
   /** The learning phase of the stop margin: a switch the user ends when enough stops are recorded. */
@@ -1506,6 +1608,9 @@ class SunflowHeatPump extends LitElement {
     .tag { font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--sf-neutral-bg); color: var(--sf-muted); white-space: nowrap; }
     .tag.real { background: var(--sf-ok-bg); color: var(--sf-ok-text); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .share { margin: 8px 0 12px; }
+    .share-bar { height: 10px; border-radius: 5px; background: var(--sf-subtle); border: 1px solid var(--sf-border); overflow: hidden; margin-bottom: 4px; }
+    .share-learned { display: block; height: 100%; background: var(--sf-primary); }
     .tile { background: var(--sf-subtle); border-radius: 8px; padding: 10px 12px; }
     .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .tile.warn .value { color: var(--sf-warn-text); }

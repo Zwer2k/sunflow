@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.80.30
+
+- Heat pumps: the **start values of the heating curve** (slope and shift) can be set per heat pump under Settings → Heat pump → Learned. While none are set, Sunflow reads the slope once from the heat pump (HPSU "Heizkurve") and keeps it, the shift is 0; afterwards the stored values apply, whatever the heat pump reports. "Read again from the heat pump" and "Take over learned" (the learned curve becomes the start, e.g. for next autumn) set them in one click. A change applies at once; the learned hours stay and are fitted anew towards the new start values.
+- The **learned share** of the curve is shown (bar and in the control chain): 0 % at first, then rising; the start values count like 24 hours and always keep a small share (at most about 94 % learned).
+- Learning the curve no longer uses recorded rows without a stored room setpoint (they were compared with today's setpoint).
+- Control chain: the room setpoint now also leads into the heating curve, the formula is shown with the current numbers, the block "Protection" shows the set value it wants instead of "learning phase". The thermostat "Haus" has `start_shift_k` and `learned_pct` in `heating_curve`.
+
 ## 0.80.29
 
 - Heat pumps: the flow target now comes from a **heating curve**: flow = room setpoint + slope × (room setpoint − outside) + shift, plus the room correction. Outside is the measured outside temperature (15 minute mean). The start slope is read from the heat pump (HPSU: "Heizkurve"), else it follows the heating surface type (underfloor 0.6, mixed 1.0, radiators 1.4). The curve applies at once, without a waiting time, and is learned every hour from the hours of the last 28 days with valid heating, compressor running and the room within 0.3 K of the setpoint (few hours keep it near the start). When the learned curve changes, the correction is shifted so the flow target does not jump.

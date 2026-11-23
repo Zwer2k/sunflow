@@ -469,6 +469,7 @@ class ShadowRunner:
         if self.snapshots is not None and self.heat_pump is not None:
             try:
                 await self.heat_pump.tick(self._store.load(), await self.snapshots.get(), now)
+                self.keep_curve_starts()
             except Exception as err:
                 _LOGGER.warning("Recording the heat pump failed: %s", err, exc_info=not isinstance(err, HAError))
         if self.snapshots is not None:
@@ -879,6 +880,22 @@ class ShadowRunner:
     def house_input(self) -> HouseInput | None:
         """The first heat pump with the house model and room temperature for the planning (14)."""
         return house_input(self._store.load(), self._library.profiles, self.flow_shadow, self.house_model, datetime.now(UTC))
+
+    def keep_curve_starts(self) -> None:
+        """A heat pump without start values of its heating curve takes the slope its own curve reports, once
+        (design/heat_pump.md, 8); afterwards the stored value applies, whatever the heat pump reports."""
+        flow = self.flow_shadow
+        if flow is None:
+            return
+        config = self._store.load()
+        changed = False
+        for device in config.devices:
+            if device.curve_slope_start is None and (slope := flow.heat_pump_slope(device.id)) is not None:
+                device.curve_slope_start, device.curve_start_source = slope, "heat_pump"
+                device.curve_shift_start = device.curve_shift_start or 0.0
+                changed = True
+        if changed:
+            self._store.save(config)
 
     @property
     def flow_shadow(self) -> Any:

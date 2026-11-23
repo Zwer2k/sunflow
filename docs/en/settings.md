@@ -90,7 +90,7 @@ outside temperature and flow. Then per heat pump collapsible sections (the brows
 - **Plant:** outdoor unit, indoor unit, tank and rooms as a picture of where the heat flows now, with the
   states of the heat pump.
 - **Writing and protection:** budget, pending value, latest writes and the counts per day.
-- **Learned:** the heating curve as a chart (flow over outside, start curve dashed, with the learned hours), the learned
+- **Learned:** the heating curve as a chart (flow over outside, start curve dashed, with the learned hours), the learned share, the start values to set, the learned
   behaviour of the heat pump (stop margin, start margin, swing, output), the switch of the learning phase
   and the compressor stops.
 
@@ -152,15 +152,19 @@ bypass valve, flow, return, effective flow setpoint and Max T-Vorlauf, an active
 a fault clearly highlighted, and whether the heat pump heats validly – otherwise why not (e.g. hot water,
 after-run, bypass valve). Below it the **flow target** = heating curve + correction.
 
-**Heating curve:** flow = room setpoint + slope × (room setpoint − outside) + shift. Outside is the
-measured outside temperature, averaged over 15 minutes. Sunflow reads the start slope from the heat pump
-(HPSU: "Heizkurve"), else the start value of the **heating surface type** applies (underfloor 0.6, mixed
-1.0, radiators 1.4); the shift starts at 0. The curve applies at once, without a waiting time. Every hour
-Sunflow learns slope and shift from the hours of the last 28 days in which the heat pump heated validly, the
-compressor ran and the room was within 0.3 K of the setpoint: the effective flow setpoint of those hours was
-enough. With few hours the curve stays near the start, with many the data count. When the learned curve
-changes, Sunflow shifts the correction by the difference so the flow target does not jump; when you change
-the heat pump's curve or the heating surface type, the new start curve applies at once. A higher room
+**Heating curve:** flow = room setpoint + slope × (room setpoint − outside) + shift; the formula with the
+current numbers is shown next to the control chain. Outside is the measured outside temperature, averaged
+over 15 minutes. You set the **start values** (slope and shift) per heat pump under "Learned". While none are
+set, Sunflow reads the slope once from the heat pump (HPSU: "Heizkurve") and keeps it; the shift is then 0
+(the HPSU has none). Without a value from the heat pump the start value of the **heating surface type**
+applies (underfloor 0.6, mixed 1.0, radiators 1.4). "Read again from the heat pump" fetches the slope anew,
+"Take over learned" makes the learned curve the start (e.g. before summer for next autumn). The curve
+applies at once, without a waiting time. Every hour Sunflow learns slope and shift from the hours of the last
+28 days in which the heat pump heated validly, the compressor ran and the room was within 0.3 K of that
+hour's room setpoint: the effective flow setpoint of those hours was enough. The start values count like 24
+hours; the **learned share** is shown: 0 % at first, then rising, at most about 94 % – the start values
+always act a little. When the learned curve changes, Sunflow shifts the correction by the difference so the
+flow target does not jump; when you change the start values, the new curve applies at once. A higher room
 setpoint raises the flow at once by 1 + slope kelvin per kelvin.
 
 **Correction:** slowly evens out the difference between room temperature and setpoint (at most ± 3 K; it
@@ -235,8 +239,8 @@ summary, and controls again once the value is set to 0 in ESPHome.
 **House:** room temperatures (one or more sensors, optionally weighted, e.g. by area) and
 optionally the heat into the house (e.g. the heating's heat meter, otherwise the heat pump's heat).
 The **heating surface type** (underfloor heating, mixed, radiators; default underfloor) sets the start
-value of the heating curve (if the heat pump provides none) and the integral time of the correction;
-after a change the new start curve applies at once, the measured data are kept.
+value of the heating curve (while no start values are set and the heat pump provides none) and the integral
+time of the correction; the measured data are kept.
 The **outside temperature** can be chosen: automatic (own sensor under learning sources, else the heat
 pump's sensor), the heat pump's outside temperature sensor, the sensor of its outdoor unit (HPSU: TA2)
 or only the own sensor. From the hourly values of the last four weeks Sunflow learns a simple thermal

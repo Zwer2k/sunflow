@@ -24,7 +24,7 @@ from sunflow.i18n import number, t
 from .active import MISSING, AdoptCheck, WriteTargets
 from .budget import SETPOINT_REASONS, EepromLog, VirtualLog, WriteBudget
 from .correction import Correction
-from .curve import Curve, start_curve, start_slope
+from .curve import Curve, Start, start_curve, start_values, usable_slope
 from .defaults import (
     CORRECTION_KP,
     CORRECTION_LIMIT_K,
@@ -217,17 +217,26 @@ class FlowShadow:
         writer.request_now(now)
         return True, None, pending.as_dict()
 
-    def start_slope(self, device_id: str, config: SunflowConfig) -> tuple[float, str]:
-        """Start slope of the heating curve: the heat pump's own, else the heating surface type's (8)."""
-        return start_slope(config.house.heating_surface, self._slopes.get(device_id))
+    def heat_pump_slope(self, device_id: str) -> float | None:
+        """The slope of the heat pump's own curve as last read (within the allowed range), None without one."""
+        return usable_slope(_float(self._slopes.get(device_id)))
+
+    def start(self, device_id: str, config: SunflowConfig) -> Start:
+        """Start values of the heating curve (8): the stored ones, else the heat pump's slope, else the heating
+        surface type's."""
+        device = next((d for d in config.devices if d.id == device_id), None)
+        return start_values(
+            device.curve_slope_start if device else None, device.curve_shift_start if device else None,
+            device.curve_start_source if device else None, config.house.heating_surface, self.heat_pump_slope(device_id),
+        )
 
     def curve(self, device_id: str, config: SunflowConfig, now: datetime) -> Curve:
-        """The heating curve in use: the learned one while it rests on the current start slope, else the start."""
-        slope0, source = self.start_slope(device_id, config)
+        """The heating curve in use: the learned one while it rests on the current start values, else the start."""
+        start = self.start(device_id, config)
         learned = self.curves.get(device_id)
-        if learned is not None and abs(learned.start_slope - slope0) < 1e-6:
+        if learned is not None and start.same(learned.start_slope, learned.start_shift_k):
             return learned
-        return start_curve(slope0, source, now)
+        return start_curve(start, now)
 
     def outside(self, device_id: str, value: float | None, now: datetime) -> float | None:
         """The measured outside temperature averaged over OUTSIDE_MEAN (7); None without a value in that time."""
@@ -387,20 +396,24 @@ class FlowShadow:
         self._store.save()
 
     def _follow_curve(self, device_id: str, strategy: str, stored: dict[str, Any], curve: Curve, room_c: float, outside_c: float) -> float:
-        """The learned curve changed (same start slope): the correction is shifted by old − new curve value at the
-        same room setpoint and outside, so the flow target does not jump (8). A new start slope (the heat pump's
-        own curve or the heating surface type changed) is the user's choice and applies at once. Returns the
-        correction."""
+        """The learned curve changed (same start values): the correction is shifted by old − new curve value at the
+        same room setpoint and outside, so the flow target does not jump (8). New start values (set by the user,
+        or the heating surface type changed) are the user's choice and apply at once. Returns the correction."""
         correction = self._correction(device_id, strategy)
         used = stored.get("curve_used") if isinstance(stored.get("curve_used"), dict) else None
-        slope, shift, start = (_float((used or {}).get(k)) for k in ("slope", "shift_k", "start_slope"))
+        slope, shift, start, start_shift = (
+            _float((used or {}).get(k)) for k in ("slope", "shift_k", "start_slope", "start_shift_k")
+        )
         if (
-            slope is not None and shift is not None and start is not None and abs(start - curve.start_slope) < 1e-6
+            slope is not None and shift is not None and start is not None
+            and curve.start.same(start, start_shift or 0.0)
             and (abs(slope - curve.slope) > 1e-6 or abs(shift - curve.shift_k) > 1e-6)
         ):
             old = room_c + slope * (room_c - outside_c) + shift
             correction.shift(old - curve.flow_c(room_c, outside_c))
-        stored["curve_used"] = {"slope": curve.slope, "shift_k": curve.shift_k, "start_slope": curve.start_slope}
+        stored["curve_used"] = {
+            "slope": curve.slope, "shift_k": curve.shift_k, "start_slope": curve.start_slope, "start_shift_k": curve.start_shift_k,
+        }
         return correction.value_k
 
     def _switch(
@@ -604,6 +617,8 @@ class FlowShadow:
             "outside_c": round(flow.outside_c, 2) if flow.outside_c is not None else None,
             "curve_c": round(flow.curve_c, 2) if flow.curve_c is not None else None,
             "curve": self.curve(device_id, self._config, self._observed_at or datetime.now(UTC)).status() if self._config else None,
+            # The heat pump's own slope as read now (offered to read in again as start value)
+            "heat_pump_slope": self.heat_pump_slope(device_id),
             "surface": surface,
             "parameters": {
                 "kp": CORRECTION_KP, "ti_h": correction_ti_h(surface), "deadband_k": ROOM_DEADBAND_K, "limit_k": CORRECTION_LIMIT_K,

@@ -13,6 +13,8 @@ from sunflow.config.store import ConfigStore
 from sunflow.devices.profiles import manifest_id
 from sunflow.heat_pump.budget import BudgetLimits
 from sunflow.heat_pump.defaults import (
+    CURVE_SHIFT_RANGE_K,
+    CURVE_SLOPE_RANGE,
     FLOW_LIMIT_HIGH_C,
     FLOW_LIMIT_LOW_C,
     ROOM_MARGIN_MAX_K,
@@ -120,6 +122,8 @@ async def heat_pump_status(request: Request) -> dict[str, Any]:
                 "writing": {"active": device.flow_active, "refused": writing_refused(request, device.id) if not device.flow_active else None},
                 # Learning phase of the stop margin (11): Sunflow lowers straight to the flow target
                 "learn_stops": device.flow_learn_stops,
+                # Start values of the heating curve as stored (8); None: not set yet
+                "curve_start": {"slope": device.curve_slope_start, "shift_k": device.curve_shift_start, "source": device.curve_start_source},
             }
             | status.get(device.id, {"status": "pending", "usable": False, "problems": [], "manifest": None})
             # Program, activity, block, fault, whether it heats validly (section 4) and the
@@ -310,6 +314,58 @@ async def set_learn_stops(request: Request, device_id: str, body: Writing) -> di
         device.flow_learn_stops = body.active
         store.save(config)
     return {"active": device.flow_learn_stops}
+
+
+class CurveStart(BaseModel):
+    """Start values of the heating curve of one heat pump, set by the user."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    slope: float = Field(ge=CURVE_SLOPE_RANGE[0], le=CURVE_SLOPE_RANGE[1])
+    shift_k: float = Field(ge=-CURVE_SHIFT_RANGE_K, le=CURVE_SHIFT_RANGE_K)
+
+
+def _heat_pump(request: Request, device_id: str) -> tuple[ConfigStore, SunflowConfig, Any]:
+    store: ConfigStore = request.app.state.store
+    config = store.load()
+    device = next((d for d in config.devices if d.id == device_id), None)
+    profile = _library(request).profiles.get(device.profile) if device else None
+    if device is None or profile is None or not records_heat_pump(profile):
+        raise HTTPException(status_code=404, detail="No heat pump with this id")
+    return store, config, device
+
+
+def _set_start(store: ConfigStore, config: SunflowConfig, device: Any, slope: float, shift_k: float, source: str) -> dict[str, Any]:
+    device.curve_slope_start = round(slope, 3)
+    device.curve_shift_start = round(shift_k, 2)
+    device.curve_start_source = source
+    store.save(config)
+    return {"slope": device.curve_slope_start, "shift_k": device.curve_shift_start, "source": source}
+
+
+@router.put("/heat_pump/{device_id}/curve_start")
+async def set_curve_start(request: Request, device_id: str, body: CurveStart) -> dict[str, Any]:
+    """Start values of the heating curve (8), set by the user: they apply at once, the learned hours stay and
+    are fitted anew towards them."""
+    store, config, device = _heat_pump(request, device_id)
+    return _set_start(store, config, device, body.slope, body.shift_k, "user")
+
+
+@router.post("/heat_pump/{device_id}/curve_start/{origin}")
+async def take_curve_start(request: Request, device_id: str, origin: Literal["heat_pump", "learned"]) -> dict[str, Any]:
+    """Start values of the heating curve (8) taken over: the slope of the heat pump's own curve as read now
+    (shift 0; 409 no_value without one), or the learned curve (409 nothing_learned before any hour counted)."""
+    store, config, device = _heat_pump(request, device_id)
+    flow = getattr(_recorder(request), "flow", None)
+    if origin == "heat_pump":
+        slope = flow.heat_pump_slope(device_id) if flow is not None else None
+        if slope is None:
+            raise HTTPException(status_code=409, detail={"reason": "no_value"})
+        return _set_start(store, config, device, slope, 0.0, "heat_pump")
+    curve = flow.curve(device_id, config, datetime.now(UTC)) if flow is not None else None
+    if curve is None or curve.hours == 0:
+        raise HTTPException(status_code=409, detail={"reason": "nothing_learned"})
+    return _set_start(store, config, device, curve.slope, curve.shift_k, "learned")
 
 
 class FlowLimits(BaseModel):

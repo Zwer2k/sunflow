@@ -59,7 +59,7 @@ async def async_setup_entry(
 
 
 # Values of the learned heating curve shown as attribute
-CURVE_KEYS = ("slope", "shift_k", "start_slope", "start_source", "hours")
+CURVE_KEYS = ("slope", "shift_k", "start_slope", "start_shift_k", "start_source", "hours", "learned_pct")
 
 
 def _curve(curve: dict[str, Any] | None) -> dict[str, Any] | None:

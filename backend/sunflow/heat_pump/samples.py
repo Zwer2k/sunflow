@@ -347,8 +347,8 @@ class HeatPumpRecorder:
         weights = {room.entity_id: room.weight for room in config.house.rooms}
         days = max(CURVE_HISTORY_DAYS, STOP_LEARN_DAYS, POWER_LEARN_DAYS)
         for device_id in list(self._recordings):
-            slope0, source = self.flow.start_slope(device_id, config)
-            key = f"{self.curve_key(config)}|{slope0:.3f}"
+            start = self.flow.start(device_id, config)
+            key = f"{self.curve_key(config)}|{start.slope:.3f}|{start.shift_k:.2f}"
             current: Curve | None = self.flow.curves.get(device_id)
             curve_due = not (current is not None and current.key == key and timedelta(0) <= now - current.computed_at < CURVE_REFRESH)
             learned: Learned | None = self.flow.learned.get(device_id)
@@ -360,7 +360,7 @@ class HeatPumpRecorder:
                 since = now - timedelta(days=CURVE_HISTORY_DAYS)
                 curve_rows = [r for r in rows if isinstance(r.get("start"), str) and r["start"] >= since.astimezone(UTC).isoformat()]
                 curve = await asyncio.to_thread(
-                    learn_curve, curve_rows, weights, config.house.climate.setpoint_c, slope0, source, now, key,
+                    learn_curve, curve_rows, weights, start, now, key,
                 ) if curve_due else None
                 stop_start = (self.flow.settings.get(device_id) or ControlSettings()).stop_margin
                 guard = await asyncio.to_thread(learn_guard, rows, now, stop_start) if guard_due else None

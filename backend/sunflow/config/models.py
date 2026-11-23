@@ -15,6 +15,8 @@ from pydantic import (
 )
 
 from sunflow.heat_pump.defaults import (
+    CURVE_SHIFT_RANGE_K,
+    CURVE_SLOPE_RANGE,
     FAST_MAX_H,
     FAST_MAX_H_RANGE,
     FAST_SETTLE_K,
@@ -373,12 +375,37 @@ class DeviceConfig(BaseModel):
     # Heat pumps: learning phase of the stop margin (design/heat_pump.md, 11): Sunflow lowers straight to the
     # flow target, so the heat pump shows where it switches the compressor off; ended by the user.
     flow_learn_stops: bool = True
+    # Heat pumps: start values of the heating curve (design/heat_pump.md, 8): slope and shift the learning
+    # pulls to, and where they came from (heat_pump: read once from the heat pump, user: set, learned: taken
+    # over from the learned curve). None: not set yet - the heat pump's slope while it reports one (then
+    # stored), else the heating surface type's; shift 0.
+    curve_slope_start: float | None = None
+    curve_shift_start: float | None = None
+    curve_start_source: Literal["heat_pump", "user", "learned"] | None = None
 
     @field_validator("flow_active", mode="before")
     @classmethod
     def _flow_active(cls, value: object) -> object:
         # Anything but a real true is off: writing to the heat pump needs the user's explicit switch
         return value is True
+
+    @field_validator("curve_slope_start", mode="before")
+    @classmethod
+    def _curve_slope(cls, value: object) -> object:
+        # Outside the allowed range or no number: not set, without an error
+        low, high = CURVE_SLOPE_RANGE
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) and low <= value <= high else None
+
+    @field_validator("curve_shift_start", mode="before")
+    @classmethod
+    def _curve_shift(cls, value: object) -> object:
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and abs(value) <= CURVE_SHIFT_RANGE_K
+        return value if ok else None
+
+    @field_validator("curve_start_source", mode="before")
+    @classmethod
+    def _curve_source(cls, value: object) -> object:
+        return value if value in ("heat_pump", "user", "learned") else None
 
     @field_validator("flow_min_c", "flow_max_c", mode="before")
     @classmethod

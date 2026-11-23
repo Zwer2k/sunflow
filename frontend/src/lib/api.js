@@ -156,6 +156,10 @@ export const api = {
   heatPumpWriteNow: (deviceId) => request("POST", `/heat_pump/${encodeURIComponent(deviceId)}/write_now`),
   setHeatPumpWriting: (deviceId, active) => request("PUT", `/heat_pump/${encodeURIComponent(deviceId)}/writing`, { active }),
   setHeatPumpLearnStops: (deviceId, active) => request("PUT", `/heat_pump/${encodeURIComponent(deviceId)}/learn_stops`, { active }),
+  setHeatPumpCurveStart: (deviceId, slope, shiftK) =>
+    request("PUT", `/heat_pump/${encodeURIComponent(deviceId)}/curve_start`, { slope, shift_k: shiftK }),
+  takeHeatPumpCurveStart: (deviceId, origin) =>
+    request("POST", `/heat_pump/${encodeURIComponent(deviceId)}/curve_start/${origin}`),
   heatPumpShadowWrites: (deviceId, days = 7) =>
     request("GET", `/heat_pump/${encodeURIComponent(deviceId)}/shadow_writes?days=${days}`),
   heatPumpHistory: (deviceId, hours = 24) =>

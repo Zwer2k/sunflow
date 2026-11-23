@@ -2,12 +2,13 @@
 
     flow = R + S · (R − A) + P
 
-R is the room setpoint, A the outside temperature, S the slope, P the shift (K). Start values: the slope of
-the heat pump's own curve when the profile reads it (HPSU "Heizkurve"), else one per heating surface type;
-P = 0. Learned every hour without a waiting time: from hours of valid heating in which the room was close to
-its setpoint, the effective flow setpoint then was enough - a point (R − A, flow − R). A weighted straight
-line through them (recent days weigh more), pulled towards the start values: with few points the curve
-stays near the start, with many the data count.
+R is the room setpoint, A the outside temperature, S the slope, P the shift (K). Start values per heat pump
+(settable): until set, the slope of the heat pump's own curve when the profile reads it (HPSU "Heizkurve",
+then stored), else one per heating surface type; P = 0. Learned every hour without a waiting time: from hours
+of valid heating in which the room was close to its setpoint, the effective flow setpoint then was enough - a
+point (R − A, flow − R). A weighted straight line through them (recent days weigh more), pulled towards the
+start values as if CURVE_PRIOR_HOURS hours on the start curve said so: with few points the curve stays near
+the start, with many the data count. The share of the data is learned_pct.
 
 Helpers shared with learned.py and the house model (rows of heat_pump_samples) live here as well.
 Computed from the table; what is kept in heat_pump_state.json is only a cache.
@@ -34,10 +35,12 @@ from .defaults import (
 INTERVAL = timedelta(minutes=5)
 HOUR = timedelta(hours=1)
 # Cache format of a curve in heat_pump_state.json; a different one is computed anew
-CACHE_FORMAT = 2
+CACHE_FORMAT = 3
 # Where the start slope comes from
 FROM_HEAT_PUMP = "heat_pump"
 FROM_SURFACE = "surface"
+FROM_USER = "user"
+FROM_LEARNED = "learned"
 
 
 def _float(value: Any) -> float | None:
@@ -76,12 +79,34 @@ def learnable(row: dict[str, Any]) -> bool:
     return flags.get("valid") is True and not flags.get("after_run") and not flags.get("ventilation")
 
 
-def start_slope(surface: str | None, heat_pump_slope: float | None) -> tuple[float, str]:
-    """The start slope: the heat pump's own (within the allowed range), else the heating surface type's."""
+def usable_slope(value: float | None) -> float | None:
+    """A slope within the allowed range, else None."""
     low, high = CURVE_SLOPE_RANGE
-    if heat_pump_slope is not None and low <= heat_pump_slope <= high:
-        return heat_pump_slope, FROM_HEAT_PUMP
-    return curve_slope(surface), FROM_SURFACE
+    return value if value is not None and low <= value <= high else None
+
+
+@dataclass(frozen=True, kw_only=True)
+class Start:
+    """Start values of the curve and where they came from (user, heat_pump, learned or surface)."""
+
+    slope: float
+    shift_k: float
+    source: str
+
+    def same(self, slope: float, shift_k: float) -> bool:
+        return abs(self.slope - slope) < 1e-6 and abs(self.shift_k - shift_k) < 1e-6
+
+
+def start_values(
+    slope: float | None, shift_k: float | None, source: str | None, surface: str | None, heat_pump_slope: float | None,
+) -> Start:
+    """The start values: the stored ones (the user's, read from the heat pump or taken over from the learned
+    curve); while none is stored, the heat pump's own slope, else the heating surface type's; shift 0."""
+    if slope is not None:
+        return Start(slope=slope, shift_k=shift_k or 0.0, source=source or FROM_USER)
+    if (own := usable_slope(heat_pump_slope)) is not None:
+        return Start(slope=own, shift_k=shift_k or 0.0, source=FROM_HEAT_PUMP)
+    return Start(slope=curve_slope(surface), shift_k=shift_k or 0.0, source=FROM_SURFACE)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -94,17 +119,18 @@ class CurvePoint:
     flow_c: float
 
 
-def select_points(rows: list[dict[str, Any]], weights: dict[str, float], setpoint_c: float) -> list[CurvePoint]:
+def select_points(rows: list[dict[str, Any]], weights: dict[str, float]) -> list[CurvePoint]:
     """Hours with at least CURVE_HOUR_MIN_ROWS rows of valid heating, the compressor running, the room within
-    CURVE_ROOM_BAND_K of its setpoint (the row's, else setpoint_c) and the effective setpoint and outside known."""
+    CURVE_ROOM_BAND_K of the row's setpoint and the effective setpoint and outside known. Rows without a stored
+    setpoint (recorded before it was kept) do not count."""
     hours: dict[datetime, list[tuple[float, float, float]]] = defaultdict(list)
     for row in rows:
         start = _start(row)
         if start is None or not learnable(row) or not _full(row):
             continue
         flow, outside, room = _float(row.get("setpoint_c")), _float(row.get("outside_c")), row_room(row, weights)
-        target = _float(row.get("room_setpoint_c")) or setpoint_c
-        if flow is None or outside is None or room is None or abs(room - target) > CURVE_ROOM_BAND_K:
+        target = _float(row.get("room_setpoint_c"))
+        if target is None or flow is None or outside is None or room is None or abs(room - target) > CURVE_ROOM_BAND_K:
             continue
         hours[start.replace(minute=0)].append((target, outside, flow))
     points = []
@@ -119,12 +145,12 @@ def select_points(rows: list[dict[str, Any]], weights: dict[str, float], setpoin
     return points
 
 
-def fit(points: list[CurvePoint], slope0: float, now: datetime) -> tuple[float, float]:
-    """Slope and shift: weighted least squares of (flow − R) over (R − A), with CURVE_PRIOR_HOURS virtual hours
-    on the start curve (slope0, no shift) spread over CURVE_PRIOR_X_K - few points move it a little, many
-    count fully. Within CURVE_SLOPE_RANGE and ±CURVE_SHIFT_RANGE_K."""
+def fit(points: list[CurvePoint], start: Start, now: datetime) -> tuple[float, float, float]:
+    """Slope, shift and the share of the data (0-1): weighted least squares of (flow − R) over (R − A), with
+    CURVE_PRIOR_HOURS virtual hours on the start curve spread over CURVE_PRIOR_X_K - few points move it a
+    little, many count most; the start keeps its share. Within CURVE_SLOPE_RANGE and ±CURVE_SHIFT_RANGE_K."""
     prior = CURVE_PRIOR_HOURS / len(CURVE_PRIOR_X_K)
-    data = [(x, slope0 * x, prior) for x in CURVE_PRIOR_X_K]
+    data = [(x, start.slope * x + start.shift_k, prior) for x in CURVE_PRIOR_X_K]
     for p in points:
         age = max((now - p.start).total_seconds() / 86400, 0.0)
         data.append((p.room_c - p.outside_c, p.flow_c - p.room_c, 0.5 ** (age / CURVE_HALF_LIFE_DAYS)))
@@ -137,7 +163,8 @@ def fit(points: list[CurvePoint], slope0: float, now: datetime) -> tuple[float, 
     low, high = CURVE_SLOPE_RANGE
     slope = min(max(slope, low), high)
     shift = min(max(my - slope * mx, -CURVE_SHIFT_RANGE_K), CURVE_SHIFT_RANGE_K)
-    return slope, shift
+    share = 1.0 - CURVE_PRIOR_HOURS / sw
+    return slope, shift, share
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -147,11 +174,18 @@ class Curve:
     slope: float
     shift_k: float
     start_slope: float
+    start_shift_k: float
     start_source: str
     hours: int
+    # Share of the learned hours in the curve (0-1); the rest is the start
+    learned_share: float
     computed_at: datetime
     # What it depends on besides the table (heating surface type, rooms, start slope); a change relearns it
     key: str = ""
+
+    @property
+    def start(self) -> Start:
+        return Start(slope=self.start_slope, shift_k=self.start_shift_k, source=self.start_source)
 
     def flow_c(self, room_c: float, outside_c: float) -> float:
         """The flow the curve gives for a room setpoint and an outside temperature."""
@@ -165,7 +199,8 @@ class Curve:
         """For the status and the UI."""
         return {
             "slope": round(self.slope, 3), "shift_k": round(self.shift_k, 2), "start_slope": round(self.start_slope, 3),
-            "start_source": self.start_source, "hours": self.hours, "computed_at": self.computed_at.isoformat(),
+            "start_shift_k": round(self.start_shift_k, 2), "start_source": self.start_source, "hours": self.hours,
+            "learned_pct": round(100 * self.learned_share), "computed_at": self.computed_at.isoformat(),
         }
 
     @classmethod
@@ -176,23 +211,27 @@ class Curve:
         try:
             return cls(
                 slope=float(data["slope"]), shift_k=float(data["shift_k"]), start_slope=float(data["start_slope"]),
-                start_source=str(data["start_source"]), hours=int(data["hours"]),
+                start_shift_k=float(data["start_shift_k"]), start_source=str(data["start_source"]), hours=int(data["hours"]),
+                learned_share=float(data["learned_share"]),
                 computed_at=datetime.fromisoformat(data["computed_at"]), key=str(data.get("key") or ""),
             )
         except (KeyError, TypeError, ValueError):
             return None
 
 
-def start_curve(slope0: float, source: str, now: datetime, key: str = "") -> Curve:
-    """The curve before anything is learned: the start slope, no shift."""
-    return Curve(slope=slope0, shift_k=0.0, start_slope=slope0, start_source=source, hours=0, computed_at=now, key=key)
+def start_curve(start: Start, now: datetime, key: str = "") -> Curve:
+    """The curve before anything is learned: the start values."""
+    return Curve(
+        slope=start.slope, shift_k=start.shift_k, start_slope=start.slope, start_shift_k=start.shift_k,
+        start_source=start.source, hours=0, learned_share=0.0, computed_at=now, key=key,
+    )
 
 
-def learn(
-    rows: list[dict[str, Any]], weights: dict[str, float], setpoint_c: float, slope0: float, source: str, now: datetime,
-    key: str = "",
-) -> Curve:
-    """The curve from the rows (any order), pulled towards the start slope."""
-    points = select_points(rows, weights, setpoint_c)
-    slope, shift = fit(points, slope0, now)
-    return Curve(slope=slope, shift_k=shift, start_slope=slope0, start_source=source, hours=len(points), computed_at=now, key=key)
+def learn(rows: list[dict[str, Any]], weights: dict[str, float], start: Start, now: datetime, key: str = "") -> Curve:
+    """The curve from the rows (any order), pulled towards the start values."""
+    points = select_points(rows, weights)
+    slope, shift, share = fit(points, start, now)
+    return Curve(
+        slope=slope, shift_k=shift, start_slope=start.slope, start_shift_k=start.shift_k, start_source=start.source,
+        hours=len(points), learned_share=share, computed_at=now, key=key,
+    )

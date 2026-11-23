@@ -104,21 +104,28 @@ T-Vorlauf). Bei „Witterungsgeführt“ lernt Sunflow, schreibt aber nichts.
 **Vorlauf = R + S · (R − A) + P**
 
 - R = Raum-Soll (später das Planziel, 14), A = Außen (Regelung), S = Steilheit, P = Verschiebung (K).
-- Startwerte: S aus der WP, wenn das Profil eine Rolle dafür hat (HPSU `heizkurve`), sonst je Heizflächentyp
-  (Fußboden 0,6, gemischt 1,0, Heizkörper 1,4); P = 0.
+- **Startwerte S₀, P₀ je WP**, einstellbar. Solange keine gesetzt sind, liest Sunflow S₀ einmal aus der WP,
+  wenn das Profil eine Rolle dafür hat (HPSU „Heizkurve“), und speichert ihn; P₀ = 0 (die HPSU kennt keine
+  Verschiebung). Ohne Wert der WP gilt S₀ je Heizflächentyp (Fußboden 0,6, gemischt 1,0, Heizkörper 1,4),
+  nicht gespeichert. Danach gelten die gespeicherten Werte, egal was die WP meldet.
+- Startwerte ändern: eingeben, „aus der WP neu einlesen“ (S₀ wie gemeldet, P₀ = 0) oder „Gelerntes
+  übernehmen“ (S, P der gelernten Kurve, z. B. als Start für die nächste Heizperiode).
 - Physik: Das Haus verliert Wärme proportional zu R − A, die Heizflächen geben sie etwa proportional zu
   Vorlauf − R ab; für Fußboden genügt eine Gerade. Begrenzung durch die Grenzen (10).
 - Eine Soll-Änderung um 1 K hebt den Vorlauf sofort um 1 + S Kelvin.
 
 **Lernen (stündlich, ohne Wartezeit):**
-- Datenpunkte: Stunden mit gültigem Heizbetrieb, ohne schnelle Änderung, in denen Raum-Ist nahe am Soll
-  lag (±0,3 K): (R − A, verwendetes Vorlauf-Ziel − R). Dieser Vorlauf hat gereicht.
+- Datenpunkte: Stunden mit gültigem Heizbetrieb, laufendem Kompressor, ohne schnelle Änderung, in denen
+  Raum-Ist nahe am Raum-Soll dieser Stunde lag (±0,3 K): (R − A, wirksamer Vorlauf-Soll − R). Dieser Vorlauf
+  hat gereicht. Messwerte ohne gespeicherten Raum-Soll zählen nicht.
 - Gewichtete Ausgleichsgerade über die letzten 28 Tage (Halbwertszeit 14 Tage), **zu den Startwerten hin
-  gezogen**: mit wenigen Punkten bleibt die Kurve nahe am Start, mit vielen zählen die Daten. S bleibt in
-  0,2–3,0, P in ±10 K.
+  gezogen**: die Startkurve zählt wie 24 Stunden auf ihr. S bleibt in 0,2–3,0, P in ±10 K.
+- **Anteil des Gelernten** = Gewicht der Datenpunkte ÷ (Gewicht + 24): anfangs 0 % (nur Startwerte), dann
+  steigend; 100 % wird nie erreicht (alle Stunden der 28 Tage ≈ 94 %). Angezeigt mit S, P und S₀, P₀.
 - Ändert sich die gelernte Kurve, wird die Korrektur um alt − neu verschoben (in ±3 K): das Vorlauf-Ziel
-  springt nicht, die Korrektur wandert in die Kurve. Ändert sich der Startwert (Heizkurve der WP oder
-  Heizflächentyp umgestellt), gilt die neue Startkurve sofort ohne Verschiebung, bis neu gelernt ist.
+  springt nicht, die Korrektur wandert in die Kurve. Ändern sich die Startwerte (vom Nutzer oder, ohne
+  gespeicherte, über den Heizflächentyp), gilt die neue Kurve sofort ohne Verschiebung; die Datenpunkte
+  bleiben und werden zu den neuen Startwerten hin neu verrechnet.
 
 ## 9. Korrektur
 
@@ -206,16 +213,17 @@ verwerfbarer Cache. Bei „Aus“ wird nichts aufgezeichnet und nichts gelernt.
   (gültig, Gründe, Sperre, schnelle Änderung). Ein Jahr.
 - `heat_pump_state.json`: Korrektur, geschriebener Wert, Sperre, fremde Schreiber, Caches des Gelernten.
 - `config.json`: Raum-Soll, Modus, Spielraum, Räume, Heizflächentyp, Außentemperatur-Quelle, je WP
-  Grenzen, „Lernen + Regeln“, Lernphase.
+  Grenzen, „Lernen + Regeln“, Lernphase, Startwerte der Heizkurve mit Herkunft.
 - `eeprom_writes.json`: echte Schreibvorgänge (Budget).
 
 ## 16. Home Assistant und UI
 
 - Thermostat „Haus“: Raum-Soll, Raum-Ist, Aus/Heizen; Attribute Vorlauf-Ziel, Stellwert, Planziel, Grund.
 - Sensoren je WP: Vorlauf-Ziel, Stellwert, Schreibvorgänge heute; dazu die Prognose-Sensoren (7).
-- UI (Einstellungen → Wärmepumpe): Statuszeile, Modus, Raum-Soll; je WP Regelkette, Verlauf, Anlage,
-  Schreiben und Schutz, Gelernt (Heizkurve, Abschaltgrenze, Stopps, Lernphase); Hausmodell; Einstellungen.
-  Erklärtexte über „?“.
+- UI (Einstellungen → Wärmepumpe): Statuszeile, Modus, Raum-Soll; je WP Regelkette (Raum-Ist und Raum-Soll
+  → Korrektur, Raum-Soll und Außen → Heizkurve, daneben die Formel mit den aktuellen Zahlen), Verlauf,
+  Anlage, Schreiben und Schutz, Gelernt (Heizkurve mit Anteil des Gelernten und Startwerten, Abschaltgrenze,
+  Stopps, Lernphase); Hausmodell; Einstellungen. Erklärtexte über „?“.
 
 ## 17. Offene Punkte und Umsetzungsstand
 
