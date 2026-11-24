@@ -560,7 +560,7 @@ export default {
   "aus Raum-Ist und Raum-Soll, Nachstellzeit {ti} h, höchstens ± {limit} K": "from room temperature and setpoint, integral time {ti} h, at most ± {limit} K",
   "Korrektur angehalten: {reasons}": "Correction paused: {reasons}",
   "Korrektur läuft.": "Correction running.",
-  "Bei „Nur Lernen“ wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; bei „Lernen + Regeln“ beginnt sie bei 0.": "With “Learning only” the correction has no effect back and may run to its limit; with “Learning + control” it starts at 0.",
+  "Bei „Nur Lernen“ wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Einschalten von „Lernen + Regeln“ wird sie so gesetzt, dass das Vorlauf-Ziel dem Max T-Vorlauf der Wärmepumpe entspricht (kein Sprung).": "With “Learning only” the correction has no effect back and may run to its limit; when “Learning + control” is switched on it is set so that the flow target equals the heat pump's Max T-Vorlauf (no jump).",
   "Fußbodenheizung": "Underfloor heating",
   "gemischt (Fußboden und Heizkörper)": "mixed (underfloor and radiators)",
   "Heizkörper": "Radiators",

@@ -1,7 +1,7 @@
 """Writing to the heat pump for real (design/heat_pump.md, 4, 12).
 
-The user's switch per heat pump (DeviceConfig.flow_active, default off); taking over with the base frozen and
-the correction at 0; the set value (EEPROM, EepromGuard) and the block go to the heat pump through a fake Home
+The user's switch per heat pump (DeviceConfig.flow_active, default off); taking over with the
+correction set so that the flow target is the real Max T-Vorlauf; the set value (EEPROM, EepromGuard) and the block go to the heat pump through a fake Home
 Assistant; a failed write is taken back; the check after adopt_delay; switching off resets nothing. The
 acceptance is a simulation with a simple HPSU (section 14): it takes Max T-Vorlauf over after 60 s, starts
 and stops by the 3 K rules, jumps after a start and follows the room thermostat block. Nothing here talks to
@@ -229,8 +229,10 @@ async def test_shadow_writes_nothing(tmp_path: Path) -> None:
 # Taking over
 
 
-async def test_switching_on_starts_the_correction_at_0(tmp_path: Path) -> None:
+async def test_switching_on_sets_the_correction_to_the_real_value(tmp_path: Path) -> None:
     plant = Plant(tmp_path)
+    # The curve asks for 30 °C, the heat pump runs at 31 °C
+    plant.target(30.0)
     await plant.run(5)
     # A correction run up in the shadow, a virtual write in the guard
     plant.flow._correction("hp", "fixed").value_k = 2.0
@@ -238,16 +240,31 @@ async def test_switching_on_starts_the_correction_at_0(tmp_path: Path) -> None:
     plant.device.flow_active = True
     taken = await plant.minute()
 
-    assert taken["correction_k"] == 0.0 and taken["target_c"] == pytest.approx(31.0)
+    # No jump: the flow target is the real Max T-Vorlauf, the correction the rest
+    assert taken["correction_k"] == pytest.approx(1.0) and taken["target_c"] == pytest.approx(31.0)
     assert taken["setpoint"]["mode"] == "active"
     # The guard starts from the real Max T-Vorlauf, without time or reason; nothing needed, nothing written
     assert (taken["setpoint"]["written_c"], taken["setpoint"]["written_at"], taken["setpoint"]["written_reason"]) == (31.0, None, None)
     assert plant.ha.calls == []
     assert any("Lernen + Regeln eingeschaltet" in n for n in plant.notes)
-    assert any("übernimmt die Wärmepumpe: Korrektur 0" in n for n in plant.notes)
+    assert any("übernimmt die Wärmepumpe: Max T-Vorlauf 31" in n for n in plant.notes)
     # The flags survive a restart: no second takeover
     stored = HeatPumpStateStore(tmp_path).devices["hp"]
-    assert (stored["active"], stored["writing"], stored["corrections"]["fixed"]) == (True, True, 0.0)
+    assert (stored["active"], stored["writing"], stored["corrections"]["fixed"]) == (True, True, pytest.approx(1.0))
+    # The next minutes go on from there
+    again = await plant.minute()
+    assert again["correction_k"] == pytest.approx(1.0) and plant.ha.calls == []
+
+
+async def test_takeover_limits_the_correction(tmp_path: Path) -> None:
+    plant = Plant(tmp_path)
+    # The curve asks for 26 °C, the heat pump runs at 31 °C: more than the limit of the correction
+    plant.target(26.0)
+    await plant.run(3)
+    plant.device.flow_active = True
+    taken = await plant.minute()
+
+    assert taken["correction_k"] == pytest.approx(3.0) and taken["target_c"] == pytest.approx(29.0)
 
 
 async def test_takeover_with_a_foreign_block_keeps_it(tmp_path: Path) -> None:
@@ -437,7 +454,8 @@ async def test_mode_off_writes_nothing_and_takes_over_anew(tmp_path: Path) -> No
     assert status["guard"]["inactive"] == ["mode_off"]
     plant.config.house.climate.mode = "heat"
     back = await plant.minute()
-    assert back["correction_k"] == 0.0 and back["target_c"] == pytest.approx(34.0)
+    # Taken over anew: the flow target is the real Max T-Vorlauf (31 °C), not the correction of before
+    assert back["correction_k"] == pytest.approx(-3.0) and back["target_c"] == pytest.approx(31.0)
     assert sum("Sunflow übernimmt die Wärmepumpe" in n for n in plant.notes) == 2
 
 
@@ -483,10 +501,13 @@ async def test_simulation_learning_phase_lets_it_stop_and_restarts(tmp_path: Pat
     """Learning the stop margin: lowered straight to the flow target, the HPSU switches off (Tv ≥ setpoint + 3 K);
     5 minutes later Sunflow restarts it, 10 minutes after the start it lowers again."""
     plant = Plant(tmp_path, Hpsu(max_setpoint=35.0, tv=34.0, follow=0.1))
-    plant.target(29.0)
+    plant.target(35.0)
     await plant.run(5)
     plant.device.flow_active = True
-    await plant.run(62)
+    await plant.minute()
+    # Taken over without a jump at 35 °C; then the curve asks for 29 °C
+    plant.target(29.0)
+    await plant.run(61)
 
     writes = [(r, v) for r, v in plant.writes() if r in ("normal", "start", "track")]
     assert plant.hpsu.stops, "the learning phase lets the compressor stop"

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.34
+
+- Heat pumps: switching on "Learning + control" no longer starts the correction at 0. It is set so that the flow target equals the Max T-Vorlauf the heat pump runs with (within ±3 K), so the flow does not drop or jump when Sunflow takes over.
+- Heat pumps: a room with a fast change (airing, cooking) only leaves the room temperature; the correction goes on with the other rooms instead of being held as a whole. It is held only when no room counts.
+
 ## 0.80.33
 
 - The heating curve learns from every 5 minute row (worth 1/12 hour) instead of whole hours with at least 6 valid rows: hours broken by defrost or hot water count with their valid rows. "Learned from" shows hours with one decimal. The curve is computed anew once after the update.

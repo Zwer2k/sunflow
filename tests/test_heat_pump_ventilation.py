@@ -288,14 +288,12 @@ async def test_correction_not_driven_by_airing(tmp_path: Path) -> None:
 
     flows = await house.run(_airing, 4 * 60)
 
-    aired = [f for f in flows if "ventilation" in f["frozen"]]
-    assert aired
-    # P part: airing would have raised it by ~0.5 K; while aired nothing changes, after it the room
-    # comes back without a jump and the slow rest of the recovery counts (the integral moves a little)
+    # Not frozen: the correction goes on with the other room
+    assert all("ventilation" not in f["frozen"] for f in flows)
+    # P part: airing would have raised it by ~0.5 K; the aired room leaves and comes back without a jump,
+    # the slow rest of the recovery counts (the integral moves a little)
     corrections = [f["correction_k"] for f in flows]
     assert max(abs(c) for c in corrections) < 0.15
-    back = max(i for i, f in enumerate(flows) if "ventilation" in f["frozen"]) + 1
-    assert corrections[back] == corrections[back - 1]
     status = house.shadow.house_status()
     assert status["rooms_ventilated"] == []
     assert [e["entity_id"] for e in status["ventilation_recent"]] == [ROOM]
@@ -312,7 +310,18 @@ async def test_aired_room_left_out_of_room_temperature_and_status(tmp_path: Path
     assert status["rooms_used"] == [OTHER]
     assert status["room_c"] == 20.6
     assert status["ventilation"][0]["entity_id"] == ROOM
-    assert house.shadow.flow_status("hp")["frozen"] == ["ventilation"]
+    assert house.shadow.flow_status("hp")["frozen"] == []
+
+
+async def test_all_rooms_aired_freezes_the_correction(tmp_path: Path) -> None:
+    """Only when no room counts any more is the correction held (rooms_missing)."""
+    house = House(tmp_path)
+    house.config.house.rooms = [Room(entity_id=ROOM)]
+
+    flows = await house.run(_airing, 50)
+
+    assert house.shadow.house_status()["rooms_used"] == []
+    assert flows[-1]["frozen"] == ["rooms_missing"]
 
 
 async def test_airing_survives_a_restart(tmp_path: Path) -> None:
@@ -322,7 +331,7 @@ async def test_airing_survives_a_restart(tmp_path: Path) -> None:
     house.shadow = FlowShadow(HeatPumpStateStore(tmp_path))
     flows = await house.run(_airing, 1, start=50)
 
-    assert flows[0]["frozen"] == ["ventilation"]
+    assert house.shadow.house_status()["rooms_ventilated"] == [ROOM]
     stored = json.loads((tmp_path / "heat_pump_state.json").read_text())
     assert stored["house"]["ventilation"]["active"][0]["entity_id"] == ROOM
 

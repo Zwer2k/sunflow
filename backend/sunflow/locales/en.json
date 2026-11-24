@@ -296,5 +296,5 @@
   "Wiederanlauf bzw. Nachführen wegen des Budgets nicht möglich: Der Kompressor kann aus bleiben oder abschalten.": "Restart or tracking not possible because of the budget: the compressor may stay off or switch off.",
   "Wiederanlauf": "restart",
   "Höchstens {n} Schreibvorgänge je Stunde erreicht: Werte warten.": "At most {n} writes per hour reached: values wait.",
-  "Sunflow übernimmt die Wärmepumpe: Korrektur 0, Max T-Vorlauf {value} °C wie vorgefunden. Geschrieben wird erst, wenn die Regeln es verlangen.": "Sunflow takes over the heat pump: correction 0, Max T-Vorlauf {value} °C as found. Nothing is written until the rules ask for it."
+  "Sunflow übernimmt die Wärmepumpe: Max T-Vorlauf {value} °C wie vorgefunden, die Korrektur wird so gesetzt, dass das Vorlauf-Ziel diesem Wert entspricht. Geschrieben wird erst, wenn die Regeln es verlangen.": "Sunflow takes the heat pump over: Max T-Vorlauf {value} °C as found, the correction is set so that the flow target equals this value. Sunflow writes only when the rules ask for it."
 }

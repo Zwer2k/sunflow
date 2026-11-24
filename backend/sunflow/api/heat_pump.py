@@ -281,7 +281,7 @@ async def set_writing(request: Request, device_id: str, body: Writing) -> dict[s
     """Switch writing to the heat pump for real on or off (4; default off).
 
     On: 409 with the reason when the heat pump is not compatible, not sampled yet, not in the strategy fixed
-    or the ESP regulates; Sunflow takes over with the next tick (base frozen, correction 0) and writes only
+    or the ESP regulates; Sunflow takes over with the next tick (correction so that the flow target is the real Max T-Vorlauf) and writes only
     when the rules ask for it. Off: always; nothing at the heat pump is reset (4)."""
     store: ConfigStore = request.app.state.store
     config = store.load()

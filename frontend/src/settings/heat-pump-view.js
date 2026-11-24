@@ -493,7 +493,7 @@ class SunflowHeatPump extends LitElement {
     `;
   }
 
-  /** Rooms with a fast change now (airing, cooking ...): left out of room temperature and correction. */
+  /** Rooms with a fast change now (airing, cooking ...): left out of the room temperature. */
   _renderFastNow(house) {
     const active = house.ventilation ?? [];
     if (!active.length) return nothing;
@@ -721,7 +721,7 @@ class SunflowHeatPump extends LitElement {
       }
       case "corr":
         return {
-          help: t("PI-Regler: gleicht aus, was die Heizkurve nicht trifft, aus der Abweichung von Raum-Soll und Raum-Ist. Angehalten, solange kein gültiger Heizbetrieb läuft (Warmwasser, Abtauen, Bypass offen, schnelle Änderung), damit er sich nicht aufschaukelt. Bei „Nur Lernen“ wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; bei „Lernen + Regeln“ beginnt sie bei 0."),
+          help: t("PI-Regler: gleicht aus, was die Heizkurve nicht trifft, aus der Abweichung von Raum-Soll und Raum-Ist. Angehalten, solange kein gültiger Heizbetrieb läuft (Warmwasser, Abtauen, Bypass offen) oder kein Raum zählt, damit er sich nicht aufschaukelt. Bei „Nur Lernen“ wirkt die Korrektur nicht zurück und kann bis an ihre Grenze laufen; beim Einschalten von „Lernen + Regeln“ wird sie so gesetzt, dass das Vorlauf-Ziel dem Max T-Vorlauf der Wärmepumpe entspricht (kein Sprung)."),
           tiles: [
             tile(t("Korrektur"), signed(flow.correction_k), t("höchstens ± {limit} K", { limit: decimal(String(flow.parameters.limit_k)) })),
             tile(t("Abweichung"), house.room_c == null ? "–" : signed(Number(house.setpoint_c) - Number(house.room_c)), t("Raum-Soll − Raum-Ist")),

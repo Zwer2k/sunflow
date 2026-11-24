@@ -134,9 +134,11 @@ T-Vorlauf). Bei „Witterungsgeführt“ lernt Sunflow, schreibt aber nichts.
 
 - PI auf Raum-Ist: ΔK = Kp/Ti · e · Δt − Kp · ΔRaum-Ist, e = Raum-Soll − Raum-Ist; Kp = 1 K/K, Ti je
   Heizflächentyp (Fußboden 6 h, gemischt 4 h, Heizkörper 2 h), Totzone ±0,2 K, Begrenzung ±3 K.
-- Eingefroren außerhalb des gültigen Heizbetriebs, bei schneller Änderung, fehlenden Räumen und an einer
-  Grenze (nur in deren Richtung).
-- Bei „Nur Lernen“ wirkt sie nicht zurück; beim Einschalten von „Lernen + Regeln“ beginnt sie bei 0.
+- Eingefroren außerhalb des gültigen Heizbetriebs, wenn kein Raum zählt, und an einer Grenze (nur in deren
+  Richtung). Ein Raum mit schneller Änderung fällt nur aus dem Raum-Ist (6); die Korrektur läuft mit den
+  übrigen Räumen weiter.
+- Bei „Nur Lernen“ wirkt sie nicht zurück. Beim Einschalten von „Lernen + Regeln“ wird sie auf
+  Max T-Vorlauf der WP − Heizkurve gesetzt (in ±3 K): das Vorlauf-Ziel springt nicht.
 
 ## 10. Grenzen
 

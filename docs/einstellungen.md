@@ -115,7 +115,8 @@ zu der Stufe zurück, die zuletzt galt (Nur Lernen oder Lernen + Regeln). **Lern
 Sunflow eingeschaltet, mit Bestätigung, und geht nur, wenn die Wärmepumpe kompatibel und erreichbar ist,
 Messwerte da sind, die HK-Funktion auf Fest steht und die ESP-Regelung aus ist; vorher andere Regler
 abschalten, die diese Werte schreiben. Beim Einschalten übernimmt Sunflow, ohne etwas zu schreiben: Die
-Korrektur beginnt bei 0, Stellwert und Sperre gelten so, wie die Wärmepumpe sie
+Korrektur wird so gesetzt, dass das Vorlauf-Ziel dem Max T-Vorlauf der Wärmepumpe entspricht (höchstens
+±3 K, kein Sprung), Stellwert und Sperre gelten so, wie die Wärmepumpe sie
 gerade hat (eine fremde Sperre bleibt fremd). Geschrieben wird erst, wenn die Regeln es verlangen; jeder
 Schreibvorgang steht mit Grund im Journal. Schlägt ein Schreibvorgang fehl, nimmt Sunflow ihn zurück
 (Journal) und versucht es wieder, wenn die Regeln es verlangen. Etwa eine Minute nach dem Schreiben prüft

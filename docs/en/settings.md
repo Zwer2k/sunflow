@@ -113,7 +113,7 @@ level that applied last (learning only or learning + control). **Learning + cont
 Sunflow, with a confirmation, and only when the heat pump is compatible and reachable, values are there, the
 heating circuit function is fixed and the ESP regulation is off; switch off other controllers writing these
 values first. When switched on, Sunflow takes over without writing anything: the
-correction starts at 0, set value and block count as the heat pump has them (a block set by someone else
+correction is set so that the flow target equals the heat pump's Max T-Vorlauf (at most ±3 K, no jump), set value and block count as the heat pump has them (a block set by someone else
 stays someone else's). Sunflow writes only when the rules ask for it; every write is in the journal with its
 reason. A write that fails is taken back (journal) and tried again when the rules ask for it. About a minute
 after a write Sunflow checks that the heat pump took the value over: if it does not show it, Sunflow goes on

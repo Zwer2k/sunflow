@@ -6,8 +6,9 @@ with R the room setpoint, A the outside temperature, and the room correction (9)
 changes, the correction is shifted by old − new curve value (within its limit), so the flow target does not
 jump. Then limits, protection (guard.py) and writing (writer.py). With "Nur Lernen" (shadow) everything is
 computed and shown, nothing is written; with "Lernen + Regeln" (DeviceConfig.flow_active, active.py) the set
-value and the block go to the heat pump. Taking over starts the correction at 0 and the protection layer
-from the real Max T-Vorlauf and block; switching off resets nothing.
+value and the block go to the heat pump. Taking over sets the correction so that the flow target equals the
+real Max T-Vorlauf (no jump, within its limit) and starts the protection layer from the real Max T-Vorlauf and
+block; switching off resets nothing.
 """
 
 from dataclasses import dataclass
@@ -107,6 +108,8 @@ class FlowShadow:
         self._data_dir = data_dir or store.data_dir
         house = store.house
         self._corrections: dict[tuple[str, str], Correction] = {}
+        # Taken over this minute: the real Max T-Vorlauf the correction is set to once the curve is known (9)
+        self._adopted: dict[str, float | None] = {}
         # Strategy each heat pump was computed in last (a change starts the new one without a jump)
         self._active: dict[str, str] = {}
         self._reported: dict[str, datetime | None] = {}
@@ -339,12 +342,11 @@ class FlowShadow:
             self.last_minutes[device_id] = minute
             reading, evaluation = minute.reading, minute.evaluation
             self._slopes[device_id] = reading.values.get(SLOPE_ROLE)
-            # The user's switch; taking over starts the correction at 0
+            # The user's switch; taking over sets the correction to the real Max T-Vorlauf (below)
             self._switch(config, device_id, device, minute, stored, room.value_c, now)
             frozen = list(evaluation.frozen)
-            if self.aired:
-                frozen.append("ventilation")
-            elif room.value_c is None:
+            # A room with a fast change only leaves the room temperature (6); frozen only without any room
+            if room.value_c is None:
                 frozen.append("rooms_missing")
             if config.house.climate.mode == "off":
                 # Mode off ("Aus"): the correction does not learn either
@@ -377,6 +379,8 @@ class FlowShadow:
             curve_c = curve.flow_c(setpoint, outside) if outside is not None else None
             if curve_c is not None and correction_k is not None:
                 correction_k = self._follow_curve(device_id, strategy, stored, curve, setpoint, outside)
+            if device_id in self._adopted:
+                correction_k = self._adopt_correction(device_id, strategy, self._adopted.pop(device_id), curve_c, correction_k)
             if correction_k is not None:
                 stored.setdefault("corrections", {})[strategy] = round(correction_k, 4)
             target = curve_c + correction_k if curve_c is not None and correction_k is not None else None
@@ -392,6 +396,7 @@ class FlowShadow:
         for gone in set(self._store.devices) - set(minutes):
             del self._store.devices[gone]
             self.curves.pop(gone, None)
+            self._adopted.pop(gone, None)
             self.last_minutes.pop(gone, None)
             self._slopes.pop(gone, None)
             self._outside.pop(gone, None)
@@ -437,8 +442,8 @@ class FlowShadow:
     ) -> bool:
         """The user's switch (4); True while Sunflow takes the heat pump over (switched on, mode heat).
 
-        Switched on: journal; once in mode heat Sunflow takes over (correction 0, protection layer from the
-        real values). Switched off: nothing is reset (12), journal; the shadow again. Mode off while switched
+        Switched on: journal; once in mode heat Sunflow takes over (correction so that the flow target is the
+        real Max T-Vorlauf, protection layer from the real values). Switched off: nothing is reset (12), journal; the shadow again. Mode off while switched
         on writes nothing (inactive); back in mode heat Sunflow takes over anew."""
         on = device.flow_active
         self.active[device_id] = on
@@ -464,8 +469,10 @@ class FlowShadow:
         return writing
 
     def _adopt(self, device_id: str, minute: "Minute", stored: dict[str, Any], room_c: float | None, now: datetime) -> None:
-        """Taking over (4, 9): the correction of every strategy at 0 (new reference, no step), the protection
-        layer from the real Max T-Vorlauf and block; written is only what the rules ask for."""
+        """Taking over (4, 9): the correction of every strategy at 0 (new reference, no step); that of the
+        current strategy is set to the real Max T-Vorlauf once the curve of this minute is known
+        (_adopt_correction). The protection layer from the real Max T-Vorlauf and block; written is only what
+        the rules ask for."""
         reading = minute.reading
         actual = reading.values.get("max_flow_setpoint")
         self.guard(device_id).adopt(actual, reading.blocked, now)
@@ -475,16 +482,30 @@ class FlowShadow:
             correction.value_k = 0.0
             correction.hold(room_c, now)
         stored["corrections"] = dict.fromkeys(sorted(strategies), 0.0)
+        self._adopted[device_id] = actual
         writer = self.writer(device_id)
         writer.pending, writer.manual_at = None, None
         self.adopt_check(device_id).reset()
         message = t(
-            "Sunflow übernimmt die Wärmepumpe: Korrektur 0, Max T-Vorlauf {value} °C wie vorgefunden. Geschrieben wird erst, wenn die Regeln es verlangen.",
+            "Sunflow übernimmt die Wärmepumpe: Max T-Vorlauf {value} °C wie vorgefunden, die Korrektur wird so gesetzt, dass das Vorlauf-Ziel diesem Wert entspricht. Geschrieben wird erst, wenn die Regeln es verlangen.",
             value=number(actual) if actual is not None else "–",
         )
         if reading.blocked:
             message = t("{message} Die Raumthermostat-Sperre ist gesetzt, nicht von Sunflow: Sunflow hebt sie nicht auf.", message=message)
         self.notes.append((device_id, message, False))
+
+    def _adopt_correction(
+        self, device_id: str, strategy: str, actual: float | None, curve_c: float | None, correction_k: float | None,
+    ) -> float | None:
+        """Taken over (9): the correction is real Max T-Vorlauf − heating curve, within its limit, so the flow
+        target does not jump. Without the real value, the curve or a strategy it stays at 0. Returns the correction."""
+        if correction_k is None or strategy == UNKNOWN:
+            return correction_k
+        correction = self._correction(device_id, strategy)
+        if actual is not None and curve_c is not None:
+            correction.value_k = 0.0
+            correction.shift(actual - curve_c)
+        return correction.value_k
 
     async def _guard_step(
         self, config: SunflowConfig, device_id: str, device: DeviceConfig, minute: "Minute",

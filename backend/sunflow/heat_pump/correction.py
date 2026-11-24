@@ -6,8 +6,8 @@ The proportional part acts on the room temperature itself, so a setpoint change 
 depends on the heating surface type (defaults.correction_ti_h); in the incremental form a change of Ti
 only changes the increments from then on, never the correction itself (no jump).
 A step is taken when the room temperature changed, at the latest CORRECTION_MAX_STEP after the last
-one (then only the integral part); Δt is never longer than that. While frozen (no valid heating, fast
-change, no room data) nothing changes, and what the room did meanwhile is dropped, not made up later. The
+one (then only the integral part); Δt is never longer than that. While frozen (no valid heating, no
+room data) nothing changes, and what the room did meanwhile is dropped, not made up later. The
 correction is clamped to ±CORRECTION_LIMIT (an increment beyond is cut: anti-windup).
 """
 
