@@ -194,6 +194,12 @@ class Evaluation:
     after_run: tuple[str, ...] = ()
     # The heat pump limits the flow itself (effective setpoint below the set value)
     self_limited: bool = False
+    # When heating becomes valid if only waiting times hold it (after-runs, bypass settling); else None
+    valid_at: datetime | None = None
+
+
+# Reasons of the frozen list that end by themselves at a known time
+_TIMED = ("bypass_settling",)
 
 
 class HeatingTracker:
@@ -203,6 +209,8 @@ class HeatingTracker:
         """Initialize with the profile's times."""
         self.settings = settings
         self._bypass_closed_since: datetime | None = None
+        # When the bypass settling ends (with bypass_settling)
+        self._bypass_settled_at: datetime | None = None
         # End of the last hot water production / defrost by canonical activity
         self._ends: dict[str, datetime] = {}
         self._activity: str | None = None
@@ -249,6 +257,7 @@ class HeatingTracker:
             return "bypass"
         own = self._bypass_closed_since = self._bypass_closed_since or now
         since = reading.bypass_closed_since or own
+        self._bypass_settled_at = since + self.settings.settle_after_bypass
         return None if now - since >= self.settings.settle_after_bypass else "bypass_settling"
 
     def _self_limited(self, reading: Reading, now: datetime) -> tuple[bool, str | None]:
@@ -293,4 +302,26 @@ class HeatingTracker:
         limited, reason = self._self_limited(reading, now)
         if reason is not None:
             frozen.append(reason)
-        return Evaluation(valid=not frozen, frozen=tuple(sorted(frozen)), after_run=after_run, self_limited=limited)
+        return Evaluation(
+            valid=not frozen, frozen=tuple(sorted(frozen)), after_run=after_run, self_limited=limited,
+            valid_at=self._valid_at(frozen, after_run),
+        )
+
+    def _valid_at(self, frozen: list[str], after_run: tuple[str, ...]) -> datetime | None:
+        """When heating becomes valid, if only after-runs and the bypass settling hold it (status: why the set
+        value waits and until when); None when valid or something else holds it."""
+        timed = {f"after_{kind}" for kind in after_run} | set(_TIMED)
+        if not frozen or any(reason not in timed for reason in frozen):
+            return None
+        ends = []
+        for kind in after_run:
+            end = self._ends.get(kind)
+            length = self.settings.frozen_after.get(kind) or max(self.settings.frozen_after.values())
+            if end is None:
+                return None
+            ends.append(end + length)
+        if "bypass_settling" in frozen:
+            if self._bypass_settled_at is None:
+                return None
+            ends.append(self._bypass_settled_at)
+        return max(ends) if ends else None

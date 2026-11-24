@@ -175,7 +175,11 @@ Sunflow sagt das Schalten des Kompressors nicht voraus, es reagiert darauf.
 ## 12. Schreiben
 
 - Erste Änderung nach einer Ruhepause sofort; danach Mindestabstand 5 min (Wiederanlauf, Nachführen:
-  2 min), dazwischen gilt nur der letzte Wert. Normale Werte nur bei Abweichung > 0,5 K.
+  2 min), dazwischen gilt nur der letzte Wert. Normale Werte nur bei Abweichung > 0,5 K und nur bei gültigem
+  Heizbetrieb (4); Wiederanlauf und Nachführen auch sonst.
+- **Wartegrund:** Weicht der Stellwert vom Vorlauf-Ziel ab, zeigt der Status, warum er wartet (nach dem Start,
+  kein gültiger Heizbetrieb mit Gründen, Warmwasser/Abtauen, Kompressor aus, Sperre, Mindestabstand, Budget,
+  Totzone) und, wenn bekannt, bis wann (Ende von Nachlauf und Bypass-Wartezeit, Start + 10 min, Mindestabstand).
 - Budget (Profil): 48 je Tag, dazu 24 nur für Wiederanlauf/Nachführen, höchstens 6 je Stunde; Tag in der
   Zeitzone von HA. Ist es erschöpft, wartet der Wert (Journal einmal). Die Sperre zählt nicht (kein EEPROM).
 - „Jetzt schreiben“ (UI) überspringt den Mindestabstand, nicht das Budget.
@@ -228,7 +232,7 @@ verwerfbarer Cache. Bei „Aus“ wird nichts aufgezeichnet und nichts gelernt.
 - UI (Einstellungen → Wärmepumpe): Statuszeile, Modus, Raum-Soll; je WP Regelkette (Raum-Ist und Raum-Soll
   → Korrektur, Raum-Soll und Außen → Heizkurve; ein Klick auf einen Block zeigt darunter Einzelheiten, bei
   der Heizkurve die Formel mit den aktuellen Zahlen, den Anteil des Gelernten und die Startwerte zum
-  Einstellen), Verlauf, Anlage, Schreiben und Schutz, Gelernt (Heizkurve, Anteil des Gelernten, Startwerte
+  Einstellen, beim Schutz Stellwert → Vorlauf-Ziel mit Wartegrund), Verlauf, Anlage, Schreiben und Schutz, Gelernt (Heizkurve, Anteil des Gelernten, Startwerte
   nur angezeigt, Abschaltgrenze, Stopps, Lernphase); Hausmodell; Einstellungen. Erklärtexte über „?“.
 
 ## 17. Offene Punkte und Umsetzungsstand

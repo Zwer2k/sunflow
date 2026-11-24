@@ -89,6 +89,15 @@ PHASE_IDLE = "idle"
 PHASE_BLOCKED = "blocked"
 PHASE_INACTIVE = "inactive"
 
+# Why the set value is not the flow target now (status, UI): set by the protection layer here, by the write
+# layer in write_step (writer.py: spacing, budget, deadband)
+WAIT_INACTIVE = "inactive"
+WAIT_BLOCKED = "blocked"
+WAIT_BUSY = "busy"
+WAIT_OFF = "off"
+WAIT_STARTING = "starting"
+WAIT_NOT_VALID = "not_valid"
+
 RESTART_AFTER = timedelta(seconds=RESTART_AFTER_S)
 LOWER_AFTER = timedelta(seconds=LOWER_AFTER_S)
 PEAK_LOOKBACK = timedelta(seconds=PEAK_LOOKBACK_S)
@@ -105,6 +114,10 @@ def _time(text: Any) -> datetime | None:
         return datetime.fromisoformat(text) if isinstance(text, str) else None
     except ValueError:
         return None
+
+
+def _wait(reason: str, until: datetime | None = None, causes: list[str] | None = None) -> dict[str, Any]:
+    return {"reason": reason, "until": until, "causes": list(causes or [])}
 
 
 def _float(value: Any) -> float | None:
@@ -162,6 +175,8 @@ class GuardResult:
     manual: dict[str, Any] | None = None
     # A foreign change of the set value this minute (foreign.py)
     foreign: dict[str, Any] | None = None
+    # Why the set value is not the flow target now: {"reason", "until" (datetime or None), "causes"}
+    wait: dict[str, Any] | None = None
     # Journal entries (message, warn)
     notes: list[tuple[str, bool]] = field(default_factory=list)
     # The journal entry of each write in writes (taken back with it when writing for real fails)
@@ -265,6 +280,7 @@ class Guard:
         result.inactive = tuple(inactive)
         if inactive:
             result.phase = PHASE_INACTIVE
+            result.wait = _wait(WAIT_INACTIVE, causes=inactive)
             self.off_since = None
         else:
             self._decide(data, result, tv, running, low, high)
@@ -405,21 +421,25 @@ class Guard:
         self._block(data, result)
         if self.block:
             result.phase = PHASE_BLOCKED
+            result.wait = _wait(WAIT_BLOCKED, causes=[self.block_reason] if self.block_reason else [])
             self.off_since = None
             return
         activity = data.reading.activity
         if activity in BUSY:
             result.phase = activity
+            result.wait = _wait(WAIT_BUSY, causes=[activity])
             return
         if not running:
             if not self.heat_wanted(data) or self.off_since is None:
                 result.phase = PHASE_IDLE
+                result.wait = _wait(WAIT_OFF)
                 return
             result.off_since = self.off_since
             result.restart_at = self.off_since + RESTART_AFTER
             result.floor_c = clamp(round_up(tv + data.values.start_margin, step), low, high, step)
             if now < result.restart_at:
                 result.phase = PHASE_OFF
+                result.wait = _wait(WAIT_OFF, until=result.restart_at)
                 return
             result.phase = PHASE_RESTART
             if result.floor_c > self.written_c + _EPS:
@@ -435,6 +455,15 @@ class Guard:
             self._request(result, clamp(round_up(bound + data.values.steady_swing, step), low, high, step), TRACK)
             return
         if settling or result.desired_c is None or not data.evaluation.valid:
+            if result.desired_c is not None and abs(result.desired_c - self.written_c) > data.settings.deadband + _EPS:
+                # The flow target would be written: why not yet, and until when (all waiting times)
+                evaluation = data.evaluation
+                ends = [self.run_since + LOWER_AFTER] if settling and self.run_since is not None else []
+                if not evaluation.valid:
+                    ends = [*ends, evaluation.valid_at] if evaluation.valid_at is not None else []
+                    result.wait = _wait(WAIT_NOT_VALID, until=max(ends) if ends else None, causes=list(evaluation.frozen))
+                else:
+                    result.wait = _wait(WAIT_STARTING, until=max(ends) if ends else None)
             return
         self._request(result, max(result.desired_c, bound) if bound is not None else result.desired_c, NORMAL_WRITE)
 

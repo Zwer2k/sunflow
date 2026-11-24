@@ -41,6 +41,8 @@ INACTIVE = "inactive"
 BUDGET = "budget"
 # Why a wanted value waits
 SPACING = "spacing"
+# Why the flow target is not written: within the deadband of the written value (status, UI)
+DEADBAND = "deadband"
 
 
 def _iso(moment: datetime) -> str:
@@ -244,6 +246,15 @@ def write_step(guard: "Guard", writer: Writer, data: "GuardInput", *, active: bo
         if isinstance(budget, WriteBudget) and limit is not None and budget.notice(limit, data.at):
             result.notes.append((budget_text(limit, budget.limits, not active), True))
     result.pending = pending
+    if outcome.write is not None:
+        result.wait = None
+    elif pending is not None:
+        result.wait = {"reason": pending.held, "until": pending.due_at, "causes": [pending.budget] if pending.budget else []}
+    elif (
+        result.wait is None and result.request is not None and not result.request.protect and guard.written_c is not None
+        and abs(result.request.value_c - guard.written_c) > _EPS
+    ):
+        result.wait = {"reason": DEADBAND, "until": None, "causes": []}
     result.manual = outcome.manual_result
     result.notes.extend(outcome.notes)
     return result

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.35
+
+- Heat pumps: when the set value differs from the flow target, the block "Protection" of the control chain shows why it waits and until when (after the start, no valid heating with its reasons, hot water/defrost, compressor off, block, minimum spacing, budget, deadband); a click shows the tile "Set value → flow target". The status carries it as `guard.wait`.
+
 ## 0.80.34
 
 - Heat pumps: switching on "Learning + control" no longer starts the correction at 0. It is set so that the flow target equals the Max T-Vorlauf the heat pump runs with (within ±3 K), so the flow does not drop or jump when Sunflow takes over.

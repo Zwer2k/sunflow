@@ -224,6 +224,57 @@ def test_normal_writes_only_in_valid_heating() -> None:
     assert sim.writes() == []
 
 
+# Why the set value is not the flow target (status)
+
+
+def test_wait_after_the_start_until_the_lowering() -> None:
+    sim = Sim(written=28.0)
+    sim.target = 31.0
+    sim.off(6, tv=27.0)
+    sim.real_setpoint = sim.effective = 30.0
+    starting = sim.minute(29.0)
+
+    assert starting.wait == {"reason": "starting", "until": sim.guard.run_since + timedelta(minutes=10), "causes": []}
+
+
+def test_wait_for_valid_heating_with_its_end() -> None:
+    """Running settled, heating not valid yet (after defrost): the reasons and when it ends."""
+    sim = Sim(written=29.0)
+    sim.target = 31.0
+    sim.run([29.0] * 12)
+    reading = Reading(
+        program="heating", activity="heating", strategy="fixed", blocked=False, error="err_0", compressor=True,
+        values={"flow_temperature": 29.0, "flow_setpoint": 29.0, "max_flow_setpoint": 29.0, "bypass_valve": 0.0},
+    )
+    sim.guard.written_c = 29.0
+    end = sim.now + 7 * MIN
+    result = write_step(sim.guard, Writer(), GuardInput(
+        at=sim.now, reading=reading, settings=sim.settings, values=values(sim.settings, None), target_c=31.0,
+        evaluation=Evaluation(valid=False, frozen=("after_defrost", "bypass_settling"), after_run=("defrost",), valid_at=end),
+        room_c=21.0, plan_c=21.0,
+    ))
+
+    assert result.writes == []
+    assert result.wait == {"reason": "not_valid", "until": end, "causes": ["after_defrost", "bypass_settling"]}
+
+
+def test_wait_for_the_spacing_and_within_the_deadband() -> None:
+    sim = Sim(written=30.0)
+    sim.target = 30.0
+    sim.run([30.0] * 12)
+    sim.target = 31.0
+    written = sim.minute(30.0)
+    sim.target = 32.0
+    spacing = sim.minute(30.0)
+    sim.target = 31.3
+    sim.now += 10 * MIN
+    deadband = sim.minute(30.0)
+
+    assert written.wait is None and [w["value_c"] for w in written.writes] == [31.0]
+    assert spacing.wait == {"reason": "spacing", "until": spacing.pending.due_at, "causes": []}
+    assert deadband.wait == {"reason": "deadband", "until": None, "causes": []}
+
+
 # Block (11)
 
 

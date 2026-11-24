@@ -190,7 +190,11 @@ compressor has been **off for 5 minutes** although the rooms need heat (room tem
 defrosting –, Sunflow raises the set value in one step to flow + start margin (profile, 3 K for the HPSU):
 **restart**. After a start it waits 10 minutes and then lowers to the flow target in one step – not below
 what the **stop margin** allows (highest flow of the last 5 minutes − stop margin + swing); when the flow
-rises above that, it follows. During hot water and defrosting Sunflow writes nothing.
+rises above that, it follows. During hot water and defrosting Sunflow writes nothing; it writes the flow
+target only in valid heating (not in the after-run of hot water or defrosting and not before the bypass valve
+has been closed for 10 minutes). When the set value differs from the flow target, the block **Protection**
+of the control chain shows why it waits and until when (e.g. "waits until 09:05 (no valid heating: after-run
+of defrosting)"); a click shows the tile "Set value → flow target" with all reasons.
 
 Sunflow learns the stop margin from real stops: each compressor stop is recorded with the flow (also the
 UART node's, if there is one), the flow setpoint and the context, and classified – defrosting or hot

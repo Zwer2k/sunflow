@@ -198,7 +198,11 @@ Sunflow den Stellwert in einem Schritt auf Vorlauf + Einschaltabstand (Profil, b
 **Wiederanlauf**. Nach einem Start wartet es 10 Minuten und senkt dann in einem Schritt auf das
 Vorlauf-Ziel – nicht tiefer als die **Abschaltgrenze** erlaubt (höchster Vorlauf der letzten 5 Minuten −
 Abschaltgrenze + Schwankung); steigt der Vorlauf darüber, führt es den Stellwert nach. Während Warmwasser
-und Abtauen schreibt Sunflow nichts.
+und Abtauen schreibt Sunflow nichts; das Vorlauf-Ziel schreibt es nur bei gültigem Heizbetrieb (nicht im
+Nachlauf nach Warmwasser/Abtauen und nicht, solange das Bypass-Ventil noch keine 10 Minuten zu ist). Weicht
+der Stellwert vom Vorlauf-Ziel ab, zeigt der Block **Schutz** in der Regelkette, warum er wartet und bis wann
+(z. B. „wartet bis 09:05 (kein gültiger Heizbetrieb: Nachlauf nach Abtauen)“); ein Klick zeigt die Kachel
+„Stellwert → Vorlauf-Ziel“ mit allen Gründen.
 
 Die Abschaltgrenze lernt Sunflow aus echten Abschaltungen: Jeder Stopp des Kompressors wird mit Vorlauf
 (auch dem des UART-Knotens, falls vorhanden), Vorlauf-Soll und Umfeld aufgezeichnet und eingeordnet –

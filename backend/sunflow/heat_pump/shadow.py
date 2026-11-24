@@ -738,6 +738,9 @@ class FlowShadow:
             "written_at": guard.written_at.isoformat() if guard.written_at else None,
             # Write layer (12): a value waiting for the spacing or the budget, the last "write now"
             "pending": result.pending.as_dict() if result.pending else None,
+            # Why the set value is not the flow target now and until when (12): reason, until, causes
+            "wait": {**result.wait, "until": result.wait["until"].isoformat() if result.wait.get("until") else None}
+            if result.wait else None,
             "write_now": {
                 "requested_at": writer.manual_at.isoformat() if writer.manual_at else None,
                 "last": writer.manual_result,

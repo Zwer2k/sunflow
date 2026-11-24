@@ -226,6 +226,23 @@ def test_after_run_and_bypass_run_side_by_side(profile: dict[str, Any]) -> None:
     assert later.valid
 
 
+def test_valid_at_from_after_run_and_bypass(profile: dict[str, Any]) -> None:
+    """Only waiting times hold it: valid_at is the later end (defrost after-run 10 min, bypass 10 min)."""
+    track = tracker(profile)
+    track.evaluate(reading(profile, activity="Abtauen", bypass_since=NOW - 2 * MIN), NOW - 6 * MIN, usable=True)
+
+    evaluation = track.evaluate(reading(profile, activity_since=NOW - 5 * MIN, bypass_since=NOW - 2 * MIN), NOW, usable=True)
+
+    assert evaluation.frozen == ("after_defrost", "bypass_settling")
+    assert evaluation.valid_at == NOW + 8 * MIN
+
+
+def test_no_valid_at_when_something_else_holds(profile: dict[str, Any]) -> None:
+    """A reason without an end (bypass open, block ...): no time."""
+    assert tracker(profile).evaluate(reading(profile, bypass=40.0), NOW, usable=True).valid_at is None
+    assert tracker(profile).evaluate(reading(profile), NOW, usable=True).valid_at is None
+
+
 @pytest.mark.parametrize(("changed", "after_run"), [(5, ("unknown",)), (30, ())])
 def test_after_run_unknown_after_a_restart(profile: dict[str, Any], changed: int, after_run: tuple[str, ...]) -> None:
     """Sunflow just started and the activity changed minutes ago: it may have been hot water, so wait."""

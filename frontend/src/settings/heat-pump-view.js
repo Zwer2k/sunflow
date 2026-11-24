@@ -158,6 +158,30 @@ function frozenText(reason) {
   return reason;
 }
 
+// Why the set value is not the flow target now (guard.wait: protection layer and write layer, design 11, 12)
+const WAITS = () => ({
+  inactive: t("schreibt nicht"),
+  blocked: t("Sperre"),
+  busy: t("Warmwasser/Abtauen"),
+  off: t("Kompressor aus"),
+  starting: t("nach dem Start"),
+  not_valid: t("kein gültiger Heizbetrieb"),
+  spacing: t("Mindestabstand"),
+  budget: t("Budget"),
+  deadband: t("Abweichung ≤ Totzone"),
+});
+/** Why the set value waits, with the time it ends (short for the chain, long for the detail). */
+function waitText(wait, time, long = false) {
+  if (!wait) return null;
+  const reason = WAITS()[wait.reason] ?? wait.reason;
+  const causes = wait.reason === "not_valid" ? (wait.causes ?? []).map(frozenText)
+    : wait.reason === "inactive" ? (wait.causes ?? []).map(inactiveText)
+    : wait.reason === "blocked" ? (wait.causes ?? []).map((c) => BLOCK_REASONS()[c] ?? c)
+    : wait.reason === "busy" ? (wait.causes ?? []).map((c) => ACTIVITIES()[c] ?? c) : [];
+  const what = long && causes.length ? `${reason}: ${causes.join(", ")}` : reason;
+  return wait.until ? t("wartet bis {time} ({what})", { time: time(wait.until), what }) : t("wartet ({what})", { what });
+}
+
 // Why writing for real cannot be switched on (api/heat_pump.py, writing_refused)
 const WRITING_REFUSED = () => ({
   incompatible: t("Wärmepumpe nicht kompatibel oder nicht erreichbar"),
@@ -631,9 +655,11 @@ class SunflowHeatPump extends LitElement {
       guard: {
         title: t("Schutz"),
         value: guard.block ? t("Sperre") : restarting && guard.floor_c != null ? `↑ ${one(guard.floor_c)} °C` : `${one(guard.setpoint_c)} °C`,
-        sub: [GUARD_PHASES()[guard.phase] ?? guard.phase, device.learn_stops ? t("Lernphase an") : guard.floor_c != null && !restarting ? t("≥ {value} °C", { value: one(guard.floor_c) }) : null]
-          .filter(Boolean).join(" · "),
-        state: guard.block || restarting ? "acting" : null,
+        sub: guard.wait && guard.desired_c != null && Math.abs(guard.desired_c - guard.setpoint_c) > 1e-6
+          ? waitText(guard.wait, time)
+          : [GUARD_PHASES()[guard.phase] ?? guard.phase, device.learn_stops ? t("Lernphase an") : guard.floor_c != null && !restarting ? t("≥ {value} °C", { value: one(guard.floor_c) }) : null]
+            .filter(Boolean).join(" · "),
+        state: guard.block || restarting || (guard.wait && guard.desired_c != null && Math.abs(guard.desired_c - guard.setpoint_c) > 1e-6) ? "acting" : null,
       },
       writer: { title: t("Schreiben"), value: budget ? `${budget.used_today} / ${budget.per_day}` : "–",
         sub: guard.pending ? t("ausstehend {value} °C", { value: one(guard.pending.value_c) }) : t("Budget heute"),
@@ -777,6 +803,10 @@ class SunflowHeatPump extends LitElement {
         return {
           help: t("Sunflow sagt nicht voraus, wann der Kompressor schaltet, sondern reagiert: Ist er 5 Minuten aus, obwohl die Räume Wärme brauchen (auch nach Warmwasser oder Abtauen), hebt Sunflow den Stellwert auf Vorlauf + Einschaltabstand (Wiederanlauf). Nach einem Start wartet es 10 Minuten und senkt dann in einem Schritt auf das Vorlauf-Ziel – nicht tiefer als die Abschaltgrenze erlaubt (höchster Vorlauf − Abschaltgrenze + Schwankung). In der Lernphase senkt es bis aufs Vorlauf-Ziel und lässt den Kompressor abschalten, um die Grenze zu lernen. Ist das Haus deutlich zu warm, setzt es die Raumthermostat-Sperre."),
           tiles: [
+            tile(t("Stellwert → Vorlauf-Ziel"),
+              `${one(guard.setpoint_c)} → ${guard.desired_c == null ? "–" : one(guard.desired_c)} °C`,
+              guard.desired_c != null && Math.abs(guard.desired_c - guard.setpoint_c) <= 1e-6 ? t("erreicht")
+                : waitText(guard.wait, time, true) ?? (shadow ? t("würde geschrieben") : t("wird geschrieben"))),
             tile(t("Phase"), GUARD_PHASES()[guard.phase] ?? guard.phase ?? "–",
               guard.phase === "off" && guard.restart_at ? t("Wiederanlauf um {time}", { time: time(guard.restart_at) }) : null),
             tile(guard.phase === "off" || guard.phase === "restart" ? t("Wiederanlauf auf") : t("Untergrenze"),
