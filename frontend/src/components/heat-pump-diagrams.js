@@ -153,14 +153,14 @@ export function plantDiagram(p) {
 const HOUR = 3600e3;
 const GAP_MS = 11 * 60e3;
 
-/** Points split where samples are missing, as polyline point lists. */
-function segments(items, x, y) {
+/** Points split where samples are missing (more than gap apart), as polyline point lists. */
+function segments(items, x, y, gap = GAP_MS) {
   const parts = [];
   let current = [];
   let last = null;
   for (const [time, value] of items) {
     if (value == null || !Number.isFinite(value)) continue;
-    if (last != null && time - last > GAP_MS && current.length) {
+    if (last != null && time - last > gap && current.length) {
       parts.push(current);
       current = [];
     }
@@ -374,6 +374,89 @@ export function curveChart(curve, { roomC, minC, maxC, points = [], outsideC = n
   </svg>`;
 }
 
+// ---------- Preview of the heating curve ----------
+
+/**
+ * Preview (design 16): above the room – measured and modelled over the last hours, then predicted with the
+ * current curve and with the entered values, the room setpoint and when each reaches it; below the flow
+ * both curves ask for. preview: the answer of /heat_pump/<id>/preview.
+ */
+export function previewChart(preview) {
+  if (!preview || preview.state !== "ok") return nothing;
+  const W = 960;
+  const L = 40;
+  const R = 12;
+  const top1 = 24;
+  const h1 = 200;
+  const top2 = top1 + h1 + 34;
+  const h2 = 90;
+  const H = top2 + h2 + 26;
+  const past = preview.past ?? [];
+  const times = (preview.times ?? []).map((v) => Date.parse(v));
+  const start = Date.parse(preview.start);
+  const since = past.length ? Date.parse(past[0].at) : start;
+  const until = times.length ? times[times.length - 1] : start;
+  const x = (time) => L + ((time - since) / (until - since)) * (W - L - R);
+  const setpoint = preview.setpoint_c;
+  const room0 = preview.model?.room_c;
+  const series = (key) => [[start, room0], ...times.map((time, i) => [time, preview[key].room_c[i]])];
+  const roomRange = range([
+    setpoint, room0, ...past.flatMap((p) => [p.room_c, p.model_c]), ...preview.current.room_c, ...preview.entered.room_c,
+  ], 0.3, 2) ?? [20, 24];
+  const flowRange = range([...preview.current.flow_c, ...preview.entered.flow_c], 1, 6) ?? [25, 35];
+  const y1 = (v) => top1 + h1 - ((v - roomRange[0]) / (roomRange[1] - roomRange[0])) * h1;
+  const y2 = (v) => top2 + h2 - ((v - flowRange[0]) / (flowRange[1] - flowRange[0])) * h2;
+  const line = (items, y, cls) => segments(items, x, y, 2 * HOUR).map((pts) => svg`<polyline class=${cls} points=${pts.join(" ")}></polyline>`);
+  const days = (until - since) / HOUR > 60;
+  const dateFmt = new Intl.DateTimeFormat(locale(), days ? { weekday: "short", hour: "2-digit" } : { hour: "2-digit", minute: "2-digit" });
+  const stepH = (until - since) / HOUR > 120 ? 24 : (until - since) / HOUR > 60 ? 12 : 6;
+  const grid = [];
+  const first = new Date(since);
+  first.setMinutes(0, 0, 0);
+  for (let time = first.getTime() + HOUR; time < until; time += HOUR) {
+    if (new Date(time).getHours() % stepH === 0) grid.push(time);
+  }
+  const reach = (variant, cls) => {
+    const at = preview[variant].reach_at;
+    if (!at) return nothing;
+    const cx = x(Date.parse(at));
+    return svg`<line class=${`reach ${cls}`} x1=${cx} x2=${cx} y1=${top1} y2=${top1 + h1}></line>
+      <circle class=${`dot ${cls}`} cx=${cx} cy=${y1(setpoint)} r="4.5"><title>${t("Soll erreicht {time}", { time: dateFmt.format(new Date(at)) })}</title></circle>`;
+  };
+  const hits = times.map((time, i) => {
+    const parts = [
+      dateFmt.format(new Date(time)),
+      `${t("außen")} ${one(preview.outside_c[i])} °C`,
+      `${t("aktuelle Kurve")}: ${t("Raum")} ${one(preview.current.room_c[i])} °C, ${t("Vorlauf")} ${one(preview.current.flow_c[i])} °C`,
+      `${t("eingegeben")}: ${t("Raum")} ${one(preview.entered.room_c[i])} °C, ${t("Vorlauf")} ${one(preview.entered.flow_c[i])} °C`,
+    ];
+    const left = i ? times[i - 1] : start;
+    return svg`<rect class="hit" x=${x(left)} y=${top1} width=${Math.max(1, x(time) - x(left))} height=${top2 + h2 - top1}><title>${parts.join("\n")}</title></rect>`;
+  });
+  return svg`<svg class="diagram-svg history" viewBox=${`0 0 ${W} ${H}`} role="img" aria-label=${t("Vorschau der Heizkurve")}>
+    <rect class="band past" x=${L} y=${top1} width=${Math.max(0, x(start) - L)} height=${h1}></rect>
+    ${grid.map((time) => svg`<line class="grid" x1=${x(time)} x2=${x(time)} y1=${top1} y2=${top2 + h2}></line>
+      <text class="axis" x=${x(time)} y=${H - 6} text-anchor="middle">${dateFmt.format(new Date(time))}</text>`)}
+    ${ticks(roomRange, 4).map((v) => svg`<line class="grid dotted" x1=${L} x2=${W - R} y1=${y1(v)} y2=${y1(v)}></line>
+      <text class="axis" x="4" y=${y1(v) + 4}>${v}°</text>`)}
+    ${ticks(flowRange, 3).map((v) => svg`<line class="grid dotted" x1=${L} x2=${W - R} y1=${y2(v)} y2=${y2(v)}></line>
+      <text class="axis" x="4" y=${y2(v) + 4}>${v}°</text>`)}
+    <text class="axis strong" x=${L + 4} y=${top1 - 8}>${t("Raum")}</text>
+    <text class="axis strong" x=${L + 4} y=${top2 - 6}>${t("Vorlauf")}</text>
+    <line class="ln room-set" x1=${L} x2=${W - R} y1=${y1(setpoint)} y2=${y1(setpoint)}></line>
+    ${line(past.map((p) => [Date.parse(p.at), p.model_c]), y1, "ln model")}
+    ${line(past.map((p) => [Date.parse(p.at), p.room_c]), y1, "ln room")}
+    ${line(series("current"), y1, "ln pv-current")}
+    ${line(series("entered"), y1, "ln pv-entered")}
+    ${reach("current", "pv-current")}
+    ${reach("entered", "pv-entered")}
+    ${line(times.map((time, i) => [time, preview.current.flow_c[i]]), y2, "ln pv-current")}
+    ${line(times.map((time, i) => [time, preview.entered.flow_c[i]]), y2, "ln pv-entered")}
+    <line class="now" x1=${x(start)} x2=${x(start)} y1=${top1} y2=${top2 + h2}></line>
+    ${hits}
+  </svg>`;
+}
+
 export const diagramStyles = css`
   .diagram { width: 100%; overflow-x: auto; }
   .diagram-svg { display: block; width: 100%; height: auto; }
@@ -434,6 +517,15 @@ export const diagramStyles = css`
   .ln.room-set { stroke: var(--sf-series-4); stroke-dasharray: 6 3; }
   .ln.curve { stroke: var(--sf-series-2); stroke-width: 2.5; }
   .ln.curve.unsure { stroke-dasharray: 6 3; }
+  .ln.model { stroke: var(--sf-series-1); stroke-dasharray: 4 4; opacity: .7; }
+  .ln.pv-current { stroke: var(--sf-muted); stroke-width: 2; }
+  .ln.pv-entered { stroke: var(--sf-series-2); stroke-width: 2.5; }
+  .dot.pv-current { fill: var(--sf-muted); }
+  .dot.pv-entered { fill: var(--sf-series-2); }
+  .reach { stroke-width: 1; stroke-dasharray: 3 3; }
+  .reach.pv-current { stroke: var(--sf-muted); }
+  .reach.pv-entered { stroke: var(--sf-series-2); }
+  .band.past { fill: var(--sf-muted); opacity: .06; }
   .dot { fill: var(--sf-text); }
   .stop-mark { stroke: var(--sf-error-text); stroke-width: 2; fill: none; }
   .dot.hollow { fill: var(--sf-surface); stroke: var(--sf-series-6); stroke-width: 1.5; }

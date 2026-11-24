@@ -168,6 +168,17 @@ always act a little. When the learned curve changes, Sunflow shifts the correcti
 flow target does not jump; when you change the start values, the new curve applies at once. A higher room
 setpoint raises the flow at once by 1 + slope kelvin per kelvin.
 
+**Preview:** Below the start values a chart shows how the room would develop with the heating curve – for 1
+to 7 days, with the current curve and with the start values just entered (not saved yet), with the room
+setpoint and when the room reaches it. It is computed with a house model (screed or radiators and house as
+two heat stores) that Sunflow fits hourly to the values of the last 14 days; on the left the measured room
+temperature and the model of the last 48 hours for comparison, with the accuracy (also as a test: the last 24
+hours predicted). Outside comes from the weather forecast. Only the heating curve is computed, without the
+correction, sun and airing; hot water and defrosting as on average over the last 7 days. "Curve according to
+the model" is the heating curve that keeps the house at the setpoint according to the model; "Enter the
+model's values" puts it into the inputs. The preview changes nothing; only "Save" sets the start values. It
+needs at least 24 hours of values with a room temperature.
+
 **Correction:** slowly evens out the difference between room temperature and setpoint (at most ± 3 K; it
 does not grow within ± 0.2 K); how slowly depends on the heating surface type (integral time: underfloor 6 h,
 mixed 4 h, radiators 2 h). It pauses while the heat pump does not heat validly, room temperatures are

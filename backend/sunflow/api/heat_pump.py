@@ -23,6 +23,15 @@ from sunflow.heat_pump.defaults import (
 )
 from sunflow.heat_pump.guard import daily_counts
 from sunflow.heat_pump.limits import ControlSettings, setpoint_range, surface_range
+from sunflow.heat_pump.preview import (
+    DAYS_MAX,
+    FIT_DAYS,
+    PreviewCache,
+    build,
+    hourly,
+    outside_hours,
+    predict,
+)
 from sunflow.heat_pump.samples import records_heat_pump
 from sunflow.heat_pump.shadow import climate_status
 
@@ -392,6 +401,96 @@ async def take_curve_start(request: Request, device_id: str, origin: Literal["he
     if curve is None or curve.hours == 0:
         raise HTTPException(status_code=409, detail={"reason": "nothing_learned"})
     return _set_start(request, store, config, device, curve.slope, curve.shift_k, "learned")
+
+
+def _preview_cache(request: Request) -> PreviewCache:
+    cache = getattr(request.app.state, "heat_pump_preview", None)
+    if not isinstance(cache, PreviewCache):
+        cache = PreviewCache()
+        request.app.state.heat_pump_preview = cache
+    return cache
+
+
+async def _outside_forecast(request: Request, config: SunflowConfig) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Hourly and daily forecast of the weather entity (cached as for the live view); empty without one."""
+    from sunflow.planning.plan import weather_entity
+
+    from .common import _snapshot
+    from .live import _forecast
+
+    if getattr(request.app.state, "snapshots", None) is None:
+        return [], []
+    try:
+        entity_id = weather_entity(config, await _snapshot(request))
+    except HTTPException:
+        return [], []
+    if not entity_id:
+        return [], []
+    return await _forecast(request, entity_id, "hourly"), await _forecast(request, entity_id, "daily")
+
+
+@router.get("/heat_pump/{device_id}/preview")
+async def preview(
+    request: Request,
+    device_id: str,
+    days: int = Query(default=2, ge=1, le=DAYS_MAX),
+    slope: float | None = Query(default=None, ge=0, le=CURVE_SLOPE_LIMIT),
+    shift_k: float | None = Query(default=None, ge=-CURVE_SHIFT_RANGE_K, le=CURVE_SHIFT_RANGE_K),
+    setpoint_c: float | None = Query(default=None, ge=ROOM_SETPOINT_MIN_C, le=ROOM_SETPOINT_MAX_C),
+) -> dict[str, Any]:
+    """Preview of the heating curve (16): a house model fitted to the last FIT_DAYS of samples, the measured and
+    the modelled room of the last 48 h, and the room of the next days with the current curve and with the
+    given slope, shift and room setpoint (default: the start values and the room setpoint). Display only."""
+    _, config, device = _heat_pump(request, device_id)
+    profile = _library(request).profiles.get(device.profile) or {}
+    now = datetime.now(UTC)
+    store = getattr(getattr(request.app.state, "runner", None), "shadow", None)
+    weights = {room.entity_id: room.weight for room in config.house.rooms}
+
+    def build_model() -> Any:
+        rows = store.heat_pump_samples(device_id, now - timedelta(days=FIT_DAYS)) if store is not None else []
+        return build(hourly(rows, weights), now)
+
+    cache = _preview_cache(request)
+    model = await asyncio.to_thread(cache.get, device_id, now, build_model)
+    room_setpoint = setpoint_c if setpoint_c is not None else config.house.climate.setpoint_c
+    if model is None:
+        return {"state": "not_enough_data", "setpoint_c": room_setpoint}
+    recorder = _recorder(request)
+    flow = getattr(recorder, "flow", None)
+    state = (recorder.status() if recorder is not None else {}).get(device_id) or {}
+    measured = (state.get("flow") or {}).get("outside_c")
+    if measured is None:
+        measured = next((h.outside_c for h in reversed(model.hours) if h.outside_c is not None), 0.0)
+    hourly_forecast, daily_forecast = await _outside_forecast(request, config)
+    start = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    outside, source = outside_hours(start, days * 24, hourly_forecast, daily_forecast, measured)
+    limits = setpoint_range(config.house.heating_surface, ControlSettings.from_profile(profile, _manifest(request, device), device.flow_min_c, device.flow_max_c))
+    curve = flow.curve(device_id, config, now) if flow is not None else None
+    start_values = flow.start(device_id, config) if flow is not None and hasattr(flow, "start") else None
+    current_slope = curve.slope if curve is not None else (start_values.slope if start_values else 0.0)
+    current_shift = curve.shift_k if curve is not None else (start_values.shift_k if start_values else 0.0)
+    entered_slope = slope if slope is not None else (start_values.slope if start_values else current_slope)
+    entered_shift = shift_k if shift_k is not None else (start_values.shift_k if start_values else current_shift)
+    return {
+        "state": "ok",
+        "setpoint_c": room_setpoint,
+        "model": {
+            "computed_at": model.computed_at.isoformat(), "room_hours": model.fit.room_hours,
+            "rms_k": round(model.fit.rms_k, 3), "test_rms_k": round(model.test_rms_k, 3) if model.test_rms_k is not None else None,
+            "slope": round(model.slope, 3), "shift_k": round(model.shift_k, 2),
+            "tau_surface_h": round(model.fit.params.tau_s, 1), "tau_house_h": round(model.fit.params.tau_b, 1),
+            "share": round(model.share, 2), "room_c": round(model.room_c, 2),
+        },
+        "limits": {"min_c": limits[0], "max_c": limits[1]},
+        "past": model.past,
+        "start": start.isoformat(),
+        "times": [(start + timedelta(hours=i + 1)).isoformat() for i in range(days * 24)],
+        "outside_c": [round(a, 1) for a in outside],
+        "outside_source": source,
+        "current": predict(model, start, outside, room_setpoint, current_slope, current_shift, limits),
+        "entered": predict(model, start, outside, room_setpoint, entered_slope, entered_shift, limits),
+    }
 
 
 class FlowLimits(BaseModel):

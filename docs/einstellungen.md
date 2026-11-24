@@ -175,6 +175,17 @@ Kurve, verschiebt Sunflow die Korrektur um den Unterschied, damit das Vorlauf-Zi
 die Startwerte, gilt die neue Kurve sofort. Ein höherer Raum-Soll hebt den Vorlauf sofort um 1 + Steilheit
 Kelvin je Kelvin.
 
+**Vorschau:** Unter den Startwerten zeigt ein Diagramm, wie sich der Raum mit der Heizkurve entwickeln würde
+– für 1 bis 7 Tage, mit der aktuellen Kurve und mit den gerade eingegebenen Startwerten (noch nicht
+gespeichert), dazu der Raum-Soll und wann der Raum ihn erreicht. Gerechnet wird mit einem Hausmodell (Estrich
+bzw. Heizkörper und Haus als zwei Wärmespeicher), das Sunflow stündlich an die Messwerte der letzten 14 Tage
+anpasst; links stehen gemessenes Raum-Ist und Modell der letzten 48 Stunden zum Vergleich, dazu die
+Genauigkeit (auch als Test: die letzten 24 Stunden vorhergesagt). Außen kommt aus der Wetterprognose. Nur die
+Heizkurve wird gerechnet, ohne Korrektur, Sonne und Lüften; Warmwasser und Abtauen wie im Mittel der letzten 7
+Tage. „Kurve laut Modell“ ist die Heizkurve, die das Haus nach dem Modell auf dem Soll hält; „Werte des
+Modells eintragen“ übernimmt sie in die Eingabe. Die Vorschau ändert nichts; erst „Speichern“ setzt die
+Startwerte. Sie braucht mindestens 24 Stunden Messwerte mit Raumtemperatur.
+
 **Korrektur:** gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens ± 3 K; unter
 ± 0,2 K Abweichung wächst sie nicht); wie langsam, hängt vom Heizflächentyp ab (Nachstellzeit: Fußboden
 6 h, gemischt 4 h, Heizkörper 2 h). Sie hält an, solange die Wärmepumpe nicht gültig heizt,

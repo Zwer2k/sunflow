@@ -5,7 +5,7 @@ import "../components/picker.js";
 import { confirmDialog } from "../components/dialog.js";
 import { decimal, locale, t } from "../lib/i18n.js";
 import { lineChart, SERIES_COLORS } from "../components/charts.js";
-import { chainDiagram, curveChart, diagramStyles, historyChart, plantDiagram } from "../components/heat-pump-diagrams.js";
+import { chainDiagram, curveChart, diagramStyles, historyChart, plantDiagram, previewChart } from "../components/heat-pump-diagrams.js";
 import { toggleSheet } from "../lib/display-toggles.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
 
@@ -207,6 +207,8 @@ class SunflowHeatPump extends LitElement {
     _open: { state: true },
     _limitsEdit: { state: true },
     _curveEdit: { state: true },
+    _preview: { state: true },
+    _previewDays: { state: true },
     _writeNow: { state: true },
     _climateBusy: { state: true },
     _error: { state: true },
@@ -224,6 +226,11 @@ class SunflowHeatPump extends LitElement {
     // Per heat pump: rows and events of the last hours, and when they were read
     this._history = {};
     this._historyAt = {};
+    // Per heat pump: the preview of the heating curve, the days it covers and the request it answers
+    this._preview = {};
+    this._previewDays = {};
+    this._previewKey = {};
+    this._previewTimer = null;
     this._hours = HISTORY_HOURS[1];
     // Per heat pump: the block of the control chain whose details show
     this._selected = {};
@@ -779,7 +786,7 @@ class SunflowHeatPump extends LitElement {
             tile(t("Gelernt"), `${c.learned_pct ?? 0} %`, t("aus {hours} h beim Raum-Soll", { hours: one(c.hours ?? 0) })),
           ],
           lead: this._renderFormula(device),
-          notes: flow.curve ? html`${this._renderCurveShare(flow.curve)}${this._renderCurveStart(device, flow.curve)}` : nothing,
+          notes: flow.curve ? html`${this._renderCurveShare(flow.curve)}${this._renderCurveStart(device, flow.curve)}${this._renderPreview(device)}` : this._renderPreview(device),
         };
       }
       case "target":
@@ -1166,6 +1173,83 @@ class SunflowHeatPump extends LitElement {
             ${own == null ? t("Aus der Wärmepumpe neu einlesen") : t("Aus der Wärmepumpe neu einlesen ({slope})", { slope: two(own) })}</button>
           <button class="secondary" ?disabled=${this._busy || !curve.hours} @click=${() => this._takeCurveStart(device.id, "learned")}>${t("Gelerntes übernehmen")}</button>
         </div>
+      </div>`;
+  }
+
+  /** The entered slope and shift of the start values (while editing), else null: the stored start values. */
+  _enteredCurve(deviceId) {
+    const edit = this._curveEdit[deviceId];
+    if (!edit) return { slope: null, shiftK: null };
+    const slope = fromDisplay(edit.slope, "");
+    const shiftK = fromDisplay(edit.shift, "");
+    return { slope: Number.isFinite(slope) && slope >= 0 ? slope : null, shiftK: Number.isFinite(shiftK) ? shiftK : null };
+  }
+
+  /** Load the preview when days or entered values changed (shortly after typing stops), at least hourly. */
+  _schedulePreview(deviceId) {
+    const days = this._previewDays[deviceId] ?? 2;
+    const entered = this._enteredCurve(deviceId);
+    const key = `${days}|${entered.slope}|${entered.shiftK}|${this._house?.climate?.setpoint_c ?? ""}|${Math.floor(Date.now() / 3600e3)}`;
+    if (this._previewKey[deviceId] === key) return;
+    this._previewKey[deviceId] = key;
+    clearTimeout(this._previewTimer);
+    this._previewTimer = setTimeout(async () => {
+      try {
+        const preview = await api.heatPumpPreview(deviceId, { days, ...entered });
+        if (this._previewKey[deviceId] === key) this._preview = { ...this._preview, [deviceId]: preview };
+      } catch (err) {
+        if (this._previewKey[deviceId] === key) this._preview = { ...this._preview, [deviceId]: { state: "error", error: err.message } };
+      }
+    }, this._preview[deviceId] ? 400 : 0);
+  }
+
+  /** Preview of the heating curve (design 16): how the room develops with the current and the entered curve. */
+  _renderPreview(device) {
+    queueMicrotask(() => this._schedulePreview(device.id));
+    const preview = this._preview[device.id];
+    const days = this._previewDays[device.id] ?? 2;
+    const clock = (iso) => new Date(iso).toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    const reach = (v) => (v?.reach_at ? clock(v.reach_at) : t("nicht in {days} Tagen", { days }));
+    const daysSeg = html`<div class="seg small-seg" role="group" aria-label=${t("Zeitraum")}>
+      ${[1, 2, 3, 4, 5, 6, 7].map((d) => html`<button class=${days === d ? "on" : ""} aria-pressed=${days === d}
+        @click=${() => { this._previewDays = { ...this._previewDays, [device.id]: d }; }}>${d === 1 ? t("1 Tag") : t("{days} Tage", { days: d })}</button>`)}
+    </div>`;
+    let body;
+    if (!preview) body = html`<p class="small muted">${t("Lade …")}</p>`;
+    else if (preview.state === "error") body = html`<p class="small error-text">${t("Vorschau nicht verfügbar: {error}", { error: preview.error })}</p>`;
+    else if (preview.state !== "ok") body = html`<p class="small muted">${t("Noch zu wenige Messwerte für das Hausmodell (mindestens 24 Stunden mit Raumtemperatur).")}</p>`;
+    else {
+      const m = preview.model;
+      const tile = (...args) => this._tile(...args);
+      body = html`
+        <div class="diagram">${previewChart(preview)}</div>
+        <div class="legend">
+          <span><i style="background: var(--sf-series-1)"></i>${t("Raum-Ist gemessen")}</span>
+          <span><i class="dash" style="border-color: var(--sf-series-1)"></i>${t("Modell")}</span>
+          <span><i style="background: var(--sf-muted)"></i>${t("aktuelle Kurve (S {s}, P {p} K)", { s: two(preview.current.slope), p: signedNumber(preview.current.shift_k) })}</span>
+          <span><i style="background: var(--sf-series-2)"></i>${t("eingegeben (S {s}, P {p} K)", { s: two(preview.entered.slope), p: signedNumber(preview.entered.shift_k) })}</span>
+          <span><i class="dash" style="border-color: var(--sf-series-4)"></i>${t("Raum-Soll {value} °C", { value: one(preview.setpoint_c) })}</span>
+        </div>
+        <div class="tiles">
+          ${tile(t("Soll erreicht – eingegeben"), reach(preview.entered), t("nach {days} Tagen {value} °C", { days, value: one(preview.entered.end_c) }))}
+          ${tile(t("Soll erreicht – aktuelle Kurve"), reach(preview.current), t("nach {days} Tagen {value} °C", { days, value: one(preview.current.end_c) }))}
+          ${tile(t("Genauigkeit des Modells"), `±${decimal(Number(m.rms_k).toFixed(2))} K`,
+            m.test_rms_k != null ? t("Test letzte 24 h: ±{value} K · aus {hours} h", { value: decimal(Number(m.test_rms_k).toFixed(2)), hours: m.room_hours }) : t("aus {hours} h", { hours: m.room_hours }))}
+          ${tile(t("Kurve laut Modell"), t("S {s}, P {p} K", { s: two(m.slope), p: signedNumber(m.shift_k) }),
+            t("hält das Haus auf dem Soll (ohne Sonne und Lüften)"))}
+        </div>
+        <p class="small muted">${preview.outside_source === "forecast" ? t("Außen: Wetterprognose.") : t("Außen: keine Prognose, gemessener Wert konstant.")}
+          ${t("Gerechnet wird nur die Heizkurve, ohne Korrektur; Warmwasser und Abtauen wie im Mittel der letzten 7 Tage ({share} % Heizbetrieb).", { share: Math.round(m.share * 100) })}</p>
+        <div class="actions">
+          <button class="secondary" @click=${() => (this._curveEdit = { ...this._curveEdit, [device.id]: { slope: toDisplay(Math.round(m.slope * 100) / 100, ""), shift: toDisplay(Math.round(m.shift_k * 10) / 10, "") } })}>
+            ${t("Werte des Modells eintragen")}</button>
+        </div>`;
+    }
+    return html`
+      <div class="group">
+        <div class="title-row"><h3>${t("Vorschau")}</h3>${daysSeg}</div>
+        <p class="help small">${t("Was die Heizkurve mit dem Raum machen würde: ein Hausmodell, angepasst an die Messwerte der letzten 14 Tage, rechnet den Raum mit der aktuellen Kurve und mit den oben eingegebenen Startwerten (noch nicht gespeichert) voraus. Links gemessen und Modell zum Vergleich. Nur Anzeige – erst „Speichern“ ändert die Kurve.")}</p>
+        ${body}
       </div>`;
   }
 

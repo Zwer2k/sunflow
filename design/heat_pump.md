@@ -235,6 +235,30 @@ verwerfbarer Cache. Bei „Aus“ wird nichts aufgezeichnet und nichts gelernt.
   Einstellen, beim Schutz Stellwert → Vorlauf-Ziel mit Wartegrund), Verlauf, Anlage, Schreiben und Schutz, Gelernt (Heizkurve, Anteil des Gelernten, Startwerte
   nur angezeigt, Abschaltgrenze, Stopps, Lernphase); Hausmodell; Einstellungen. Erklärtexte über „?“.
 
+### Vorschau der Heizkurve
+
+Zeigt, wie sich der Raum mit einer Heizkurve entwickeln würde, ohne etwas zu ändern (nur Anzeige, keine
+Wirkung auf Regelung und Lernen). Simuliert wird nur die Heizkurve, ohne Korrektur, Schutz und Planung.
+
+- **Modell:** Haus mit zwei Speichern: Heizfläche (Estrich bzw. Heizkörper) und Haus. Die Heizfläche nimmt
+  Wärme aus dem Wasser auf, solange der Kompressor heizt (Anteil je Stunde), gibt sie an das Haus ab; das
+  Haus verliert sie nach außen, dazu ein fester Wärmegewinn. Kenngrößen: Verlust je Kelvin im Verhältnis zur
+  Heizfläche (u), Zeitkonstanten von Heizfläche und Haus, Wärmegewinn; die Aufteilung der Heizfläche ist fest.
+- **Anpassen:** an die stündlichen Mittel der letzten 14 Tage `heat_pump_samples` (Wasser = Mittel aus Tv und
+  Tr bei Heizbetrieb, Anteil = Kompressoranteil bei Heizbetrieb, Raum-Ist ohne Zeilen mit schneller
+  Änderung, außen); kleinste Quadrate auf das Raum-Ist. Mindestens 24 Stunden mit Raum-Ist, sonst keine
+  Vorschau. Stündlich neu, nur im Speicher.
+- **Güte:** mittlere Abweichung Modell − Messung über alle Stunden und als Test: angepasst ohne die letzten
+  24 h, dann diese 24 h vorhergesagt (ab 48 h Daten).
+- **Vorhersage:** ab dem gemessenen Raum-Ist, Heizfläche aus dem Modell. Vorlauf = R + S·(R − A) + P in den
+  Grenzen des Stellwerts (10), Wasser = Vorlauf − mittlerer Abstand wirksamer Soll − Wasser der Daten,
+  Kompressoranteil = Mittel der letzten 7 Tage. Außen: stündliche Prognose der Wetter-Entity, danach die
+  tägliche (Mittel aus Höchst- und Tiefstwert), ohne Prognose der gemessene Wert.
+- **Kurven:** gemessen und Modell der letzten 48 h; Vorhersage 1–7 Tage (wählbar) mit der aktuellen Kurve
+  und mit eingegebenen S, P (und Raum-Soll); Raum-Soll als Linie, Zeitpunkt, an dem das Raum-Ist den Soll
+  erreicht. Dazu die Heizkurve, die laut Modell das Haus im Gleichgewicht auf dem Soll hält (aus u, Wärmegewinn,
+  mittlerem Kompressoranteil und Abstand Soll − Wasser); „Werte des Modells eintragen“ setzt sie als Eingabe.
+
 ## 17. Offene Punkte und Umsetzungsstand
 
 Umgesetzt: 4–6, 8, 9, 10–13 (Außen noch ohne Prognose: gemessen, Mittel 15 min), 15, 16,

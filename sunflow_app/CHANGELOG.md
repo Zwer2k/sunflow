@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.36
+
+- Heat pumps: **preview of the heating curve** in the control chain (block "Heating curve", below the start values): a chart of how the room would develop over 1 to 7 days with the current curve and with the start values entered (before saving), the room setpoint and when it is reached. A house model with two heat stores, fitted hourly to the last 14 days of values, computes it; the last 48 hours show measured and modelled room temperature with the accuracy. "Curve according to the model" shows the curve that keeps the house at the setpoint; one click enters it. Display only. New endpoint `GET /api/v1/heat_pump/<id>/preview?days=1..7&slope=&shift_k=&setpoint_c=`.
+
 ## 0.80.35
 
 - Heat pumps: when the set value differs from the flow target, the block "Protection" of the control chain shows why it waits and until when (after the start, no valid heating with its reasons, hot water/defrost, compressor off, block, minimum spacing, budget, deadband); a click shows the tile "Set value → flow target". The status carries it as `guard.wait`.

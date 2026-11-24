@@ -164,6 +164,12 @@ export const api = {
     request("GET", `/heat_pump/${encodeURIComponent(deviceId)}/shadow_writes?days=${days}`),
   heatPumpHistory: (deviceId, hours = 24) =>
     request("GET", `/heat_pump/${encodeURIComponent(deviceId)}/history?hours=${hours}`),
+  heatPumpPreview: (deviceId, { days = 2, slope = null, shiftK = null } = {}) => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (slope != null) params.set("slope", String(slope));
+    if (shiftK != null) params.set("shift_k", String(shiftK));
+    return request("GET", `/heat_pump/${encodeURIComponent(deviceId)}/preview?${params}`);
+  },
   setIntegrationSettings: (body) => request("PUT", "/config/integration", body),
   directStatus: () => request("GET", "/direct/status"),
   addDirect: (body) => request("POST", "/config/devices/direct", body),
