@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.13
+
+- Removing devices and integrations: unticking an integration under Settings → Integrations now removes, after a confirmation, the devices and optimizers taken over from it (before it was only hidden and came back on the next load). An integration counts as in use once something is taken over from it. Deactivated devices get a Remove button, and devices taken over that Home Assistant no longer reports are listed under "Other devices taken over" to be removed.
+
 ## 0.80.12
 
 - Optimizers and battery modules now have separate profile formats: profiles/optimizers/ (schema optimizer.schema.json) and profiles/battery_modules/ (schema battery_module.schema.json) instead of the shared profiles/units/. No change in behaviour.

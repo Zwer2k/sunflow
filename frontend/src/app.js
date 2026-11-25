@@ -453,9 +453,11 @@ class SunflowApp extends LitElement {
     try {
       const integrations = await api.discovery();
       this._integrations = integrations;
+      // In use: an integration with a device taken over or its optimizers; the first setup proposes all with a profile
       this._selected = new Set(
         integrations
-          .filter((i) => i.supported && (i.devices.some((d) => d.profile) || i.optimizers_used))
+          .filter((i) => i.supported && (
+            this._configuredOf(i).length || i.optimizers_used || (!this._setupCompleted && i.devices.some((d) => d.profile))))
           .map((i) => i.entry_id),
       );
     } catch (err) {
@@ -877,6 +879,13 @@ class SunflowApp extends LitElement {
       const remaining = { ...this._configDevices };
       delete remaining[device.ha_device_id];
       this._configDevices = remaining;
+      // An integration with nothing taken over any more is no longer in use
+      const owner = (this._integrations ?? []).find((i) => (i.devices ?? []).some(function has(d) {
+        return d.device_id === device.ha_device_id || (d.components ?? []).some(has);
+      }));
+      if (owner && !this._configuredOf(owner).length && !owner.optimizers_used) {
+        this._selected = new Set([...this._selected].filter((id) => id !== owner.entry_id));
+      }
       this._error = null;
     } catch (err) {
       this._error = t("Gerät konnte nicht entfernt werden: {error}", { error: err.message });
@@ -989,13 +998,57 @@ class SunflowApp extends LitElement {
     this._previews = Object.fromEntries(results);
   }
 
-  _toggle(integration) {
+  /** The integration's devices (and components) taken over, active or not. */
+  _configuredOf(integration) {
+    const all = (devices) => devices.flatMap((d) => [d, ...all(d.components ?? [])]);
+    return all(integration.devices ?? []).map((d) => this._configDevices[d.device_id]).filter(Boolean);
+  }
+
+  async _toggle(integration) {
     if (!integration.supported) return;
     const selected = new Set(this._selected);
-    if (selected.has(integration.entry_id)) selected.delete(integration.entry_id);
-    else selected.add(integration.entry_id);
+    if (selected.has(integration.entry_id)) {
+      // Not using an integration any more removes what was taken over from it
+      const devices = this._configuredOf(integration);
+      if ((devices.length || integration.optimizers_used) && !(await this._removeIntegration(integration, devices))) return;
+      selected.delete(integration.entry_id);
+    } else {
+      selected.add(integration.entry_id);
+    }
     this._selected = selected;
     this._touchedIntegrations = new Set([...this._touchedIntegrations, integration.entry_id]);
+  }
+
+  async _removeIntegration(integration, devices) {
+    const names = [...devices.map((d) => d.name), ...(integration.optimizers_used ? [t("Optimierer")] : [])];
+    if (!(await confirmDialog({
+      title: t("„{name}“ nicht mehr verwenden?", { name: integration.name ?? integration.title }),
+      text: t("Sunflow entfernt {names} mit allen Einstellungen. In Home Assistant bleibt alles unverändert. Zum vorübergehenden Abschalten genügt „aktiv“ beim Gerät.", { names: names.join(", ") }),
+      confirm: t("Entfernen"),
+      danger: true,
+    }))) {
+      return false;
+    }
+    this._busy = new Set([...this._busy, integration.entry_id]);
+    try {
+      for (const device of devices) {
+        await api.removeDevice(device.id);
+        const remaining = { ...this._configDevices };
+        delete remaining[device.ha_device_id];
+        this._configDevices = remaining;
+      }
+      if (integration.optimizers_used) {
+        await api.useOptimizers(integration.entry_id, false);
+        this._integrations = this._integrations.map((i) => (i.entry_id === integration.entry_id ? { ...i, optimizers_used: false } : i));
+      }
+      this._error = null;
+      return true;
+    } catch (err) {
+      this._error = t("Nicht alles entfernt: {error}", { error: err.message });
+      return false;
+    } finally {
+      this._busy = this._without(this._busy, integration.entry_id);
+    }
   }
 
   async _accept(device) {
@@ -1617,7 +1670,7 @@ class SunflowApp extends LitElement {
     else chip = html`<span class="chip neutral">${t("Unterstützt · nur lesen")}</span>`;
     return html`
       <button class="card ${selected ? "selected" : ""}" aria-pressed=${selected}
-        ?disabled=${!integration.supported} @click=${() => this._toggle(integration)}>
+        ?disabled=${!integration.supported || this._busy.has(integration.entry_id)} @click=${() => this._toggle(integration)}>
         <div class="card-head">
           <span class="card-title">${integration.name ?? integration.title}</span>
           <span class="check ${selected ? "on" : ""}" aria-hidden="true">${selected ? "✓" : ""}</span>
@@ -1662,6 +1715,28 @@ class SunflowApp extends LitElement {
         }
         return html`<h2 class="category">${title}</h2>${members.map((d) => this._renderDevice(d))}${extra}`;
       })}
+      ${this._renderOrphans(devices)}
+    `;
+  }
+
+  /** Devices taken over that the list above does not show (gone from Home Assistant, integration unsupported): only removing is left. */
+  _renderOrphans(devices) {
+    if (!this._integrations || this._discoveryError) return nothing;
+    const shown = new Set(devices.map((d) => d.device_id));
+    // Own consumers, grid meters and heat pumps have their own places
+    const orphans = Object.values(this._configDevices).filter((d) => !d.profile.startsWith(MANUAL_PREFIX) && !shown.has(d.ha_device_id));
+    if (!orphans.length) return nothing;
+    return html`
+      <h2 class="category">${t("Weitere übernommene Geräte")}</h2>
+      <section class="device">
+        <p class="small muted help">${t("Diese Geräte sind in Sunflow übernommen, Home Assistant meldet sie aber nicht mehr mit passendem Profil, oder ihre Integration ist nicht ausgewählt. Planung und Steuerung finden sie nicht; entferne sie, wenn sie nicht zurückkommen.")}</p>
+        <ul class="summary-list">${orphans.map((d) => html`<li class="manual-item">
+          <div><strong>${d.name}</strong><div class="small muted">${t("Profil {profile}", { profile: d.profile })}${d.disabled ? ` · ${t("deaktiviert")}` : ""}</div></div>
+          <span class="item-actions">
+            <button class="secondary danger" ?disabled=${this._busy.has(d.id)} @click=${() => this._removeDevice(d)}>${t("Entfernen")}</button>
+          </span>
+        </li>`)}</ul>
+      </section>
     `;
   }
 
@@ -2052,6 +2127,9 @@ class SunflowApp extends LitElement {
             ? html`<button class="secondary" aria-expanded=${editing} @click=${() => this._toggleEdit(device)}>
                 ${editing ? t("Zuordnung schließen") : t("Entitäten zuordnen")}
               </button>`
+            : nothing}
+          ${stored && disabled
+            ? html`<button class="secondary danger remove" ?disabled=${this._busy.has(id)} @click=${() => this._removeDevice(stored)}>${t("Entfernen")}</button>`
             : nothing}
         </div>
         ${stored && !disabled ? this._renderDeviceFacts(stored) : nothing}
@@ -3444,6 +3522,8 @@ class SunflowApp extends LitElement {
     td { padding: 6px 10px; border-top: 1px solid var(--sf-border); vertical-align: top; }
 
     .actions, .footer { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    /* Removing sits apart from taking over */
+    .actions .remove { margin-left: auto; }
     .footer { border-top: 1px solid var(--sf-border); padding-top: 18px; }
     .spacer { flex: 1; }
     /* button.ok: chips and alerts have an "ok" state too and must not get the button's size */

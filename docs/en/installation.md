@@ -56,7 +56,9 @@ produce warnings, and Sunflow falls back to substitutes (fixed price, self-consu
 ![Integrations](../images/en/settings-integrations.png)
 
 Sunflow lists the integrations in your Home Assistant that it knows, with the devices found;
-"Show unused" shows the ones not in use. Tick what Sunflow should use. The label tells you what is possible:
+"Show unused" shows the ones not in use. Tick what Sunflow should use. An integration counts as in
+use once a device or its optimizers are taken over. Unticking removes everything taken over from it,
+with its settings, after a confirmation; nothing changes in Home Assistant. The label tells you what is possible:
 
 - **Supported · controllable**: Sunflow can measure and control.
 - **Supported · read only**: Sunflow measures and plans. Control is
@@ -103,6 +105,11 @@ discharging negative. Then:
 
 - **active** switches a device off without losing its settings, e.g. to switch between
   the evcc loadpoint and the go-e directly.
+- **Remove** (below the parameters, for a deactivated device at the bottom of its frame) takes a device
+  with all its settings out of Sunflow. If it was the integration's last one, the integration then
+  counts as not in use. Devices taken over that Home Assistant no longer reports (deleted, integration
+  no longer supported or profile no longer matching) are listed at the very bottom under "Other
+  devices taken over" and can be removed there.
 - **Custom loads**: devices Sunflow does not detect by itself (switch, power
   levels or target current) are added at the bottom of the page.
 - **Optimizers**: if a chosen integration has module optimizers, a card with "use in Sunflow"

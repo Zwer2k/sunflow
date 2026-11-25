@@ -59,7 +59,9 @@ Eigenverbrauch).
 
 Sunflow listet die Integrationen in deinem Home Assistant, die es kennt, mit den gefundenen
 Geräten; nicht verwendete blendet „Nicht verwendete anzeigen“ ein. Hake an, was Sunflow nutzen
-soll. Das Etikett sagt, was möglich ist:
+soll. Als verwendet gilt eine Integration, sobald ein Gerät oder ihre Optimierer übernommen sind.
+Abwählen entfernt nach einer Rückfrage alles, was aus ihr übernommen ist, samt Einstellungen; in
+Home Assistant ändert sich nichts. Das Etikett sagt, was möglich ist:
 
 - **Unterstützt · steuerbar**: Sunflow kann messen und steuern.
 - **Unterstützt · nur lesen**: Sunflow misst und plant. Steuern ist für diese Geräte nicht
@@ -103,6 +105,11 @@ negativ erscheint. Dann:
 
 - **aktiv** schaltet ein Gerät aus, ohne seine Einstellungen zu verlieren, z. B. um zwischen
   dem evcc-Ladepunkt und der go-e direkt zu wechseln.
+- **Entfernen** (unter den Kenndaten, bei deaktivierten Geräten unten im Rahmen) nimmt ein Gerät
+  mit allen Einstellungen aus Sunflow heraus. War es das letzte der Integration, gilt diese danach
+  als nicht verwendet. Übernommene Geräte, die Home Assistant nicht mehr meldet (gelöscht, Integration
+  nicht mehr unterstützt oder Profil passt nicht mehr), stehen ganz unten unter „Weitere übernommene
+  Geräte“ und lassen sich dort entfernen.
 - **Eigene Verbraucher**: Geräte, die Sunflow nicht selbst erkennt (Schalter, Leistungsstufen
   oder Ziel-Stromstärke), legst du unten auf der Seite an.
 - **Optimierer**: Hat eine gewählte Integration Modul-Optimierer, steht unter „Wechselrichter“
