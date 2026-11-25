@@ -1,8 +1,8 @@
-"""The room heating planned with the house (design/heat_pump.md, 14): band around the
-room setpoint, soft cost away from it, the heat pump out of the load forecast, the mode decides whether
-the battery plan plans with it or a second run only shows it."""
+"""The room heating planned with the house (design/heat_pump.md, 14.2, 14.3): band around the
+room setpoint, soft cost away from it, the heat pump out of the load forecast, the setting decides whether
+the planning uses the house model, the mode whether the battery plan plans with it or a second run only
+shows it."""
 
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,11 +19,12 @@ from sunflow.heat_pump.defaults import PLAN_DEVIATION_EUR_PER_KH, PLAN_MAX_LOAD_
 from sunflow.heat_pump.learned import Learned
 from sunflow.heat_pump.limits import ControlSettings
 from sunflow.heat_pump.states import Reading
-from sunflow.planning.house_model import HouseModel, carnot_cop
 from sunflow.planning.house_plan import (
     ACTIVE,
     FAILED,
     MODE_OFF,
+    MODEL_OFF,
+    MODEL_UNUSABLE,
     NO_HEAT_PUMP,
     NO_MODEL,
     NO_OUTSIDE,
@@ -32,19 +33,24 @@ from sunflow.planning.house_plan import (
     PROGRAM,
     SHADOW,
     HouseInput,
+    carnot_cop,
     house_input,
     house_plan,
     house_setup,
+    uses_model,
 )
 from sunflow.planning.optimizer import BatterySpec, Plan, Settings, SlotInput, ThermalLoad, optimize
 from sunflow.planning.plan import PlanResult, optimize_with_house
+
+from house_models import house_model
 
 START = datetime(2026, 11, 16, tzinfo=UTC)
 SLOT = timedelta(minutes=15)
 # Nearly empty and small: the house is the storage that matters here
 BATTERY = BatterySpec(capacity_wh=1000, soc_wh=100, min_soc_wh=100, max_charge_w=100, max_discharge_w=100)
-# τ 50 h, 25 kWh/K, a little internal gain
-MODEL = HouseModel(a=0.02, b=0.04, c=None, d=0.05, days=14, samples=300, error_k=0.2, baseline_k=0.8)
+# House τ 50 h, 25 kWh/K, a little internal gain; a fast surface
+MODEL = house_model()
+P = MODEL.params
 PROFILES = {"esphome/rotex_hpsu_can": {"capabilities": ["heat_pump"]}}
 
 
@@ -57,9 +63,10 @@ def _slots(hours: int, price: list[float], load: float = 2000.0) -> list[SlotInp
 
 def _house(n: int, inside: float = 21.0, outside: float = 8.0, **extra: Any) -> ThermalLoad:
     # Band 21-22 °C around the setpoint 21 °C, as with the start values of the margin (+1 K, -0 K)
-    base = (MODEL.a * (21.0 - outside) - MODEL.d) / MODEL.b / 3.0 * 1000
+    base = (P.u * (21.0 - outside) - P.g) / 3.0 * 1000
     values: dict[str, Any] = {
-        "name": "hp", "a": MODEL.a, "b": MODEL.b, "gains": MODEL.d, "inside": inside, "outside": [outside] * n,
+        "name": "hp", "u": P.u, "kf": P.kf, "cs": P.cs, "cb": P.cb, "gains": P.g, "inside": inside,
+        "surface": inside + base * 3.0 / 1000 / P.kf, "outside": [outside] * n,
         "cop": [3.0] * n, "lower": [21.0] * n, "upper": [22.0] * n, "max_power_w": 3000, "baseline_w": [base] * n,
         "cold_cost": 50.0, "warm_cost": 0.2, "target": [21.0] * n, "deviation_cost": PLAN_DEVIATION_EUR_PER_KH,
     }
@@ -88,7 +95,7 @@ def test_preheats_before_dear_hours_within_the_margin() -> None:
     plan = optimize(inputs, BATTERY, thermal=[_house(len(inputs))])
 
     rooms = [s.room_c["hp"] for s in plan.slots]
-    assert max(rooms) > 21.5
+    assert max(rooms) > 21.3
     assert max(rooms) <= 22.0 + 1e-6
     assert min(rooms) >= 21.0 - 1e-6
     cheap = sum(s.heat_w["hp"] for s in plan.slots[:16])
@@ -168,10 +175,13 @@ def test_setup_band_target_and_the_heat_pump_out_of_the_load() -> None:
     assert (load.lower[0], load.upper[0], load.target[0] if load.target else None) == (20.5, 22.5, 21.0)
     assert load.deviation_cost == PLAN_DEVIATION_EUR_PER_KH
     assert load.inside == 21.0 and load.outside == temperatures
+    # The model's surface above the room, carried over to the room temperature now
+    assert load.surface == pytest.approx(21.0 + MODEL.surface_c - MODEL.room_c)
+    assert (load.u, load.kf, load.cs, load.cb, load.gains) == (P.u, P.kf, P.cs, P.cb, P.g)
     assert load.cop == [carnot_cop(t) for t in temperatures]
     for t, (slot, adjusted) in enumerate(zip(inputs, setup.adjusted, strict=True)):
         # Heat to hold the setpoint (not the lower bound) / COP, within the output and 70 % of the load
-        need = (MODEL.a * (21.0 - temperatures[t]) - MODEL.d) / MODEL.b / load.cop[t] * 1000
+        need = (P.u * (21.0 - temperatures[t]) - P.g) / load.cop[t] * 1000
         expected = min(need, 12000.0 / load.cop[t], PLAN_MAX_LOAD_SHARE * 1500.0)
         assert load.baseline_w[t] == pytest.approx(expected)
         assert adjusted.load_w == pytest.approx(slot.load_w - expected)
@@ -203,8 +213,10 @@ def test_setup_fills_forecast_gaps_and_uses_the_measured_value_without_a_forecas
         (_config(), None, NO_HEAT_PUMP, None),
         (_config(mode="off", writing=True), _input(writing=True), MODE_OFF, None),
         (_config(), _input(model=None), NO_MODEL, SHADOW),
-        (_config(), _input(model=replace(MODEL, error_k=1.0)), NO_MODEL, SHADOW),
-        (_config(), _input(model=replace(MODEL, b=None)), NO_MODEL, SHADOW),
+        (_config(plan_model="off"), _input(), MODEL_OFF, SHADOW),
+        (_config(), _input(model=house_model(test_rms_k=0.4)), MODEL_UNUSABLE, SHADOW),
+        (_config(), _input(model=house_model(room_hours=40)), MODEL_UNUSABLE, SHADOW),
+        (_config(plan_model="on"), _input(model=house_model(at_bound=("u",))), MODEL_UNUSABLE, SHADOW),
         (_config(), _input(program=None), NO_SAMPLE, SHADOW),
         (_config(), _input(program="summer"), PROGRAM, SHADOW),
         (_config(writing=True), _input(inside_c=None, writing=True), NO_ROOM, ACTIVE),
@@ -218,6 +230,34 @@ def test_setup_why_not_planned(config: SunflowConfig, house: HouseInput | None, 
     plan = house_plan(config, house, setup, None)
     assert plan.reason == reason and plan.slots == []
     assert (plan.setpoint_c, plan.lower_c, plan.upper_c) == (21.0, 21.0, 22.0)
+
+
+@pytest.mark.parametrize(
+    ("setting", "model", "used"),
+    [
+        ("auto", house_model(), True),
+        ("auto", house_model(test_rms_k=0.4), False),
+        ("auto", house_model(test_rms_k=None, stay_rms_k=None), False),
+        ("auto", house_model(room_hours=47), False),
+        ("auto", house_model(at_bound=("cs",)), False),
+        ("on", house_model(test_rms_k=0.4, room_hours=30), True),
+        ("on", house_model(at_bound=("cs",)), False),
+        ("off", house_model(), False),
+        ("on", None, False),
+    ],
+)
+def test_the_setting_decides_whether_the_planning_uses_the_model(setting: str, model: Any, used: bool) -> None:
+    """Auto: usable (48 h, plausible, better than "it stays"); on: plausible; off: never (14.2)."""
+    assert uses_model(setting, model) is used
+
+
+def test_a_model_not_usable_says_why() -> None:
+    setup = house_setup(_config(), _input(model=house_model(room_hours=40)), _slots(1, [0.3]), [2.0] * 4)
+
+    assert (setup.reason, setup.detail) == (MODEL_UNUSABLE, "few_hours")
+    assert house_model(at_bound=("u",)).reason() == "implausible"
+    assert house_model(test_rms_k=0.5).reason() == "test"
+    assert house_model().reason() is None
 
 
 def test_input_from_the_first_heat_pump_and_its_last_sample() -> None:
@@ -343,7 +383,9 @@ def _api(tmp_path: Path, library: Any) -> tuple[TestClient, list[int]]:
     return TestClient(app), replans
 
 
-@pytest.mark.parametrize("body", [{"setpoint_c": 22.0}, {"preheat_k": 2.0}, {"lower_k": 0.5}, {"mode": "off"}])
+@pytest.mark.parametrize(
+    "body", [{"setpoint_c": 22.0}, {"preheat_k": 2.0}, {"lower_k": 0.5}, {"mode": "off"}, {"plan_model": "off"}]
+)
 def test_a_change_of_setpoint_margin_or_mode_plans_again(tmp_path: Path, library: Any, body: dict[str, Any]) -> None:
     client, replans = _api(tmp_path, library)
 

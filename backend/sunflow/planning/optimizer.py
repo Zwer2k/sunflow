@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 import numpy as np
+from scipy.linalg import expm
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
@@ -179,25 +180,29 @@ class FlexLoad:
 class ThermalLoad:
     """A heat pump warming the house, with the room temperature as a heat storage (linear, like EMHASS).
 
-    Per slot with the learned house (K/h): T[t] = T[t-1] + dt·(a·(T_out[t] - T[t-1]) + gains)
-    + b·COP[t]·P[t]·dt/1000, b in K per kWh of heat. Below lower the plan pays cold_cost, above
-    upper warm_cost (sun can push it there without the heat pump), per K and hour. With a target
-    (the room setpoint) every kelvin away from it, up or down, costs deviation_cost per hour: without
-    a saving the plan stays on the target (design/heat_pump.md, 14).
+    The house model has two stores (design/heat_pump.md, 14.1), surface S and room T, in hours, kW and kWh/K:
+        cs·dS/dt = Q − kf·(S − T),   cb·dT/dt = kf·(S − T) − u·(T − T_out) + g,   Q = COP·P/1000
+    stepped exactly per slot with the inputs held. Below lower the plan pays cold_cost, above upper
+    warm_cost (sun can push it there without the heat pump), per K and hour. With a target (the room
+    setpoint) every kelvin away from it, up or down, costs deviation_cost per hour: without a saving the
+    plan stays on the target (14.3).
     """
 
     name: str
-    a: float
-    b: float
+    u: float
+    kf: float
+    cs: float
+    cb: float
     gains: float
-    # The model's temperature now and the bounds for it (the reference room's band, shifted)
+    # The room temperature and the model's surface temperature now
     inside: float
+    surface: float
     outside: list[float]
     cop: list[float]
     lower: list[float]
     upper: list[float]
     max_power_w: float
-    # What it draws without planning (holding the lower bound); taken out of the house load
+    # What it draws without planning (holding the setpoint); taken out of the house load
     # and added back for the comparison without Sunflow
     baseline_w: list[float]
     cold_cost: float = 50.0
@@ -209,6 +214,19 @@ class ThermalLoad:
     deviation_cost: float = 0.0
     # Highest heat output (W): the electric power per slot is at most max_heat_w / COP
     max_heat_w: float | None = None
+
+    def surface_holding(self, room: float, outside: float) -> float:
+        """The surface temperature that holds the room in equilibrium."""
+        return room + max(self.u * (room - outside) - self.gains, 0.0) / self.kf
+
+    def step(self, dt: float) -> tuple[np.ndarray, np.ndarray]:
+        """Over dt hours: the state matrix and the integral of its exponential (inputs held), for x = (S, T)."""
+        a = np.array([[-self.kf / self.cs, self.kf / self.cs], [self.kf / self.cb, -(self.kf + self.u) / self.cb]])
+        block = np.zeros((4, 4))
+        block[:2, :2] = a
+        block[:2, 2:] = np.eye(2)
+        full = expm(block * dt)
+        return full[:2, :2], full[:2, 2:]
 
     def power_limit(self, t: int) -> float:
         """Highest electric power in slot t."""
@@ -481,17 +499,22 @@ def optimize(
         first = base + len(flex) * n + sum(len(x) for x in u)
         u.append(list(range(first, first + len(load_needs))))
     count = base + len(flex) * n + sum(len(x) for x in u)
-    # Heat pumps with the house: power, room temperature, degrees below and above the band (each n)
+    # Heat pumps with the house: power, room temperature, degrees below and above the band, surface
+    # temperature (each n)
     thermal = list(thermal)
     # PV left after the house with the heat pumps' usual draw: what PV-only uses and PV charging may take
     pv_rest = [inputs[t].pv_w - inputs[t].load_w - sum(heat.baseline_w[t] for heat in thermal) for t in range(n)]
-    hp = [count + 4 * n * k + np.arange(n) for k in range(len(thermal))]
+    hp = [count + 5 * n * k + np.arange(n) for k in range(len(thermal))]
     room = [index + n for index in hp]
     cold = [index + 2 * n for index in hp]
     warm = [index + 3 * n for index in hp]
-    count += 4 * n * len(thermal)
-    # The end temperature that counts for later, at most the upper bound: warmth above it is no saving
+    surface = [index + 4 * n for index in hp]
+    count += 5 * n * len(thermal)
+    # The end temperatures that count for later: the room at most the upper bound (warmth above it is no
+    # saving), the surface at most what holds the room on the upper bound at the last outside temperature
     kept = [count + k for k in range(len(thermal))]
+    count += len(thermal)
+    kept_surface = [count + k for k in range(len(thermal))]
     count += len(thermal)
     # Degrees above and below the target per slot (only with a target)
     above: list[Any] = []
@@ -627,10 +650,12 @@ def optimize(
             cost[warm[k][t]] = heat.warm_cost * dts[t]
             if above[k] is not None:
                 cost[above[k][t]] = cost[below[k][t]] = heat.deviation_cost * dts[t]
-        # Warmth left at the end saves heat pump power later: worth it at the mean price and COP
-        cost[kept[k]] -= mean_price / heat.b / max(float(np.mean(heat.cop)), 1.0)
+        # Warmth left at the end in the house and in the surface saves heat pump power later: worth it at the
+        # mean price and COP
+        cost[kept[k]] -= mean_price * heat.cb / max(float(np.mean(heat.cop)), 1.0)
+        cost[kept_surface[k]] -= mean_price * heat.cs / max(float(np.mean(heat.cop)), 1.0)
 
-    rows = n + m * n + sum(len(x) for x in u) + n * len(thermal)
+    rows = n + m * n + sum(len(x) for x in u) + 2 * n * len(thermal)
     a_eq = lil_matrix((rows, count))
     b_eq = np.zeros(rows)
     for t, slot in enumerate(inputs):
@@ -669,16 +694,22 @@ def optimize(
             b_eq[row] = energy
             row += 1
     for k, heat in enumerate(thermal):
+        steps = {dt: heat.step(dt) for dt in set(dts)}
+        start = np.array([heat.surface, heat.inside])
         for t in range(n):
-            # T[t] - (1 - a·dt)·T[t-1] - b·COP·dt/1000·P[t] = dt·(a·T_out + gains)
-            a_eq[row, room[k][t]] = 1
-            a_eq[row, hp[k][t]] = -heat.b * heat.cop[t] * dts[t] / 1000
-            b_eq[row] = dts[t] * (heat.a * heat.outside[t] + heat.gains)
-            if t == 0:
-                b_eq[row] += (1 - heat.a * dts[t]) * heat.inside
-            else:
-                a_eq[row, room[k][t - 1]] = -(1 - heat.a * dts[t])
-            row += 1
+            # x[t] - Φ·x[t-1] - Γ·(COP·P/1000/cs, 0) = Γ·(0, (u·T_out + gains)/cb), x = (S, T)
+            phi, gamma = steps[dts[t]]
+            fixed = gamma @ np.array([0.0, (heat.u * heat.outside[t] + heat.gains) / heat.cb])
+            for i, state in enumerate((surface[k], room[k])):
+                a_eq[row, state[t]] = 1
+                a_eq[row, hp[k][t]] = -gamma[i, 0] * heat.cop[t] / 1000 / heat.cs
+                b_eq[row] = fixed[i]
+                if t == 0:
+                    b_eq[row] += phi[i] @ start
+                else:
+                    a_eq[row, surface[k][t - 1]] = -phi[i, 0]
+                    a_eq[row, room[k][t - 1]] = -phi[i, 1]
+                row += 1
 
     soc_upper: list[float] = []
     soc_min: list[float] = []
@@ -723,8 +754,10 @@ def optimize(
         for k, heat in enumerate(thermal):
             upper[hp[k][t]] = heat.power_limit(t)
             lower[room[k][t]], upper[room[k][t]] = -np.inf, np.inf
+            lower[surface[k][t]], upper[surface[k][t]] = -np.inf, np.inf
     for k, heat in enumerate(thermal):
         lower[kept[k]], upper[kept[k]] = -np.inf, heat.upper[-1]
+        lower[kept_surface[k]], upper[kept_surface[k]] = -np.inf, heat.surface_holding(heat.upper[-1], heat.outside[-1])
 
     # Import and export (charge and discharge) at the same time is physically impossible.
     # A linear model only does it when it pays: import cheaper than export, or negative
@@ -843,8 +876,9 @@ def optimize(
                 # T - above <= target and T + below >= target: only the degrees away from it cost
                 gate_rows.append(({room[k][t]: 1, above[k][t]: -1}, heat.target[t]))
                 gate_rows.append(({room[k][t]: -1, below[k][t]: -1}, -heat.target[t]))
-        # kept <= T at the end
+        # kept <= T and kept_surface <= S at the end
         gate_rows.append(({kept[k]: 1, room[k][-1]: -1}, 0.0))
+        gate_rows.append(({kept_surface[k]: 1, surface[k][-1]: -1}, 0.0))
     for k in range(m):
         if hs[k] is not None:
             # soc - above <= threshold: only the energy above it costs

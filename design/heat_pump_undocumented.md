@@ -1,6 +1,6 @@
 # Wärmepumpe: umgesetzt, aber nicht (genau) im Design
 
-Stand: 23.11.2026 (0.80.33). Arbeitsliste zum Durchgehen: Was der Code tut, ohne dass `heat_pump.md` oder
+Stand: 25.11.2026 (0.80.37). Arbeitsliste zum Durchgehen: Was der Code tut, ohne dass `heat_pump.md` oder
 `heat_pump_device.md` es beschreiben (oder nur ungenau). Je Punkt entscheidet der Nutzer:
 **ins Design** (bleibt, wird beschrieben), **ändern** oder **ausbauen**. Erledigte Punkte werden hier
 gestrichen; danach gilt wieder: Code = Design.
@@ -13,10 +13,12 @@ Spezifikation) enthält sie Befunde aus den Daten der Anlage: `heat_pump_samples
 **Übergreifende Befunde**
 - Die HPSU meldet bei laufendem Kompressor oft 0–0,35 kW Wärme (Tv ≈ Tr; bei 0,1 K Auflösung ist die
   Wärmeberechnung bei kleiner Spreizung ungenau): 104 von 429 gültigen Zeilen (24 %) ≤ 269 W. Jede Regel,
-  die auf die untere Wärme reagiert, erbt diesen Messfehler (C3, D1).
-- Mehrere Werte springen von „Startwert“ auf „gelernt“, sobald eine Mindestmenge erreicht ist (E1, E7, D1,
-  I2). Die Heizkurve macht es anders: Startwert als Prior, Daten gewichtet, kein Sprung. Später
-  vereinheitlichen (eigener Punkt nach dieser Liste).
+  die auf die untere Wärme reagiert, erbt diesen Messfehler (C3, D1). Einschätzung des Nutzers: vor allem
+  Einschwingen nach einem Wechsel der Betriebsart (Heizen ↔ Abtauen ↔ Warmwasser, Ventile schalten), kein
+  Messfehler; das Hausmodell (14.1) verbucht die Wärme dieser Zeilen wie gemessen.
+- Mehrere Werte springen von „Startwert“ auf „gelernt“, sobald eine Mindestmenge erreicht ist (E1, E7, D1).
+  Die Heizkurve macht es anders: Startwert als Prior, Daten gewichtet, kein Sprung. Später vereinheitlichen
+  (eigener Punkt nach dieser Liste).
 
 ## B. Heizkurve (8)
 
@@ -40,7 +42,7 @@ Spezifikation) enthält sie Befunde aus den Daten der Anlage: `heat_pump_samples
 | # | Was | Wo | Bewertung | Begründung | Hängt zusammen mit |
 |---|---|---|---|---|---|
 | D1 | Gelernt aus Dauerlauf-Zeilen der letzten 28 Tage (ab 288): Minimum = 5-%-Quantil der Wärme, Maximum nur nach oben (99-%-Quantil). Startwerte aus dem Profil (0,6–6 kW). | `learned.py`, `defaults.py` | **ausbauen** (Lernen) | Minimum: nur von C3 genutzt, gelernt aus dem Messfehler (256 W). Maximum: wird nur übernommen, wenn es über dem Profil liegt – gelernt 5,1 kW < 6 kW, wirkt also nie. Ohne C3 bleibt nur die Planung: dort reicht das Maximum aus dem Profil. | C3, I4/I5 (Planung nutzt das Maximum), E1 (gleiche Dauerlauf-Zeilen) |
-| D2 | „Wärme ins Haus“: wählbare Quelle (Wärmemengenzähler oder Wärme der WP). | `config`, `samples.py` | ins Design | Echte Auswahl des Nutzers, keine verdeckte Regel. Ein Zähler im Heizkreis wäre genauer als die HPSU-Wärme (siehe übergreifender Befund). | C3, D1, I2, I7 |
+| D2 | „Wärme ins Haus“: wählbare Quelle (Wärmemengenzähler oder Wärme der WP). | `config`, `samples.py` | ins Design | Echte Auswahl des Nutzers, keine verdeckte Regel. Ein Zähler im Heizkreis wäre genauer als die HPSU-Wärme (siehe übergreifender Befund). | C3, D1, Hausmodell (14.1) |
 
 ## E. Schutz (11)
 
@@ -79,20 +81,16 @@ Spezifikation) enthält sie Befunde aus den Daten der Anlage: `heat_pump_samples
 | # | Was | Wo | Bewertung | Begründung | Hängt zusammen mit |
 |---|---|---|---|---|---|
 | H1 | „Zuletzt gemeldet“ per REST (`last_reported`); schlägt das fehl, entfällt die 2-h-Prüfung still. | `rooms.py`, `shadow.py` | ins Design, **ändern** | Das Lesen selbst ist nötig (Zigbee meldet unveränderte Werte nicht neu). Das stille Weglassen der Prüfung ist eine verdeckte Regel: dann zählt ein toter Sensor weiter. Mindestens ins Journal. | C1, E2, Raum-Ist (6) |
-| H2 | Schnelle Änderung: einstellbare Bereiche; beendete Ereignisse 24 h angezeigt (höchstens 20). | `defaults.py`, UI | ins Design | Grenzen der Eingabe und Anzeige, keine Rechenregel. | C1, Heizkurve (8), I7 |
-| H3 | Außentemperatur-Quelle hat vier Stufen: automatisch, Fühler der WP, Fühler des Außengeräts (TA2), eigener Sensor. | `config`, `samples.py` | **ändern** | „Automatisch“ ist eine verdeckte Vorrangregel (Lernquelle, sonst WP) – derzeit wirkt damit der WP-Fühler. Vorschlag: nur ausdrückliche Wahl (WP, Außengerät, eigener Sensor), Standard WP. | Abschnitt 7, Heizkurve (8), I1/I2 |
+| H2 | Schnelle Änderung: einstellbare Bereiche; beendete Ereignisse 24 h angezeigt (höchstens 20). | `defaults.py`, UI | ins Design | Grenzen der Eingabe und Anzeige, keine Rechenregel. | C1, Heizkurve (8), Hausmodell (14.1) |
+| H3 | Außentemperatur-Quelle hat vier Stufen: automatisch, Fühler der WP, Fühler des Außengeräts (TA2), eigener Sensor. | `config`, `samples.py` | **ändern** | „Automatisch“ ist eine verdeckte Vorrangregel (Lernquelle, sonst WP) – derzeit wirkt damit der WP-Fühler. Vorschlag: nur ausdrückliche Wahl (WP, Außengerät, eigener Sensor), Standard WP. | Abschnitt 7, Heizkurve (8), Hausmodell (14.1) |
 
 ## I. Hausmodell und Planung (14)
 
 | # | Was | Wo | Bewertung | Begründung | Hängt zusammen mit |
 |---|---|---|---|---|---|
-| I1 | Hausmodell mit Sonne (c·S) und inneren Gewinnen (d); Sonne aus der Einstrahlungs-Lernquelle, je Stunde aus der Sensor-Statistik. | `planning/house_model.py` | ins Design | Physikalisch nötige Terme; ohne sie landen Sonne und Gewinne im Wärmeverlust. Derzeit ohne Sonne (keine Quelle). | I2, H3 |
-| I2 | Vor 7 Tagen WP-Daten lernt das Hausmodell aus der HA-Statistik (Stundenmittel), danach aus `heat_pump_samples` – Wechsel nur, wenn nicht schlechter, und endgültig. | `house_model.py` | **ausbauen** (HA-Statistik) | Zwei Datenwege mit verschiedenen Filtern und Wärmewerten, dazu eine Wechselregel – schwer nachvollziehbar. Bringt derzeit nichts: nach 5 Tagen noch kein Modell. Vorschlag: nur `heat_pump_samples`, vorher kein Modell (Planung ohne Raumheizung). | I3, I7, D2 |
-| I3 | Nutzbar nur, wenn es auf 2 zurückgehaltenen Tagen besser ist als „Temperatur bleibt“; Zeitkonstante 5–500 h; Ridge-Regression. | `house_model.py` | ins Design | Prüft das Ergebnis an Daten, statt ihm blind zu trauen – passt zum Grundsatz. | I2 |
 | I4 | Planung: unter dem Spielraum 50 €/K·h, darüber 0,2 €/K·h; WP-Bedarf (Wärme / Carnot-COP, 40 % von Carnot bei 35 °C Vorlauf) aus der Lastprognose, höchstens 70 % je Viertelstunde. | `house_plan.py`, `defaults.py` | ins Design | Feste Annahmen der Planung, beeinflussen kein Lernen. Die 40 % von Carnot und der feste Vorlauf 35 °C sind Schätzungen – im Design als solche kennzeichnen. | I5, D1 |
 | I5 | Planung nur für die erste WP, nur im Programm Heizen, ohne Sonne, ohne Batteriespeicher kein Plan; Neuplanung bei Änderung von Soll, Spielraum, Modus. | `house_plan.py`, `api` | ins Design | Bekannte Einschränkungen, keine verdeckte Rechenregel. | I4 |
 | I6 | Planung nutzt den letzten WP-Messwert höchstens 10 min alt. | `defaults.py` | ins Design | Älter wäre nicht mehr aktuell. | — |
-| I7 | **Neu:** Hausmodell aus `heat_pump_samples` verwirft jede Stunde mit irgendeiner Zeile Warmwasser, Abtauen, Nachlauf oder ungültig, und braucht zwei solche Stunden hintereinander. | `house_model.py` (`_hour_left_out`, `_transitions`) | **ändern** | Verwirft gültige Daten statt richtig zu verbuchen: 8 von 50 Stundenpaaren bleiben, bei Frost praktisch keins – das Modell lernt nur an milden Tagen. Vorschlag: alle Stunden, Wärme je Zeile verbuchen (Warmwasser 0, Abtauen wie gemessen). Messwerte je Betriebsart vorher prüfen (Bereitschaft zeigt −1,2 kW). | I2, D2, H2 |
 
 ## J. Home Assistant und API (16)
 
@@ -102,7 +100,7 @@ Spezifikation) enthält sie Befunde aus den Daten der Anlage: `heat_pump_samples
 | J2 | Thermostat „Haus“: viele weitere Attribute (Korrektur, eingefroren mit Gründen, Heizkurve, Außen, ausstehender Wert, Räume, je WP unter `heat_pumps`). | `climate.py` | **ändern** (Nutzer wählt) | Keine Rechenregel, aber jedes Attribut ist Schnittstelle, die gepflegt werden muss. Nur behalten, was in HA genutzt wird. | J1 |
 | J3 | Raum-Soll im Thermostat in 0,5-K-Schritten, gespeichert auf 0,1 K. HA „Heizen“ kehrt zur zuletzt gültigen Stufe zurück. | `climate.py`, `defaults.py` | ins Design | Bedienung, keine Rechenregel. | — |
 | J4 | Sensoren am Gerät „Sunflow“, Symbol Geist bei „Nur Lernen“; „Schreibvorgänge heute“ `unknown`, bis Budget und Zeitzone bekannt. | `sensor.py` | ins Design | `unknown` statt falscher Zahl – korrekt. | F4 |
-| J5 | API zusätzlich: `GET …/shadow_writes`, `GET …/history?hours=1–168`, `PUT …/flow_limits`, `PUT …/learn_stops`, `GET /house/model`. | `api/heat_pump.py`, `api/house.py` | ins Design (kurz) | Schnittstellen, keine Regeln. | K1 |
+| J5 | API zusätzlich: `GET …/shadow_writes`, `GET …/history?hours=1–168`, `PUT …/flow_limits`, `PUT …/learn_stops`, `GET …/house_model`. | `api/heat_pump.py` | ins Design (kurz) | Schnittstellen, keine Regeln. | K1 |
 | J6 | Verlauf-Ereignisse enthalten noch `flow_source` (Quellenwechsel gibt es nicht mehr). | `api/heat_pump.py` | **ausbauen** | Rest entfernter Logik. | — |
 
 ## K. UI (16)

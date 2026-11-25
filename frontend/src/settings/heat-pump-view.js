@@ -10,7 +10,11 @@ import { toggleSheet } from "../lib/display-toggles.js";
 import { isOpen, setOpen } from "../lib/collapse.js";
 
 // Room temperature at which the cooling rate is shown (api/house.py)
-const COOLING_INSIDE_C = 20;
+/** Names of the house model's values (for "at the bound"). */
+const HOUSE_VALUE_NAMES = () => ({
+  u: t("Wärmeverlust"), kf: t("Heizfläche → Raum"), cs: t("Wärmespeicher Heizfläche"), cb: t("Wärmespeicher Haus"),
+  g: t("Innere Gewinne"), offset: t("Startabstand Heizfläche"),
+});
 // Where the outside temperature comes from (house.outside_source); a function so the texts follow the language
 const OUTSIDE_SOURCES = () => ({
   auto: t("automatisch (eigener Sensor, sonst Wärmepumpe)"),
@@ -269,6 +273,7 @@ class SunflowHeatPump extends LitElement {
     } catch (err) {
       this._status = { error: err.message, devices: [], house: null };
     }
+    if (this._houseModel === null) this._loadHouseModel();
     this._loadWrites();
     this._loadHistory();
   }
@@ -310,13 +315,18 @@ class SunflowHeatPump extends LitElement {
       this._error = t("Einstellungen nicht verfügbar: {error}", { error: err.message });
     }
     this._loadCandidates();
-    this._loadHouseModel();
     this._loadStatus();
   }
 
+  /** The house model learns from the first heat pump (design/heat_pump.md 14.1). */
   async _loadHouseModel() {
+    const first = this._status?.devices?.[0];
+    if (!first) {
+      if (this._status && !this._status.error) this._houseModel = { state: "no_heat_pump" };
+      return;
+    }
     try {
-      this._houseModel = await api.houseModel();
+      this._houseModel = await api.houseModel(first.id);
     } catch (err) {
       this._houseModel = { state: "error", error: err.message };
     }
@@ -1217,7 +1227,7 @@ class SunflowHeatPump extends LitElement {
     let body;
     if (!preview) body = html`<p class="small muted">${t("Lade …")}</p>`;
     else if (preview.state === "error") body = html`<p class="small error-text">${t("Vorschau nicht verfügbar: {error}", { error: preview.error })}</p>`;
-    else if (preview.state !== "ok") body = html`<p class="small muted">${t("Noch zu wenige Messwerte für das Hausmodell (mindestens 24 Stunden mit Raumtemperatur).")}</p>`;
+    else if (preview.state !== "ok") body = html`<p class="small muted">${t("Noch kein Hausmodell (mindestens 24 Stunden mit Raumtemperatur und gemessener Wärme), siehe „Hausmodell“.")}</p>`;
     else {
       const m = preview.model;
       const tile = (...args) => this._tile(...args);
@@ -1248,7 +1258,7 @@ class SunflowHeatPump extends LitElement {
     return html`
       <div class="group">
         <div class="title-row"><h3>${t("Vorschau")}</h3>${daysSeg}</div>
-        <p class="help small">${t("Was die Heizkurve mit dem Raum machen würde: ein Hausmodell, angepasst an die Messwerte der letzten 14 Tage, rechnet den Raum mit der aktuellen Kurve und mit den oben eingegebenen Startwerten (noch nicht gespeichert) voraus. Links gemessen und Modell zum Vergleich. Nur Anzeige – erst „Speichern“ ändert die Kurve.")}</p>
+        <p class="help small">${t("Was die Heizkurve mit dem Raum machen würde: das Hausmodell (siehe „Hausmodell“) rechnet den Raum mit der aktuellen Kurve und mit den oben eingegebenen Startwerten (noch nicht gespeichert) voraus. Links gemessen und Modell zum Vergleich. Nur Anzeige – erst „Speichern“ ändert die Kurve.")}</p>
         ${body}
       </div>`;
   }
@@ -1353,97 +1363,142 @@ class SunflowHeatPump extends LitElement {
   _houseModelSummary() {
     const result = this._houseModel;
     if (!result) return "";
+    const hours = result.room_hours ?? 0;
+    const usable = result.usable_hours ?? 48;
+    if (result.state === "ok") {
+      if (result.used) return t("wird genutzt");
+      if (result.plan_model === "off") return t("gelernt, Nutzung aus");
+      return hours < usable ? t("lernt: {hours} von {total} Stunden", { hours, total: usable }) : t("gelernt, noch nicht genutzt");
+    }
     return {
-      ready: t("gelernt"),
-      learning: t("lernt: {days} von {min} Tagen", { days: result.days ?? 0, min: result.min_days ?? 7 }),
+      learning: t("lernt: {hours} von {total} Stunden", { hours, total: usable }),
+      pending: t("Lade …"),
+      no_heat: t("Wärme nicht gemessen"),
       no_rooms: t("keine Räume"),
-      no_outside: t("Außentemperatur fehlt"),
+      no_heat_pump: t("keine Wärmepumpe"),
+      other_heat_pump: t("lernt von der ersten Wärmepumpe"),
       error: t("nicht verfügbar"),
-    }[result.state] ?? t("noch unsicher");
+    }[result.state] ?? "";
   }
 
-  /** What Sunflow learned about the house, in words, with the last week measured and expected. */
+  /** What Sunflow learned about the house (design/heat_pump.md 14.1), how sure it is and whether the planning uses it (14.2). */
   _renderHouseModel() {
     const result = this._houseModel;
     if (!result) return html`<p class="small muted">${t("Lade …")}</p>`;
-    if (result.state === "no_rooms") return html`<p class="small muted">${t("Noch keine Räume: unter „Einstellungen“ hinzufügen.")}</p>`;
-    const intro = html`<p class="help small">${t("Aus den Raumtemperaturen lernt Sunflow, wie schnell das Haus auskühlt und wie stark Heizung und Sonne es erwärmen. Die Planung (Vorheizen) nutzt das Modell ab {min} Tagen gültigem Heizbetrieb.", { min: result.min_days ?? 7 })}</p>`;
+    const intro = html`<p class="help small">${t("Aus der Wärme der Wärmepumpe, der Außen- und der Raumtemperatur lernt Sunflow, wie viel Wärme Heizfläche (Estrich, Heizkörper) und Haus speichern, wie schnell sie weitergegeben wird und wie viel das Haus nach außen verliert. Jede 5-Minuten-Messung zählt; Warmwasser und Abtauen geben dem Haus keine Wärme. Die Planung (Vorheizen) und die Vorschau der Heizkurve nutzen das Modell.")}</p>`;
     const messages = {
-      no_outside: t("Es fehlt eine Außentemperatur: an der Wärmepumpe oder unter Lernquellen."),
       error: t("Nicht verfügbar: {error}", { error: result.error ?? "" }),
+      pending: t("Wird gerade gelernt …"),
+      no_rooms: t("Noch keine Räume: unter „Einstellungen“ hinzufügen."),
+      no_heat_pump: t("Keine Wärmepumpe eingerichtet."),
+      no_heat: t("Die Wärmepumpe meldet keine Wärme: ohne Wärmemessung lernt Sunflow kein Hausmodell. Ein Wärmemengenzähler lässt sich unter „Einstellungen“ wählen."),
+      other_heat_pump: t("Das Hausmodell lernt aus den Messwerten der ersten Wärmepumpe ({name}).", { name: result.first ?? "" }),
     };
-    if (messages[result.state]) return html`${intro}<p class="small muted">${messages[result.state]}</p>${this._renderHouseSource(result)}`;
-    if (result.state === "learning") {
-      const days = result.days ?? 0;
-      const min = result.min_days ?? 7;
-      return html`${intro}
-        <div class="small">${t("Tage mit Raum- und Außentemperatur: {value} von {total}", { value: days, total: min })}</div>
-        <div class="bar"><div style=${`width: ${Math.min(100, (days / min) * 100)}%`}></div></div>
-        ${this._renderHouseSource(result)}`;
-    }
+    if (messages[result.state]) return html`${intro}<p class="small muted">${messages[result.state]}</p>`;
     const m = result.model;
-    const heat = {
-      meter: t("Wärme vom gewählten Sensor"),
-      measured: t("Wärme der Wärmepumpe gemessen"),
-      cop: t("Wärme aus Strom × COP der Wärmepumpe"),
-      estimated: t("Wärme aus dem Strom der Wärmepumpe geschätzt (COP aus der Außentemperatur)"),
-    }[result.heat_source] ?? t("ohne Wärmemessung – Heizung und innere Wärme lassen sich nicht trennen");
-    const tile = (...args) => this._tile(...args);
-    const name = (entityId) => this._roomName(entityId);
-    const points = result.chart ?? [];
-    const v1 = (v) => decimal(v.toFixed(1));
     return html`
       ${intro}
-      <p class="small ${result.state === "ready" ? "muted" : "warn-text"}">${result.state === "ready"
-        ? t("Aus {days} Tagen · {heat}", { days: result.days, heat })
-        : m.plausible
-          ? t("Noch unsicher: Die Vorhersage ist nicht besser als „die Temperatur bleibt“. Sunflow nutzt das Modell noch nicht. ({heat})", { heat })
-          : t("Noch nicht plausibel – vielleicht heizt etwas, das nicht gemessen wird, oder ein Sensor hängt in der Sonne. ({heat})", { heat })}</p>
-      <div class="tiles">
-        ${m.tau_h != null ? tile(t("Zeitkonstante"), `${Math.round(m.tau_h)} h`, t("bis zwei Drittel des Unterschieds nach außen weg sind")) : nothing}
-        ${tile(t("Abkühlung bei 0 °C außen"), `${v1(m.cooling_k_per_h_at_0)} K/h`, t("ohne Heizung und Sonne, bei {temp} °C innen", { temp: decimal(String(COOLING_INSIDE_C)) }))}
-        ${m.loss_w_per_k != null ? tile(t("Wärmeverlust"), `${Math.round(m.loss_w_per_k)} W/K`, t("bei −10 °C außen etwa {kw} kW Heizleistung", { kw: v1(m.loss_w_per_k * (COOLING_INSIDE_C + 10) / 1000) })) : nothing}
-        ${m.capacity_kwh_per_k != null ? tile(t("Wärmespeicher"), `${Math.round(m.capacity_kwh_per_k)} kWh/K`, t("Wärme für 1 K wärmer im ganzen Haus")) : nothing}
-        ${m.sun_k_per_h != null ? tile(t("Sonne"), `${m.sun_k_per_h >= 0 ? "+" : ""}${v1(m.sun_k_per_h)} K/h`, t("bei voller Sonne")) : nothing}
-        ${m.error_k != null ? tile(t("Vorhersage über 24 h"), `± ${v1(m.error_k)} K`, t("„bleibt gleich“ läge bei ± {k} K", { k: v1(m.baseline_k) })) : nothing}
-      </div>
-      ${this._renderHouseSource(result)}
-      ${result.excluded_hours
-        ? html`<p class="small muted">${result.source === "heat_pump_samples"
-          ? t("{hours} Stunden mit Warmwasser, Abtauen, Nachlauf oder schnellen Änderungen sind ausgelassen.", { hours: result.excluded_hours })
-          : t("{hours} Stunden mit Warmwasser oder Abtauen sind ausgelassen: deren Wärme ging nicht ins Haus.", { hours: result.excluded_hours })}</p>`
-        : nothing}
-      ${result.restless?.length
-        ? html`<p class="small warn-text">${t("Auffällig unruhig – vielleicht Sonne, Heizkörper oder Fenster am Sensor: {rooms}. Ein geringeres Gewicht oder ein anderer Sensor hilft.", { rooms: result.restless.map(name).join(", ") })}</p>`
-        : nothing}
-      ${points.length
-        ? html`<div class="title-row"><h3>${t("Letzte 7 Tage")}</h3></div>
-          <div class="legend">
-            <span><i style=${`background: ${SERIES_COLORS[0]}`}></i>${t("gemessen")}</span>
-            <span><i style=${`background: ${SERIES_COLORS[1]}`}></i>${t("Modell (startet jeden Tag neu)")}</span>
-          </div>
-          ${lineChart(
-            [
-              { name: t("gemessen"), color: SERIES_COLORS[0], points: points.map((p) => ({ start: p.start, end: p.end, value: p.measured })) },
-              { name: t("Modell"), color: SERIES_COLORS[1], dashed: true, points: points.map((p) => ({ start: p.start, end: p.end, value: p.model })) },
-            ],
-            {
-              label: t("Raumtemperatur der letzten 7 Tage, gemessen und vom Modell erwartet"),
-              formatY: (v) => `${decimal(v.toFixed(1))} °C`,
-              yMin: Math.floor(Math.min(...points.map((p) => p.measured)) - 1),
-              yMax: Math.ceil(Math.max(...points.map((p) => p.measured)) + 1),
-            },
-          )}`
-        : nothing}
+      ${this._renderHouseProgress(result)}
+      ${m ? this._renderHouseValues(m) : nothing}
+      ${this._renderPlanModel(result)}
+      ${result.chart?.length ? this._renderHouseChart(result.chart) : nothing}
     `;
   }
 
-  /** Where the house model's hours come from: Home Assistant until the heat pump's samples cover enough days. */
-  _renderHouseSource(result) {
-    if (!result.source) return nothing;
-    return html`<p class="small muted">${result.source === "heat_pump_samples"
-      ? t("Quelle: Messwerte der Wärmepumpe (5 min, {days} Tage gültiger Heizbetrieb).", { days: result.coverage_days })
-      : t("Quelle: Stundenmittel aus Home Assistant. Umstellung auf die Messwerte der Wärmepumpe ab {min} Tagen gültigem Heizbetrieb (bisher {days}).", { min: result.min_days ?? 7, days: result.coverage_days ?? 0 })}</p>`;
+  /** How far the learning is: hours with a room temperature, then the checks for the planning. */
+  _renderHouseProgress(result) {
+    const hours = result.room_hours ?? 0;
+    const show = result.show_hours ?? 24;
+    const usable = result.usable_hours ?? 48;
+    const m = result.model;
+    const v2 = (v) => decimal(v.toFixed(2));
+    const check = (ok, label, note) => html`<li class=${ok ? "" : "warn-text"}>${ok ? "✓" : "✗"} ${label}${note ? html` <span class="muted">– ${note}</span>` : nothing}</li>`;
+    const tested = m?.test_rms_k != null && m?.stay_rms_k != null;
+    return html`
+      <div class="small">${t("Stunden mit Raumtemperatur: {hours} (sichtbar ab {show}, nutzbar ab {usable})", { hours, show, usable })}</div>
+      <div class="bar"><div style=${`width: ${Math.min(100, (hours / usable) * 100)}%`}></div></div>
+      ${m
+        ? html`<ul class="checks small">
+            ${check(hours >= usable, t("genug Daten"), t("{hours} von {total} Stunden", { hours, total: usable }))}
+            ${check(m.plausible, t("plausibel"), m.plausible ? null : t("an der Grenze: {names}", { names: m.at_bound.map((n) => HOUSE_VALUE_NAMES()[n] ?? n).join(", ") }))}
+            ${check(tested && m.test_rms_k < m.stay_rms_k, t("Test: die letzten 24 h vorhergesagt"),
+              tested ? t("Modell ± {model} K, „Temperatur bleibt“ ± {stay} K", { model: v2(m.test_rms_k), stay: v2(m.stay_rms_k) }) : t("noch nicht möglich"))}
+          </ul>
+          <p class="small ${result.used ? "muted" : "warn-text"}">${result.used
+            ? t("Die Planung nutzt das Modell.")
+            : result.plan_model === "off"
+              ? t("Die Planung nutzt das Modell nicht (ausgeschaltet).")
+              : t("Die Planung nutzt das Modell noch nicht: kein Vorheizen, Planziel ist der Raum-Soll.")}</p>`
+        : html`<p class="small muted">${t("Kennwerte ab {show} Stunden mit Raumtemperatur.", { show })}</p>`}
+      <p class="help small">${t("Das Modell lernt stündlich weiter aus den letzten 28 Tagen, neuere zählen mehr. Fertig ist es nie: das „±“ zeigt, wie sicher ein Wert schon ist, und wird mit jedem Tag – vor allem bei wechselndem Wetter – kleiner.")}</p>
+    `;
+  }
+
+  /** The learned values with their uncertainty, and the data they come from. */
+  _renderHouseValues(m) {
+    const tile = (...args) => this._tile(...args);
+    const pm = (value, spread, unit, digits = 0) => `${decimal(value.toFixed(digits))} ± ${decimal(spread.toFixed(digits))} ${unit}`;
+    const d = m.data;
+    const day = (iso) => new Date(iso).toLocaleDateString(locale(), { day: "numeric", month: "numeric" });
+    return html`
+      <div class="tiles">
+        ${tile(t("Wärmeverlust"), pm(m.loss_w_per_k, m.loss_spread, "W/K"), t("bei −10 °C außen und 20 °C innen etwa {kw} kW", { kw: decimal((m.loss_w_per_k * 30 / 1000).toFixed(1)) }))}
+        ${tile(t("Wärmespeicher Haus"), pm(m.house_kwh_per_k, m.house_spread, "kWh/K", 1), t("Zeitkonstante {h} h", { h: Math.round(m.tau_house_h) }))}
+        ${tile(t("Wärmespeicher Heizfläche"), pm(m.surface_kwh_per_k, m.surface_spread, "kWh/K", 1), t("Zeitkonstante {h} h", { h: decimal(m.tau_surface_h.toFixed(1)) }))}
+        ${tile(t("Heizfläche → Raum"), pm(m.transfer_w_per_k, m.transfer_spread, "W/K"), t("Wärme je Kelvin Heizfläche über dem Raum"))}
+        ${tile(t("Innere Gewinne"), pm(m.gains_w, m.gains_spread, "W"), t("Personen, Geräte, nicht gemessene Wärme"))}
+        ${m.water_w_per_k != null ? tile(t("Wasser → Heizfläche"), `${m.water_w_per_k} W/K`, t("bei laufendem Kompressor, für die Vorschau")) : nothing}
+        ${tile(t("Abweichung"), `± ${decimal(m.rms_k.toFixed(2))} K`, t("Modell gegen Messung über alle Stunden"))}
+      </div>
+      <p class="small muted">${t("Daten: {days} Tage ({from}–{to}), {hours} Stunden mit Raumtemperatur, {heating} h geheizt, außen {min} bis {max} °C.", {
+        days: decimal(d.days.toFixed(1)), from: day(d.start), to: day(d.end), hours: d.room_hours, heating: decimal(d.heating_hours.toFixed(0)),
+        min: decimal(d.outside_min_c.toFixed(1)), max: decimal(d.outside_max_c.toFixed(1)),
+      })}</p>
+    `;
+  }
+
+  /** Whether the planning uses the house model: off, auto (when usable) or on (when plausible). */
+  _renderPlanModel(result) {
+    const current = result.plan_model ?? "auto";
+    const option = (value, label) => html`<button class=${current === value ? "on" : ""} aria-pressed=${current === value}
+      ?disabled=${this._climateBusy} @click=${() => this._setPlanModel(value)}>${label}</button>`;
+    return html`
+      <div class="field">
+        <span class="field-label">${t("Hausmodell in der Planung")}</span>
+        <div class="seg" role="group" aria-label=${t("Hausmodell in der Planung")}>
+          ${option("off", t("Aus"))}${option("auto", t("Automatisch"))}${option("on", t("Immer"))}
+        </div>
+        <span class="help small">${t("Automatisch: sobald 48 Stunden da sind, das Modell plausibel ist und die letzten 24 Stunden besser vorhersagt als „Temperatur bleibt“. Immer: sobald es plausibel ist. Aus: kein Vorheizen, Planziel ist der Raum-Soll.")}</span>
+      </div>
+    `;
+  }
+
+  async _setPlanModel(value) {
+    await this._setClimate({ plan_model: value });
+    this._loadHouseModel();
+  }
+
+  _renderHouseChart(points) {
+    return html`
+      <div class="title-row"><h3>${t("Letzte 7 Tage")}</h3></div>
+      <div class="legend">
+        <span><i style=${`background: ${SERIES_COLORS[0]}`}></i>${t("gemessen")}</span>
+        <span><i style=${`background: ${SERIES_COLORS[1]}`}></i>${t("Modell")}</span>
+      </div>
+      ${lineChart(
+        [
+          { name: t("gemessen"), color: SERIES_COLORS[0], points: points.map((p) => ({ start: p.start, end: p.end, value: p.measured })) },
+          { name: t("Modell"), color: SERIES_COLORS[1], dashed: true, points: points.map((p) => ({ start: p.start, end: p.end, value: p.model })) },
+        ],
+        {
+          label: t("Raumtemperatur der letzten 7 Tage, gemessen und vom Modell erwartet"),
+          formatY: (v) => `${decimal(v.toFixed(1))} °C`,
+          yMin: Math.floor(Math.min(...points.map((p) => p.measured)) - 1),
+          yMax: Math.ceil(Math.max(...points.map((p) => p.measured)) + 1),
+        },
+      )}
+      <p class="help small">${t("Das Modell rechnet frei durch, ohne sich an der Messung zu korrigieren; nach einer Lücke in der Aufzeichnung startet es wieder bei der gemessenen Raumtemperatur.")}</p>
+    `;
   }
 
   // ---------- Settings ----------
@@ -1657,6 +1712,7 @@ class SunflowHeatPump extends LitElement {
 
   static styles = [toggleSheet, diagramStyles, css`
     :host { display: flex; flex-direction: column; gap: 12px; }
+    ul.checks { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 2px; }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; }
     h1 { margin: 0; font-size: 20px; }

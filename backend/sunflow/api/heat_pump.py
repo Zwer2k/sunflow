@@ -22,18 +22,11 @@ from sunflow.heat_pump.defaults import (
     ROOM_SETPOINT_MIN_C,
 )
 from sunflow.heat_pump.guard import daily_counts
+from sunflow.heat_pump.house import PAST_HOURS, SHOW_HOURS, USABLE_HOURS, HouseModel, outside_hours, predict
 from sunflow.heat_pump.limits import ControlSettings, setpoint_range, surface_range
-from sunflow.heat_pump.preview import (
-    DAYS_MAX,
-    FIT_DAYS,
-    PreviewCache,
-    build,
-    hourly,
-    outside_hours,
-    predict,
-)
 from sunflow.heat_pump.samples import records_heat_pump
 from sunflow.heat_pump.shadow import climate_status
+from sunflow.planning.house_plan import heat_pump_device, uses_model
 
 from .common import _library, _local_tz, _replan
 
@@ -403,12 +396,71 @@ async def take_curve_start(request: Request, device_id: str, origin: Literal["he
     return _set_start(request, store, config, device, curve.slope, curve.shift_k, "learned")
 
 
-def _preview_cache(request: Request) -> PreviewCache:
-    cache = getattr(request.app.state, "heat_pump_preview", None)
-    if not isinstance(cache, PreviewCache):
-        cache = PreviewCache()
-        request.app.state.heat_pump_preview = cache
-    return cache
+# Days the preview predicts at most
+PREVIEW_DAYS_MAX = 7
+
+
+def _learning(request: Request) -> Any:
+    """The runner's house learning (design/heat_pump.md, 14.1); None before the first."""
+    return getattr(getattr(request.app.state, "runner", None), "house", None)
+
+
+def _round(value: float | None, digits: int) -> float | None:
+    return round(value, digits) if value is not None else None
+
+
+def house_model_status(model: HouseModel) -> dict[str, Any]:
+    """The learned values with their uncertainty (one standard deviation), the quality and the data."""
+    p, spread = model.params, model.fit.spread
+    days = (model.data_end - model.data_start).total_seconds() / 86400
+    return {
+        "loss_w_per_k": round(p.u * 1000), "loss_spread": round(spread["u"] * 1000),
+        "transfer_w_per_k": round(p.kf * 1000), "transfer_spread": round(spread["kf"] * 1000),
+        "surface_kwh_per_k": round(p.cs, 1), "surface_spread": round(spread["cs"], 1),
+        "house_kwh_per_k": round(p.cb, 1), "house_spread": round(spread["cb"], 1),
+        "gains_w": round(p.g * 1000), "gains_spread": round(spread["g"] * 1000),
+        "tau_surface_h": round(p.tau_surface_h, 1), "tau_house_h": round(p.tau_house_h, 1),
+        "water_w_per_k": round(model.kw * 1000) if model.kw is not None else None,
+        "rms_k": round(model.fit.rms_k, 3),
+        "test_rms_k": _round(model.test_rms_k, 3), "stay_rms_k": _round(model.stay_rms_k, 3),
+        "plausible": model.plausible, "at_bound": model.fit.at_bound, "usable": model.usable,
+        "data": {
+            "room_hours": model.fit.room_hours, "heating_hours": round(model.heating_hours, 1),
+            "outside_min_c": round(model.outside_min_c, 1), "outside_max_c": round(model.outside_max_c, 1),
+            "start": model.data_start.isoformat(), "end": model.data_end.isoformat(), "days": round(days, 1),
+        },
+    }
+
+
+@router.get("/heat_pump/{device_id}/house_model")
+async def house_model(request: Request, device_id: str) -> dict[str, Any]:
+    """The house model (14.1) learned from this heat pump's samples, and whether the planning uses it (14.2).
+
+    state: ok, learning (fewer than show_hours hours with a room temperature), no_heat, no_rooms,
+    no_heat_pump, pending (not learned yet) or other_heat_pump (the model learns from the first heat pump)."""
+    _, config, device = _heat_pump(request, device_id)
+    setting = config.house.climate.plan_model
+    base = {"show_hours": SHOW_HOURS, "usable_hours": USABLE_HOURS, "plan_model": setting}
+    first = heat_pump_device(config, _library(request).profiles)
+    if first is None or first.id != device.id:
+        return base | {"state": "other_heat_pump", "first": first.name if first else None}
+    learning = _learning(request)
+    if learning is None:
+        return base | {"state": "pending"}
+    result: dict[str, Any] = base | {
+        "state": learning.state,
+        "room_hours": learning.room_hours,
+        "computed_at": learning.computed_at.isoformat() if learning.computed_at else None,
+    }
+    model = learning.model
+    if model is None:
+        return result | {"used": False}
+    return result | {
+        "used": uses_model(setting, model),
+        "reason": model.reason(),
+        "model": house_model_status(model),
+        "chart": model.chart,
+    }
 
 
 async def _outside_forecast(request: Request, config: SunflowConfig) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -433,35 +485,29 @@ async def _outside_forecast(request: Request, config: SunflowConfig) -> tuple[li
 async def preview(
     request: Request,
     device_id: str,
-    days: int = Query(default=2, ge=1, le=DAYS_MAX),
+    days: int = Query(default=2, ge=1, le=PREVIEW_DAYS_MAX),
     slope: float | None = Query(default=None, ge=0, le=CURVE_SLOPE_LIMIT),
     shift_k: float | None = Query(default=None, ge=-CURVE_SHIFT_RANGE_K, le=CURVE_SHIFT_RANGE_K),
     setpoint_c: float | None = Query(default=None, ge=ROOM_SETPOINT_MIN_C, le=ROOM_SETPOINT_MAX_C),
 ) -> dict[str, Any]:
-    """Preview of the heating curve (16): a house model fitted to the last FIT_DAYS of samples, the measured and
-    the modelled room of the last 48 h, and the room of the next days with the current curve and with the
-    given slope, shift and room setpoint (default: the start values and the room setpoint). Display only."""
+    """Preview of the heating curve (16) with the house model (14.1): the measured and the modelled room of the
+    last 48 h, and the room of the next days with the current curve and with the given slope, shift and room
+    setpoint (default: the start values and the room setpoint). Display only."""
     _, config, device = _heat_pump(request, device_id)
     profile = _library(request).profiles.get(device.profile) or {}
     now = datetime.now(UTC)
-    store = getattr(getattr(request.app.state, "runner", None), "shadow", None)
-    weights = {room.entity_id: room.weight for room in config.house.rooms}
-
-    def build_model() -> Any:
-        rows = store.heat_pump_samples(device_id, now - timedelta(days=FIT_DAYS)) if store is not None else []
-        return build(hourly(rows, weights), now)
-
-    cache = _preview_cache(request)
-    model = await asyncio.to_thread(cache.get, device_id, now, build_model)
     room_setpoint = setpoint_c if setpoint_c is not None else config.house.climate.setpoint_c
-    if model is None:
+    first = heat_pump_device(config, _library(request).profiles)
+    learning = _learning(request)
+    model = learning.model if learning is not None and first is not None and first.id == device.id else None
+    if model is None or model.kw is None:
         return {"state": "not_enough_data", "setpoint_c": room_setpoint}
     recorder = _recorder(request)
     flow = getattr(recorder, "flow", None)
     state = (recorder.status() if recorder is not None else {}).get(device_id) or {}
     measured = (state.get("flow") or {}).get("outside_c")
     if measured is None:
-        measured = next((h.outside_c for h in reversed(model.hours) if h.outside_c is not None), 0.0)
+        measured = model.outside_c
     hourly_forecast, daily_forecast = await _outside_forecast(request, config)
     start = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
     outside, source = outside_hours(start, days * 24, hourly_forecast, daily_forecast, measured)
@@ -472,18 +518,23 @@ async def preview(
     current_shift = curve.shift_k if curve is not None else (start_values.shift_k if start_values else 0.0)
     entered_slope = slope if slope is not None else (start_values.slope if start_values else current_slope)
     entered_shift = shift_k if shift_k is not None else (start_values.shift_k if start_values else current_shift)
+    since = now - timedelta(hours=PAST_HOURS + 1)
+    past = [
+        {"at": (datetime.fromisoformat(p["start"]) + timedelta(minutes=30)).isoformat(), "room_c": p["measured"], "model_c": p["model"]}
+        for p in model.chart if datetime.fromisoformat(p["start"]) >= since
+    ]
     return {
         "state": "ok",
         "setpoint_c": room_setpoint,
         "model": {
             "computed_at": model.computed_at.isoformat(), "room_hours": model.fit.room_hours,
-            "rms_k": round(model.fit.rms_k, 3), "test_rms_k": round(model.test_rms_k, 3) if model.test_rms_k is not None else None,
-            "slope": round(model.slope, 3), "shift_k": round(model.shift_k, 2),
-            "tau_surface_h": round(model.fit.params.tau_s, 1), "tau_house_h": round(model.fit.params.tau_b, 1),
+            "rms_k": round(model.fit.rms_k, 3), "test_rms_k": _round(model.test_rms_k, 3),
+            "slope": _round(model.slope, 3), "shift_k": _round(model.shift_k, 2),
+            "tau_surface_h": round(model.params.tau_surface_h, 1), "tau_house_h": round(model.params.tau_house_h, 1),
             "share": round(model.share, 2), "room_c": round(model.room_c, 2),
         },
         "limits": {"min_c": limits[0], "max_c": limits[1]},
-        "past": model.past,
+        "past": past,
         "start": start.isoformat(),
         "times": [(start + timedelta(hours=i + 1)).isoformat() for i in range(days * 24)],
         "outside_c": [round(a, 1) for a in outside],
@@ -529,8 +580,9 @@ async def set_flow_limits(request: Request, device_id: str, body: FlowLimits) ->
 
 
 class ClimateUpdate(BaseModel):
-    """A change of the climate entity "Haus": setpoint, mode and/or the planning's margin around the setpoint
-    (preheat_k up, lower_k down; design/heat_pump.md 6); values outside the range are refused."""
+    """A change of the climate entity "Haus": setpoint, mode, the planning's margin around the setpoint
+    (preheat_k up, lower_k down; design/heat_pump.md 6) and/or whether the planning uses the house model
+    (plan_model, 14.2); values outside the range are refused."""
 
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
@@ -538,6 +590,7 @@ class ClimateUpdate(BaseModel):
     mode: Literal["heat", "off"] | None = None
     preheat_k: float | None = Field(default=None, ge=0.0, le=ROOM_MARGIN_MAX_K)
     lower_k: float | None = Field(default=None, ge=0.0, le=ROOM_MARGIN_MAX_K)
+    plan_model: Literal["off", "auto", "on"] | None = None
 
 
 @router.get("/house/climate")

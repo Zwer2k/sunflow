@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.80.37
+
+- Heat pumps: **new house model** for the planning and the preview of the heating curve. It has two heat stores (heating surface such as the screed, and the house) and learns only from the heat pump's 5 minute values of the last 28 days, every hour. Every value counts: while heating the measured heat, with hot water, defrosting (its heat comes from the hot water tank) and standby none – before, whole hours with hot water or defrosting were left out, so in cold weather the model hardly learned. The learning from Home Assistant's hourly statistics and the switch after 7 days are gone, as is the preview's own model.
+- Settings → Heat pump → House model shows **from the start how far learning is**: hours with a room temperature (shown from 24, usable from 48), the learned values with their uncertainty (±), the data they rest on, the checks for the planning (enough data, plausible, test on the last 24 hours against "temperature stays") and the last 7 days measured and modelled. The old "7 of 7 days" counted calendar days, not the data the model could use.
+- New setting **House model in the planning**: off, automatic (default: once usable) or always (once plausible). The plan says why it does not preheat.
+- The planning computes with both stores: heat put into the screed reaches the room only hours later.
+
 ## 0.80.36
 
 - Heat pumps: **preview of the heating curve** in the control chain (block "Heating curve", below the start values): a chart of how the room would develop over 1 to 7 days with the current curve and with the start values entered (before saving), the room setpoint and when it is reached. A house model with two heat stores, fitted hourly to the last 14 days of values, computes it; the last 48 hours show measured and modelled room temperature with the accuracy. "Curve according to the model" shows the curve that keeps the house at the setpoint; one click enters it. Display only. New endpoint `GET /api/v1/heat_pump/<id>/preview?days=1..7&slope=&shift_k=&setpoint_c=`.

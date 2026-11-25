@@ -25,7 +25,6 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import manifest_id
 from sunflow.devices.resolver import UNAVAILABLE_STATES, device_entities, normalize, preview
 from sunflow.i18n import t
-from sunflow.planning.house_model import outside_entity
 from sunflow.shadow.store import HEAT_PUMP_KEEP, ShadowStore
 
 from .active import WriteTargets, write_targets
@@ -104,6 +103,22 @@ def _time(text: Any) -> datetime | None:
 def off(config: SunflowConfig) -> bool:
     """Mode off ("Aus"): Sunflow neither controls nor learns, and records no heat pump samples."""
     return config.house.climate.mode == "off"
+
+
+def outside_entity(config: SunflowConfig, roles: dict[str, str | None]) -> str | None:
+    """The outside temperature chosen for the house (house.outside_source); roles: role -> entity of the heat pump.
+
+    auto: the own sensor (learning source) when set, else the heat pump's outside sensor.
+    """
+    own = config.learning_sources.outdoor_temperature
+    match config.house.outside_source:
+        case "learning_source":
+            return own
+        case "heat_pump":
+            return roles.get("outside_temperature")
+        case "heat_pump_unit":
+            return roles.get("outside_temperature_unit")
+    return own or roles.get("outside_temperature")
 
 
 @dataclass(frozen=True, kw_only=True)

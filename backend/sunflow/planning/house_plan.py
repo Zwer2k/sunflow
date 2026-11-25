@@ -1,17 +1,19 @@
 """The heat pump planned with the learned house: the optimizer's thermal load (design/heat_pump.md,
-14).
+14.2, 14.3).
 
-The room temperature becomes a heat storage: within the margin around the room setpoint
-[setpoint − lower_k, setpoint + preheat_k] the plan preheats in sunny or cheap hours and lets the house
-cool in dear ones. Every kelvin away from the setpoint costs PLAN_DEVIATION_EUR_PER_KH per hour, so
-without a saving the plan stays on the setpoint. What the heat pump draws to hold the setpoint (house
-model heat / Carnot COP, at most PLAN_MAX_LOAD_SHARE of the slot's forecast) is taken out of the house
-load forecast, which learned it, and planned anew; the comparison without Sunflow adds it back.
+The house model's two stores (heating surface and house) become a heat storage: within the margin around
+the room setpoint [setpoint − lower_k, setpoint + preheat_k] the plan preheats in sunny or cheap hours and
+lets the house cool in dear ones. Every kelvin away from the setpoint costs PLAN_DEVIATION_EUR_PER_KH per
+hour, so without a saving the plan stays on the setpoint. What the heat pump draws to hold the setpoint
+(U·(setpoint − outside) − G over the Carnot COP, at most PLAN_MAX_LOAD_SHARE of the slot's forecast) is
+taken out of the house load forecast, which learned it, and planned anew; the comparison without Sunflow
+adds it back.
 
-Only the first heat pump, only in the heating program and with a usable house model. The sun is left
-out (no irradiance forecast): on sunny days the plan heats a little too much, the room correction
-catches it. Mode "Lernen + Regeln": the battery plan plans with the heat pump. "Nur Lernen": the battery
-plan stays as without room heating; a second run shows what Sunflow would preheat. Off: no plan.
+Only the first heat pump, only in the heating program and with a house model the setting lets the planning
+use (off; auto: usable; on: plausible). The sun is left out (no irradiance forecast): on sunny days the plan
+heats a little too much, the room correction catches it. Mode "Lernen + Regeln": the battery plan plans with
+the heat pump. "Nur Lernen": the battery plan stays as without room heating; a second run shows what Sunflow
+would preheat. Off: no plan.
 """
 
 from dataclasses import dataclass, field, replace
@@ -19,7 +21,7 @@ from datetime import datetime, timedelta
 import math
 from typing import Any
 
-from sunflow.config.models import SunflowConfig
+from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.heat_pump.defaults import (
     PLAN_COLD_EUR_PER_KH,
     PLAN_DEVIATION_EUR_PER_KH,
@@ -28,9 +30,9 @@ from sunflow.heat_pump.defaults import (
     PLAN_WARM_EUR_PER_KH,
 )
 from sunflow.heat_pump.learned import values as guard_values
+from sunflow.heat_pump.house import HouseModel
 from sunflow.heat_pump.limits import ControlSettings
 from sunflow.heat_pump.states import HEATING
-from sunflow.planning.house_model import HouseModel, carnot_cop, heat_pump_device
 from sunflow.planning.optimizer import Plan, SlotInput, ThermalLoad
 
 SLOT = timedelta(minutes=15)
@@ -43,11 +45,33 @@ SHADOW = "shadow"
 NO_HEAT_PUMP = "no_heat_pump"
 MODE_OFF = "mode_off"
 NO_MODEL = "no_model"
+# The setting keeps the house model out of the planning, or the model is not usable for it (14.2)
+MODEL_OFF = "model_off"
+MODEL_UNUSABLE = "model_unusable"
 NO_SAMPLE = "no_sample"
 PROGRAM = "program"
 NO_ROOM = "no_room"
 NO_OUTSIDE = "no_outside"
 FAILED = "failed"
+
+
+# Without a measured COP: an air heat pump at the Carnot limit of a 35 °C flow, 40 % of it (14.3)
+CARNOT_SHARE = 0.4
+FLOW_C = 35.0
+
+
+def carnot_cop(outside: float) -> float:
+    """A rough COP of an air heat pump when nothing measures it."""
+    flow = FLOW_C + 273.15
+    lift = flow - (outside + 273.15)
+    return min(max(CARNOT_SHARE * flow / lift, 1.0), 6.0) if lift > 0 else 6.0
+
+
+def heat_pump_device(config: SunflowConfig, profiles: dict[str, dict[str, Any]]) -> DeviceConfig | None:
+    """The heat pump whose heat warms the house: the first device with the capability heat_pump."""
+    return next(
+        (d for d in config.devices if "heat_pump" in profiles.get(d.profile, {}).get("capabilities", [])), None
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -92,6 +116,13 @@ def house_input(
     )
 
 
+def uses_model(setting: str, model: HouseModel | None) -> bool:
+    """Whether the planning uses the house model (14.2): auto when usable, on when plausible, off never."""
+    if model is None or setting == "off":
+        return False
+    return model.plausible if setting == "on" else model.usable
+
+
 @dataclass(kw_only=True)
 class HouseSetup:
     """The thermal load for the optimizer and the house load without the heat pump; or why there is none."""
@@ -127,8 +158,12 @@ def house_setup(
         return HouseSetup(mode=None, reason=MODE_OFF)
     mode = ACTIVE if house.writing else SHADOW
     model = house.model
-    if model is None or not model.useful or model.b is None or model.b <= 0:
+    if climate.plan_model == "off":
+        return HouseSetup(mode=mode, reason=MODEL_OFF)
+    if model is None:
         return HouseSetup(mode=mode, reason=NO_MODEL)
+    if not uses_model(climate.plan_model, model):
+        return HouseSetup(mode=mode, reason=MODEL_UNUSABLE, detail=model.reason())
     if house.program is None:
         return HouseSetup(mode=mode, reason=NO_SAMPLE)
     if house.program != HEATING:
@@ -143,19 +178,22 @@ def house_setup(
     cop = [carnot_cop(o) for o in outside]
     limits = [house.max_heat_w / max(c, 1.0) for c in cop]
     baseline, adjusted = [], []
+    params = model.params
     for slot, temp, factor, limit in zip(inputs, outside, cop, limits, strict=True):
-        # Heat to hold the setpoint against the losses (kWh per hour), as electric power
-        need = max(model.a * (setpoint - temp) - model.d, 0.0) / model.b
-        power = min(need / factor * 1000, limit, PLAN_MAX_LOAD_SHARE * max(slot.load_w, 0.0))
+        # Heat to hold the setpoint against the losses (kW), as electric power
+        power = min(model.heat_to_hold(setpoint, temp) / factor * 1000, limit, PLAN_MAX_LOAD_SHARE * max(slot.load_w, 0.0))
         baseline.append(power)
         adjusted.append(replace(slot, load_w=slot.load_w - power))
     n = len(inputs)
     load = ThermalLoad(
         name=house.device_id,
-        a=model.a,
-        b=model.b,
-        gains=model.d,
+        u=params.u,
+        kf=params.kf,
+        cs=params.cs,
+        cb=params.cb,
+        gains=params.g,
         inside=house.inside_c,
+        surface=house.inside_c + (model.surface_c - model.room_c),
         outside=outside,
         cop=cop,
         lower=[setpoint - climate.lower_k] * n,

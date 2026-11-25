@@ -380,7 +380,7 @@ def test_setpoint_stored_to_a_tenth_and_survives_a_restart(tmp_path: Path, libra
     client.put("/api/v1/house/climate", json={"mode": "off"})
     client.put("/api/v1/house/climate", json={"setpoint_c": 21.26})
 
-    assert answer == {"setpoint_c": 21.3, "mode": "heat", "preheat_k": 1.0, "lower_k": 0.0}
+    assert answer == {"setpoint_c": 21.3, "mode": "heat", "preheat_k": 1.0, "lower_k": 0.0, "plan_model": "auto"}
     # A new store reads the file as after a restart
     climate = ConfigStore(tmp_path).load().house.climate
     assert (climate.setpoint_c, climate.mode) == (21.3, "off")
@@ -435,7 +435,7 @@ def test_margin_stored_to_a_tenth_with_the_setpoint(tmp_path: Path, library: Any
     answer = client.put("/api/v1/house/climate", json={"preheat_k": 1.54, "lower_k": 0.5}).json()
     client.put("/api/v1/house/climate", json={"setpoint_c": 20.0})
 
-    assert answer == {"setpoint_c": 21.0, "mode": "heat", "preheat_k": 1.5, "lower_k": 0.5}
+    assert answer == {"setpoint_c": 21.0, "mode": "heat", "preheat_k": 1.5, "lower_k": 0.5, "plan_model": "auto"}
     climate = ConfigStore(tmp_path).load().house.climate
     assert (climate.setpoint_c, climate.preheat_k, climate.lower_k) == (20.0, 1.5, 0.5)
 

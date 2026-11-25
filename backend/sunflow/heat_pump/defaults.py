@@ -203,9 +203,3 @@ OWN_WRITE_CONFIRM_S = 10 * 60
 # Max T-Vorlauf and the effective setpoint. The room thermostat block Sunflow switched is its own while the
 # real state follows within OWN_WRITE_CONFIRM_S.
 ADOPT_DELAY_S = 60
-
-# House model from heat_pump_samples (14): a day counts for the coverage when it holds at least
-# HOUSE_SAMPLES_DAY_MIN_S of valid heating without ventilation; an hour is used with at least
-# HOUSE_SAMPLES_HOUR_MIN_ROWS of its 5 minute rows.
-HOUSE_SAMPLES_DAY_MIN_S = 3600
-HOUSE_SAMPLES_HOUR_MIN_ROWS = 10

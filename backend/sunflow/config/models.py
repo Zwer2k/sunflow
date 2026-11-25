@@ -215,6 +215,14 @@ class ClimateSettings(BaseModel):
     # Margin of the planning (6, 14): preheat up to setpoint + preheat_k, lower down to setpoint - lower_k
     preheat_k: float = Field(default=ROOM_PREHEAT_DEFAULT_K, ge=0.0, le=ROOM_MARGIN_MAX_K)
     lower_k: float = Field(default=ROOM_LOWER_DEFAULT_K, ge=0.0, le=ROOM_MARGIN_MAX_K)
+    # House model in the planning (14.2): off, auto (when usable) or on (when plausible)
+    plan_model: Literal["off", "auto", "on"] = "auto"
+
+    @field_validator("plan_model", mode="before")
+    @classmethod
+    def _known_plan_model(cls, value: object) -> object:
+        # Added without a migration: missing or unknown (older or newer version) counts as auto, without an error
+        return value if value in ("off", "auto", "on") else "auto"
 
     @field_validator("setpoint_c", "preheat_k", "lower_k")
     @classmethod

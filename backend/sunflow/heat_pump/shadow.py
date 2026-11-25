@@ -156,8 +156,6 @@ class FlowShadow:
         for device_id, stored in store.devices.items():
             if (learned := Learned.from_dict(stored.get("learned"))) is not None:
                 self.learned[device_id] = learned
-        # Where the house model learns from: heat_pump_samples once chosen (kept, no jump back)
-        self.house_source: str | None = house.get("model_source") if isinstance(house.get("model_source"), str) else None
         # Writes, starts and stops of this tick: (device id, event)
         # for heat_pump_samples; journal entries (device id, message, warn)
         self.source_events: list[tuple[str, dict[str, Any]]] = []
@@ -411,7 +409,6 @@ class FlowShadow:
             self.settings.pop(gone, None)
         self._store.house = {
             "ventilation": self.ventilation.as_dict(),
-            "model_source": self.house_source,
         }
         self._store.save()
 

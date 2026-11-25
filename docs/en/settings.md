@@ -170,14 +170,37 @@ setpoint raises the flow at once by 1 + slope kelvin per kelvin.
 
 **Preview:** Below the start values a chart shows how the room would develop with the heating curve – for 1
 to 7 days, with the current curve and with the start values just entered (not saved yet), with the room
-setpoint and when the room reaches it. It is computed with a house model (screed or radiators and house as
-two heat stores) that Sunflow fits hourly to the values of the last 14 days; on the left the measured room
-temperature and the model of the last 48 hours for comparison, with the accuracy (also as a test: the last 24
-hours predicted). Outside comes from the weather forecast. Only the heating curve is computed, without the
-correction, sun and airing; hot water and defrosting as on average over the last 7 days. "Curve according to
-the model" is the heating curve that keeps the house at the setpoint according to the model; "Enter the
-model's values" puts it into the inputs. The preview changes nothing; only "Save" sets the start values. It
-needs at least 24 hours of values with a room temperature.
+setpoint and when the room reaches it. It is computed with the **house model** (see below); on the left the
+measured room temperature and the model of the last 48 hours for comparison, with the accuracy (also as a
+test: the last 24 hours predicted). The heat comes from the flow temperature (how much heat goes into the
+heating surface at which water temperature is learned by the house model too). Outside comes from the weather
+forecast. Only the heating curve is computed, without the correction, sun and airing; hot water and defrosting
+as on average over the last 7 days. "Curve according to the model" is the heating curve that keeps the house at
+the setpoint according to the model; "Enter the model's values" puts it into the inputs. The preview changes
+nothing; only "Save" sets the start values. Without a house model there is no preview.
+
+**House model:** From the heat pump's heat, the outside and the room temperature Sunflow learns how much heat
+the heating surface (screed or radiators) and the house store, how fast the surface passes it on to the room,
+how much the house loses to the outside and how much internal gains (people, devices) add. It uses the 5 minute
+values of the first heat pump from the last 28 days (newer ones count more) and learns anew every hour. Every
+value counts: while heating (also after-run) the measured heat, with hot water, defrosting (its heat comes from
+the hot water tank) and standby none. The model computes the room freely and is fitted so that its hourly
+means match the measurement; times with a fast change of a room (airing, cooking) do not count for the
+comparison. After a gap in the recording of more than 15 minutes (e.g. mode off) it starts again at the
+measured room temperature. Without a heat measurement (the heat pump's heat or an own heat meter) there is no
+house model.
+
+From the start it shows how far it is: hours with a room temperature (shown from 24, usable from 48), from 24
+hours on the values with their **uncertainty** (± – it gets smaller with every day, above all with changing
+weather), the data they rest on and the last 7 days measured and modelled. Learning is never done; the planning
+uses the model as the setting **House model in the planning** says:
+
+- **Automatic** (default): once there are 48 hours, no value sticks to its bound (plausible) and the model does
+  better than "temperature stays" in the **test**: fitted without the last 24 hours, it predicts them.
+- **Always:** once the model is plausible.
+- **Off:** never.
+
+When the planning does not use the model it does not preheat; the plan target is the room setpoint.
 
 **Correction:** slowly evens out the difference between room temperature and setpoint (at most ± 3 K; it
 does not grow within ± 0.2 K); how slowly depends on the heating surface type (integral time: underfloor 6 h,

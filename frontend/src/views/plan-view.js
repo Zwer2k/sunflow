@@ -72,7 +72,8 @@ function flexWindows(slots, name) {
 /** A fixed color per controllable consumer, in the order of the plan; load and PV keep the first two. */
 const HOUSE_REASONS = {
   mode_off: t("Modus Aus: kein Vorheiz-Plan, Planziel ist der Raum-Soll."),
-  no_model: t("Noch kein nutzbares Hausmodell – Planziel ist der Raum-Soll."),
+  no_model: t("Noch kein Hausmodell – Planziel ist der Raum-Soll."),
+  model_off: t("Hausmodell in der Planung ausgeschaltet – Planziel ist der Raum-Soll."),
   no_sample: t("Kein aktueller Messwert der Wärmepumpe – Planziel ist der Raum-Soll."),
   no_room: t("Raumtemperatur fehlt – Planziel ist der Raum-Soll."),
   no_outside: t("Außentemperatur fehlt (weder Prognose noch Messung) – Planziel ist der Raum-Soll."),
@@ -83,6 +84,14 @@ const HOUSE_REASONS = {
 function houseReason(house) {
   if (house.reason === "program") {
     return t("Die Wärmepumpe ist nicht im Programm Heizen ({program}) – kein Vorheiz-Plan, Planziel ist der Raum-Soll.", { program: house.detail ?? "–" });
+  }
+  if (house.reason === "model_unusable") {
+    const why = {
+      few_hours: t("noch weniger als 48 Stunden Daten"),
+      implausible: t("nicht plausibel"),
+      test: t("sagt die letzten 24 Stunden nicht besser vorher als „Temperatur bleibt“"),
+    }[house.detail] ?? house.detail ?? "–";
+    return t("Hausmodell noch nicht nutzbar ({why}) – Planziel ist der Raum-Soll.", { why });
   }
   return HOUSE_REASONS[house.reason] ?? house.reason;
 }

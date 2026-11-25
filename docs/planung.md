@@ -169,8 +169,9 @@ Mit einer Wärmepumpe und gelerntem Hausmodell wird das Haus selbst zum Wärmesp
 oder günstigem Strom heizt Sunflow vor, bei teurem lässt es das Haus etwas auskühlen – innerhalb des
 **Spielraums** um den Raum-Soll (Einstellungen → Wärmepumpe, Start: bis +1 K vorheizen, nicht absenken).
 
-- Je 15 Minuten rechnet Sunflow mit dem Hausmodell (Wärmeverlust nach außen, innere Gewinne, Wärme der
-  Wärmepumpe) die Raumtemperatur voraus; die Wärmepumpenleistung ist eine Größe des Plans, der COP ist aus
+- Je 15 Minuten rechnet Sunflow mit dem Hausmodell (Heizfläche und Haus als zwei Wärmespeicher,
+  Wärmeverlust nach außen, innere Gewinne, Wärme der Wärmepumpe) die Raumtemperatur voraus; Wärme, die in den
+  Estrich geht, kommt so erst Stunden später im Raum an; die Wärmepumpenleistung ist eine Größe des Plans, der COP ist aus
   der Außentemperatur geschätzt (Carnot), die höchste Leistung kommt aus der gelernten höchsten Heizleistung
   (sonst dem Startwert des Profils). Die Außentemperatur kommt aus der Wetterprognose; ohne Prognose bleibt
   die gemessene gleich. Die Sonne bleibt außen vor – an sonnigen Tagen plant Sunflow etwas zu viel Wärme,
@@ -178,17 +179,20 @@ oder günstigem Strom heizt Sunflow vor, bei teurem lässt es das Haus etwas aus
 - Jedes Kelvin über oder unter dem Raum-Soll kostet 0,05 € je Stunde: ohne Ersparnis bleibt das Planziel
   auf dem Soll. Unter dem Spielraum ist es sehr teuer (praktisch ausgeschlossen), darüber teuer, aber
   möglich (die Sonne kann das Haus darüber treiben).
-- Was die Wärmepumpe braucht, um den Raum-Soll zu halten (Hausmodell-Wärme / COP), nimmt Sunflow aus der
+- Was die Wärmepumpe braucht, um den Raum-Soll zu halten (Wärmeverlust beim Soll minus innere Gewinne, durch
+  den COP), nimmt Sunflow aus der
   Lastprognose (die es mitgelernt hat), je Viertelstunde höchstens 70 % davon, und plant es neu; im
   Vergleich ohne Sunflow zählt es wieder mit.
 - **Lernen + Regeln**: Speicher und Verbraucher werden mit der Wärmepumpe geplant. **Nur Lernen**: der Plan
   bleibt wie ohne Raumheizung (die Wärmepumpe steckt in der Lastprognose); eine zweite Rechnung zeigt nur,
   wie Sunflow vorheizen würde. **Aus**: kein Vorheiz-Plan.
-- Geplant wird nur mit der ersten Wärmepumpe, nur im Programm Heizen, mit nutzbarem Hausmodell (mindestens
-  7 Tage Daten, besser als „bleibt gleich“), mit Raumtemperatur und einem aktuellen Messwert der
+- Geplant wird nur mit der ersten Wärmepumpe, nur im Programm Heizen, mit einem Hausmodell, das die
+  Einstellung „Hausmodell in der Planung“ zulässt (Automatisch: mindestens 48 Stunden Daten, plausibel, im
+  Test besser als „Temperatur bleibt“; siehe Einstellungen → Wärmepumpe), mit Raumtemperatur und einem aktuellen Messwert der
   Wärmepumpe – sonst ist das Planziel der Raum-Soll, der Grund steht im Plan. Ohne steuerbaren Speicher
   rechnet Sunflow keinen Plan und damit auch keinen Vorheiz-Plan.
-- Eine Änderung von Raum-Soll, Spielraum, Modus oder „Lernen + Regeln“ plant sofort neu.
+- Eine Änderung von Raum-Soll, Spielraum, Modus, „Hausmodell in der Planung“ oder „Lernen + Regeln“ plant
+  sofort neu.
 - Angezeigt im Plan unter **Raumheizung**: Planziel der Raumtemperatur im Spielraum und die
   Stromaufnahme der Wärmepumpe, geplant und ohne Planung. Der Vorlauf-Regler arbeitet noch gegen den
   Raum-Soll; das Planziel übernimmt er in einer der nächsten Versionen.

@@ -26,8 +26,8 @@ from sunflow.devices.site import (
     site_status,
 )
 from sunflow.ha import HAClient, HAError
-from sunflow.planning.house_model import SAMPLES, HouseModel, learn_house
-from sunflow.planning.house_plan import HouseInput, house_input
+from sunflow.heat_pump.house import FIT_DAYS as HOUSE_FIT_DAYS, Learning, learn as learn_house_model
+from sunflow.planning.house_plan import HouseInput, heat_pump_device, house_input
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
 from sunflow.planning.plan import (
@@ -90,8 +90,8 @@ SUN_REFRESH = timedelta(hours=24)
 SUN_RETRY = timedelta(minutes=15)
 # The state of the modules (leaves blown away by the wind) from the last days: more often
 SUN_LEVEL_REFRESH = timedelta(hours=3)
-# The house model learns from four weeks of hourly values: a few times a day is enough
-HOUSE_REFRESH = timedelta(hours=6)
+# The house model is learned anew every hour (design/heat_pump.md, 13)
+HOUSE_REFRESH = timedelta(hours=1)
 # A failed replan runs every query again; not every minute while Home Assistant has a
 # problem. The pause doubles with each failure up to the maximum
 REPLAN_RETRY = timedelta(minutes=5)
@@ -384,7 +384,8 @@ class ShadowRunner:
         self.snow_ahead: dict[str, Any] | None = None
         self._location: tuple[float, float] | None = None
         self.sun_learned_at: datetime | None = None
-        self.house_model: HouseModel | None = None
+        # The house model (design/heat_pump.md, 14.1), learned hourly from the first heat pump's samples
+        self.house: Learning | None = None
         # Per wallbox: plugged in and the running transaction (card), to replan when they change
         self._plugs: dict[str, tuple[str | None, str | None]] | None = None
         self._house_at: datetime | None = None
@@ -836,46 +837,47 @@ class ShadowRunner:
     def relearn_house(self) -> None:
         """The rooms changed: the old model no longer applies, learn anew with the next plan."""
         self._house_at = None
-        self.house_model = None
-        if (flow := self.flow_shadow) is not None:
-            flow.house = None
+        self.house = None
+
+    @property
+    def house_model(self) -> Any:
+        """The learned house model (HouseModel), None before one is learned."""
+        return self.house.model if self.house is not None else None
 
     def learn_house(self) -> None:
-        """Learn the house in the background when rooms are set and the model is old."""
+        """Learn the house in the background (14.1): hourly, when rooms are set; in mode off ("Aus") nothing is
+        learned, a model learned before stays (learned once after a restart)."""
         now = datetime.now(UTC)
-        if not self._store.load().house.rooms:
-            self.relearn_house()
+        config = self._store.load()
+        if not config.house.rooms:
+            self._house_at = now
+            self.house = Learning(state="no_rooms", computed_at=now)
             return
         if self._house_task is not None and not self._house_task.done():
             return
-        if self.house_model is not None and self._store.load().house.climate.mode == "off":
-            # Mode off ("Aus", 16 step 3): the learned model stays as it is; learned once after a restart
+        if self.house_model is not None and config.house.climate.mode == "off":
             return
         if self._house_at is None or now - self._house_at > HOUSE_REFRESH:
             self._house_task = asyncio.create_task(self._learn_house())
 
     async def _learn_house(self) -> None:
         now = datetime.now(UTC)
+        config = self._store.load()
+        device = heat_pump_device(config, self._library.profiles)
         try:
-            snapshot = await self.snapshots.get() if self.snapshots else None
-            flow = self.flow_shadow
-            learned = await learn_house(
-                self._client, self._store.load(), self._library.profiles, now, snapshot, self.shadow,
-                kept=flow is not None and flow.house_source == SAMPLES,
-            )
-            model, data = learned.model, learned.data
-        except Exception as err:
+            if device is None or self.shadow is None:
+                learning = Learning(state="no_heat_pump", computed_at=now)
+            else:
+                rows = await asyncio.to_thread(self.shadow.heat_pump_samples, device.id, now - timedelta(days=HOUSE_FIT_DAYS))
+                weights = {room.entity_id: room.weight for room in config.house.rooms}
+                learning = await asyncio.to_thread(learn_house_model, rows, weights, now)
+        except Exception:
             # Tried again with the next refresh, not with every plan
-            _LOGGER.warning("Learning the house failed: %s", err, exc_info=not isinstance(err, HAError))
-            model, data = None, None
+            _LOGGER.exception("Learning the house failed")
+            learning = None
         self._house_at = now
-        # Used only while it predicts better than "the temperature stays"
-        self.house_model = model if model is not None and model.useful else None
-        if (flow := self.flow_shadow) is not None:
-            if data is not None:
-                if data.source != flow.house_source:
-                    _LOGGER.info("House model learned from %s", data.source)
-                flow.house_source = data.source
+        if learning is not None:
+            self.house = learning
 
     def house_input(self) -> HouseInput | None:
         """The first heat pump with the house model and room temperature for the planning (14)."""

@@ -177,14 +177,38 @@ Kelvin je Kelvin.
 
 **Vorschau:** Unter den Startwerten zeigt ein Diagramm, wie sich der Raum mit der Heizkurve entwickeln würde
 – für 1 bis 7 Tage, mit der aktuellen Kurve und mit den gerade eingegebenen Startwerten (noch nicht
-gespeichert), dazu der Raum-Soll und wann der Raum ihn erreicht. Gerechnet wird mit einem Hausmodell (Estrich
-bzw. Heizkörper und Haus als zwei Wärmespeicher), das Sunflow stündlich an die Messwerte der letzten 14 Tage
-anpasst; links stehen gemessenes Raum-Ist und Modell der letzten 48 Stunden zum Vergleich, dazu die
-Genauigkeit (auch als Test: die letzten 24 Stunden vorhergesagt). Außen kommt aus der Wetterprognose. Nur die
-Heizkurve wird gerechnet, ohne Korrektur, Sonne und Lüften; Warmwasser und Abtauen wie im Mittel der letzten 7
-Tage. „Kurve laut Modell“ ist die Heizkurve, die das Haus nach dem Modell auf dem Soll hält; „Werte des
-Modells eintragen“ übernimmt sie in die Eingabe. Die Vorschau ändert nichts; erst „Speichern“ setzt die
-Startwerte. Sie braucht mindestens 24 Stunden Messwerte mit Raumtemperatur.
+gespeichert), dazu der Raum-Soll und wann der Raum ihn erreicht. Gerechnet wird mit dem **Hausmodell** (siehe
+unten); links stehen gemessenes Raum-Ist und Modell der letzten 48 Stunden zum Vergleich, dazu die Genauigkeit
+(auch als Test: die letzten 24 Stunden vorhergesagt). Die Wärme kommt dabei aus der Vorlauftemperatur (wie viel
+Wärme bei welcher Wassertemperatur in die Heizfläche geht, lernt das Hausmodell mit). Außen kommt aus der
+Wetterprognose. Nur die Heizkurve wird gerechnet, ohne Korrektur, Sonne und Lüften; Warmwasser und Abtauen wie
+im Mittel der letzten 7 Tage. „Kurve laut Modell“ ist die Heizkurve, die das Haus nach dem Modell auf dem Soll
+hält; „Werte des Modells eintragen“ übernimmt sie in die Eingabe. Die Vorschau ändert nichts; erst „Speichern“
+setzt die Startwerte. Ohne Hausmodell gibt es keine Vorschau.
+
+**Hausmodell:** Aus der Wärme der Wärmepumpe, der Außen- und der Raumtemperatur lernt Sunflow, wie viel Wärme
+die Heizfläche (Estrich bzw. Heizkörper) und das Haus speichern, wie schnell die Heizfläche sie an den Raum
+weitergibt, wie viel das Haus nach außen verliert und wie viel innere Gewinne (Personen, Geräte) dazukommen.
+Es nutzt die 5-Minuten-Werte der ersten Wärmepumpe aus den letzten 28 Tagen (neuere zählen mehr) und lernt
+stündlich neu. Jeder Wert zählt: beim Heizen (auch Nachlauf) die gemessene Wärme, bei Warmwasser, Abtauen
+(die Wärme dafür kommt aus dem Warmwasserspeicher) und Bereitschaft keine. Das Modell rechnet den Raum frei
+voraus und wird so angepasst, dass seine Stundenmittel zur Messung passen; Zeiten mit schneller Änderung eines
+Raums (Lüften, Kochen) zählen dabei nicht als Vergleich. Nach einer Lücke in der Aufzeichnung von mehr als
+15 Minuten (z. B. Modus Aus) beginnt es wieder bei der gemessenen Raumtemperatur. Ohne Wärmemessung (Wärme der
+Wärmepumpe oder eigener Wärmemengenzähler) gibt es kein Hausmodell.
+
+Angezeigt wird von Anfang an, wie weit es ist: Stunden mit Raumtemperatur (sichtbar ab 24, nutzbar ab 48), ab
+24 Stunden die Kennwerte mit ihrer **Unsicherheit** (± – sie wird mit jedem Tag kleiner, vor allem bei
+wechselndem Wetter), die Daten, auf denen sie beruhen, und die letzten 7 Tage gemessen und Modell. Fertig ist
+das Lernen nie; die Planung nutzt das Modell je nach Einstellung **Hausmodell in der Planung**:
+
+- **Automatisch** (Standard): sobald 48 Stunden da sind, kein Kennwert an seiner Grenze klebt (plausibel) und
+  das Modell im **Test** besser ist als „Temperatur bleibt“: angepasst ohne die letzten 24 Stunden, sagt es
+  diese voraus.
+- **Immer:** sobald das Modell plausibel ist.
+- **Aus:** nie.
+
+Nutzt die Planung das Modell nicht, heizt sie nicht vor; das Planziel ist der Raum-Soll.
 
 **Korrektur:** gleicht die Abweichung des Raum-Ist vom Raum-Soll langsam aus (höchstens ± 3 K; unter
 ± 0,2 K Abweichung wächst sie nicht); wie langsam, hängt vom Heizflächentyp ab (Nachstellzeit: Fußboden

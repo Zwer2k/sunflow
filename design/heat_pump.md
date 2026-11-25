@@ -1,6 +1,6 @@
 # Vorlaufregelung für Wärmepumpen
 
-Stand: 23.11.2026. Verbindliche Beschreibung, wie Sunflow eine Wärmepumpe regelt. Code und Dokument
+Stand: 25.11.2026. Verbindliche Beschreibung, wie Sunflow eine Wärmepumpe regelt. Code und Dokument
 entsprechen sich; was noch nicht umgesetzt ist, steht in Abschnitt 17. Geräteanbindung (Manifest, Profil,
 ESPHome-Komponenten): `heat_pump_device.md`. Speicherregeln: `datenhaltung.md`. Umgesetztes, das hier noch
 fehlt und zu klären ist: `heat_pump_undocumented.md`.
@@ -197,21 +197,67 @@ Sunflow sagt das Schalten des Kompressors nicht voraus, es reagiert darauf.
 | Heizkurve (S, P) | Vorlauf-Ziel | 8 |
 | Abschaltgrenze, Schwankung | Schutz | 11 |
 | Leistungsbereich der WP | Grenzen, Planung | 10 |
-| Hausmodell | Planung | 14 |
+| Hausmodell (Heizfläche + Haus) | Planung, Vorschau der Heizkurve | 14 |
 | Vorausschau, Güte der Prognose | Außen (Regelung), später | 7 |
 
 Gelernt wird aus den 5-min-Messwerten (`heat_pump_samples`), stündlich neu; was gelernt ist, ist ein
-verwerfbarer Cache. Bei „Aus“ wird nichts aufgezeichnet und nichts gelernt.
+verwerfbarer Cache. Bei „Aus“ wird nichts aufgezeichnet und nichts gelernt. Heizkurve und Hausmodell sind
+getrennt: die Heizkurve regelt, das Hausmodell beschreibt nur das Haus.
 
-## 14. Planung (Vorheizen)
+## 14. Hausmodell und Planung (Vorheizen)
 
-- Das Hausmodell (1R1C: wie schnell das Haus auskühlt, wie viel Wärme es speichert) sagt voraus, wie sich
-  der Raum mit und ohne Heizung entwickelt. Damit plant die Batterie- und Verbrauchsplanung die
-  Wärmepumpe mit: bei PV-Überschuss oder billigem Strom bis „Vorheizen bis“ über den Soll, bei teurem Strom
-  bis „Absenken bis“ darunter. Jedes Kelvin Abweichung kostet 0,05 € je Stunde; ohne Ersparnis bleibt es
-  beim Soll.
+### 14.1 Hausmodell
+
+Ein Modell mit zwei Speichern, für die Planung (14.3) und die Vorschau der Heizkurve (16):
+
+- Heizfläche (Estrich bzw. Heizkörper), Temperatur Ts: Cs · dTs/dt = Q − Kf · (Ts − Tr)
+- Haus, Temperatur Tr (Raum-Ist): Cb · dTr/dt = Kf · (Ts − Tr) − U · (Tr − A) + G
+
+Q Wärme der WP in die Heizfläche (kW), A außen, U Wärmeverlust (kW/K), Kf Übergang Heizfläche → Raum (kW/K),
+Cs, Cb Wärmespeicher (kWh/K), G innere Gewinne (kW, konstant). Ohne Sonne (17).
+
+- **Daten:** nur `heat_pump_samples` der ersten WP, letzte 28 Tage, Halbwertszeit 14 Tage. Gerechnet in
+  5-min-Schritten; jede Zeile zählt, keine Stunde wird verworfen.
+- **Wärme Q je Zeile:** Aktivität Heizen (auch Nachlauf, ungültiger Heizbetrieb) wie gemessen; Warmwasser,
+  Abtauen (Wärme kommt aus dem Warmwasserspeicher), Bereitschaft und alles andere 0. Ohne Wärmemessung
+  gibt es kein Hausmodell.
+- **Lücken** (fehlende Zeilen, z. B. Modus „Aus“; eine Heiz-Zeile ohne Wärmewert fehlt ebenso): bis 15 min
+  gelten die Werte der Zeile davor (ohne Raum-Ist), länger beginnt ein neuer Abschnitt; er startet beim
+  gemessenen Raum-Ist, die Heizfläche um einen gemeinsamen gelernten Abstand darüber.
+- **Anpassen:** kleinste Quadrate der frei vorausgerechneten Raumtemperatur gegen das Raum-Ist als
+  Stundenmittel (mittelt die Stufen der Sensoren heraus), je Stunde gewichtet mit ihrem Anteil an Zeilen und
+  ihrem Alter. Zeilen mit schneller Änderung (6) liefern keinen Vergleichswert, ihre Wärme zählt. Gelernt: U,
+  Kf, Cs, Cb, G, Startabstand der Heizfläche; je Kennwert die Unsicherheit aus der Anpassung. Grenzen: U
+  0,01–2 kW/K, Kf 0,05–20 kW/K, Cs 0,2–200 kWh/K, Cb 1–500 kWh/K, G ±5 kW, Startabstand −5…20 K. Liegt ein
+  Kennwert an seiner Grenze, ist das Modell nicht plausibel.
+- **Übergang Wasser → Heizfläche** (für die Vorschau): Q = Kw · Anteil · (Tw − Ts), Tw = Mittel aus Tv und Tr
+  bei Heizbetrieb, Anteil = Kompressoranteil; Kw nach dem Anpassen aus den Heiz-Zeilen (gemessenes Q, Ts aus
+  dem Modell) gelernt.
+- **Test:** angepasst ohne die letzten 24 h, dann diese 24 h frei vorausgerechnet (Start beim gemessenen
+  Raum-Ist, Heizfläche aus dem Modell); verglichen mit „Temperatur bleibt“ (Raum-Ist am Start).
+- **Anzeige von Anfang an:** ab 24 Stunden mit Raum-Ist die Kennwerte mit Unsicherheit, Güte (Abweichung
+  über alle Stunden, Test gegen „bleibt“), Datenumfang (Stunden mit Raum-Ist, mit Heizen, Spanne außen) und
+  die letzten 7 Tage gemessen und Modell.
+
+### 14.2 Nutzung durch die Planung
+
+- Schalter „Hausmodell in der Planung“: Aus / Automatisch (Standard) / Immer.
+- **Nutzbar** bei Automatisch: mindestens 48 h Daten, plausibel und im Test besser als „Temperatur bleibt“.
+  Bei Immer: sobald es ein plausibles Modell gibt.
+- Nicht nutzbar (oder Aus): kein Vorheizen, Planziel = Raum-Soll. Angezeigt wird der Grund.
+
+### 14.3 Planung
+
+- Die Batterie- und Verbrauchsplanung plant die WP mit, je Viertelstunde mit beiden Speichern des Modells
+  (Heizfläche und Haus, ab dem Zustand jetzt): bei PV-Überschuss oder billigem Strom bis „Vorheizen bis“ über
+  den Soll, bei teurem Strom bis „Absenken bis“ darunter. Jedes Kelvin Abweichung kostet 0,05 € je Stunde;
+  ohne Ersparnis bleibt es beim Soll.
+- Start: Raum-Ist jetzt, Heizfläche um den Abstand Heizfläche − Raum am Ende der Daten darüber.
+- Strom der WP = Q / COP, COP geschätzt (40 % von Carnot bei 35 °C Vorlauf); Q höchstens die gelernte höchste
+  Heizleistung. Bedarf ohne Planung (Soll halten): Q = U · (Soll − A) − G.
+- Wärme, die am Ende des Plans in Haus und Heizfläche bleibt, zählt mit dem mittleren Preis und COP: das Haus
+  höchstens bis „Vorheizen bis“, die Heizfläche höchstens bis zu der Temperatur, die das Haus dort hält.
 - Das Planziel je Viertelstunde ist der Eingang R der Heizkurve (8) und der Sollwert der Korrektur (9).
-- Ohne gelerntes Hausmodell (unter 7 Tagen oder nicht plausibel) ist das Planziel der Raum-Soll.
 - Bei „Nur Lernen“ wird der Vorheiz-Plan nur angezeigt.
 
 ## 15. Speicherung
@@ -222,7 +268,8 @@ verwerfbarer Cache. Bei „Aus“ wird nichts aufgezeichnet und nichts gelernt.
   (gültig, Gründe, Sperre, schnelle Änderung). Ein Jahr.
 - `heat_pump_state.json`: Korrektur, geschriebener Wert, Sperre, fremde Schreiber, Caches des Gelernten.
 - `config.json`: Raum-Soll, Modus, Spielraum, Räume, Heizflächentyp, Außentemperatur-Quelle, je WP
-  Grenzen, „Lernen + Regeln“, Lernphase, Startwerte der Heizkurve mit Herkunft.
+  Grenzen, „Lernen + Regeln“, Lernphase, Startwerte der Heizkurve mit Herkunft, Hausmodell in der Planung
+  (Aus/Automatisch/Immer).
 - `eeprom_writes.json`: echte Schreibvorgänge (Budget).
 
 ## 16. Home Assistant und UI
@@ -240,29 +287,21 @@ verwerfbarer Cache. Bei „Aus“ wird nichts aufgezeichnet und nichts gelernt.
 Zeigt, wie sich der Raum mit einer Heizkurve entwickeln würde, ohne etwas zu ändern (nur Anzeige, keine
 Wirkung auf Regelung und Lernen). Simuliert wird nur die Heizkurve, ohne Korrektur, Schutz und Planung.
 
-- **Modell:** Haus mit zwei Speichern: Heizfläche (Estrich bzw. Heizkörper) und Haus. Die Heizfläche nimmt
-  Wärme aus dem Wasser auf, solange der Kompressor heizt (Anteil je Stunde), gibt sie an das Haus ab; das
-  Haus verliert sie nach außen, dazu ein fester Wärmegewinn. Kenngrößen: Verlust je Kelvin im Verhältnis zur
-  Heizfläche (u), Zeitkonstanten von Heizfläche und Haus, Wärmegewinn; die Aufteilung der Heizfläche ist fest.
-- **Anpassen:** an die stündlichen Mittel der letzten 14 Tage `heat_pump_samples` (Wasser = Mittel aus Tv und
-  Tr bei Heizbetrieb, Anteil = Kompressoranteil bei Heizbetrieb, Raum-Ist ohne Zeilen mit schneller
-  Änderung, außen); kleinste Quadrate auf das Raum-Ist. Mindestens 24 Stunden mit Raum-Ist, sonst keine
-  Vorschau. Stündlich neu, nur im Speicher.
-- **Güte:** mittlere Abweichung Modell − Messung über alle Stunden und als Test: angepasst ohne die letzten
-  24 h, dann diese 24 h vorhergesagt (ab 48 h Daten).
+- **Modell:** das Hausmodell (14.1); ohne Hausmodell keine Vorschau. Die Wärme kommt aus der Vorlauftemperatur
+  über den gelernten Übergang Kw.
 - **Vorhersage:** ab dem gemessenen Raum-Ist, Heizfläche aus dem Modell. Vorlauf = R + S·(R − A) + P in den
   Grenzen des Stellwerts (10), Wasser = Vorlauf − mittlerer Abstand wirksamer Soll − Wasser der Daten,
   Kompressoranteil = Mittel der letzten 7 Tage. Außen: stündliche Prognose der Wetter-Entity, danach die
   tägliche (Mittel aus Höchst- und Tiefstwert), ohne Prognose der gemessene Wert.
 - **Kurven:** gemessen und Modell der letzten 48 h; Vorhersage 1–7 Tage (wählbar) mit der aktuellen Kurve
   und mit eingegebenen S, P (und Raum-Soll); Raum-Soll als Linie, Zeitpunkt, an dem das Raum-Ist den Soll
-  erreicht. Dazu die Heizkurve, die laut Modell das Haus im Gleichgewicht auf dem Soll hält (aus u, Wärmegewinn,
+  erreicht. Dazu die Heizkurve, die laut Modell das Haus im Gleichgewicht auf dem Soll hält (aus U, G, Kf, Kw,
   mittlerem Kompressoranteil und Abstand Soll − Wasser); „Werte des Modells eintragen“ setzt sie als Eingabe.
 
 ## 17. Offene Punkte und Umsetzungsstand
 
 Umgesetzt: 4–6, 8, 9, 10–13 (Außen noch ohne Prognose: gemessen, Mittel 15 min), 15, 16,
-Planung bis zur Anzeige (14).
+Hausmodell (14.1, 14.2), Planung bis zur Anzeige (14.3).
 
 Offen, in dieser Reihenfolge:
 1. **Außen (Regelung)** mit Prognose-Änderung, Vorausschau je Heizflächentyp und Sensoren +1 h bis +6 h (7).
@@ -273,3 +312,5 @@ Offen, in dieser Reihenfolge:
    Soll + Überhöhung, startet wieder bei Tv < Soll) – prüfen, ob die CAN-Komponente ihn liefert; dann
    auslesen statt lernen.
 5. Startwerte Budget nach einigen Wochen prüfen.
+6. Später: Sonne im Hausmodell (Einstrahlung und deren Prognose), COP der WP lernen (Strom aufzeichnen)
+   statt Carnot-Schätzung (14).
