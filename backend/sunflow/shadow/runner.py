@@ -65,6 +65,7 @@ from sunflow.planning.vehicles import recognize, soc_of, unplugged_choices
 from sunflow.shadow.counters import EnergyCounters
 
 from .store import (
+    DAYAHEAD_HOUR,
     PLAN_AHEAD,
     Sample,
     ShadowStore,
@@ -817,6 +818,24 @@ class ShadowRunner:
         """The forecast per plane as its history corrects it; None until learned."""
         return learned_expectation(self.sun_planes, *self._location) if self._location is not None else None
 
+    def _store_dayahead(self, result: PlanResult, tz: tzinfo) -> None:
+        """From DAYAHEAD_HOUR on, keep what the plan expects for every slot of the next local day."""
+        now = datetime.now(UTC)
+        local = now.astimezone(tz)
+        if local.hour < DAYAHEAD_HOUR:
+            return
+        tomorrow = local.date() + timedelta(days=1)
+        rows = []
+        for index, slot in enumerate(result.plan.slots):
+            if slot.start.astimezone(tz).date() != tomorrow:
+                continue
+            planes = {key: series["raw"][index] for key, series in result.plane_pv.items() if index < len(series["raw"])}
+            planes |= {key: values[index] for key, values in result.unused_pv.items() if index < len(values)}
+            raw = result.raw_pv[index] if index < len(result.raw_pv) else None
+            rows.append((slot.start, slot.pv_w, raw, slot.load_w, slot.soc_wh, planes))
+        if rows:
+            self.shadow.store_dayahead(now, rows)
+
     def _store_soiling_ahead(self, tz: tzinfo) -> None:
         """Keep tomorrow's expected share per plane, by season and as now, to compare once it is measured."""
         tomorrow = datetime.now(tz).date() + timedelta(days=1)
@@ -943,6 +962,7 @@ class ShadowRunner:
             "cloud": result.clouds[0] if result.clouds else None,
             "temp": result.temperatures[0] if result.temperatures else None,
             "planes": json.dumps(result.plane_forecasts_now),
+            "unused_planes": json.dumps({key: values[0] for key, values in result.unused_pv.items() if values}),
             "batteries": json.dumps(
                 {key: {"soc_wh": share.soc_wh, "action": share.action} for key, share in first.batteries.items()}
             ),
@@ -958,3 +978,4 @@ class ShadowRunner:
                 ahead.pv_w,
                 ahead.load_w,
             )
+        await asyncio.to_thread(self._store_dayahead, result, await local_timezone(self._client))

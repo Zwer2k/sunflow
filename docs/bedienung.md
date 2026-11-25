@@ -261,14 +261,23 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   oder ohne Bewölkung und die vergangenen Solcast-Prognosen. Darunter je Messwert, seit wann er
   vorliegt und wie oft er sich ändert, auch je Optimierer (Leistung und Temperatur je Modul). Geprüft wird höchstens stündlich; **Neu prüfen** fragt sofort.
 - **Schattenbetrieb**: Sunflow zeichnet alle 15 Minuten auf, was es tun würde und was
-  tatsächlich passiert ist. Die Kacheln vergleichen PV- und Lastprognose mit der Messung, das
-  Diagramm den tatsächlichen Ladestand mit dem, den der Plan **6 Stunden vorher** erwartet hat
-  (jeder neue Plan startet beim gemessenen Ladestand, der jüngste läge deshalb immer fast genau auf
-  der Messung). Werte gibt es ab 0.78.33. Aus demselben Grund steht unter PV- und Lastprognose
-  auch, wie weit der Plan von vor 6 Stunden danebenlag (mittlere Abweichung je Viertelstunde und
-  ob er im Mittel zu hoch oder zu niedrig war; ab 0.78.62): Der Plan der Viertelstunde selbst folgt
-  schon dem bisherigen Tag und liegt deshalb fast immer richtig. Die Tabelle zeigt die Abschnitte, in
-  denen die Entscheidung abwich. Hier liegen auch **Daten exportieren** und **Export importieren**.
+  tatsächlich passiert ist. Das Diagramm vergleicht den tatsächlichen Ladestand mit dem, den der
+  Plan **6 Stunden vorher** erwartet hat (jeder neue Plan startet beim gemessenen Ladestand, der
+  jüngste läge deshalb immer fast genau auf der Messung). Werte gibt es ab 0.78.33. Die Tabelle
+  zeigt die Abschnitte, in denen die Entscheidung abwich. Hier liegen auch **Daten exportieren**
+  und **Export importieren**.
+- **PV- und Lastprognose** (Kacheln, letzte 14 Tage): bewertet wird, was vorher bekannt war, nicht
+  der Plan der Viertelstunde selbst. Der folgt schon dem bisherigen Tag und läge fast immer
+  richtig. Der große Wert ist die Prognose vom **Vorabend**: Den ersten Plan ab 18 Uhr hält Sunflow
+  für den ganzen Folgetag fest, denn auf ihm beruhen Entscheidungen wie das Laden aus dem Netz zum
+  günstigen Tarif. Darunter steht die mittlere Abweichung je Viertelstunde (und ob die Prognose im
+  Mittel zu hoch oder zu niedrig war) für den Vorabend und für den Plan von **6 Stunden vorher**.
+  PV zählt nur bei Tageslicht, damit Nächte den Fehler nicht kleinrechnen. Die Lastprognose wird
+  ohne steuerbare Verbraucher verglichen. Die Vorabend-Werte gibt es ab 0.80.14.
+- **PV-Prognosedienste im Vergleich**: die Rohprognose (vor dem Lernen) vom Vorabend je Dienst
+  gegen die gemessene PV aller Flächen. Flächen eines Dienstes, die keinem Wechselrichter zugeordnet
+  sind (z. B. Forecast.Solar neben Solcast), ruft Sunflow dafür mit ab, plant aber nicht mit ihnen.
+  So zeigt sich, welcher Dienst bei dir besser trifft.
 
 ## Statistik
 

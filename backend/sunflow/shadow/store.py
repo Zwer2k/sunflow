@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS slots (
 """
 # Databases from before the schema version (user_version 0) get these columns
 ADDED_COLUMNS = {"forecast_pv_w": "REAL", "weather_cloud": "REAL", "actual_loadpoint_w": "REAL", "weather_temp": "REAL", "plane_forecasts": "TEXT", "actual_strings": "TEXT"}
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 # SQL from version n to n + 1; steps only ever get added
 SCHEMA_STEPS: dict[int, list[str]] = {
     # Power per controllable consumer (device id -> W)
@@ -70,15 +70,24 @@ SCHEMA_STEPS: dict[int, list[str]] = {
     ],
     # evcc's CSV export also has the vehicle's state of charge before and after
     8: ["ALTER TABLE imported_sessions ADD COLUMN soc_start REAL", "ALTER TABLE imported_sessions ADD COLUMN soc_end REAL"],
+    # What the evening plan of the day before expected per slot (PV corrected and raw, load, SoC, raw forecast
+    # per plane including planes not planned with); forecasts of planes not planned with per slot
+    9: [
+        "CREATE TABLE plan_dayahead (start TEXT PRIMARY KEY, made TEXT, pv_w REAL, raw_pv_w REAL, load_w REAL,"
+        " soc_wh REAL, planes TEXT)",
+        "ALTER TABLE slots ADD COLUMN unused_plane_forecasts TEXT",
+    ],
 }
 # Stored as JSON objects (key -> W)
 JSON_COLUMNS = (
     "plane_forecasts", "actual_strings", "actual_consumers", "actual_levels", "planned_batteries", "actual_batteries",
-    "ahead_batteries", "actual_vehicles",
+    "ahead_batteries", "actual_vehicles", "unused_plane_forecasts", "dayahead_planes",
 )  # fmt: skip
 # The plan a slot is compared with: every replan starts from the measured SoC, so the latest one
 # matches the measurement by construction
 PLAN_AHEAD = timedelta(hours=6)
+# The first plan from this local hour on is kept as the day-ahead forecast of the next day
+DAYAHEAD_HOUR = 18
 
 
 def slot_start(moment: datetime) -> datetime:
@@ -235,10 +244,12 @@ class ShadowStore:
                 """
                 INSERT INTO slots (start, planned_action, planned_power_w, planned_soc_wh,
                                    planned_pv_w, planned_load_w, planned_price, forecast_pv_w, weather_cloud,
-                                   weather_temp, plane_forecasts, planned_batteries)
-                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud, :temp, :planes, :batteries)
+                                   weather_temp, plane_forecasts, planned_batteries, unused_plane_forecasts)
+                VALUES (:start, :action, :power, :soc, :pv, :load, :price, :forecast_pv, :cloud, :temp, :planes, :batteries,
+                        :unused_planes)
                 ON CONFLICT(start) DO UPDATE SET
                     planned_batteries = excluded.planned_batteries,
+                    unused_plane_forecasts = excluded.unused_plane_forecasts,
                     forecast_pv_w = excluded.forecast_pv_w,
                     weather_cloud = excluded.weather_cloud,
                     weather_temp = excluded.weather_temp,
@@ -250,7 +261,10 @@ class ShadowStore:
                     planned_load_w = excluded.planned_load_w,
                     planned_price = excluded.planned_price
                 """,
-                {"start": start.isoformat(), "forecast_pv": None, "cloud": None, "temp": None, "planes": None, "batteries": None, **planned},
+                {
+                    "start": start.isoformat(), "forecast_pv": None, "cloud": None, "temp": None, "planes": None,
+                    "batteries": None, "unused_planes": None, **planned,
+                },
             )
             self._db.commit()
 
@@ -262,6 +276,19 @@ class ShadowStore:
             self._db.execute(
                 "INSERT OR IGNORE INTO plan_ahead (start, soc_wh, batteries, pv_w, load_w) VALUES (?, ?, ?, ?, ?)",
                 (start.astimezone(UTC).isoformat(), soc_wh, json.dumps(batteries), pv_w, load_w),
+            )
+            self._db.commit()
+
+    def store_dayahead(self, made: datetime, rows: list[tuple[datetime, float, float, float, float, dict[str, float]]]) -> None:
+        """Keep the next day's expectation (start, PV, raw PV, load, SoC, raw forecast per plane); the first plan stays."""
+        with self._lock:
+            self._db.executemany(
+                "INSERT OR IGNORE INTO plan_dayahead (start, made, pv_w, raw_pv_w, load_w, soc_wh, planes)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (start.astimezone(UTC).isoformat(), made.astimezone(UTC).isoformat(), pv, raw, load, soc, json.dumps(planes))
+                    for start, pv, raw, load, soc, planes in rows
+                ],
             )
             self._db.commit()
 
@@ -370,8 +397,12 @@ class ShadowStore:
         with self._lock:
             cursor = self._db.execute(
                 "SELECT slots.*, plan_ahead.soc_wh AS ahead_soc_wh, plan_ahead.batteries AS ahead_batteries,"
-                " plan_ahead.pv_w AS ahead_pv_w, plan_ahead.load_w AS ahead_load_w"
-                " FROM slots LEFT JOIN plan_ahead USING (start) WHERE start >= ? ORDER BY start",
+                " plan_ahead.pv_w AS ahead_pv_w, plan_ahead.load_w AS ahead_load_w,"
+                " plan_dayahead.pv_w AS dayahead_pv_w, plan_dayahead.raw_pv_w AS dayahead_raw_pv_w,"
+                " plan_dayahead.load_w AS dayahead_load_w, plan_dayahead.soc_wh AS dayahead_soc_wh,"
+                " plan_dayahead.planes AS dayahead_planes"
+                " FROM slots LEFT JOIN plan_ahead USING (start) LEFT JOIN plan_dayahead USING (start)"
+                " WHERE start >= ? ORDER BY start",
                 (since.astimezone(UTC).isoformat(),),
             )
             names = [c[0] for c in cursor.description]
@@ -451,4 +482,64 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "soc_ahead_hours": PLAN_AHEAD.total_seconds() / 3600,
         "agreement": 1 - len(differing) / len(complete) if complete else None,
         "differing_slots": len(differing),
+    }
+
+
+# Days the forecast quality looks back over: long enough that a single odd day does not decide
+FORECAST_QUALITY_DAYS = 14
+
+
+def _forecast_stats(pairs: list[tuple[float, float]]) -> dict[str, float] | None:
+    if not pairs:
+        return None
+    return {
+        "slots": len(pairs),
+        "forecast_kwh": sum(f for f, _ in pairs) * 0.25 / 1000,
+        "actual_kwh": sum(a for _, a in pairs) * 0.25 / 1000,
+        "mae_w": fmean(abs(f - a) for f, a in pairs),
+        "bias_w": fmean(f - a for f, a in pairs),
+    }
+
+
+def forecast_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """How well the forecasts known in advance matched the measurement.
+
+    Compared are the plan of the evening before, the plan PLAN_AHEAD before and the raw forecast of each
+    service (summed over its planes, also of planes not planned with).
+
+    PV counts only slots with daylight in forecast or measurement, so nights do not dilute the error.
+    """
+    measured = [r for r in rows if r["actual_pv_w"] is not None and r["actual_load_w"] is not None]
+
+    def base_load(r: dict[str, Any]) -> float:
+        return max(r["actual_load_w"] - (r.get("actual_loadpoint_w") or 0.0), 0.0)
+
+    def pv(key: str) -> dict[str, float] | None:
+        return _forecast_stats([
+            (r[key], r["actual_pv_w"]) for r in measured if r.get(key) is not None and max(r[key], r["actual_pv_w"]) > 0
+        ])
+
+    def load(key: str) -> dict[str, float] | None:
+        return _forecast_stats([(r[key], base_load(r)) for r in measured if r.get(key) is not None])
+
+    services: dict[str, list[tuple[float, float]]] = {}
+    planned_with: set[str] = set()
+    for r in measured:
+        planned_with |= {key.split(":", 1)[0] for key in r.get("plane_forecasts") or {}}
+        totals: dict[str, float] = {}
+        for key, power in (r.get("dayahead_planes") or {}).items():
+            totals[key.split(":", 1)[0]] = totals.get(key.split(":", 1)[0], 0.0) + power
+        for service, power in totals.items():
+            if max(power, r["actual_pv_w"]) > 0:
+                services.setdefault(service, []).append((power, r["actual_pv_w"]))
+    return {
+        "days": len({r["start"][:10] for r in measured if r.get("dayahead_pv_w") is not None}),
+        "ahead_hours": PLAN_AHEAD.total_seconds() / 3600,
+        "dayahead_hour": DAYAHEAD_HOUR,
+        "pv": {"dayahead": pv("dayahead_pv_w"), "ahead": pv("ahead_pv_w")},
+        "load": {"dayahead": load("dayahead_load_w"), "ahead": load("ahead_load_w")},
+        "services": [
+            {"service": service, "planned_with": service in planned_with, "raw": _forecast_stats(pairs)}
+            for service, pairs in sorted(services.items())
+        ],
     }

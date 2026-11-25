@@ -26,7 +26,11 @@ from sunflow.i18n import t
 from sunflow.integration_link import app_host, host_port
 from sunflow.mcp_key import McpKey
 from sunflow.shadow.runner import ShadowRunner
-from sunflow.shadow.store import evaluate as evaluate_shadow
+from sunflow.shadow.store import (
+    FORECAST_QUALITY_DAYS,
+    evaluate as evaluate_shadow,
+    forecast_quality,
+)
 
 from .common import _library, _snapshot
 
@@ -223,8 +227,10 @@ async def get_shadow(request: Request, hours: Annotated[int, Query(ge=1, le=90 *
     runner: ShadowRunner = request.app.state.runner
     since = datetime.now(UTC) - timedelta(hours=hours)
     rows = await asyncio.to_thread(runner.shadow.rows, since)
+    longer = await asyncio.to_thread(runner.shadow.rows, datetime.now(UTC) - timedelta(days=FORECAST_QUALITY_DAYS))
     return {
         "status": asdict(runner.status),
         "evaluation": evaluate_shadow(rows),
+        "forecast_quality": forecast_quality(longer),
         "rows": rows,
     }

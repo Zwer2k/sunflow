@@ -83,7 +83,7 @@ TOOLS = [
     ),
     Tool(
         name="get_shadow", area="history",
-        description="Aufgezeichnete Slots: geplant gegen tatsächlich, mit Auswertung.",
+        description="Aufgezeichnete Slots: geplant gegen tatsächlich, mit Auswertung; forecast_quality: Güte der Vortags- und 6-h-Prognose und der Rohprognose je Dienst über 14 Tage.",
         path="/shadow",
         params={"hours": HOURS},
     ),

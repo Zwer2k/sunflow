@@ -654,6 +654,9 @@ class PlanResult:
     # Per plane and slot: Solcast's forecast (raw, low = p10, high = p90) and the learned expectation
     plane_pv: dict[str, dict[str, list[float | None]]] = field(default_factory=dict)
     plane_corrections: dict[str, PvCorrection] = field(default_factory=dict)
+    # Per plane not used for planning (no inverter chosen, e.g. a second forecast service) and slot: its
+    # forecast, only recorded to compare the services
+    unused_pv: dict[str, list[float]] = field(default_factory=dict)
     clouds: list[float | None] = field(default_factory=list)
     temperatures: list[float | None] = field(default_factory=list)
     load_model: LoadModel | None = None
@@ -1547,6 +1550,29 @@ CLEAR_SKY_CLOUD = 20
 CLEAR_SKY_RISK = 0.25
 
 
+async def unused_plane_forecasts(
+    client: HAClient, config: SunflowConfig, inputs: list[SlotInput], start: datetime
+) -> dict[str, list[float]]:
+    """Forecast per slot of the planes without an inverter (not planned with); failing ones are left out."""
+    result = {}
+    for plane in config.forecast_planes:
+        if plane.device_id is not None or not inputs:
+            continue
+        try:
+            match plane.source:
+                case "solcast":
+                    points = await solcast_forecast(client, plane.ref, start, HORIZON_HOURS)
+                case "forecast_solar":
+                    points = await forecast_solar_forecast(client, plane.ref, start, HORIZON_HOURS)
+                case _:
+                    continue
+        except HACommandError:
+            continue
+        slots = resample(points, SLOT)
+        result[plane.key] = [value_at(slots, slot.start, "power") or 0.0 for slot in inputs]
+    return result
+
+
 def nowcast_weights(count: int) -> list[float]:
     """How much the measured PV counts per slot ahead: fully now, half after an hour."""
     return [0.5 ** ((t * SLOT) / NOWCAST_HALF_LIFE) for t in range(count)]
@@ -1850,6 +1876,7 @@ async def compute_plan(
         for plane, points in zip(used_planes, series, strict=False)
     }
     plane_expected = {key: list(powers) for key, powers in plane_slots.items()}
+    unused_pv = await unused_plane_forecasts(client, config, inputs, start)
     pv_15 = resample(pv, SLOT)
     # Range of the forecast (p10 to p90) for the chart, corrected like the forecast but without
     # leaning towards p10 for uncertainty
@@ -2020,6 +2047,7 @@ async def compute_plan(
             for key, powers in plane_slots.items()
         },
         plane_corrections=own if config.optimizer.pv_learning else {},
+        unused_pv=unused_pv,
         clouds=clouds,
         temperatures=weather["temperature"],
         load_model=load_model if load_model is not None and load_model.useful else None,

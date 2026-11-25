@@ -250,14 +250,22 @@ How well do forecasts and decisions match reality?
   coverage, and Solcast's past forecasts. Below, per measurement, since when it is there and how
   often it changes, also per optimizer (power and temperature per module). Checked at most hourly; **Check again** asks right away.
 - **Shadow mode**: every 15 minutes Sunflow records what it would do and what
-  actually happened. The tiles compare PV and load forecast with the measurement, the chart the
-  actual state of charge with the one the plan expected **6 hours before** (every new plan starts
-  from the measured state of charge, so the latest one would almost always match the
-  measurement). Values exist from 0.78.33 on. For the same reason the PV and load forecast tiles
-  also show how far the plan from 6 hours before was off (mean deviation per quarter hour and
-  whether it was too high or too low on average; from 0.78.62 on): the plan of the quarter hour
-  itself already follows the day so far and is therefore almost always right. The table lists the sections where the decision
-  differed. **Export data** and **Import export** are here.
+  actually happened. The chart compares the actual state of charge with the one the plan expected
+  **6 hours before** (every new plan starts from the measured state of charge, so the latest one
+  would almost always match the measurement). Values exist from 0.78.33 on. The table lists the
+  sections where the decision differed. **Export data** and **Import export** are here.
+- **PV and load forecast** (tiles, last 14 days): rated is what was known in advance, not the plan
+  of the quarter hour itself, which already follows the day so far and would almost always be right.
+  The large value is the forecast of the **evening before**: Sunflow keeps the first plan from 18:00
+  on for the whole next day, as decisions like charging from the grid at the cheap tariff rest on it.
+  Below are the mean deviation per quarter hour (and whether the forecast was too high or too low on
+  average) for the evening before and for the plan from **6 hours before**. PV counts only in
+  daylight so nights do not shrink the error; the load forecast is compared without controllable
+  loads. Values of the evening before exist from 0.80.14 on.
+- **PV forecast services compared**: each service's raw forecast (before learning) of the evening
+  before against the measured PV of all planes. Planes of a service not assigned to an inverter
+  (e.g. Forecast.Solar next to Solcast) are fetched for this but not planned with. This shows which
+  service hits better for you.
 
 ## Statistics
 

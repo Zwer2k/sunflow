@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.14
+
+- Forecast quality: the PV and load tiles under Analysis → Shadow mode now rate the forecasts known in advance over the last 14 days – the plan of the evening before (the first plan from 18:00 is kept for the next day) and the plan from 6 hours before – instead of the plan of the quarter hour itself, which follows the measurement. PV counts only in daylight. New: PV forecast services compared – planes not assigned to an inverter (e.g. Forecast.Solar next to Solcast) are fetched for comparison only, and their raw day-ahead forecast is set against the measurement. Nothing changes in planning or control.
+
 ## 0.80.13
 
 - Removing devices and integrations: unticking an integration under Settings → Integrations now removes, after a confirmation, the devices and optimizers taken over from it (before it was only hidden and came back on the next load). An integration counts as in use once something is taken over from it. Deactivated devices get a Remove button, and devices taken over that Home Assistant no longer reports are listed under "Other devices taken over" to be removed.

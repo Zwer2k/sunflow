@@ -943,18 +943,8 @@ class SunflowAnalysis extends LitElement {
           ? html`<p class="muted">${t("Noch keine abgeschlossenen Zeitabschnitte – der erste erscheint nach dem nächsten Viertelstundenwechsel.")}</p>`
           : html`
               <div class="tiles">
-                <div class="tile">
-                  <div class="small muted">${t("PV-Prognose")}</div>
-                  <div class="value">${kwh(e.pv_forecast_kwh)}</div>
-                  <div class="small muted">${t("tatsächlich {actual} ({deviation})", { actual: kwh(e.pv_actual_kwh), deviation: deviation(e.pv_forecast_kwh, e.pv_actual_kwh) })}</div>
-                  ${this._aheadLine(e, "pv")}
-                </div>
-                <div class="tile">
-                  <div class="small muted">${t("Lastprognose (ohne steuerbare Verbraucher)")}</div>
-                  <div class="value">${kwh(e.load_forecast_kwh)}</div>
-                  <div class="small muted">${t("tatsächlich {actual} ({deviation})", { actual: kwh(e.load_actual_kwh), deviation: deviation(e.load_forecast_kwh, e.load_actual_kwh) })}</div>
-                  ${this._aheadLine(e, "load")}
-                </div>
+                ${this._forecastTile(shadow.forecast_quality, "pv", t("PV-Prognose"), kwh, deviation)}
+                ${this._forecastTile(shadow.forecast_quality, "load", t("Lastprognose (ohne steuerbare Verbraucher)"), kwh, deviation)}
                 <div class="tile">
                   <div class="small muted">${t("Ladestand-Abweichung")}</div>
                   <div class="value">${e.soc_mae_wh === null ? "–" : formatValue(e.soc_mae_wh, "Wh")}</div>
@@ -977,6 +967,7 @@ class SunflowAnalysis extends LitElement {
                 ],
                 { label: t("Ladestand Plan gegen Ist"), formatY: (v) => formatValue(v, "Wh") },
               )}
+              ${this._renderServices(shadow.forecast_quality, kwh)}
               ${this._renderBatteries(rows)}
               ${this._renderDifferences(rows)}
             `}
@@ -1059,13 +1050,52 @@ class SunflowAnalysis extends LitElement {
 
 
   /** How far the plan made hours before was off: the plan of the slot itself already follows the day so far. */
-  _aheadLine(e, kind) {
-    const mae = e[`${kind}_ahead_mae_w`];
-    const bias = e[`${kind}_ahead_bias_w`];
-    if (mae === null || mae === undefined) return nothing;
-    return html`<div class="small muted">${t("Plan von vor {hours} h: ±{mae} je Viertelstunde, im Mittel {bias}", {
-      hours: e.soc_ahead_hours, mae: formatValue(mae, "W"), bias: formatSigned(Math.round(bias), "W"),
-    })}</div>`;
+  /**
+   * A forecast as it was known in advance, over the last days: the plan of the evening before, else the
+   * plan some hours before. The plan of the slot itself follows the measurement and would always look right.
+   */
+  _forecastTile(quality, kind, title, kwh, deviation) {
+    const dayahead = quality?.[kind]?.dayahead;
+    const ahead = quality?.[kind]?.ahead;
+    const main = dayahead ?? ahead;
+    const line = (stats, label) => stats
+      ? html`<div class="small muted">${t("{label}: ±{mae} je Viertelstunde, im Mittel {bias}", {
+          label, mae: formatValue(stats.mae_w, "W"), bias: formatSigned(Math.round(stats.bias_w), "W"),
+        })}</div>`
+      : nothing;
+    return html`<div class="tile">
+      <div class="small muted">${title}</div>
+      ${main
+        ? html`<div class="value">${kwh(main.forecast_kwh)}</div>
+            <div class="small muted">${t("tatsächlich {actual} ({deviation})", { actual: kwh(main.actual_kwh), deviation: deviation(main.forecast_kwh, main.actual_kwh) })}</div>`
+        : html`<div class="value">–</div>`}
+      ${line(dayahead, t("Vorabend ({hour} Uhr)", { hour: quality.dayahead_hour }))}
+      ${line(ahead, t("{hours} h vorher", { hours: quality?.ahead_hours }))}
+      ${dayahead
+        ? html`<div class="small muted">${t("letzte {days} Tage", { days: quality.days })}</div>`
+        : html`<div class="small muted">${t("Die Prognose vom Vorabend wird ab {hour} Uhr aufgezeichnet.", { hour: quality?.dayahead_hour ?? 18 })}</div>`}
+    </div>`;
+  }
+
+  /** The raw forecast of each PV service as known the evening before, also of services only recorded for comparison. */
+  _renderServices(quality, kwh) {
+    const services = (quality?.services ?? []).filter((s) => s.raw);
+    if (!services.length) return nothing;
+    const names = { solcast: "Solcast", forecast_solar: "Forecast.Solar" };
+    return html`
+      <h3>${t("PV-Prognosedienste im Vergleich")}</h3>
+      <p class="small muted">${t("Rohprognose vom Vorabend, vor dem Lernen, gegen die gemessene PV aller Flächen. Dienste, mit denen nicht geplant wird, ruft Sunflow nur zum Vergleich ab.")}</p>
+      <div class="table-wrap"><table class="services">
+        <thead><tr><th>${t("Dienst")}</th><th>${t("Prognose")}</th><th>${t("tatsächlich")}</th><th>${t("Abweichung je Viertelstunde")}</th><th>${t("im Mittel")}</th></tr></thead>
+        <tbody>${services.map((s) => html`<tr>
+          <td>${names[s.service] ?? s.service}${s.planned_with ? "" : html` <span class="muted small">(${t("nur Vergleich")})</span>`}</td>
+          <td>${kwh(s.raw.forecast_kwh)}</td>
+          <td>${kwh(s.raw.actual_kwh)}</td>
+          <td>±${formatValue(s.raw.mae_w, "W")}</td>
+          <td>${formatSigned(Math.round(s.raw.bias_w), "W")}</td>
+        </tr>`)}</tbody>
+      </table></div>
+    `;
   }
 
   _renderDifferences(rows) {
