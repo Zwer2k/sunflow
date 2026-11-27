@@ -1,5 +1,6 @@
 """Tests for the optimizer, load forecast and plan inputs."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -187,6 +188,52 @@ def test_backup_reserve_is_kept() -> None:
 
     assert min(s.soc_wh for s in plan.slots) >= 6000 - 1
     assert min(s.soc_wh for s in optimize(inputs, battery, Settings()).slots) < 6000
+
+
+def _expensive_cheap_expensive(i: int) -> float:
+    """22-24 h expensive, 0-5 h cheap, then expensive again."""
+    return 0.226 if 8 <= i < 28 else 0.326
+
+
+@pytest.mark.parametrize(
+    ("tolerance", "charged_while_expensive"),
+    [
+        pytest.param(200.0, False, id="one-step-below-waits-for-the-cheap-slots"),
+        pytest.param(0.0, True, id="without-tolerance-refilled-right-away"),
+    ],
+)
+def test_reserve_tolerance(tolerance: float, charged_while_expensive: bool) -> None:
+    """A battery that slipped one SoC step below the reserve is refilled in the cheap slots."""
+    battery = replace(BATTERY, soc_wh=5800)
+    inputs = _slots(24, price=_expensive_cheap_expensive)
+
+    plan = optimize(inputs, battery, Settings(reserve_wh=6000, reserve_tolerance_wh=tolerance))
+
+    assert (sum(s.charge_w for s in plan.slots[:8]) > 100) is charged_while_expensive
+    assert plan.slots[27].soc_wh >= 6000 - 1
+
+
+def test_standby_is_charged_ahead_in_cheap_slots() -> None:
+    """The battery's own draw lowers the SoC while idle; the plan covers it in the cheap slots."""
+    battery = replace(BATTERY, soc_wh=6000, standby_w=80)
+    inputs = _slots(24, price=_expensive_cheap_expensive)
+
+    plan = optimize(inputs, battery, Settings(reserve_wh=6000, reserve_tolerance_wh=200))
+
+    # 80 W over the 17 expensive hours after the cheap slots, the tolerance at most below
+    assert plan.slots[27].soc_wh >= 6000 + 80 * 17 - 200 - 1
+    assert sum(s.charge_w for s in plan.slots[:8]) + sum(s.charge_w for s in plan.slots[28:]) < 1
+    assert plan.slots[-1].soc_wh < plan.slots[27].soc_wh
+
+
+def test_standby_without_a_way_to_charge() -> None:
+    """At the discharge limit without grid charging the plan stays solvable."""
+    battery = replace(BATTERY, standby_w=80)
+
+    plan = optimize(_slots(6, price=lambda i: 0.3), battery, Settings(allow_grid_charge=False))
+
+    assert plan.slots
+    assert min(s.soc_wh for s in plan.slots) >= BATTERY.min_soc_wh - 1
 
 
 def test_pv_absorption_exports_less() -> None:

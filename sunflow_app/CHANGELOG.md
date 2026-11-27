@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.16
+
+Plan the battery's standby use (new parameter, suggested from the counters) and wait for cheaper slots when the SoC slipped one step below the backup reserve
+
 ## 0.80.15
 
 Energy balance splits the losses: battery standby use from the SoC change, conversion losses, and the difference between the utility meter and the inverter's meter (not a loss)

@@ -41,6 +41,24 @@ def test_efficiency_without_split_is_not_suggested() -> None:
     assert not any(r["id"] == "battery_efficiency:bat" for r in found)
 
 
+@pytest.mark.parametrize(
+    ("standby", "stored", "suggested"),
+    [
+        pytest.param(71.0, {}, [70], id="measured-but-not-set"),
+        pytest.param(71.0, {"standby_w": 65.0}, [], id="close-to-the-setting"),
+        pytest.param(None, {}, [], id="no-split"),
+    ],
+)
+def test_standby_is_suggested(standby: float | None, stored: dict[str, float], suggested: list[int]) -> None:
+    """The measured standby draw is offered for the plan, rounded to 5 W."""
+    config = _config()
+    config.devices[0].parameters.update(stored)
+    found = build(config, None, {"bat": _estimate(0.71, 0.87, standby)}, [], 0, None, [])
+
+    actions = [r["action"]["value"] for r in found if r["id"] == "battery_standby:bat"]
+    assert actions == suggested
+
+
 def test_hot_water_demand_plausibility() -> None:
     """9 kWh per day for 300 l means about 26 K: worth a check."""
     found = build(_config(), None, {}, [], 0, None, [])

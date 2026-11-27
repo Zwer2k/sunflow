@@ -38,6 +38,8 @@ parameters:
   max_discharge: {unit: W, derive: {sum_key: "battery_*_max_discharge_power"}}
   efficiency_pct: {unit: "%", default: 92, min: 40, max: 100}
   inverter_efficiency_pct: {unit: "%", default: 97, min: 80, max: 100}
+  # Own draw of BMS and converters, taken from the stored energy also while idle
+  standby_w: {unit: W, default: 0, min: 0, max: 500}
 
 battery_control:
   auto:

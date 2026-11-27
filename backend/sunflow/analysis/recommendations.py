@@ -22,6 +22,8 @@ from .efficiency import EfficiencyEstimate
 MIN_SHADOW_DAYS = 3
 # Battery efficiency off by more than this (percentage points) from the counters
 EFFICIENCY_GAP = 3.0
+# Measured standby draw off by more than this (W) from the battery's setting
+STANDBY_GAP_W = 10.0
 # Hot water reheated per day above this temperature drop of the tank looks implausible
 MAX_DAILY_DROP_K = 20
 WATER_WH_PER_LITRE_KELVIN = 1.163
@@ -89,6 +91,35 @@ def battery_efficiency(
                 ),
                 action={"type": "set_parameter", "device_id": device.id, "name": "efficiency_pct", "value": round(suggested, 1)},
                 fingerprint=_fingerprint(round(suggested), round(current)),
+            )
+        )
+    return result
+
+
+def battery_standby(
+    config: SunflowConfig, estimates: dict[str, EfficiencyEstimate | None]
+) -> list[Recommendation]:
+    """The battery draws more by itself than the plan knows: it slips below the reserve."""
+    result = []
+    for device in config.devices:
+        estimate = estimates.get(device.id)
+        if estimate is None or not estimate.plausible or estimate.standby_w is None:
+            continue
+        current = device.parameters.get("standby_w") or 0.0
+        suggested = round(estimate.standby_w / 5) * 5
+        if abs(suggested - current) < STANDBY_GAP_W:
+            continue
+        result.append(
+            Recommendation(
+                id=f"battery_standby:{device.id}",
+                severity="info",
+                title=t("{name}: Eigenverbrauch {suggested} W statt {current} W", name=device.name, suggested=f"{suggested:.0f}", current=f"{current:.0f}"),
+                text=t(
+                    "Die Energiezähler zeigen, dass der Speicher auch im Leerlauf etwa {watts} W aus den Zellen zieht (BMS, Wandler). Kennt der Plan das, lädt er es in günstigen Stunden vor, statt zum teuren Preis nachzuladen, wenn der Ladestand unter die Notstrom-Reserve rutscht.",
+                    watts=f"{estimate.standby_w:.0f}",
+                ),
+                action={"type": "set_parameter", "device_id": device.id, "name": "standby_w", "value": suggested},
+                fingerprint=_fingerprint(suggested, round(current)),
             )
         )
     return result
@@ -338,6 +369,7 @@ def build(
     """All recommendations that are not dismissed, warnings first."""
     found = [
         *battery_efficiency(config, estimates),
+        *battery_standby(config, estimates),
         *missing_settings(config, latest),
         *limits_cost_pv(config, latest),
         *plan_worse_than_baseline(latest),

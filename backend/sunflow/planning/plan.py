@@ -1321,6 +1321,7 @@ def battery_spec(
             efficiency_charge=battery_way * inverter if ac_coupled else battery_way,
             efficiency_charge_grid=battery_way * inverter,
             efficiency_discharge=battery_way * inverter,
+            standby_w=params.get("standby_w") or 0.0,
         ),
         None,
     )
@@ -1385,9 +1386,14 @@ def optimizer_settings(config: SunflowConfig, battery: BatterySpec, battery_devi
         import_soft_limit_w=options.import_limit_w if options.grid_friendly else None,
         export_penalty_ct_per_kwh=PV_ABSORPTION_PENALTY_CT if strategy == "pv_absorption" else 0.0,
         reserve_wh=battery.capacity_wh * options.backup_reserve_pct / 100 if options.backup_reserve else 0.0,
+        # The SoC comes in whole percent: one step below the reserve waits for a cheap slot
+        reserve_tolerance_wh=battery.capacity_wh * RESERVE_TOLERANCE_SHARE if options.backup_reserve else 0.0,
         high_soc_wh=battery.capacity_wh * options.high_soc_threshold_pct / 100 if options.high_soc_aging else None,
         high_soc_ct_per_kwh_h=options.high_soc_ct_per_kwh_h,
     )
+
+
+RESERVE_TOLERANCE_SHARE = 0.01
 
 
 def with_override(battery: BatterySpec, mode: str | None) -> BatterySpec:

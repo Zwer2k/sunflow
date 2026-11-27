@@ -116,6 +116,9 @@ Preisunterschieden nicht aus dem Netz. Das ist Absicht und kein Fehler.
   Mitternacht. Beispiel: 4 kWh über 80 % für 10 Stunden kosten bei 0,1 ct rund 4 ct.
 - **Notstrom-Reserve**: In jeder Strategie bleibt dieser Ladestand für Stromausfälle frei. Liegt
   der Speicher darunter, lädt Sunflow ihn vorrangig wieder auf, aus dem Netz, wenn erlaubt.
+  Ausnahme: Rutscht er nur um einen Prozentpunkt darunter, etwa durch den Eigenverbrauch im
+  Haltemodus, wartet Sunflow auf günstigere Stunden. Ist der **Eigenverbrauch** des Speichers in
+  den Kenndaten eingetragen, rechnet der Plan ihn ein und lädt ihn schon vorher günstig nach.
   Mit **„Bei sicherer Prognose unterschreiten“** darf der Plan tagsüber in der PV-Phase unter die
   Reserve gehen, bis zu einem tiefsten Stand (Standard 10 %). Gedacht für Morgen, an denen der
   Speicher an der Reserve steht und große Verbraucher laufen: kein sofortiger Netzbezug. Erlaubt ist

@@ -20,6 +20,12 @@ DT_H = 0.25
 # €/kWh per hour below the backup reserve: above any price difference, so a battery below
 # it is refilled right away (from the grid if allowed) and never planned below it again
 RESERVE_PENALTY = 1.0
+# €/kWh per hour within the tolerance below the reserve: less than a few hours' price
+# difference, so a battery that slipped below it by its own draw waits for a cheap slot
+RESERVE_TOLERANCE_PENALTY = 0.02
+# €/kWh of the battery's own draw the plan cannot cover (no PV, no grid charging): only so
+# the plan stays solvable at the floor; the battery drifts below it in reality then
+STANDBY_UNCOVERED_PENALTY = 10.0
 
 type Action = Literal["auto", "hold", "force_charge", "force_discharge", "limit_charge", "limit_discharge"]
 
@@ -50,6 +56,8 @@ class BatterySpec:
     # The device can be forced to charge (from the grid) and to discharge (into the grid)
     force_charge: bool = True
     force_discharge: bool = True
+    # Own draw of BMS and converters (W), taken from the stored energy also while idle
+    standby_w: float = 0.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -72,6 +80,9 @@ class Settings:
     # Per slot how far the battery may be below the reserve at the slot's end, because a safe
     # forecast fills it back in time (empty: never below it)
     reserve_dip_wh: tuple[float, ...] = ()
+    # How far the batteries may be below the backup reserve at a small cost (Wh), so the
+    # SoC slipping one step below it by the own draw is refilled in a cheap slot
+    reserve_tolerance_wh: float = 0.0
     # A fixed feed-in tariff only pays for PV; exporting stored grid energy is not
     # remunerated, so export is limited to the current PV unless allowed explicitly
     allow_battery_export: bool = False
@@ -524,13 +535,30 @@ def optimize(
     # that rises after a dip below the reserve is kept the same way, so a forecast missed never
     # makes the plan infeasible
     dipping = any(dip > 0 for dip in dips)
+    # Only while the batteries sit at the reserve: above it the reserve stays a hard floor
+    tolerance = (
+        max(settings.reserve_tolerance_wh, 0.0)
+        if settings.reserve_wh > 0 and sum(b.soc_wh for b in batteries) <= max(floor_sum) + settings.reserve_tolerance_wh
+        else 0.0
+    )
     reserve_short = (
         count + np.arange(n)
-        if dipping or any(b.soc_wh < max(f) - 1 for b, f in zip(batteries, floors, strict=True))
+        if dipping or tolerance > 0 or any(b.soc_wh < max(f) - 1 for b, f in zip(batteries, floors, strict=True))
         else None
     )
     if reserve_short is not None:
         count += n
+    reserve_tolerated = count + np.arange(n) if tolerance > 0 else None
+    if reserve_tolerated is not None:
+        count += n
+    # Own draw of each battery the plan cannot cover
+    uncovered: list[Any] = []
+    for b in batteries:
+        if b.standby_w > 0:
+            uncovered.append(count + np.arange(n))
+            count += n
+        else:
+            uncovered.append(None)
     # Energy above the high SoC threshold per battery and slot
     high = [b.high_soc_wh if b.high_soc_wh is not None else settings.high_soc_wh for b in batteries]
     hs: list[Any] = []
@@ -578,6 +606,11 @@ def optimize(
         cost[index] = penalty / 1000
     if reserve_short is not None:
         cost[reserve_short] = RESERVE_PENALTY * DT_H / 1000
+    if reserve_tolerated is not None:
+        cost[reserve_tolerated] = RESERVE_TOLERANCE_PENALTY * DT_H / 1000
+    for index in uncovered:
+        if index is not None:
+            cost[index] = STANDBY_UNCOVERED_PENALTY / 1000
     if cu is not None:
         cost[cu] = CURTAIL_COST * DT_H / 1000
     for k in range(m):
@@ -631,8 +664,11 @@ def optimize(
             a_eq[row, d[k][t]] = dts[t] / eta_d[k]
             if cg[k] is not None:
                 a_eq[row, cg[k][t]] = (eta_c[k] - eta_g[k]) * dts[t]
+            if uncovered[k] is not None:
+                a_eq[row, uncovered[k][t]] = -1
+            b_eq[row] = -b.standby_w * dts[t]
             if t == 0:
-                b_eq[row] = b.soc_wh
+                b_eq[row] += b.soc_wh
             else:
                 a_eq[row, s[k][t - 1]] = -1
     row = n + m * n
@@ -660,8 +696,12 @@ def optimize(
     soc_min: list[float] = []
     grid_charge = [settings.allow_grid_charge and b.force_charge for b in batteries]
     for k, b in enumerate(batteries):
-        # A battery below its floor may stay there but must not be drained further
-        soc_min.append(min(*floors[k], b.soc_wh))
+        # A battery below its floor may stay there but must not be drained further; the
+        # tolerance only lowers the settings' reserve, never the device's discharge limit
+        lowest = min(*floors[k], b.soc_wh)
+        if b.reserve_wh is None:
+            lowest = max(min(b.min_soc_wh, b.soc_wh), lowest - tolerance)
+        soc_min.append(lowest)
         # Charge limit for battery care; lifted while a full charge is due. Above it already,
         # the battery may stay there but not charge further
         limit = b.soc_limit_wh if b.soc_limit_wh is not None else settings.soc_limit_wh
@@ -671,6 +711,8 @@ def optimize(
         soc_upper.append(upper_k)
     lower = np.zeros(count)
     upper = np.full(count, np.inf)
+    if reserve_tolerated is not None:
+        upper[reserve_tolerated] = tolerance
     for t, slot in enumerate(inputs):
         surplus = max(pv_rest[t], 0)
         for k, b in enumerate(batteries):
@@ -682,6 +724,8 @@ def optimize(
                 upper[cg[k][t]] = b.max_charge_w if from_grid else 0.0
             lower[s[k][t]] = soc_min[k]
             upper[s[k][t]] = soc_upper[k]
+            if uncovered[k] is not None:
+                upper[uncovered[k][t]] = b.standby_w * dts[t]
         # The grid only carries what the house, loads and batteries can take or give
         upper[gi[t]] = max(slot.load_w, 0) + sum(b.max_charge_w for b in batteries) + sum(
             load.max_power_w for load in flex if load.available[t]
@@ -828,7 +872,15 @@ def optimize(
     if reserve_short is not None:
         # soc of all batteries plus shortfall reaches their floors in every slot
         gate_rows.extend(
-            ({**{s[k][t]: -1 for k in range(m)}, reserve_short[t]: -1}, -floor_sum[t]) for t in range(n)
+            (
+                {
+                    **{s[k][t]: -1 for k in range(m)},
+                    reserve_short[t]: -1,
+                    **({reserve_tolerated[t]: -1} if reserve_tolerated is not None else {}),
+                },
+                -floor_sum[t],
+            )
+            for t in range(n)
         )
     # soc of all batteries plus shortfall reaches the floor plus the buffer; the buffer lies
     # above the backup reserve, also while the battery is below the reserve now

@@ -50,6 +50,7 @@ export default {
   "Netz-Zielwert (Desired Grid Power)": "Grid setpoint (Desired Grid Power)",
   "Wirkungsgrad Speicher (Akku und DC/DC, gesamter Zyklus)": "Battery efficiency (cells and DC/DC, full cycle)",
   "Wirkungsgrad Wechselrichter (je Richtung)": "Inverter efficiency (per direction)",
+  "Eigenverbrauch Speicher (BMS, Wandler)": "Battery standby use (BMS, converters)",
   "Maximale Leistung": "Maximum power",
   "Akkukapazität Fahrzeug (nutzbar)": "Vehicle battery capacity (usable)",
   "Ladewirkungsgrad": "Charging efficiency",

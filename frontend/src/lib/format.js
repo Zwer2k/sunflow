@@ -108,6 +108,7 @@ const PARAM_LABELS = {
   grid_offset: t("Netz-Zielwert (Desired Grid Power)"),
   efficiency_pct: t("Wirkungsgrad Speicher (Akku und DC/DC, gesamter Zyklus)"),
   inverter_efficiency_pct: t("Wirkungsgrad Wechselrichter (je Richtung)"),
+  standby_w: t("Eigenverbrauch Speicher (BMS, Wandler)"),
   max_power: t("Maximale Leistung"),
   vehicle_capacity_wh: t("Akkukapazität Fahrzeug (nutzbar)"),
   charge_efficiency_pct: t("Ladewirkungsgrad"),

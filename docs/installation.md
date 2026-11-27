@@ -92,7 +92,8 @@ negativ erscheint. Dann:
 </details>
 
 - **Kenndaten** ergänzen, was Sunflow nicht messen kann: nutzbare Kapazität, Mindest-Ladestand,
-  höchste Lade- und Entladeleistung, Wirkungsgrad, bei der Wallbox Phasen und Ströme, beim
+  höchste Lade- und Entladeleistung, Wirkungsgrad, Eigenverbrauch des Speichers (BMS und Wandler
+  im Leerlauf; Sunflow schlägt den gemessenen Wert als Empfehlung vor), bei der Wallbox Phasen und Ströme, beim
   Warmwasser Volumen und Tagesbedarf. Felder mit „eigener Wert“ überschreiben den Vorschlag des
   Profils; „zurücksetzen“ nimmt wieder den Vorschlag.
 - **Entitäten zuordnen** (Expertenmodus) ändert Entität, Einheit, Faktor oder Vorzeichen einer Rolle.

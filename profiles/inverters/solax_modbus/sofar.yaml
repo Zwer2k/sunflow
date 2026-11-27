@@ -73,6 +73,8 @@ parameters:
   # AC/DC conversion of the inverter, per direction: grid charging and discharging to
   # the house pass it, PV charging on the DC side does not
   inverter_efficiency_pct: {unit: "%", default: 96.5, min: 80, max: 100}
+  # Own draw of BMS and converters, taken from the stored energy also while idle
+  standby_w: {unit: W, default: 0, min: 0, max: 500}
 
 actions:
   auto: {bat_min: -max_discharge, bat_max: max_charge, grid_target: grid_offset}
