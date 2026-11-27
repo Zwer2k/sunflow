@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.15
+
+Energy balance splits the losses: battery standby use from the SoC change, conversion losses, and the difference between the utility meter and the inverter's meter (not a loss)
+
 ## 0.80.14
 
 - Forecast quality: the PV and load tiles under Analysis → Shadow mode now rate the forecasts known in advance over the last 14 days – the plan of the evening before (the first plan from 18:00 is kept for the next day) and the plan from 6 hours before – instead of the plan of the quarter hour itself, which follows the measurement. PV counts only in daylight. New: PV forecast services compared – planes not assigned to an inverter (e.g. Forecast.Solar next to Solcast) are fetched for comparison only, and their raw day-ahead forecast is set against the measurement. Nothing changes in planning or control.

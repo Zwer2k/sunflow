@@ -96,7 +96,8 @@ as they take at most 60 % of the screen:
   inverter/battery losses, self-sufficiency and self-consumption.
 - **Inverter/battery losses** (below the energy flow, average of the last minutes): the balance
   of PV, grid and battery minus the measured house consumption, i.e. conversion losses and the
-  devices' own consumption. Home Assistant's energy dashboard counts them as house consumption,
+  devices' own consumption. Under **Today** the value also contains the battery's standby use
+  (from the SoC) and no meter difference; that has a tile of its own beside it. Home Assistant's energy dashboard counts them as house consumption,
   so it shows more consumption and more self-sufficiency than Sunflow. Only with a consumption
   counter or measurement.
 
@@ -180,7 +181,19 @@ How well do forecasts and decisions match reality?
   a hot water demand set too high, or a measured battery efficiency. **Open** goes to the
   setting, **Hide** hides the hint.
 - **Energy balance**: self-sufficiency, self-consumption, PV, consumption, grid,
-  battery and efficiency for today, 7 or 30 days, from the devices' energy meters.
+  battery and efficiency for today, 7 or 30 days, from the devices' energy meters. With the
+  split of the losses:
+  - **Left in the battery**: content at the end minus at the start, from the SoC.
+  - **Battery standby use**: charged but neither discharged nor stored, i.e. what the modules'
+    BMS and converters draw themselves. While Sunflow holds a reserve, this is recharged from the
+    grid again and again.
+  - **Conversion losses**: conversion and idle use of the inverters.
+  - **Meter difference**: when the grid comes from the energy dashboard (usually the utility
+    meter) and the consumption from the inverter, whose grid meter measures something else, the
+    difference is not a loss. Positive means the utility meter counts more import.
+
+  The SoC comes in 1 % steps, the meters often in 0.1 kWh; over a day or longer the split is
+  reliable, over a few hours it is not.
 - **Cost per day**: net cost (import minus export) compared to "without PV and
   battery", and the savings, over 30 or 90 days.
 - **Plan a battery**: works out with your measured grid and battery values and the price history

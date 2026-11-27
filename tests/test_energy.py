@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from sunflow.analysis.energy import EnergySources, _dashboard_statistics, energy_balance
+from sunflow.devices.profiles import ProfileLibrary
 
 START = datetime(2026, 10, 20, tzinfo=UTC)
 
@@ -12,12 +13,15 @@ START = datetime(2026, 10, 20, tzinfo=UTC)
 class FakeClient:
     """Answers statistics requests with fixed hourly changes per statistic."""
 
-    def __init__(self, changes: dict[str, list[float]]) -> None:
+    def __init__(self, changes: dict[str, list[float]], means: dict[str, list[float]] | None = None) -> None:
         self.changes = changes
+        self.means = means or {}
         self.requests: list[dict[str, Any]] = []
 
     async def command(self, msg_type: str, **data: Any) -> dict[str, list[dict[str, Any]]]:
         self.requests.append(data)
+        if data["types"] == ["mean"]:
+            return {s: [{"start": i, "mean": v} for i, v in enumerate(self.means[s])] for s in data["statistic_ids"] if s in self.means}
         return {
             statistic: [{"start": i, "change": v} for i, v in enumerate(values)]
             for statistic, values in self.changes.items()
@@ -92,6 +96,47 @@ async def test_energy_balance_from_counters() -> None:
     assert balance["battery_ratio"] == pytest.approx(0.72)
     assert balance["inverters"] == [{"name": "Huawei", "ac_wh": 1800, "dc_wh": 2000, "efficiency": pytest.approx(0.9)}]
     assert client.requests[0]["types"] == ["change"]
+
+
+@pytest.mark.parametrize(
+    ("soc", "battery", "losses"),
+    [
+        pytest.param([30, 30.5, 30], 1800, 2302, id="soc-unchanged"),
+        pytest.param([30, 34.5], 900, 1402, id="part-of-it-stored"),
+        pytest.param([30], None, 502, id="soc-unknown"),
+    ],
+)
+async def test_losses_split_into_conversion_battery_and_meters(soc: list[float], battery: float | None, losses: float) -> None:
+    """Charged energy not stored is the battery's own draw; the meters' difference is no loss."""
+    sources = EnergySources(
+        statistics={
+            "pv": ["sensor.pv"],
+            "load": ["sensor.load"],
+            "grid_import": ["sensor.import"],
+            "grid_export": ["sensor.export"],
+            "battery_charge": ["sensor.in"],
+            "battery_discharge": ["sensor.out"],
+        },
+        battery_soc=[("sensor.soc", 20000)],
+        meter_grid={"grid_import": ["sensor.meter_in"], "grid_export": ["sensor.meter_out"]},
+    )
+    client = FakeClient(
+        {
+            "sensor.pv": [4600], "sensor.load": [38200], "sensor.import": [36944], "sensor.export": [82],
+            "sensor.in": [2500], "sensor.out": [700], "sensor.meter_in": [35984], "sensor.meter_out": [82],
+        },
+        {"sensor.soc": soc},
+    )
+
+    balance = await energy_balance(client, sources, START, START + timedelta(days=1))
+
+    # 39662 in the balance, 38200 measured in the house, 960 more grid at the utility meter
+    assert balance["loss_split"] == {
+        "conversion": pytest.approx(502),
+        "battery": pytest.approx(battery) if battery is not None else None,
+        "meter_difference": pytest.approx(960),
+    }
+    assert balance["losses"] == pytest.approx(losses)
 
 
 async def test_energy_balance_without_load_counter() -> None:
@@ -295,3 +340,43 @@ def test_pv_measured_as_pv_ext_is_not_counted_twice(library, measured: bool, pv:
     )
 
     assert sorted(energy_sources(config, library.profiles, snapshot).statistics["pv"]) == sorted(pv)
+
+
+def _sofar_sources(measurement_sources: dict[str, str]) -> Any:
+    from sunflow.analysis.energy import energy_sources
+    from sunflow.config.models import DeviceConfig, SunflowConfig
+    from sunflow.devices.discovery import Snapshot
+
+    keys = ("load_consumption_total", "import_energy_total", "export_energy_total")
+    entities = [
+        {"entity_id": f"sensor.sofar_{key}", "unique_id": f"sofar_{key}", "device_id": "d_sofar", "config_entry_id": "e", "disabled_by": None}
+        for key in keys
+    ]
+    prefs = {"energy_sources": [{"type": "grid", "stat_energy_from": "sensor.utility_import", "stat_energy_to": "sensor.utility_export"}]}
+    snapshot = Snapshot(entries=[], devices=[], entities=entities, states={}, energy_prefs=prefs)
+    sofar = DeviceConfig(id="sofar", ha_device_id="d_sofar", profile="solax_modbus/sofar", profile_version=1, name="Sofar")
+    config = SunflowConfig(devices=[sofar], measurement_sources=measurement_sources)
+    return energy_sources, config, snapshot
+
+
+@pytest.mark.parametrize(
+    ("measurement_sources", "origin", "meter_grid"),
+    [
+        pytest.param(
+            {}, "energy_dashboard",
+            {"grid_import": ["sensor.sofar_import_energy_total"], "grid_export": ["sensor.sofar_export_energy_total"]},
+            id="utility-meter-against-the-inverter",
+        ),
+        pytest.param({"grid": "sofar"}, "devices", {}, id="grid-from-the-inverter-itself"),
+    ],
+)
+def test_meter_grid_of_the_load_device(
+    library: ProfileLibrary, measurement_sources: dict[str, str], origin: str, meter_grid: dict[str, list[str]]
+) -> None:
+    """The inverter's grid counters are compared only while the grid comes from the energy dashboard."""
+    energy_sources, config, snapshot = _sofar_sources(measurement_sources)
+
+    sources = energy_sources(config, library.profiles, snapshot)
+
+    assert sources.origin["grid_import"] == origin
+    assert sources.meter_grid == meter_grid

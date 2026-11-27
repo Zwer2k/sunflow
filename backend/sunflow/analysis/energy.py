@@ -40,6 +40,11 @@ class EnergySources:
     origin: dict[str, str] = field(default_factory=dict)  # "devices" or "energy_dashboard"
     # Inverters with AC and DC counters: name -> (AC statistic, DC statistic)
     inverters: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # Battery SoC statistics with their capacity (Wh), for the change of the stored energy
+    battery_soc: list[tuple[str, float]] = field(default_factory=list)
+    # Grid counters of the device whose load counter is used, while the grid comes from the
+    # energy dashboard: their difference is between the meters, not a loss
+    meter_grid: dict[str, list[str]] = field(default_factory=dict)
 
 
 def _dashboard_statistics(prefs: dict[str, Any] | None) -> dict[str, list[str]]:
@@ -97,6 +102,11 @@ def energy_sources(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
                 continue
             if role in roles and roles[role].entity_id:
                 devices.setdefault(key, []).append(roles[role].entity_id)
+        soc = roles.get("battery_soc")
+        if soc and soc.entity_id:
+            params = device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))
+            if capacity := {p["name"]: p["effective"] for p in params}.get("capacity_wh"):
+                sources.battery_soc.append((soc.entity_id, capacity))
         ac, dc = roles.get("pv_energy"), roles.get("pv_dc_energy")
         if ac and dc and ac.entity_id and dc.entity_id:
             sources.inverters[device.name] = (ac.entity_id, dc.entity_id)
@@ -111,6 +121,16 @@ def energy_sources(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
         elif key in second:
             sources.statistics[key] = second[key]
             sources.origin[key] = "energy_dashboard" if second is dashboard else "devices"
+    load_device, grid_device = chosen["load"], chosen["grid"]
+    if (
+        sources.origin.get("grid_import") == "energy_dashboard"
+        and "load" in sources.statistics
+        and load_device is not None
+        and grid_device is not None
+        and load_device.id == grid_device.id
+        and "grid_import" in devices
+    ):
+        sources.meter_grid = {key: devices[key] for key in ("grid_import", "grid_export") if key in devices}
     return sources
 
 
@@ -134,6 +154,29 @@ async def fetch_changes(client: HAClient, statistic_ids: list[str], start: datet
     }
 
 
+async def fetch_stored_change(
+    client: HAClient, batteries: list[tuple[str, float]], start: datetime, end: datetime
+) -> float | None:
+    """Change of the energy stored in all batteries (Wh) from the first and last SoC mean."""
+    if not batteries:
+        return None
+    result = await client.command(
+        "recorder/statistics_during_period",
+        start_time=start.isoformat(),
+        end_time=end.isoformat(),
+        statistic_ids=sorted({soc for soc, _ in batteries}),
+        period="5minute" if end - start <= FIVE_MINUTE_LIMIT else "hour",
+        types=["mean"],
+    )
+    change = 0.0
+    for soc, capacity in batteries:
+        means = [row["mean"] for row in result.get(soc, []) if row.get("mean") is not None]
+        if len(means) < 2:
+            return None
+        change += capacity * (means[-1] - means[0]) / 100
+    return change
+
+
 def ratio(numerator: float | None, denominator: float | None) -> float | None:
     """numerator / denominator, None when undefined."""
     if numerator is None or not denominator:
@@ -145,6 +188,7 @@ async def energy_balance(client: HAClient, sources: EnergySources, start: dateti
     """Totals (Wh), autarky, self-consumption and inverter efficiencies for a period."""
     ids = [s for statistics in sources.statistics.values() for s in statistics]
     ids += [s for pair in sources.inverters.values() for s in pair]
+    ids += [s for statistics in sources.meter_grid.values() for s in statistics]
     changes = await fetch_changes(client, ids, start, end)
     totals: dict[str, float | None] = {}
     for key in ENERGY_ROLES.values():
@@ -165,6 +209,31 @@ async def energy_balance(client: HAClient, sources: EnergySources, start: dateti
     if consumption is None and rest is not None:
         # Without a consumption counter the house takes what is left in the balance
         consumption, consumption_origin = rest, "balance"
+    losses = rest - consumption if rest is not None and consumption_origin == "counter" and consumption is not None else None
+    meter_difference = None
+    if losses is not None and (meter_import := sources.meter_grid.get("grid_import")) and all(s in changes for s in meter_import):
+        meter_export = [s for s in sources.meter_grid.get("grid_export", []) if s in changes]
+        meter_net = sum(changes[s] for s in meter_import) - sum(changes[s] for s in meter_export)
+        meter_difference = totals["grid_import"] - (totals["grid_export"] or 0) - meter_net
+    stored = None
+    if losses is not None and totals["battery_charge"] is not None:
+        stored = await fetch_stored_change(client, sources.battery_soc, start, end)
+    split = None
+    if losses is not None:
+        conversion = losses - (meter_difference or 0)
+        # Charged but neither discharged nor still stored: drawn by BMS and converters of the battery
+        battery = (
+            totals["battery_charge"] - (totals["battery_discharge"] or 0) - stored
+            if stored is not None and totals["battery_charge"] is not None
+            else None
+        )
+        split = {
+            # A negative rest is measuring noise (counters in 0.1 kWh steps, SoC in 1 %)
+            "conversion": max(conversion, 0.0),
+            "battery": max(battery, 0.0) if battery is not None else None,
+            # Positive: the utility meter counts more grid energy than the device's meter
+            "meter_difference": meter_difference,
+        }
     autarky = ratio(totals["grid_import"], consumption)
     self_consumption = ratio(totals["grid_export"], totals["pv"])
     return {
@@ -174,8 +243,11 @@ async def energy_balance(client: HAClient, sources: EnergySources, start: dateti
         "origin": sources.origin,
         "consumption": consumption,
         "consumption_origin": consumption_origin if consumption is not None else None,
-        # Only measurable with a consumption counter; a negative rest is measuring noise
-        "losses": max(rest - consumption, 0.0) if rest is not None and consumption_origin == "counter" and consumption is not None else None,
+        # Only measurable with a consumption counter: conversion plus the battery's own draw
+        "losses": split["conversion"] + (split["battery"] or 0) if split is not None else None,
+        "loss_split": split,
+        # Energy in the batteries at the end minus at the start, from the SoC
+        "battery_stored_change": stored,
         "autarky": min(max(1 - autarky, 0), 1) if autarky is not None else None,
         "self_consumption": min(max(1 - self_consumption, 0), 1) if self_consumption is not None else None,
         "battery_ratio": ratio(totals["battery_discharge"], totals["battery_charge"]),

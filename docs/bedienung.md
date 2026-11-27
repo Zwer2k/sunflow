@@ -101,7 +101,8 @@ stehen, solange sie höchstens 60 % des Bildschirms brauchen:
   Verluste von Wechselrichter und Speicher, Autarkie und Eigenverbrauch.
 - **Verluste Wechselrichter/Speicher** (unter dem Energiefluss, Mittel der letzten Minuten):
   Bilanz aus PV, Netz und Speicher minus gemessenem Hausverbrauch, also Wandlungsverluste und
-  Eigenverbrauch der Geräte. Das Energie-Dashboard von Home Assistant zählt sie zum Hausverbrauch;
+  Eigenverbrauch der Geräte. Unter **Heute** enthält der Wert auch den Eigenverbrauch des
+  Speichers (aus dem Ladestand) und keine Zählerabweichung; die steht als eigene Kachel daneben. Das Energie-Dashboard von Home Assistant zählt sie zum Hausverbrauch;
   deshalb zeigt es mehr Verbrauch und mehr Autarkie als Sunflow. Nur mit einem Verbrauchszähler
   bzw. einer Verbrauchsmessung.
 
@@ -187,7 +188,18 @@ Wie gut stimmen Prognosen und Entscheidungen mit der Wirklichkeit überein?
   hoch angesetzter Warmwasserbedarf oder ein gemessener Wirkungsgrad des Speichers.
   **Öffnen** führt zur Einstellung, **Ausblenden** verwirft den Hinweis.
 - **Energiebilanz**: Autarkie, Eigenverbrauch, PV, Verbrauch, Netz, Speicher und Wirkungsgrad
-  für heute, 7 oder 30 Tage, aus den Energiezählern der Geräte.
+  für heute, 7 oder 30 Tage, aus den Energiezählern der Geräte. Dazu die Aufteilung der Verluste:
+  - **Im Speicher geblieben**: Inhalt am Ende minus am Anfang, aus dem Ladestand.
+  - **Eigenverbrauch Speicher**: geladen, aber weder entladen noch gespeichert, also was BMS und
+    Wandler der Module selbst ziehen. Hält Sunflow eine Reserve, wird das immer wieder aus dem
+    Netz nachgeladen.
+  - **Verluste Wandlung**: Wandlung und Leerlauf der Wechselrichter.
+  - **Zählerabweichung**: kommt das Netz aus dem Energie-Dashboard (meist der Hauszähler) und
+    der Verbrauch vom Wechselrichter, dessen Netzzähler etwas anderes misst, ist der Unterschied
+    kein Verlust. Positiv heißt: der Hauszähler zählt mehr Bezug.
+
+  Der Ladestand kommt in 1-%-Schritten, die Zähler oft in 0,1 kWh; über einen Tag oder länger
+  ist die Aufteilung belastbar, über wenige Stunden nicht.
 - **Kosten pro Tag**: Nettokosten (Bezug minus Einspeisung) gegenüber „ohne PV und Speicher“
   und die Ersparnis, über 30 oder 90 Tage.
 - **Speicher planen**: rechnet mit deinen gemessenen Netz- und Speicherwerten und dem Preisverlauf

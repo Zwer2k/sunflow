@@ -89,7 +89,7 @@ TOOLS = [
     ),
     Tool(
         name="get_energy", area="history",
-        description="Energiebilanz eines Zeitraums.",
+        description="Energiebilanz eines Zeitraums. losses = Wandlung + Eigenverbrauch der Speicher; loss_split teilt auf (conversion, battery, meter_difference = Hauszähler minus Wechselrichter-Zähler, kein Verlust); battery_stored_change aus dem Ladestand.",
         path="/energy",
         params={"period": {"type": "string", "enum": ["today", "7d", "30d"]}},
     ),

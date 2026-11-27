@@ -241,6 +241,9 @@ class SunflowLive extends LitElement {
           autarky: energy.autarky,
           selfConsumption: energy.self_consumption,
           losses: energy.losses === null || energy.losses === undefined ? null : kwh(energy.losses),
+          conversion: energy.loss_split?.conversion == null ? null : kwh(energy.loss_split.conversion),
+          batteryDraw: energy.loss_split?.battery == null ? null : kwh(energy.loss_split.battery),
+          meterDifference: energy.loss_split?.meter_difference == null ? null : kwh(energy.loss_split.meter_difference),
           source: t("Energiezähler"),
         };
         this._todayError = null;
@@ -837,8 +840,12 @@ class SunflowLive extends LitElement {
             [t("Netzbezug"), t("Bezug"), kwh(today.imported)],
             [t("Eingespeist"), t("Einspeisung"), kwh(today.exported)],
             today.losses !== null && today.losses !== undefined
-              ? [t("Verluste WR/Speicher"), t("Verluste"), kwh(today.losses), false,
-                t("Bilanz minus gemessener Hausverbrauch: Wandlungsverluste und Eigenverbrauch von Wechselrichter und Speicher")]
+              ? [t("Verluste WR/Speicher"), t("Verluste"), kwh(today.losses), false, this._lossesTitle(today, kwh)]
+              : null,
+            // Below 0.1 kWh it is the counters' resolution
+            today.meterDifference !== null && today.meterDifference !== undefined && Math.abs(today.meterDifference) >= 0.1
+              ? [t("Zählerabweichung"), t("Zählerdiff."), kwh(today.meterDifference), false,
+                t("Netzbezug laut Hauszähler (Energie-Dashboard) minus laut Zähler des Wechselrichters: kein Verlust, sondern eine Messabweichung")]
               : null,
             [t("Autarkie"), t("Autarkie"), pct(today.autarky), true, t("Anteil des Verbrauchs ohne Netzbezug")],
             [t("Eigenverbrauch"), t("Eigenverbr."), pct(today.selfConsumption), true, t("Anteil der PV-Erzeugung, der selbst genutzt wird")],
@@ -850,6 +857,18 @@ class SunflowLive extends LitElement {
         </div>
       </section>
     `;
+  }
+
+  /** Tooltip of the losses: what they consist of, as far as measured. */
+  _lossesTitle(today, kwh) {
+    const parts = [t("Bilanz minus gemessener Hausverbrauch")];
+    if (today.conversion !== null && today.conversion !== undefined) {
+      parts.push(t("Wandlung und Leerlauf der Wechselrichter: {value}", { value: kwh(today.conversion) }));
+    }
+    if (today.batteryDraw !== null && today.batteryDraw !== undefined) {
+      parts.push(t("Eigenverbrauch der Speicher (geladen, aber weder entladen noch gespeichert): {value}", { value: kwh(today.batteryDraw) }));
+    }
+    return parts.join("\n");
   }
 
   /** Each battery of the combined node as a small battery beside it: short name, level, power; the plan's action as tooltip. */

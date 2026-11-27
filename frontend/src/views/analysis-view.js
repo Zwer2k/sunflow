@@ -342,6 +342,14 @@ class SunflowAnalysis extends LitElement {
           ${tile(t("Speicher geladen"), totals.battery_charge === null ? null : wh(totals.battery_charge))}
           ${tile(t("Speicher entladen"), totals.battery_discharge === null ? null : wh(totals.battery_discharge),
             e.battery_ratio === null ? null : t("{value} der geladenen Energie (ohne Ladestandsänderung)", { value: pct(e.battery_ratio) }))}
+          ${tile(t("Im Speicher geblieben"), e.battery_stored_change == null ? null : wh(e.battery_stored_change),
+            t("Inhalt am Ende minus am Anfang, aus dem Ladestand"))}
+          ${tile(t("Verluste Wandlung"), e.loss_split?.conversion == null ? null : wh(e.loss_split.conversion),
+            t("Wechselrichter: Wandlung und Leerlauf"))}
+          ${tile(t("Eigenverbrauch Speicher"), e.loss_split?.battery == null ? null : wh(e.loss_split.battery),
+            t("Geladen, aber weder entladen noch gespeichert"))}
+          ${tile(t("Zählerabweichung"), e.loss_split?.meter_difference == null ? null : wh(e.loss_split.meter_difference),
+            t("Netz laut Hauszähler minus laut Wechselrichter-Zähler; kein Verlust"))}
           ${e.inverters.map((i) => tile(t("Wirkungsgrad {name}", { name: i.name }), pct(i.efficiency),
             i.dc_wh === null ? null : t("{ac} AC aus {dc} DC", { ac: wh(i.ac_wh), dc: wh(i.dc_wh) })))}
         </div>` : nothing}
