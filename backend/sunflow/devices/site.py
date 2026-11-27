@@ -101,7 +101,8 @@ def device_parameters(
     for name, spec in profile.get("parameters", {}).items():
         if "kind" in spec and spec["kind"] != kind:
             continue
-        derived = derive_parameter(spec, snapshot, device.ha_device_id, device, modules)
+        learned = "learn" in spec
+        derived = device.learned.get(name) if learned else derive_parameter(spec, snapshot, device.ha_device_id, device, modules)
         stored = device.parameters.get(name)
         default = spec.get("default")
         result.append(
@@ -113,6 +114,7 @@ def device_parameters(
                 "advanced": spec.get("advanced", False),
                 "stored": stored,
                 "derived": derived,
+                "learned": learned,
                 "default": default,
                 "effective": next(
                     (v for v in (stored, derived, default) if v is not None), None

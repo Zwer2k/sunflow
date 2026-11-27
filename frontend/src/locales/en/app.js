@@ -305,6 +305,7 @@ export default {
   "Aus: der Speicher versorgt nur das Haus; geladen wird dann nur aus PV-Überschuss oder dem Netz. Gleichzeitiges Laden des Hausspeichers ist immer erlaubt.": "Off: the battery supplies only the house; charging then uses only PV surplus or the grid. Charging the home battery at the same time is always allowed.",
   "eigener Wert": "custom value",
   "aus Sensoren: {value}": "from sensors: {value}",
+  "gelernt: {value}": "learned: {value}",
   "Vorgabe: {value}": "Default: {value}",
   "zurücksetzen": "reset",
   "automatisch (Sunflow schaltet 1 ↔ 3 Phasen)": "automatic (Sunflow switches 1 ↔ 3 phases)",

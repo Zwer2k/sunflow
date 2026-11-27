@@ -11,6 +11,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sunflow import i18n
+from sunflow.analysis.efficiency import estimate_from_counters
+from sunflow.analysis.energy import battery_counters
 from sunflow.analysis.history import level_key
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.config.store import ConfigStore
@@ -32,6 +34,7 @@ from sunflow.planning.heating_season import (
     uses_seasons,
     with_season,
 )
+from sunflow.planning import battery_standby
 from sunflow.planning.house_model import HouseModel, fit as fit_house, house_data
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
@@ -402,6 +405,7 @@ class ShadowRunner:
         # Per wallbox: plugged in and the running transaction (card), to replan when they change
         self._plugs: dict[str, tuple[str | None, str | None]] | None = None
         self._house_at: datetime | None = None
+        self._standby_at: datetime | None = None
         self._house_task: asyncio.Task[None] | None = None
         self._sun_level_at: datetime | None = None
         self.sun_error: str | None = None
@@ -919,9 +923,41 @@ class ShadowRunner:
             _LOGGER.info("Heating season %s", "started" if active else "ended")
             self._store.save(config)
 
+    async def _update_learned_standby(self) -> None:
+        """Learn each battery's own draw from its energy counters, once a day."""
+        now = datetime.now(UTC)
+        if self._standby_at is not None and now - self._standby_at < battery_standby.REFRESH:
+            return
+        self._standby_at = now
+        config = self._store.load()
+        profiles = self._library.profiles
+        try:
+            snapshot = await self.snapshots.get() if self.snapshots else await fetch_snapshot(self._client)
+        except HAError as err:
+            _LOGGER.warning("Learning the battery standby draw failed: %s", err)
+            return
+        values = {}
+        for counters in battery_counters(config, profiles, snapshot):
+            device = config.device(counters.device_id)
+            if device is None or not battery_standby.learns_standby(profiles[device.profile]):
+                continue
+            try:
+                estimate = await estimate_from_counters(
+                    self._client, counters.charge, counters.discharge, counters.soc, counters.capacity_wh
+                )
+            except HAError as err:
+                _LOGGER.warning("Learning the standby draw of %s failed: %s", device.name, err)
+                continue
+            if (value := battery_standby.standby_of(estimate)) is not None:
+                values[device.id] = value
+        if battery_standby.store_learned(config, values):
+            _LOGGER.info("Learned battery standby draw: %s", values)
+            self._store.save(config)
+
     async def _replan(self, start: datetime) -> None:
         await i18n.update_language(self._client, self._store.load().display.language)
         await self._update_heating_season()
+        await self._update_learned_standby()
         if self.controller is not None:
             # "A day" of the heat pump's block limits and price ranks is Home Assistant's
             self.controller.tz = await local_timezone(self._client)

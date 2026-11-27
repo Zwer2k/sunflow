@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.17
+
+The battery's standby use is learned once a day from its energy counters; an own value still wins
+
 ## 0.80.16
 
 Plan the battery's standby use (new parameter, suggested from the counters) and wait for cheaper slots when the SoC slipped one step below the backup reserve

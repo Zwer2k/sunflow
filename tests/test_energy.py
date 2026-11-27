@@ -265,7 +265,7 @@ async def test_efficiency_history_per_day() -> None:
                 "dc": hourly([2000, 250, 2000]),
             }
 
-    battery = BatteryCounters(name="Sofar", charge="in", discharge="out", soc="soc", capacity_wh=20000)
+    battery = BatteryCounters(device_id="bat", name="Sofar", charge="in", discharge="out", soc="soc", capacity_wh=20000)
     sofar, huawei = await efficiency_history(Client(), [battery], {"Huawei": ("ac", "dc")}, 3, tz)
 
     assert sofar["points"][0]["value"] == pytest.approx(0.72)
@@ -300,7 +300,7 @@ async def test_efficiency_history_merges_days_with_little_energy() -> None:
         async def command(self, msg_type: str, **data: Any) -> dict[str, list[dict[str, Any]]]:
             return {"in": hourly([2500, 2500, 1000]), "out": hourly([2000, 2000, 800]), "soc": soc}
 
-    battery = BatteryCounters(name="Sofar", charge="in", discharge="out", soc="soc", capacity_wh=20000)
+    battery = BatteryCounters(device_id="bat", name="Sofar", charge="in", discharge="out", soc="soc", capacity_wh=20000)
     (sofar,) = await efficiency_history(Client(), [battery], {}, 3, tz)
 
     merged, last = sofar["points"]

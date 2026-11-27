@@ -99,13 +99,13 @@ def battery_efficiency(
 def battery_standby(
     config: SunflowConfig, estimates: dict[str, EfficiencyEstimate | None]
 ) -> list[Recommendation]:
-    """The battery draws more by itself than the plan knows: it slips below the reserve."""
+    """An own value for the battery's standby draw differs from the measured one (else it is learned)."""
     result = []
     for device in config.devices:
         estimate = estimates.get(device.id)
-        if estimate is None or not estimate.plausible or estimate.standby_w is None:
+        current = device.parameters.get("standby_w")
+        if current is None or estimate is None or not estimate.plausible or estimate.standby_w is None:
             continue
-        current = device.parameters.get("standby_w") or 0.0
         suggested = round(estimate.standby_w / 5) * 5
         if abs(suggested - current) < STANDBY_GAP_W:
             continue
@@ -115,7 +115,7 @@ def battery_standby(
                 severity="info",
                 title=t("{name}: Eigenverbrauch {suggested} W statt {current} W", name=device.name, suggested=f"{suggested:.0f}", current=f"{current:.0f}"),
                 text=t(
-                    "Die Energiezähler zeigen, dass der Speicher auch im Leerlauf etwa {watts} W aus den Zellen zieht (BMS, Wandler). Kennt der Plan das, lädt er es in günstigen Stunden vor, statt zum teuren Preis nachzuladen, wenn der Ladestand unter die Notstrom-Reserve rutscht.",
+                    "Die Energiezähler zeigen, dass der Speicher auch im Leerlauf etwa {watts} W aus den Zellen zieht (BMS, Wandler). Ohne eigenen Wert lernt Sunflow ihn selbst; der Plan lädt ihn dann in günstigen Stunden vor, statt zum teuren Preis nachzuladen, wenn der Ladestand unter die Notstrom-Reserve rutscht.",
                     watts=f"{estimate.standby_w:.0f}",
                 ),
                 action={"type": "set_parameter", "device_id": device.id, "name": "standby_w", "value": suggested},

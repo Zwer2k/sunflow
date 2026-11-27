@@ -267,6 +267,7 @@ async def energy_balance(client: HAClient, sources: EnergySources, start: dateti
 class BatteryCounters:
     """Statistics needed for a battery's daily efficiency."""
 
+    device_id: str
     name: str
     charge: str
     discharge: str
@@ -291,7 +292,7 @@ def battery_counters(
         params = device_parameters(profile, device, snapshot, config.battery_modules.get(device.id))
         capacity = {p["name"]: p["effective"] for p in params}.get("capacity_wh")
         if all(ids) and capacity:
-            result.append(BatteryCounters(name=device.name, charge=ids[0], discharge=ids[1], soc=ids[2], capacity_wh=capacity))
+            result.append(BatteryCounters(device_id=device.id, name=device.name, charge=ids[0], discharge=ids[1], soc=ids[2], capacity_wh=capacity))
     return result
 
 

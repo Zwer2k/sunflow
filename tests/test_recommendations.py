@@ -44,13 +44,14 @@ def test_efficiency_without_split_is_not_suggested() -> None:
 @pytest.mark.parametrize(
     ("standby", "stored", "suggested"),
     [
-        pytest.param(71.0, {}, [70], id="measured-but-not-set"),
-        pytest.param(71.0, {"standby_w": 65.0}, [], id="close-to-the-setting"),
+        pytest.param(71.0, {}, [], id="learned-without-an-own-value"),
+        pytest.param(71.0, {"standby_w": 20.0}, [70], id="own-value-far-off"),
+        pytest.param(71.0, {"standby_w": 65.0}, [], id="own-value-close"),
         pytest.param(None, {}, [], id="no-split"),
     ],
 )
 def test_standby_is_suggested(standby: float | None, stored: dict[str, float], suggested: list[int]) -> None:
-    """The measured standby draw is offered for the plan, rounded to 5 W."""
+    """Only an own value far from the measured standby draw is worth a hint, rounded to 5 W."""
     config = _config()
     config.devices[0].parameters.update(stored)
     found = build(config, None, {"bat": _estimate(0.71, 0.87, standby)}, [], 0, None, [])

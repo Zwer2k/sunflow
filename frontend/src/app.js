@@ -2700,6 +2700,8 @@ class SunflowApp extends LitElement {
     const placeholder = toDisplay(param.derived ?? param.default ?? param.effective, param.unit);
     let source;
     if (param.stored !== null && edited === undefined) source = html`<span class="muted">${t("eigener Wert")}</span>`;
+    else if (param.derived !== null && param.learned)
+      source = html`<span class="ok-text">${t("gelernt: {value}", { value: `${toDisplay(param.derived, param.unit)} ${displayUnit(param.unit)}` })}</span>`;
     else if (param.derived !== null)
       source = html`<span class="ok-text">${t("aus Sensoren: {value}", { value: `${toDisplay(param.derived, param.unit)} ${displayUnit(param.unit)}` })}</span>`;
     else if (param.default !== null)

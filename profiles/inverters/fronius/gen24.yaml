@@ -36,7 +36,7 @@ parameters:
   efficiency_pct: {unit: "%", default: 93, min: 40, max: 100}
   inverter_efficiency_pct: {unit: "%", default: 97, min: 80, max: 100}
   # Own draw of BMS and converters, taken from the stored energy also while idle
-  standby_w: {unit: W, default: 0, min: 0, max: 500}
+  standby_w: {unit: W, default: 0, min: 0, max: 500, learn: standby}
 
 battery_control:
   auto:

@@ -115,8 +115,8 @@ differences. This is intended, not a bug.
 - **Backup reserve**: in every strategy this state of charge stays free for power outages. If the
   battery is below it, Sunflow refills it first, from the grid if allowed.
   Except when it slipped just one percentage point below it, e.g. by its standby use while held:
-  then Sunflow waits for cheaper hours. With the battery's **standby use** set in its parameters,
-  the plan accounts for it and charges it ahead cheaply.
+  then Sunflow waits for cheaper hours. Sunflow learns the battery's **standby use** from the energy
+  meters (or you set it in its parameters); the plan accounts for it and charges it ahead cheaply.
   With **"Go below it on a safe forecast"** the plan may go below the reserve during the day's PV
   phase, down to a lowest level (default 10 %). Meant for mornings when the battery is at the
   reserve and large loads run: no grid import right away. Only as much is allowed as the pessimistic

@@ -361,6 +361,8 @@ class DeviceConfig(BaseModel):
     profile_version: int
     name: str
     parameters: dict[str, float] = Field(default_factory=dict)
+    # Parameter values Sunflow learned from the measurements; a stored parameter wins
+    learned: dict[str, float] = Field(default_factory=dict)
     role_overrides: dict[str, RoleOverride] = Field(default_factory=dict)
     test_passed_at: datetime | None = None
     # Loadpoints: a car or a heater; None: from the unit of its "SoC" (°C means heater).

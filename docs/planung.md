@@ -117,8 +117,9 @@ Preisunterschieden nicht aus dem Netz. Das ist Absicht und kein Fehler.
 - **Notstrom-Reserve**: In jeder Strategie bleibt dieser Ladestand für Stromausfälle frei. Liegt
   der Speicher darunter, lädt Sunflow ihn vorrangig wieder auf, aus dem Netz, wenn erlaubt.
   Ausnahme: Rutscht er nur um einen Prozentpunkt darunter, etwa durch den Eigenverbrauch im
-  Haltemodus, wartet Sunflow auf günstigere Stunden. Ist der **Eigenverbrauch** des Speichers in
-  den Kenndaten eingetragen, rechnet der Plan ihn ein und lädt ihn schon vorher günstig nach.
+  Haltemodus, wartet Sunflow auf günstigere Stunden. Den **Eigenverbrauch** des Speichers lernt
+  Sunflow aus den Energiezählern (oder du trägst ihn in den Kenndaten ein); der Plan rechnet ihn
+  ein und lädt ihn schon vorher günstig nach.
   Mit **„Bei sicherer Prognose unterschreiten“** darf der Plan tagsüber in der PV-Phase unter die
   Reserve gehen, bis zu einem tiefsten Stand (Standard 10 %). Gedacht für Morgen, an denen der
   Speicher an der Reserve steht und große Verbraucher laufen: kein sofortiger Netzbezug. Erlaubt ist

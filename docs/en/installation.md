@@ -92,7 +92,7 @@ discharging negative. Then:
 
 - **Parameters** add what Sunflow cannot measure: usable capacity, minimum state of
   charge, maximum charge and discharge power, efficiency, the battery's standby use (BMS and
-  converters while idle; Sunflow suggests the measured value as a recommendation); for the wallbox phases and currents;
+  converters while idle; without an own value Sunflow learns it once a day from the energy meters); for the wallbox phases and currents;
   for hot water volume and daily demand. Fields marked "custom value" override the profile's
   suggestion; "reset" goes back to it.
 - **Assign entities** (expert mode) changes entity, unit, factor or sign of

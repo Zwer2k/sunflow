@@ -131,6 +131,7 @@ const PARAM_LABELS = {
 
 // Short explanation below a parameter
 const PARAM_HINTS = {
+  standby_w: t("Zieht der Speicher auch im Leerlauf aus den Zellen. Ohne eigenen Wert lernt Sunflow ihn einmal am Tag aus den Energiezählern (ab 7 Tagen mit Laden und Entladen); der Plan lädt ihn in günstigen Stunden vor."),
   phase_up_w: t("Leistung, die das Auto im Mittel bekommen kann, bevor auf 3 Phasen geschaltet wird; über 3 × Mindeststrom (bei 6 A ≈ 4,1 kW) plus Reserve. Beim PV-Überschuss nur, wenn der Plan auch für die nächste Viertelstunde genug erwartet."),
   phase_down_w: t("Darunter wird auf 1 Phase geschaltet; liegt unter „Auf 3 Phasen ab“, damit es nicht pendelt."),
   phase_up_delay_min: t("So lange muss der Überschuss im Mittel reichen – kurze Sonnenlücken schalten nicht."),

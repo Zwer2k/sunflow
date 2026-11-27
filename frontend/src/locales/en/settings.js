@@ -51,6 +51,7 @@ export default {
   "Wirkungsgrad Speicher (Akku und DC/DC, gesamter Zyklus)": "Battery efficiency (cells and DC/DC, full cycle)",
   "Wirkungsgrad Wechselrichter (je Richtung)": "Inverter efficiency (per direction)",
   "Eigenverbrauch Speicher (BMS, Wandler)": "Battery standby use (BMS, converters)",
+  "Zieht der Speicher auch im Leerlauf aus den Zellen. Ohne eigenen Wert lernt Sunflow ihn einmal am Tag aus den Energiezählern (ab 7 Tagen mit Laden und Entladen); der Plan lädt ihn in günstigen Stunden vor.": "Drawn from the cells even while idle. Without an own value Sunflow learns it once a day from the energy meters (from 7 days with charging and discharging); the plan charges it ahead in cheap hours.",
   "Maximale Leistung": "Maximum power",
   "Akkukapazität Fahrzeug (nutzbar)": "Vehicle battery capacity (usable)",
   "Ladewirkungsgrad": "Charging efficiency",
