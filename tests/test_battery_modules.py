@@ -17,7 +17,11 @@ KEYS = {
 }
 
 
-def _snapshot(nested: bool) -> Snapshot:
+# solax_modbus before 2026-09: SoC and voltage of a module without the "pack_" prefix
+OLDER_KEYS = {("soc" if k == "pack_soc" else "total_voltage" if k == "pack_total_voltage" else k): v for k, v in KEYS.items()}
+
+
+def _snapshot(nested: bool, keys: dict[str, str] = KEYS) -> Snapshot:
     """Two modules below the inverter, or below a tower controller (extended battery data)."""
     parent = "tower" if nested else "inverter"
     devices = [
@@ -28,7 +32,7 @@ def _snapshot(nested: bool) -> Snapshot:
     ]
     entities, states = [], {}
     for device in ("m10", "m2"):
-        for key, value in KEYS.items():
+        for key, value in keys.items():
             entity_id = f"sensor.{device}_{key}"
             entities.append({"entity_id": entity_id, "unique_id": f"Sofar_{device}_{key}", "device_id": device})
             states[entity_id] = {"state": value, "attributes": {}}
@@ -46,10 +50,17 @@ def _config(chosen: list[str] | None = None) -> SunflowConfig:
     return config
 
 
-@pytest.mark.parametrize("nested", [pytest.param(False, id="below_inverter"), pytest.param(True, id="below_tower")])
-def test_modules_with_values_and_problems(library: ProfileLibrary, nested: bool) -> None:
+@pytest.mark.parametrize(
+    ("nested", "keys"),
+    [
+        pytest.param(False, KEYS, id="below_inverter"),
+        pytest.param(True, KEYS, id="below_tower"),
+        pytest.param(False, OLDER_KEYS, id="older_solax_modbus"),
+    ],
+)
+def test_modules_with_values_and_problems(library: ProfileLibrary, nested: bool, keys: dict[str, str]) -> None:
     """Modules in natural order; temperatures of the cells (not MOS) aggregated; "None" is no alarm."""
-    (battery,) = battery_modules(_config(), library, _snapshot(nested))
+    (battery,) = battery_modules(_config(), library, _snapshot(nested, keys))
 
     assert [m["name"] for m in battery["modules"]] == ["Sofar Battery 1/2", "Sofar Battery 1/10"]
     module = battery["modules"][0]

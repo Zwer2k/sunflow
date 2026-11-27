@@ -7,8 +7,9 @@ match:
   sub_device: true
 required: [soc]
 values:
-  soc: pack_soc
-  voltage: pack_total_voltage
+  # Before solax_modbus of 2026-09 only as soc and total_voltage (same values, coarser)
+  soc: {key: pack_soc, or: [soc]}
+  voltage: {key: pack_total_voltage, or: [total_voltage]}
   current: pack_current
   temperature_max: {key: "pack_temperature_[0-9]*", aggregate: max}
   temperature_min: {key: "pack_temperature_[0-9]*", aggregate: min}

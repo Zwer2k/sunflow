@@ -47,6 +47,12 @@
           "additionalProperties": false,
           "properties": {
             "key": {"type": "string", "minLength": 1},
+            "or": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"type": "string", "minLength": 1},
+              "description": "Keys tried in this order when key matches nothing (older versions of the integration)."
+            },
             "aggregate": {"enum": ["max", "min", "mean"]},
             "ok": {
               "type": "array", "minItems": 1, "items": {"type": "string"},

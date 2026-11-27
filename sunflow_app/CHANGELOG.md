@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.18
+
+Battery modules are found with older solax_modbus versions too (module SoC and voltage without the pack prefix)
+
 ## 0.80.17
 
 The battery's standby use is learned once a day from its energy counters; an own value still wins

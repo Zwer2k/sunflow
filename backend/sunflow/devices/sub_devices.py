@@ -34,9 +34,9 @@ def natural_key(text: str) -> list[Any]:
     return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", text)]
 
 
-def value_key(spec: str | dict[str, str]) -> str:
-    """The key of a value spec (a string or {key, aggregate})."""
-    return spec if isinstance(spec, str) else spec["key"]
+def value_keys(spec: str | dict[str, Any]) -> list[str]:
+    """The keys of a value spec (a string or {key, or, aggregate}), in the order they are tried."""
+    return [spec] if isinstance(spec, str) else [spec["key"], *spec.get("or", [])]
 
 
 def device_name(profile: dict[str, Any], device: dict[str, Any]) -> str:
@@ -64,11 +64,16 @@ def find_sub_devices(snapshot: Snapshot, profiles: list[dict[str, Any]]) -> list
                 continue
             entities = {}
             for value, spec in profile["values"].items():
-                # The shortest first: "power" must not take "output_power" where both exist
-                matches = sorted(
-                    (e for e in by_device.get(device["id"], []) if entity_has_key(e, value_key(spec))),
-                    key=lambda e: len(e.get("unique_id") or ""),
-                )
+                # The first key that matches (older integration versions name it differently);
+                # the shortest first: "power" must not take "output_power" where both exist
+                matches = []
+                for key in value_keys(spec):
+                    matches = sorted(
+                        (e for e in by_device.get(device["id"], []) if entity_has_key(e, key)),
+                        key=lambda e: len(e.get("unique_id") or ""),
+                    )
+                    if matches:
+                        break
                 if matches:
                     entities[value] = [e["entity_id"] for e in (matches if isinstance(spec, dict) else matches[:1])]
             if all(v in entities for v in profile["required"]):
@@ -97,7 +102,7 @@ def current_values(
             if value is not None:
                 readings.append(value)
         spec = profile["values"][key]
-        if isinstance(spec, dict):
+        if isinstance(spec, dict) and "aggregate" in spec:
             values[key] = AGGREGATES[spec["aggregate"]](readings) if readings else None
         else:
             values[key] = readings[0] if readings else None
