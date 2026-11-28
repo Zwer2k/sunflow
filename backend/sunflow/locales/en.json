@@ -155,6 +155,8 @@
   "Speichervolumen fehlt in den Kenndaten": "Tank volume missing in the parameters",
   "Temperatur oder Ziel nicht lesbar": "Temperature or target not readable",
   "Wenig PV erwartet am {weekday} {date} – Ladegrenze ausgesetzt, der Speicher darf voll laden.": "Little PV expected on {weekday} {date} – charge limit suspended, the battery may charge fully.",
+  "Octopus liefert gerade keine Preise je Viertelstunde für den dynamischen Tarif – geplant wird mit dem üblichen Verlauf der letzten Wochen.": "Octopus currently gives no quarter-hour prices for the dynamic tariff – planning with the usual course of the last weeks.",
+  "Octopus liefert gerade keine Preise je Viertelstunde für den dynamischen Tarif – geplant wird nur auf Eigenverbrauch.": "Octopus currently gives no quarter-hour prices for the dynamic tariff – planning for self-consumption only.",
   "Der Strompreis ist ein reiner Börsenpreis – Netzentgelt, Umlagen und Steuern fehlen. Aufschlag und Mehrwertsteuer unter Einstellungen → Tarif & Prognose eintragen.": "The electricity price is a pure exchange price – grid fees, levies and taxes are missing. Enter the surcharge and VAT under Settings → Tariff & forecast.",
   "Kein Bezugspreis – geplant wird nur auf Eigenverbrauch.": "No import price – planning for self-consumption only.",
   "PV-Prognose „{plane}“ reicht nur bis {time} – danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig).": "PV forecast \"{plane}\" only reaches until {time} – after that its yield is missing from the plan (the PV forecast is rather too low there).",

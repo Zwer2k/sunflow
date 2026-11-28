@@ -12,8 +12,20 @@ Tariff & forecast; all sensors with a unit per kWh are offered.
 | Nord Pool | nordpool (HACS) | attributes `raw_today` / `raw_tomorrow` | as configured in the integration |
 | aWATTar, smartENERGY, Energy-Charts, SMARD, ENTSO-E, Tibber, Energyforecast | EPEX Spot (HACS) | attribute `data` | sensor "Total Price": final price; "Market Price": net spot price |
 | ENTSO-E | ENTSO-e (HACS) | attribute `prices` | as configured in the integration |
-| Octopus (dynamic and time-of-use tariffs) | Octopus Germany (HACS) | attribute `rates` (price per quarter hour), without `rates` the attribute `timeslots` | final price |
-| others | any price sensor | current value only | assumed constant |
+| Octopus (dynamic tariffs) | Octopus Germany (HACS) | attribute `rates` (price per quarter hour, today and tomorrow once published); while it is missing, the usual course of the last weeks with a warning | final price |
+| Octopus (Go, Heat, Intelligent Go, fixed price) | Octopus Germany (HACS) | attribute `timeslots`, for a fixed price the current value | final price |
+| Octopus with variable grid fee (module 3) | Octopus Germany (HACS), sensor "… with Variable Grid Fee" | attribute `price_combinations` (today) | final price |
+| Tibber | Tibber Prices (HACS) | action `tibber_prices.get_price` | final price incl. taxes |
+| Green Planet Energy | Green Planet Energy (Core) | action `green_planet_energy.get_prices` (24 hours at most) | final price |
+| Rabot Energy | Rabot Energy (HACS) | attribute `prices` | final price |
+| Ostrom | Ostrom (HACS, oliverwehrens) | attribute `prices` (per hour) | final price |
+| 1KOMMA5° | 1KOMMA5° (HACS, BirknerAlex or mrebbert) | attribute `forecast` | final price with grid fee and VAT |
+| Swiss tariffs (ElCom) | ElCom Tariffs (HACS) | attributes `raw_today` / `raw_tomorrow` in CHF | final price |
+| Energi Data Service | Energi Data Service (HACS) | attributes `raw_today` / `raw_tomorrow` | as configured in the integration |
+| others | any price sensor | current value only; if it usually varies over the day, its course of the last weeks | otherwise assumed constant |
+
+Prices in CHF/kWh or Rp/kWh are planned like €/kWh or ct/kWh; the display stays in €. Then also
+enter the feed-in rate and wear costs in Rappen.
 
 A pure spot price (Nord Pool Core, EPEX Spot "Market Price") lacks grid fees, levies, the
 supplier's fee and VAT. Enter a surcharge in ct/kWh and the VAT for it; Sunflow then calculates

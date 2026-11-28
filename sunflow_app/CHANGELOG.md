@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.80.22
+
+- EPEX Spot: the "Market Price" sensor is recognized as a net exchange price again (by its attribute `price_per_kwh`), so the surcharges and VAT are added. Before, it was taken as the final price.
+- New price sources: Tibber Prices (HACS, action), Green Planet Energy (core, action), Rabot Energy, Ostrom, 1KOMMA5° (both integrations), Energi Data Service and Swiss ElCom tariffs. Prices in CHF/kWh, Rp/kWh, €/MWh and DKK/kWh are accepted.
+- Octopus Germany: a dynamic tariff whose quarter-hour prices are missing (API error) is no longer planned with the fixed part only, but with its usual course of the last weeks and a warning. The sensor with the variable grid fee (module 3) is read with today's prices; the grid fee sensor alone is no longer offered as import price.
+- A price sensor with only its current value is planned with its usual course over the day when it varies, instead of as constant.
+
 ## 0.80.21
 
 - Octopus Germany: dynamic tariffs (e.g. DynamicOctopus) are read from the attribute `rates` with the final price per quarter hour. Before, Sunflow took `timeslots`, which for these tariffs holds only the fixed part, and planned with a constant price far too low (#5).

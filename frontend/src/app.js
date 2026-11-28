@@ -176,6 +176,14 @@ const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" 
 const PRICE_ADAPTERS = {
   timeslots: t("Zeittarif"),
   octopus_rates: t("Preis je Viertelstunde (Octopus)"),
+  octopus_combined: t("Preis mit variablem Netzentgelt (Octopus)"),
+  octopus_unavailable: t("dynamischer Tarif ohne aktuelle Preise (Octopus)"),
+  tibber_prices: "Tibber Prices",
+  green_planet_energy: "Green Planet Energy",
+  energidataservice: "Energi Data Service",
+  price_list: t("Preisliste"),
+  price_dict: t("Preisliste"),
+  forecast_list: t("Preisliste"),
   tibber: "Tibber",
   nordpool: t("Börsenpreis (Nord Pool)"),
   nordpool_core: t("Börsenpreis netto (Nord Pool)"),
@@ -2925,8 +2933,8 @@ class SunflowApp extends LitElement {
               ${priceChart(points, t("Bezugspreis-Verlauf"))}
             </figure>`
           : nothing}
-        ${this._priceSeries?.adapter === "fixed" && !fixed
-          ? html`<div class="alert warn">⚠ ${t("Diese Quelle liefert nur den aktuellen Preis, keinen Verlauf. Die Planung nimmt ihn als konstant an.")}</div>`
+        ${["fixed", "octopus_unavailable"].includes(this._priceSeries?.adapter) && !fixed
+          ? html`<div class="alert warn">⚠ ${t("Diese Quelle liefert nur den aktuellen Preis, keinen Verlauf. Schwankt er üblicherweise über den Tag, plant Sunflow mit seinem Verlauf der letzten Wochen, sonst als konstant.")}</div>`
           : nothing}
       </section>
     `;

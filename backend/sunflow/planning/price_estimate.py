@@ -13,6 +13,9 @@ from .sources import SLOT, PricePoint
 
 # Days of price history from which their mean per hour is used
 MIN_HISTORY_DAYS = 7
+# A source with only its current price: from this spread over the day (€/kWh) its usual
+# course is planned with instead of a constant price
+VARYING_SPREAD = 0.01
 
 
 def hourly_profile(history: list[tuple[datetime, float]], tz: tzinfo) -> list[float] | None:
@@ -55,5 +58,27 @@ def extend_prices(
     while moment < until:
         price = profile[moment.astimezone(tz).hour]
         estimated.append(PricePoint(start=moment, end=moment + SLOT, price=price, estimated=True))
+        moment += SLOT
+    return [*known, *estimated]
+
+
+def from_history(
+    current: float | None, history: list[tuple[datetime, float]], start: datetime, until: datetime, tz: tzinfo
+) -> list[PricePoint]:
+    """A source without a schedule: the current price now, then the usual course of each hour.
+
+    Constant when the price does not vary over the day (a fixed tariff) or too little history
+    is there; current None: the source has no reliable price now (all from the history).
+    """
+    profile = hourly_profile(history, tz)
+    if profile is None or max(profile) - min(profile) < VARYING_SPREAD:
+        if current is None:
+            return []
+        return [PricePoint(start=start, end=until, price=current)]
+    known = [PricePoint(start=start, end=start + SLOT, price=current)] if current is not None else []
+    estimated = []
+    moment = start + SLOT if known else start
+    while moment < until:
+        estimated.append(PricePoint(start=moment, end=moment + SLOT, price=profile[moment.astimezone(tz).hour], estimated=True))
         moment += SLOT
     return [*known, *estimated]

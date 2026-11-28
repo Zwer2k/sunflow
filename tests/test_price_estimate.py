@@ -1,9 +1,10 @@
 """Tests for estimating prices beyond the published ones."""
 
 from datetime import UTC, datetime, timedelta
+from itertools import groupby
 
 import pytest
-from sunflow.planning.price_estimate import extend_prices
+from sunflow.planning.price_estimate import extend_prices, from_history
 from sunflow.planning.sources import PricePoint
 
 START = datetime(2026, 11, 2, tzinfo=UTC)
@@ -64,3 +65,31 @@ def test_plan_slots_say_which_prices_are_estimated() -> None:
 
     assert len(inputs) == 26 * 4
     assert [i.price_estimated for i in inputs[95:97]] == [False, True]
+
+
+VARYING = [(START - timedelta(days=14) + h * HOUR, 0.10 + (h % 24) / 100) for h in range(14 * 24)]
+STEADY = [(START - timedelta(days=14) + h * HOUR, 0.30) for h in range(14 * 24)]
+
+
+@pytest.mark.parametrize(
+    ("current", "history", "expected"),
+    [
+        # A dynamic price only read as its current value: now that, then the usual course
+        pytest.param(0.35, VARYING, [(0.35, False), (0.11, True)], id="varying"),
+        # A fixed tariff stays constant, also after a price change in its history
+        pytest.param(0.32, STEADY, [(0.32, False)], id="steady"),
+        pytest.param(0.32, [], [(0.32, False)], id="no-history"),
+        # No reliable price now (Octopus without its forecast): all from the history
+        pytest.param(None, VARYING, [(0.10, True), (0.11, True)], id="nothing-now"),
+        pytest.param(None, [], [], id="nothing-at-all"),
+    ],
+)
+def test_a_source_without_schedule_follows_its_usual_course(
+    current: float | None, history: list[tuple[datetime, float]], expected: list[tuple[float, bool]]
+) -> None:
+    """Only the current price known: the hours after it follow the sensor's usual course if it varies."""
+    prices = from_history(current, history, START + 45 * timedelta(minutes=1), START + 2 * HOUR, UTC)
+
+    # Consecutive equal slots as one: the current one (00:45) and the hour after
+    runs = [key for key, _ in groupby((round(p.price, 4), p.estimated) for p in prices)]
+    assert runs == expected

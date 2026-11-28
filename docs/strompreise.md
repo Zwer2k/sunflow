@@ -12,8 +12,20 @@ Einstellungen → Tarif & Prognose; angeboten werden alle Sensoren mit einer Ein
 | Nord Pool | nordpool (HACS) | Attribute `raw_today` / `raw_tomorrow` | wie in der Integration eingestellt |
 | aWATTar, smartENERGY, Energy-Charts, SMARD, ENTSO-E, Tibber, Energyforecast | EPEX Spot (HACS) | Attribut `data` | Sensor „Total Price“: Endpreis; „Market Price“: Börsenpreis netto |
 | ENTSO-E | ENTSO-e (HACS) | Attribut `prices` | wie in der Integration eingestellt |
-| Octopus (dynamische Tarife und Zeittarife) | Octopus Germany (HACS) | Attribut `rates` (Preis je Viertelstunde), ohne `rates` das Attribut `timeslots` | Endpreis |
-| andere | beliebiger Preissensor | nur der aktuelle Wert | wird als konstant angenommen |
+| Octopus (dynamische Tarife) | Octopus Germany (HACS) | Attribut `rates` (Preis je Viertelstunde, heute und ab Veröffentlichung morgen); fehlt es gerade, der übliche Verlauf der letzten Wochen mit Warnung | Endpreis |
+| Octopus (Go, Heat, Intelligent Go, Festpreis) | Octopus Germany (HACS) | Attribut `timeslots`, beim Festpreis der aktuelle Wert | Endpreis |
+| Octopus mit variablem Netzentgelt (Modul 3) | Octopus Germany (HACS), Sensor „… with Variable Grid Fee“ | Attribut `price_combinations` (heute) | Endpreis |
+| Tibber | Tibber Prices (HACS) | Aktion `tibber_prices.get_price` | Endpreis inkl. Steuern |
+| Green Planet Energy | Green Planet Energy (Core) | Aktion `green_planet_energy.get_prices` (höchstens 24 Stunden) | Endpreis |
+| Rabot Energy | Rabot Energy (HACS) | Attribut `prices` | Endpreis |
+| Ostrom | Ostrom (HACS, oliverwehrens) | Attribut `prices` (je Stunde) | Endpreis |
+| 1KOMMA5° | 1KOMMA5° (HACS, BirknerAlex oder mrebbert) | Attribut `forecast` | Endpreis mit Netzentgelt und MwSt. |
+| Schweizer Tarife (ElCom) | ElCom Tariffs (HACS) | Attribute `raw_today` / `raw_tomorrow` in CHF | Endpreis |
+| Energi Data Service | Energi Data Service (HACS) | Attribute `raw_today` / `raw_tomorrow` | wie in der Integration eingestellt |
+| andere | beliebiger Preissensor | nur der aktuelle Wert; schwankt er üblicherweise über den Tag, der Verlauf der letzten Wochen | sonst als konstant angenommen |
+
+Preise in CHF/kWh oder Rp/kWh plant Sunflow wie €/kWh bzw. ct/kWh; die Anzeige bleibt in €.
+Trag dann auch Einspeisevergütung und Verschleißkosten in Rappen ein.
 
 Bei einem reinen Börsenpreis (Nord Pool Core, EPEX Spot „Market Price“) fehlen Netzentgelt,
 Umlagen, Gebühr des Anbieters und Mehrwertsteuer. Trag dafür einen Aufschlag in ct/kWh und die

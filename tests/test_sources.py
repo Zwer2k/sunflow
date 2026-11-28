@@ -62,6 +62,51 @@ def test_octopus_dynamic_tariff_reads_the_final_price_per_slot() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("attributes", "adapter"),
+    [
+        # Its forecast failed (temporary API error): the timeslots hold only the fixed part
+        pytest.param({"code": "DEU-ELECTRICITY-DYNAMIC-OCTOPUS-12", "timeslots": OCTOPUS_DYNAMIC["attributes"]["timeslots"], "rates": []},
+                     "octopus_unavailable", id="dynamic-without-rates"),
+        pytest.param({"code": "DEU-ELECTRICITY-GO-24", **OCTOPUS_GO["attributes"], "rates": []}, "timeslots", id="go"),
+        pytest.param({"code": "DEU-ELECTRICITY-SIMPLE-24"}, "fixed", id="simple"),
+    ],
+)
+def test_octopus_tariffs_are_told_apart(attributes: dict[str, Any], adapter: str) -> None:
+    """Only a dynamic tariff's rates are its prices; Go keeps its time-of-use slots, a simple tariff its price."""
+    assert detect_price_adapter(attributes) == adapter
+
+
+def test_octopus_price_with_variable_grid_fee() -> None:
+    """Today's prices with the module 3 grid fee, grouped by price, become slots in time order."""
+    attributes = {
+        "unit_of_measurement": "€/kWh",
+        "price_combinations": [
+            {"label": "STANDARD + ST", "combined_price_gross_eur_per_kwh": 0.30,
+             "intervals": [{"start": "2026-11-28T00:00:00+01:00", "end": "2026-11-28T06:00:00+01:00"},
+                           {"start": "2026-11-28T10:00:00+01:00", "end": "2026-11-29T00:00:00+01:00"}]},
+            {"label": "STANDARD + NT", "combined_price_gross_eur_per_kwh": 0.27,
+             "intervals": [{"start": "2026-11-28T06:00:00+01:00", "end": "2026-11-28T10:00:00+01:00"}]},
+        ],
+    }
+    start = datetime(2026, 11, 28, 5, 0, tzinfo=BERLIN)
+
+    points = price_series({"entity_id": "sensor.p", "state": "0.30", "attributes": attributes}, start, 6, BERLIN)
+
+    assert detect_price_adapter(attributes) == "octopus_combined"
+    assert [(p.start.astimezone(BERLIN).hour, p.price) for p in points] == [(0, 0.30), (6, 0.27), (10, 0.30)]
+
+
+def test_octopus_grid_fee_alone_is_no_import_price() -> None:
+    """The variable grid fee sensor (net, without energy) is not offered as import price."""
+    grid_fee = {
+        "entity_id": "sensor.octopus_variable_grid_fee", "state": "0.08",
+        "attributes": {"unit_of_measurement": "€/kWh", "rates": [{"rate_type": "NT", "start_time": "00:00", "end_time": "06:00", "rate_eur_per_kwh": 0.03}]},
+    }
+
+    assert [s.entity_id for s in price_sources([grid_fee, {"entity_id": "sensor.octopus", **OCTOPUS_DYNAMIC}])] == ["sensor.octopus"]
+
+
 def test_timeslot_prices() -> None:
     """Time-of-use slots expand to 15 minute prices in local time."""
     start = datetime(2026, 10, 24, 22, 0, tzinfo=BERLIN)
@@ -261,7 +306,7 @@ class PriceClient:
         pytest.param({"app_nickname": "Zuhause"}, "tibber", "tibber", id="tibber"),
         pytest.param({}, "nordpool", "nordpool_core", id="nordpool-core"),
         pytest.param({"raw_today": []}, "nordpool", "nordpool", id="nordpool-custom"),
-        pytest.param({"data": [{"start_time": "x"}], "market_price_per_kwh": 0.1}, "epex_spot", "epex_market", id="epex-market"),
+        pytest.param({"data": [{"start_time": "x"}], "price_per_kwh": 0.1}, "epex_spot", "epex_market", id="epex-market"),
         pytest.param({"data": [{"start_time": "x"}]}, "epex_spot", "epex_spot", id="epex-total"),
         pytest.param({"prices": [{"time": "x", "price": 0.1}]}, "entsoe", "entsoe", id="entsoe"),
     ],
@@ -307,3 +352,76 @@ def test_entsoe_prices() -> None:
     points = price_series(state, START, 3, BERLIN)
 
     assert [(p.start.hour, p.end.hour, p.price) for p in points] == [(0, 1, 0.0), (1, 2, 0.1), (2, 3, pytest.approx(0.2))]
+
+
+@pytest.mark.parametrize(
+    ("unit", "attributes", "adapter", "expected"),
+    [
+        pytest.param(
+            "€/kWh", {"prices": [{"start": _at(15), "end": _at(30), "price": 0.31}, {"start": _at(0), "end": _at(15), "price": 0.30}]},
+            "price_list", [("00:00", 0.30), ("00:15", 0.31)], id="rabot",
+        ),
+        pytest.param("€/kWh", {"prices": {_at(0): 0.30, _at(60): 0.25}, "next_price": 0.25}, "price_dict", [("00:00", 0.30), ("01:00", 0.25)], id="ostrom"),
+        pytest.param(
+            "EUR/kWh", {"forecast": [{"start": _at(0), "end": _at(15), "price": 0.30}, {"start": _at(15), "end": _at(30), "price": 0.32}]},
+            "forecast_list", [("00:00", 0.30), ("00:15", 0.32)], id="1komma5-onekommafive",
+        ),
+        # Only future slots: the current price (the state, 0.29) until the first of them
+        pytest.param(
+            "EUR/kWh", {"forecast": [{"datetime": _at(15), "price": 0.32}, {"datetime": _at(30), "price": 0.33}]},
+            "forecast_list", [("00:00", 0.29), ("00:15", 0.32), ("00:30", 0.33)], id="1komma5-einskomma5grad",
+        ),
+        pytest.param(
+            "EUR/kWh", {"raw_today": [{"hour": _at(0), "price": 0.30}, {"hour": _at(60), "price": 0.28}], "raw_tomorrow": []},
+            "energidataservice", [("00:00", 0.30), ("01:00", 0.28)], id="energi-data-service",
+        ),
+        # Swiss time-of-use tariffs in francs, read like Nord Pool's lists
+        pytest.param(
+            "CHF/kWh", {"raw_today": [{"start": _at(0), "end": _at(60), "value": 0.27}, {"start": _at(60), "end": _at(120), "value": 0.21}]},
+            "nordpool", [("00:00", 0.27), ("01:00", 0.21)], id="elcom",
+        ),
+    ],
+)
+def test_price_lists_of_more_providers(unit: str, attributes: dict[str, Any], adapter: str, expected: list[tuple[str, float]]) -> None:
+    """Rabot, Ostrom, 1KOMMA5°, Energi Data Service and ElCom give their prices in attributes."""
+    state = {"entity_id": "sensor.p", "state": "0.29", "attributes": {"unit_of_measurement": unit, **attributes}}
+
+    points = price_series(state, START, 2, BERLIN)
+
+    assert detect_price_adapter(state["attributes"]) == adapter
+    assert [(p.start.astimezone(BERLIN).strftime("%H:%M"), round(p.price, 4)) for p in points] == expected
+
+
+class ActionClient:
+    """Answers the price actions of Tibber Prices and Green Planet Energy."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def call_service(self, domain: str, service: str, data: dict[str, Any], return_response: bool = False) -> dict[str, Any]:
+        self.calls.append((domain, service, data))
+        if domain == "tibber_prices":
+            return {"response": {"success": True, "price_info": [{"startsAt": _at(15 * i), "total": 0.30 + i / 100} for i in range(4)]}}
+        return {"response": {"prices": [{"start": _at(15 * i), "end": _at(15 * (i + 1)), "price": 0.25 + i / 100} for i in range(4)]}}
+
+
+@pytest.mark.parametrize(
+    ("platform", "call", "first"),
+    [
+        pytest.param("tibber_prices", ("tibber_prices", "get_price", {"entry_id": "e1", "start_time": START.isoformat(),
+                     "end_time": (START + timedelta(hours=1)).isoformat()}), 0.30, id="tibber-prices"),
+        pytest.param("green_planet_energy", ("green_planet_energy", "get_prices", {"config_entry_id": "e1", "hours": 1}), 0.25, id="green-planet"),
+    ],
+)
+async def test_price_actions_of_more_providers(platform: str, call: tuple[str, str, dict[str, Any]], first: float) -> None:
+    """Their sensors hold no list: the integration's action is asked for the config entry of the sensor."""
+    from sunflow.planning.sources import fetch_prices
+
+    client = ActionClient()
+    state = {"entity_id": f"sensor.{platform}", "state": "0.3", "attributes": {"unit_of_measurement": "ct/kWh"}}
+
+    points = await fetch_prices(client, state, {"platform": platform, "config_entry_id": "e1"}, START, 1, BERLIN)  # type: ignore[arg-type]
+
+    assert client.calls == [call]
+    assert [p.end - p.start for p in points] == [timedelta(minutes=15)] * 4
+    assert points[0].price == pytest.approx(first)

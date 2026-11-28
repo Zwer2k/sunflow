@@ -8,9 +8,15 @@ from typing import Any
 from sunflow.ha import HAClient, HACommandError
 
 SLOT = timedelta(minutes=15)
-PRICE_UNITS = {"€/kWh": 1.0, "EUR/kWh": 1.0, "ct/kWh": 0.01, "Cent/kWh": 0.01}
+# Planned in the price's own currency: Swiss francs (and Rappen) count like euros (and cents)
+PRICE_UNITS = {
+    "€/kWh": 1.0, "EUR/kWh": 1.0, "ct/kWh": 0.01, "Cent/kWh": 0.01, "€/MWh": 0.001, "EUR/MWh": 0.001,
+    "CHF/kWh": 1.0, "Rp/kWh": 0.01, "Rp./kWh": 0.01, "DKK/kWh": 1.0,
+}
 # Pure exchange prices: grid fee, levies, the provider's fee and VAT still come on top
 EXCHANGE_ADAPTERS = {"nordpool_core", "epex_market"}
+# Sources without a schedule: only their current price, or none at all right now
+NO_SCHEDULE_ADAPTERS = {"fixed", "octopus_unavailable"}
 # Prices fetched with an action are asked for again after this long
 PRICE_CACHE = timedelta(minutes=15)
 _cache: dict[tuple[str, str], tuple[datetime, list[PricePoint]]] = {}
@@ -72,23 +78,51 @@ def detect_price_adapter(attributes: dict[str, Any], platform: str | None = None
     """Pick how to read the price schedule: from a sensor's attributes or its integration's action."""
     if platform == "tibber":
         return "tibber"
-    # Octopus Germany lists the final price per slot in rates for every time-of-use product; its
-    # timeslots of a dynamic tariff hold only the fixed part
+    # Their sensors carry no price list; the integrations answer an action
+    if platform in ("tibber_prices", "green_planet_energy"):
+        return platform
+    # Octopus Germany: a dynamic tariff lists its final price per slot in rates (today, tomorrow
+    # once published); its timeslots hold only the fixed part, so without rates nothing is known
     if isinstance(attributes.get("rates"), list) and attributes["rates"] and "value_inc_vat" in attributes["rates"][0]:
         return "octopus_rates"
+    if "timeslots" in attributes and "DYNAMIC" in str(attributes.get("code") or "").upper():
+        return "octopus_unavailable"
+    # Its price with the variable grid fee (module 3): today's prices grouped with their intervals
+    if isinstance(attributes.get("price_combinations"), list) and attributes["price_combinations"]:
+        return "octopus_combined"
     if isinstance(attributes.get("timeslots"), list) and attributes["timeslots"]:
         return "timeslots"
-    # The Nord Pool custom integration lists the prices; the core one answers an action
+    # Energi Data Service: raw_today as for Nord Pool, but by hour
+    if isinstance(attributes.get("raw_today"), list) and attributes["raw_today"] and "hour" in attributes["raw_today"][0]:
+        return "energidataservice"
+    # The Nord Pool custom integration lists the prices (as does ElCom for Swiss tariffs); the core one answers an action
     if isinstance(attributes.get("raw_today"), list):
         return "nordpool"
     if platform == "nordpool":
         return "nordpool_core"
     if isinstance(attributes.get("data"), list) and attributes["data"] and "start_time" in attributes["data"][0]:
-        # EPEX Spot: "Market Price" is the net exchange price, "Total Price" includes surcharges and tax
-        return "epex_market" if "market_price_per_kwh" in attributes else "epex_spot"
+        # EPEX Spot: "Market Price" (the net exchange price) also has the current one as price_per_kwh,
+        # "Total Price" (with surcharges and tax) only the list
+        return "epex_market" if "price_per_kwh" in attributes else "epex_spot"
     if isinstance(attributes.get("prices"), list) and attributes["prices"] and "time" in attributes["prices"][0]:
         return "entsoe"
+    # Rabot Energy: [{start, end, price}]
+    if isinstance(attributes.get("prices"), list) and attributes["prices"] and {"start", "price"} <= attributes["prices"][0].keys():
+        return "price_list"
+    # Ostrom: {local start: price} per hour
+    if isinstance(attributes.get("prices"), dict) and attributes["prices"]:
+        return "price_dict"
+    # 1KOMMA5°: [{start, end, price}] or [{datetime, price}], future slots only
+    forecast = attributes.get("forecast")
+    if isinstance(forecast, list) and forecast and "price" in forecast[0] and ("start" in forecast[0] or "datetime" in forecast[0]):
+        return "forecast_list"
     return "fixed"
+
+
+def is_grid_fee_only(attributes: dict[str, Any]) -> bool:
+    """Octopus Germany's variable grid fee alone (net, no energy price): no import price."""
+    rates = attributes.get("rates")
+    return isinstance(rates, list) and bool(rates) and "rate_eur_per_kwh" in rates[0] and "value_inc_vat" not in rates[0]
 
 
 def price_sources(states: list[dict[str, Any]], registry: dict[str, dict[str, Any]] | None = None) -> list[PriceSource]:
@@ -97,7 +131,7 @@ def price_sources(states: list[dict[str, Any]], registry: dict[str, dict[str, An
     for state in states:
         attributes = state.get("attributes", {})
         factor = price_factor(attributes.get("unit_of_measurement"))
-        if factor is None or not state["entity_id"].startswith("sensor."):
+        if factor is None or not state["entity_id"].startswith("sensor.") or is_grid_fee_only(attributes):
             continue
         try:
             current = float(state["state"]) * factor
@@ -197,6 +231,32 @@ def octopus_rates(attributes: dict[str, Any]) -> list[PricePoint]:
     return [points[start] for start in sorted(points)]
 
 
+def octopus_combined(attributes: dict[str, Any]) -> list[PricePoint]:
+    """Read Octopus Germany's price with the variable grid fee: each price with its intervals of today."""
+    points = [
+        PricePoint(
+            start=datetime.fromisoformat(interval["start"]),
+            end=datetime.fromisoformat(interval["end"]),
+            price=float(combination["combined_price_gross_eur_per_kwh"]),
+        )
+        for combination in attributes["price_combinations"]
+        if combination.get("combined_price_gross_eur_per_kwh") is not None
+        for interval in combination.get("intervals", [])
+    ]
+    return sorted(points, key=lambda p: p.start)
+
+
+def listed_prices(items: list[dict[str, Any]], factor: float) -> list[PricePoint]:
+    """Prices as [{start, end, price}], or by start only ({datetime, price}): each until the next."""
+    items = [i for i in items if i.get("price") is not None]
+    if all("end" in i for i in items):
+        return sorted(
+            (PricePoint(start=datetime.fromisoformat(i["start"]), end=datetime.fromisoformat(i["end"]), price=float(i["price"]) * factor) for i in items),
+            key=lambda p: p.start,
+        )
+    return with_ends([(datetime.fromisoformat(i.get("start") or i["datetime"]), float(i["price"]) * factor) for i in items])
+
+
 def with_ends(starts: list[tuple[datetime, float]]) -> list[PricePoint]:
     """Prices given by start only: each lasts until the next, the last as long as the one before (else an hour)."""
     starts = sorted(starts)
@@ -215,6 +275,17 @@ def entsoe_prices(attributes: dict[str, Any], factor: float) -> list[PricePoint]
     return with_ends(
         [(datetime.fromisoformat(str(item["time"])), float(item["price"]) * factor) for item in attributes["prices"] if item.get("price") is not None]
     )
+
+
+def started_now(points: list[PricePoint], state: dict[str, Any], start: datetime, factor: float) -> list[PricePoint]:
+    """A list of future slots only: the current price (the state) until the first of them."""
+    if not points or points[0].start <= start:
+        return points
+    try:
+        price = float(state["state"]) * factor
+    except TypeError, ValueError:
+        return points
+    return [PricePoint(start=start, end=points[0].start, price=price), *points]
 
 
 def tibber_points(response: dict[str, Any], home: str | None) -> list[PricePoint]:
@@ -280,6 +351,33 @@ async def fetch_prices(
                 return tibber_points(response["response"], attributes.get("app_nickname"))
 
             points = await _cached_prices((state["entity_id"], start.isoformat()), tibber)
+        case "tibber_prices":
+
+            async def tibber_prices() -> list[PricePoint]:
+                response = await client.call_service(
+                    "tibber_prices", "get_price",
+                    {"entry_id": entry.get("config_entry_id") or "", "start_time": start.isoformat(), "end_time": end.isoformat()},
+                    return_response=True,
+                )
+                answer = response["response"]
+                # total in the currency per kWh, whatever unit the sensors show
+                return with_ends([
+                    (datetime.fromisoformat(str(i["startsAt"])), float(i["total"]))
+                    for i in answer.get("price_info") or [] if i.get("total") is not None
+                ]) if answer.get("success") else []
+
+            points = await _cached_prices((state["entity_id"], start.isoformat()), tibber_prices)
+        case "green_planet_energy":
+
+            async def green_planet() -> list[PricePoint]:
+                # At most 24 hours, today and tomorrow as far as published; €/kWh
+                response = await client.call_service(
+                    "green_planet_energy", "get_prices",
+                    {"config_entry_id": entry.get("config_entry_id"), "hours": min(hours, 24)}, return_response=True,
+                )
+                return listed_prices(response["response"].get("prices") or [], 1.0)
+
+            points = await _cached_prices((state["entity_id"], start.isoformat()), green_planet)
         case "nordpool_core":
             # The unique id is "<area>-current_price"
             area = (entry.get("unique_id") or "").split("-")[0] or None
@@ -319,12 +417,27 @@ def price_series(
             return timeslot_prices(attributes, start, hours, tz)
         case "octopus_rates":
             points = octopus_rates(attributes)
+        case "octopus_combined":
+            points = octopus_combined(attributes)
+        case "octopus_unavailable":
+            return []
         case "nordpool":
             points = nordpool_prices(attributes, factor)
         case "epex_spot" | "epex_market":
             points = epex_spot_prices(attributes)
         case "entsoe":
             points = entsoe_prices(attributes, factor)
+        case "energidataservice":
+            points = with_ends([
+                (datetime.fromisoformat(str(i["hour"])), float(i["price"]) * factor)
+                for i in [*attributes["raw_today"], *(attributes.get("raw_tomorrow") or [])] if i.get("price") is not None
+            ])
+        case "price_list":
+            points = listed_prices(attributes["prices"], factor)
+        case "price_dict":
+            points = with_ends([(datetime.fromisoformat(k), float(v) * factor) for k, v in attributes["prices"].items() if v is not None])
+        case "forecast_list":
+            points = started_now(listed_prices(attributes["forecast"], factor), state, start, factor)
         case _:
             try:
                 price = float(state["state"]) * factor

@@ -50,12 +50,14 @@ from .house_model import HouseModel
 from .house_plan import thermal_loads
 from .load_model import LoadModel
 from .optimizer import DT_H, FULL_FRACTION, BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
-from .price_estimate import extend_prices
+from .price_estimate import extend_prices, from_history
 from .pv_learning import PvCorrection, cloud_class
 from .pv_sun import SunCorrection
 from .sources import (
     ForecastPoint,
     PricePoint,
+    NO_SCHEDULE_ADAPTERS,
+    detect_price_adapter,
     fetch_prices,
     forecast_solar_forecast,
     is_exchange,
@@ -1748,8 +1750,11 @@ async def compute_plan(
             )
         except HAError as err:
             warnings.append(t("Strompreise nicht abrufbar ({error}) – geplant wird nur auf Eigenverbrauch.", error=err))
-        if prices and max(p.end for p in prices) < start + timedelta(hours=HORIZON_HOURS):
-            # Beyond the published prices: the usual ones of each hour (the sensor's history)
+        adapter = detect_price_adapter(state.get("attributes", {}), (entry or {}).get("platform"))
+        horizon_end = start + timedelta(hours=HORIZON_HOURS)
+        if adapter in NO_SCHEDULE_ADAPTERS or (prices and max(p.end for p in prices) < horizon_end):
+            # Beyond the published prices, or for a source without a schedule: the usual ones of each
+            # hour (the sensor's history)
             try:
                 history = await cached(
                     ("hourly", tariff.import_entity_id), HABITS_TTL,
@@ -1764,7 +1769,17 @@ async def compute_plan(
                     [PricePoint(start=m, end=m + SLOT, price=v) for m, v in history],
                     tariff.exchange_surcharge_ct, tariff.exchange_vat_pct,
                 )]
-            prices = extend_prices(prices, history, start + timedelta(hours=HORIZON_HOURS), tz)
+            if adapter in NO_SCHEDULE_ADAPTERS:
+                current = prices[0].price if prices else None
+                prices = from_history(current, history, start, horizon_end, tz)
+            else:
+                prices = extend_prices(prices, history, horizon_end, tz)
+        if adapter == "octopus_unavailable":
+            warnings.append(
+                t("Octopus liefert gerade keine Preise je Viertelstunde für den dynamischen Tarif – geplant wird mit dem üblichen Verlauf der letzten Wochen.")
+                if prices
+                else t("Octopus liefert gerade keine Preise je Viertelstunde für den dynamischen Tarif – geplant wird nur auf Eigenverbrauch.")
+            )
         if is_exchange(state, entry) and tariff.exchange_surcharge_ct is None:
             warnings.append(
                 t(
