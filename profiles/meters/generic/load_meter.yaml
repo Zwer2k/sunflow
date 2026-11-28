@@ -1,0 +1,12 @@
+# A house load meter added by hand from any sensors (an extra meter, a template …). It measures
+# the house consumption ahead of the inverter's own value or the balance.
+profile: generic/load_meter
+version: 1
+match:
+  integration: manual
+
+capabilities: [load_meter]
+
+roles:
+  load_power: {key: manual_load_power, unit: W}
+  load_energy: {key: manual_load_energy, unit: kWh, optional: true}

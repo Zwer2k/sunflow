@@ -8,19 +8,19 @@ from fastapi import APIRouter, Request
 
 from sunflow import i18n
 from sunflow.config.models import DisplaySettings, SceneSettings, SunflowConfig
-from sunflow.devices.discovery import Snapshot
 from sunflow.devices.battery_modules import battery_modules
+from sunflow.devices.discovery import Snapshot
 from sunflow.devices.heat_pump import DEFAULT_VOLTAGE, reading as heat_pump_reading
 from sunflow.devices.optimizers import optimizers as optimizer_list
 from sunflow.devices.profiles import ProfileLibrary
 from sunflow.devices.site import (
-    PV_OUTPUT_ROLES,
     device_kind,
     device_parameters,
-    measurement_device,
+    pv_output_roles,
     pv_strings,
     site_status,
 )
+from sunflow.devices.site_values import site_values
 from sunflow.ha import HAError
 from sunflow.planning.plan import weather_entity
 from sunflow.planning.vehicle_soc import estimator
@@ -44,16 +44,15 @@ async def get_live(request: Request) -> dict[str, Any]:
     snapshot = await _snapshot(request)
     site = site_status(config.devices, profiles, snapshot, measured_by=config.measured_by)
     by_id = {d.id: d for d in config.devices}
-    grid_device = measurement_device(config, profiles, "grid")
-    load_device = measurement_device(config, profiles, "load")
+    # Measured, else from the balance: the same values as recorded and planned with
+    values = site_values(config, profiles, snapshot, site)
     pv: list[dict[str, Any]] = []
     batteries: list[dict[str, Any]] = []
     consumers: list[dict[str, Any]] = []
     appliances: list[dict[str, Any]] = []
-    grid_w: float | None = None
-    load_w: float | None = None
+    grid_w, load_w = values["grid"].value, values["load"].value
     # Unit and decimals of the source entities, so values look like in Home Assistant
-    displays: dict[str, dict[str, Any]] = {}
+    displays: dict[str, dict[str, Any] | None] = {"grid": values["grid"].display, "load": values["load"].display}
     # What the plan wants from each battery now (several batteries get their own actions)
     runner = getattr(request.app.state, "runner", None)
     latest = getattr(runner, "latest", None)
@@ -78,8 +77,8 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "name": device.name,
                     "power_w": status.pv_output or 0.0,
                     "available": status.pv_output is not None,
-                    "display": next((display(r) for r in PV_OUTPUT_ROLES if value(r) is not None), None)
-                    or next((display(r) for r in PV_OUTPUT_ROLES if display(r)), None),
+                    "display": next((display(r) for r in pv_output_roles(capabilities) if value(r) is not None), None)
+                    or next((display(r) for r in pv_output_roles(capabilities) if display(r)), None),
                     "device_id": device.id,
                     "strings": pv_strings(roles),
                 }
@@ -104,12 +103,6 @@ async def get_live(request: Request) -> dict[str, Any]:
                     "display": display("battery_power"),
                 }
             )
-        if grid_device is not None and device.id == grid_device.id:
-            grid_w = value("grid_power")
-            displays["grid"] = display("grid_power")
-        if load_device is not None and device.id == load_device.id:
-            load_w = value("load_power")
-            displays["load"] = display("load_power")
         if "heat_pump" in capabilities:
             measured = heat_pump_reading(
                 {role: value(role) for role in roles}, device.parameters.get("voltage", DEFAULT_VOLTAGE)
@@ -180,10 +173,14 @@ async def get_live(request: Request) -> dict[str, Any]:
         "batteries": batteries,
         "grid_w": grid_w,
         "load_w": load_w,
+        # "measured", "calculated" (from the balance) or None
+        "origins": {"grid": values["grid"].origin, "load": values["load"].origin},
         "consumers": consumers,
         "appliances": appliances,
         # Inverter and battery losses, averaged over the last minutes (single readings are not in step)
-        "losses_w": runner.recent_losses() if (runner := getattr(request.app.state, "runner", None)) and load_w is not None else None,
+        "losses_w": runner.recent_losses()
+        if (runner := getattr(request.app.state, "runner", None)) and values["load"].origin == "measured"
+        else None,
         "displays": displays,
         # Not fetched when no screen shows it
         "weather": await _live_weather(request, config, snapshot)

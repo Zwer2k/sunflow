@@ -116,6 +116,8 @@ class Sample:
     # SoC and power of every battery (device id); soc_wh and battery_w are their sums
     battery_socs: dict[str, float] = field(default_factory=dict)
     battery_powers: dict[str, float] = field(default_factory=dict)
+    # load_w from the balance, not measured
+    load_calculated: bool = False
 
 
 @dataclass(kw_only=True)

@@ -138,6 +138,9 @@ Pure PV inverters need no test.
 Define how the devices are connected. For example, a second inverter may be measured by the first
 one as "External PV"; then Sunflow does not count its power twice. Under **Measurement sources**
 you choose which device provides grid and house consumption. "Automatic" prefers a separate meter at the electricity meter (e.g. Tibber Pulse) over the inverter.
+If no device measures the house consumption, Sunflow calculates it from PV, grid and battery, the
+same for live, history, recording and load forecast. For a load meter of its own or a template
+sensor there is the "Load meter by hand" under Devices → Meters; it comes first.
 
 The cross-check compares the measurements with each other and reports whether the balance adds up.
 

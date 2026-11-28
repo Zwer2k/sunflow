@@ -73,6 +73,7 @@ Hinweise:
 | powerfox poweropti | powerfox (Cloud) | `powerfox/poweropti` | Netzbezug und Einspeisung am Stromzähler (etwa minütlich), Zählerstände | 🧪 |
 | inexogy (Discovergy) | discovergy (Cloud) | `discovergy/meter` | Netzbezug und Einspeisung am Stromzähler, Zählerstände | 🧪 |
 | Netzzähler von Hand | beliebige Sensoren | `generic/grid_meter` | Netzleistung mit Vorzeichen oder Bezug und Einspeisung getrennt, Zählerstände | 🧪 |
+| Verbrauchszähler von Hand | beliebige Sensoren (eigener Zähler, Template) | `generic/load_meter` | Hausverbrauch, Zählerstand | 🧪 |
 
 Erkennt Sunflow deinen Zähler nicht (z. B. Tibber über die Cloud, DSMR, P1 Monitor, Shelly 3EM
 oder ein Template-Sensor), legst du ihn unter „Geräte → Zähler → Netzzähler von Hand“ an: entweder

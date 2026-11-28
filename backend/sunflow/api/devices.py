@@ -28,11 +28,7 @@ from sunflow.config.models import (
 from sunflow.config.store import ConfigStore
 from sunflow.control.controller import PlanController
 from sunflow.devices.discovery import Snapshot, discover, entity_has_key
-from sunflow.devices.executor import (
-    ActionResult,
-    ExecutorError,
-    plan_action,
-)
+from sunflow.devices.executor import ActionResult, ExecutorError, plan_action
 from sunflow.devices.heat_pump import PHASES
 from sunflow.devices.resolver import (
     CANONICAL_SIGNS,
@@ -40,7 +36,12 @@ from sunflow.devices.resolver import (
     device_entities,
     preview,
 )
-from sunflow.devices.site import battery_module_ids, derive_parameter, device_category, device_parameters
+from sunflow.devices.site import (
+    battery_module_ids,
+    derive_parameter,
+    device_category,
+    device_parameters,
+)
 from sunflow.ha import HAError
 from sunflow.i18n import N_, t
 
@@ -230,7 +231,7 @@ class ManualDevice(BaseModel):
     """A consumer added by hand: switched (Shelly …), in power steps (select), by current (number) or only measured."""
 
     name: str
-    type: Literal["switch", "stepped", "current", "meter", "heat_pump", "relays", "grid_meter"] = "switch"
+    type: Literal["switch", "stepped", "current", "meter", "heat_pump", "relays", "grid_meter", "load_meter"] = "switch"
     switch_entity: str | None = None
     level_entity: str | None = None
     current_entity: str | None = None
@@ -280,6 +281,7 @@ MANUAL_PROFILES = {
     "heat_pump": "generic/heat_pump",
     "relays": "generic/relays",
     "grid_meter": "generic/grid_meter",
+    "load_meter": "generic/load_meter",
 }
 MANUAL_PROFILE = MANUAL_PROFILES["switch"]
 SWITCH_DOMAINS = ("switch.", "input_boolean.")
@@ -397,6 +399,16 @@ def _rod_control(body: ManualDevice) -> dict[str, RoleOverride]:
     return {role: RoleOverride(entity_id=body.rod_entity)}
 
 
+def _load_meter_setup(body: ManualDevice) -> dict[str, RoleOverride]:
+    """A house load meter from any sensors: its power, optionally its energy counter."""
+    if not body.power_entity or not body.power_entity.startswith("sensor."):
+        raise HTTPException(status_code=422, detail=t("Bitte die Leistung des Hausverbrauchs wählen"))
+    overrides = {"load_power": RoleOverride(entity_id=body.power_entity)}
+    if body.energy_entity:
+        overrides["load_energy"] = RoleOverride(entity_id=body.energy_entity)
+    return overrides
+
+
 def _grid_meter_setup(body: ManualDevice) -> dict[str, RoleOverride]:
     """A grid meter from any sensors: one signed power, or import and export apart."""
     if not body.power_entity or not body.power_entity.startswith("sensor."):
@@ -421,6 +433,8 @@ def _manual_setup(body: ManualDevice, snapshot: Snapshot) -> tuple[dict[str, Rol
         return _heat_pump_setup(body)
     if body.type == "grid_meter":
         return _grid_meter_setup(body), {}, None
+    if body.type == "load_meter":
+        return _load_meter_setup(body), {}, None
     if body.type == "meter":
         # Not switched: the power measurement is what it is about
         if not body.power_entity or not body.power_entity.startswith("sensor."):

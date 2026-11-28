@@ -71,6 +71,7 @@ Notes:
 | powerfox poweropti | powerfox (cloud) | `powerfox/poweropti` | grid import and export at the electricity meter (about every minute), meter readings | 🧪 |
 | inexogy (Discovergy) | discovergy (cloud) | `discovergy/meter` | grid import and export at the electricity meter, meter readings | 🧪 |
 | Grid meter by hand | any sensors | `generic/grid_meter` | signed grid power or import and export apart, meter readings | 🧪 |
+| Load meter by hand | any sensors (an extra meter, a template) | `generic/load_meter` | house consumption, meter reading | 🧪 |
 
 If Sunflow does not recognize your meter (e.g. Tibber via the cloud, DSMR, P1 Monitor, Shelly 3EM
 or a template sensor), add it under "Devices → Meters → Grid meter by hand": either one signed grid

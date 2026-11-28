@@ -21,20 +21,16 @@ from sunflow.control.controller import PlanController
 from sunflow.devices.discovery import Snapshot, SnapshotCache, fetch_snapshot
 from sunflow.devices.profiles import ProfileLibrary, controls_battery, planned_battery
 from sunflow.devices.resolver import UNAVAILABLE_STATES, preview
-from sunflow.devices.site import (
-    device_parameters,
-    measurement_device,
-    pv_strings,
-    site_status,
-)
+from sunflow.devices.site import device_parameters, pv_strings, site_status
+from sunflow.devices.site_values import site_values
 from sunflow.ha import HAClient, HAError
+from sunflow.planning import battery_standby
 from sunflow.planning.heating_season import (
     current_season,
     season_source,
     uses_seasons,
     with_season,
 )
-from sunflow.planning import battery_standby
 from sunflow.planning.house_model import HouseModel, fit as fit_house, house_data
 from sunflow.planning.load_forecast import HISTORY_DAYS
 from sunflow.planning.load_model import LoadModel, fit as fit_load_model
@@ -273,13 +269,17 @@ async def take_sample(
             socs[battery.id] = capacity * soc / 100
         if (power := roles.get("battery_power")) is not None:
             powers[battery.id] = power
+    site = site_status(config.devices, profiles, snapshot, measured_by=config.measured_by)
+    # Measured, else from the balance, as in Live and the history
+    measured = site_values(config, profiles, snapshot, site)
     return Sample(
         # All batteries as one, like the plan; unknown while the first one's SoC is
         soc_wh=sum(socs.values()) if device.id in socs else None,
         battery_w=sum(powers.values()) if device.id in powers else None,
-        grid_w=values(measurement_device(config, profiles, "grid")).get("grid_power"),
-        pv_w=site_status(config.devices, profiles, snapshot, measured_by=config.measured_by).pv_total,
-        load_w=values(measurement_device(config, profiles, "load")).get("load_power"),
+        grid_w=measured["grid"].value,
+        pv_w=site.pv_total,
+        load_w=measured["load"].value,
+        load_calculated=measured["load"].origin == "calculated",
         loadpoint_w=sum(consumers.values()) if consumers else None,
         consumers=consumers,
         levels=consumer_levels(config, profiles, snapshot),
@@ -689,10 +689,11 @@ class ShadowRunner:
 
     def recent_losses(self) -> float | None:
         """Mean losses of inverter and battery over the last minutes (W): the balance minus the measured load."""
+        # A load calculated from the balance leaves no losses to see
         gaps = [
             s.pv_w + s.grid_w - s.battery_w - s.load_w
             for s in self._recent
-            if None not in (s.pv_w, s.grid_w, s.battery_w, s.load_w)
+            if None not in (s.pv_w, s.grid_w, s.battery_w, s.load_w) and not s.load_calculated
         ]
         if len(gaps) < RECENT_ACTION_MIN_SAMPLES:
             return None

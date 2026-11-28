@@ -5,16 +5,21 @@ import { t } from "../lib/i18n.js";
 import { toggleSheet } from "../lib/display-toggles.js";
 import { confirmDialog } from "../components/dialog.js";
 
-const EMPTY = { name: "", power_entity: "", export_power_entity: "", export_positive: false, import_energy_entity: "", export_energy_entity: "" };
+const EMPTY = {
+  name: "", power_entity: "", export_power_entity: "", export_positive: false, import_energy_entity: "", export_energy_entity: "",
+  energy_entity: "",
+};
 
 /**
- * Grid meters added by hand (devices area, "Zähler"): any sensors of Home Assistant as the grid
- * measurement, one signed power or import and export apart. Fires "changed" with the stored
- * device or {removed: device}.
+ * Meters added by hand (devices area, "Zähler"): any sensors of Home Assistant as the grid
+ * measurement (kind "grid": one signed power or import and export apart) or as the house
+ * consumption (kind "load", e.g. an extra meter or a template). Fires "changed" with the
+ * stored device or {removed: device}.
  */
 class SunflowGridMeters extends LitElement {
   static properties = {
     devices: { attribute: false },
+    kind: { type: String },
     _form: { state: true },
     _editId: { state: true },
     _candidates: { state: true },
@@ -24,6 +29,7 @@ class SunflowGridMeters extends LitElement {
   constructor() {
     super();
     this.devices = [];
+    this.kind = "grid";
     this._form = null;
     this._editId = null;
     this._candidates = null;
@@ -39,6 +45,12 @@ class SunflowGridMeters extends LitElement {
     }
     const role = (name) => device?.role_overrides[name]?.entity_id ?? "";
     this._editId = device?.id ?? null;
+    if (this.kind === "load") {
+      this._form = device
+        ? { ...EMPTY, name: device.name, power_entity: role("load_power"), energy_entity: role("load_energy") }
+        : { ...EMPTY, name: t("Verbrauchszähler") };
+      return;
+    }
     this._form = device
       ? {
           name: device.name,
@@ -58,7 +70,12 @@ class SunflowGridMeters extends LitElement {
 
   async _save() {
     const form = this._form;
-    const body = {
+    const body = this.kind === "load" ? {
+      name: form.name.trim(),
+      type: "load_meter",
+      power_entity: form.power_entity || null,
+      energy_entity: form.energy_entity || null,
+    } : {
       name: form.name.trim(),
       type: "grid_meter",
       power_entity: form.power_entity || null,
@@ -73,14 +90,18 @@ class SunflowGridMeters extends LitElement {
       this._close();
       this._error = null;
     } catch (err) {
-      this._error = t("Netzzähler nicht gespeichert: {error}", { error: err.message });
+      this._error = this.kind === "load"
+        ? t("Verbrauchszähler nicht gespeichert: {error}", { error: err.message })
+        : t("Netzzähler nicht gespeichert: {error}", { error: err.message });
     }
   }
 
   async _remove(device) {
     if (!(await confirmDialog({
       title: t("„{name}“ entfernen?", { name: device.name }),
-      text: t("Die Netzmessung kommt dann wieder vom Wechselrichter oder einem anderen Zähler."),
+      text: this.kind === "load"
+        ? t("Der Hausverbrauch kommt dann wieder vom Wechselrichter oder aus der Bilanz.")
+        : t("Die Netzmessung kommt dann wieder vom Wechselrichter oder einem anderen Zähler."),
       confirm: t("Entfernen"),
       danger: true,
     }))) {
@@ -95,9 +116,12 @@ class SunflowGridMeters extends LitElement {
   }
 
   render() {
+    const load = this.kind === "load";
     return html`<section class="device">
-      <div class="device-title">${t("Netzzähler von Hand")}</div>
-      <p class="small muted help">${t("Für Zähler, die Sunflow nicht selbst erkennt (z. B. Tibber über die Cloud, DSMR, Shelly 3EM oder ein Template-Sensor): beliebige Sensoren als Netzmessung, entweder eine Leistung mit Vorzeichen oder Bezug und Einspeisung getrennt. Ein Netzzähler hat Vorrang vor der Messung des Wechselrichters; welche Quelle gilt, lässt sich unter „Bilanzprüfung“ ändern.")}</p>
+      <div class="device-title">${load ? t("Verbrauchszähler von Hand") : t("Netzzähler von Hand")}</div>
+      <p class="small muted help">${load
+        ? t("Für einen eigenen Zähler des Hausverbrauchs oder einen Template-Sensor. Ohne ihn nimmt Sunflow den Hausverbrauch des Wechselrichters oder berechnet ihn aus PV, Netz und Speicher. Ein Verbrauchszähler hat Vorrang; welche Quelle gilt, lässt sich unter „Bilanzprüfung“ ändern.")
+        : t("Für Zähler, die Sunflow nicht selbst erkennt (z. B. Tibber über die Cloud, DSMR, Shelly 3EM oder ein Template-Sensor): beliebige Sensoren als Netzmessung, entweder eine Leistung mit Vorzeichen oder Bezug und Einspeisung getrennt. Ein Netzzähler hat Vorrang vor der Messung des Wechselrichters; welche Quelle gilt, lässt sich unter „Bilanzprüfung“ ändern.")}</p>
       ${this._error ? html`<div class="alert error">${this._error}</div>` : nothing}
       ${this.devices.length
         ? html`<ul class="list">${this.devices.map((d) => html`<li>
@@ -109,7 +133,8 @@ class SunflowGridMeters extends LitElement {
             </span>
           </li>`)}</ul>`
         : nothing}
-      ${this._form ? this._renderForm() : html`<div><button class="secondary" @click=${() => this._open()}>${t("Netzzähler hinzufügen …")}</button></div>`}
+      ${this._form ? this._renderForm() : html`<div><button class="secondary" @click=${() => this._open()}>
+        ${load ? t("Verbrauchszähler hinzufügen …") : t("Netzzähler hinzufügen …")}</button></div>`}
     </section>`;
   }
 
@@ -123,6 +148,18 @@ class SunflowGridMeters extends LitElement {
         .value=${form[field]} .options=${options(list)} @change=${(e) => set(field, e.detail.value)}></sf-picker>
     </div>`;
     const separate = Boolean(form.export_power_entity);
+    if (this.kind === "load") {
+      return html`
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">${t("Name")}</span>
+            <input .value=${form.name} @input=${(e) => set("name", e.target.value)}>
+          </label>
+          ${picker("power_entity", t("Hausverbrauch (Leistung)"), this._candidates.power)}
+          ${picker("energy_entity", t("Hausverbrauch (Zähler, optional)"), this._candidates.energy, t("keiner"))}
+        </div>
+        ${this._formActions()}`;
+    }
     return html`
       <div class="fields">
         <label class="field">
@@ -140,12 +177,17 @@ class SunflowGridMeters extends LitElement {
             <input type="checkbox" .checked=${form.export_positive} @change=${(e) => set("export_positive", e.target.checked)}>
             ${t("Sensor zeigt Einspeisung positiv (sonst: Bezug positiv, Einspeisung negativ)")}
           </label>`}
-      <div class="actions">
-        <button class="ok" ?disabled=${!form.power_entity || !form.name.trim()} @click=${() => this._save()}>
-          ${this._editId ? t("Speichern") : t("Hinzufügen")}
-        </button>
-        <button class="secondary" @click=${() => this._close()}>${t("Abbrechen")}</button>
-      </div>`;
+      ${this._formActions()}`;
+  }
+
+  _formActions() {
+    const form = this._form;
+    return html`<div class="actions">
+      <button class="ok" ?disabled=${!form.power_entity || !form.name.trim()} @click=${() => this._save()}>
+        ${this._editId ? t("Speichern") : t("Hinzufügen")}
+      </button>
+      <button class="secondary" @click=${() => this._close()}>${t("Abbrechen")}</button>
+    </div>`;
   }
 
   static styles = [toggleSheet, css`

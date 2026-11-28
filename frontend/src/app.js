@@ -77,7 +77,7 @@ function deviceCategory(device, preview) {
   }
   if (caps.includes("pv")) return "inverter";
   if (caps.includes("battery")) return "battery";
-  if (caps.includes("grid_meter")) return "meter";
+  if (caps.includes("grid_meter") || caps.includes("load_meter")) return "meter";
   return "load";
 }
 
@@ -162,7 +162,9 @@ const MANUAL_TYPES = {
 };
 const PHASE_NAMES = ["L1", "L2", "L3"];
 
-const MANUAL_CAPABILITIES = { meter: ["appliance"], heat_pump: ["appliance", "heat_pump"] };
+const MANUAL_CAPABILITIES = {
+  meter: ["appliance"], heat_pump: ["appliance", "heat_pump"], grid_meter: ["grid_meter"], load_meter: ["load_meter"],
+};
 const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
 
 const EMPTY_MANUAL = {
@@ -804,16 +806,17 @@ class SunflowApp extends LitElement {
   }
 
   _renderMeasurements(byId) {
-    const entries = Object.entries(this._measurements ?? {}).filter(([, m]) => m.options.length);
+    // The house load also without a measuring device: then from the balance
+    const entries = Object.entries(this._measurements ?? {}).filter(([quantity, m]) => m.options.length || quantity === "load");
     if (!entries.length) return nothing;
     return html`
       <section class="device">
         <div class="device-title">${t("Messquellen")}</div>
-        <p class="small muted help">${t("Welches Gerät liefert Leistung und Zählerstände? Gilt für Live, Verlauf, Energiebilanz und Schattenbetrieb. „Automatisch“ nimmt einen eigenen Zähler (z. B. am Stromzähler) vor dem Wechselrichter.")}</p>
+        <p class="small muted help">${t("Welches Gerät liefert Leistung und Zählerstände? Gilt für Live, Verlauf, Energiebilanz, Schattenbetrieb und Lastprognose. „Automatisch“ nimmt einen eigenen Zähler (z. B. am Stromzähler) vor dem Wechselrichter; misst nichts den Hausverbrauch, berechnet Sunflow ihn aus PV, Netz und Speicher.")}</p>
         ${entries.map(([quantity, m]) => {
           const auto = m.effective && !m.selected
             ? t("Automatisch ({name})", { name: byId[m.effective]?.name ?? m.options.find((o) => o.id === m.effective)?.name })
-            : t("Automatisch");
+            : m.effective ? t("Automatisch") : t("Automatisch (aus PV, Netz und Speicher berechnet)");
           return html`
             <div class="field wide">
               <span class="field-label">${m.label}</span>
@@ -1750,9 +1753,9 @@ class SunflowApp extends LitElement {
     `;
   }
 
-  /** Grid meters from any sensors: added, changed and removed on their own card. */
+  /** Grid and house load meters from any sensors: added, changed and removed on their own cards. */
   _renderGridMeters() {
-    const meters = Object.values(this._configDevices).filter((d) => d.profile === "generic/grid_meter");
+    const meters = (profile) => Object.values(this._configDevices).filter((d) => d.profile === profile);
     const changed = ({ detail }) => {
       const devices = { ...this._configDevices };
       if (detail.removed) delete devices[detail.removed.ha_device_id];
@@ -1760,7 +1763,8 @@ class SunflowApp extends LitElement {
       this._configDevices = devices;
       this._loadCategories();
     };
-    return html`<sf-grid-meters .devices=${meters} @changed=${changed}></sf-grid-meters>`;
+    return html`<sf-grid-meters .devices=${meters("generic/grid_meter")} @changed=${changed}></sf-grid-meters>
+      <sf-grid-meters kind="load" .devices=${meters("generic/load_meter")} @changed=${changed}></sf-grid-meters>`;
   }
 
   /** The optimizers of a chosen integration: taken over as a whole, placed under "Optimierer". */
@@ -1795,7 +1799,7 @@ class SunflowApp extends LitElement {
   _renderManualDevices() {
     // Heat pumps have their own settings area
     const manual = Object.values(this._configDevices).filter(
-      (d) => d.profile.startsWith(MANUAL_PREFIX) && !["generic/heat_pump", "generic/grid_meter"].includes(d.profile),
+      (d) => d.profile.startsWith(MANUAL_PREFIX) && !["generic/heat_pump", "generic/grid_meter", "generic/load_meter"].includes(d.profile),
     );
     const form = this._manual;
     const set = (field, value) => (this._manual = { ...this._manual, [field]: value });

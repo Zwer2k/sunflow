@@ -10,7 +10,8 @@ from sunflow.config.models import SunflowConfig
 from sunflow.devices.discovery import Snapshot
 from sunflow.devices.profiles import controls_battery
 from sunflow.devices.resolver import CANONICAL_SIGNS, preview
-from sunflow.devices.site import PV_OUTPUT_ROLES, device_parameters, measurement_device
+from sunflow.devices.site import device_parameters, pv_output_roles
+from sunflow.devices.site_values import site_values
 from sunflow.devices.state_history import state_means
 from sunflow.ha import HAClient, HAError
 
@@ -35,8 +36,6 @@ class Series:
 def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], snapshot: Snapshot) -> list[Series]:
     """Select the statistics for SoC, load and grid of the battery inverter and PV of all plants."""
     series: list[Series] = []
-    grid_device = measurement_device(config, profiles, "grid")
-    load_device = measurement_device(config, profiles, "load")
     for device in config.devices:
         profile = profiles[device.profile]
         roles = {
@@ -69,10 +68,6 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             if capacity := params.get("capacity_wh"):
                 add("soc_wh", "battery_soc", capacity / 100, device_id=device.id)
             add("battery_w", "battery_power", device_id=device.id)
-        if load_device is not None and device.id == load_device.id:
-            add("load_w", "load_power")
-        if grid_device is not None and device.id == grid_device.id:
-            add("grid_w", "grid_power")
         if "loadpoint" in profile["capabilities"]:
             add("loadpoint_w", "charge_power", device_id=device.id)
         elif "load" in profile["capabilities"]:
@@ -82,9 +77,13 @@ def history_series(config: SunflowConfig, profiles: dict[str, dict[str, Any]], s
             add("level", "vehicle_soc", device_id=device.id)
             add("level", "temperature", device_id=device.id)
         if "pv" in profile["capabilities"]:
-            role = next((r for r in PV_OUTPUT_ROLES if r in roles and roles[r].entity_id), None)
+            role = next((r for r in pv_output_roles(profile["capabilities"]) if r in roles and roles[r].entity_id), None)
             if role:
                 add("pv_w", role)
+    # Measured, else from the balance of the other statistics (as live)
+    values = site_values(config, profiles, snapshot)
+    for key, quantity in (("load_w", "load"), ("grid_w", "grid")):
+        series.extend(Series(key=key, statistic_id=term.entity_id, factor=term.factor) for term in values[quantity].terms)
     series.extend(
         Series(key="level", statistic_id=v.soc_entity, factor=1.0, device_id=level_key(v.id)) for v in config.vehicles if v.soc_entity
     )

@@ -25,8 +25,9 @@ from sunflow.devices.profiles import (
     planned_battery,
     supported_action,
 )
-from sunflow.devices.resolver import CANONICAL_SIGNS, preview
-from sunflow.devices.site import device_kind, device_parameters, measurement_device
+from sunflow.devices.resolver import preview
+from sunflow.devices.site import device_kind, device_parameters
+from sunflow.devices.site_values import site_values
 from sunflow.ha import HAClient, HACommandError, HAError
 from sunflow.i18n import N_, number, t
 
@@ -38,26 +39,34 @@ from .habits import (
     learn_usage_from_energy,
 )
 from .hot_water import HotWaterUsage, learn_hot_water
+from .house_model import HouseModel
+from .house_plan import thermal_loads
 from .load_forecast import (
     LoadForecast,
     build_load_forecast,
-    difference,
+    combined,
     fetch_hourly_means,
-    find_load_entity,
     subtract_loads,
     unmeasured_consumers,
 )
-from .house_model import HouseModel
-from .house_plan import thermal_loads
 from .load_model import LoadModel
-from .optimizer import DT_H, FULL_FRACTION, BatterySpec, FlexLoad, Plan, Settings, SlotInput, optimize
+from .optimizer import (
+    DT_H,
+    FULL_FRACTION,
+    BatterySpec,
+    FlexLoad,
+    Plan,
+    Settings,
+    SlotInput,
+    optimize,
+)
 from .price_estimate import extend_prices, from_history
 from .pv_learning import PvCorrection, cloud_class
 from .pv_sun import SunCorrection
 from .sources import (
+    NO_SCHEDULE_ADAPTERS,
     ForecastPoint,
     PricePoint,
-    NO_SCHEDULE_ADAPTERS,
     detect_price_adapter,
     fetch_prices,
     forecast_solar_forecast,
@@ -1874,27 +1883,17 @@ async def compute_plan(
     warnings.extend(short_forecasts(used_planes, pv_ends, published_end, tz))
     pv = sum_forecasts(series) if series else []
 
-    # Load forecast from the history of the load sensor (the device chosen for it, else the battery inverter)
-    load_device = measurement_device(config, profiles, "load") or battery_device
-    roles = preview(
-        profiles[load_device.profile],
-        snapshot,
-        load_device.ha_device_id,
-        {k: o.model_dump() for k, o in load_device.role_overrides.items()},
-    )
+    # Load forecast from the history of the house load: measured, else from the balance of PV, grid and battery
+    load_terms = site_values(config, profiles, snapshot)["load"].terms
     history = []
-    if load_entity := find_load_entity(roles):
-        try:
-            history = await cached(("hourly", load_entity), HOURLY_TTL, lambda: fetch_hourly_means(client, load_entity, start))
-            # Measured as two sensors (e.g. inverter output minus export): the other one's history subtracted
-            load_role = next(r for r in roles if r.role == "load_power")
-            if load_role.minus_role and (other := next(r for r in roles if r.role == load_role.minus_role)).entity_id:
-                other_entity = other.entity_id
-                other_history = await cached(("hourly", other_entity), HOURLY_TTL, lambda: fetch_hourly_means(client, other_entity, start))
-                sign = -1.0 if other.sign is not None and other.sign not in CANONICAL_SIGNS else 1.0
-                history = difference(history, other_history, sign)
-        except HACommandError as err:
-            warnings.append(t("Verlauf des Hausverbrauchs nicht abrufbar ({error}) – Lastprognose mit Standardwerten.", error=err))
+    try:
+        parts = [
+            (await cached(("hourly", term.entity_id), HOURLY_TTL, lambda e=term.entity_id: fetch_hourly_means(client, e, start)), term.factor)
+            for term in load_terms
+        ]
+        history = combined(parts)
+    except HACommandError as err:
+        warnings.append(t("Verlauf des Hausverbrauchs nicht abrufbar ({error}) – Lastprognose mit Standardwerten.", error=err))
     # Loadpoints (wallbox, heater) are part of the measured household load
     loadpoint_histories = []
     for device in config.devices:

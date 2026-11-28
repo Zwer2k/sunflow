@@ -73,15 +73,16 @@ async def fetch_hourly_means(
     return await state_means(client, statistic_id, start, now, timedelta(hours=1))
 
 
-def difference(
-    history: list[tuple[datetime, float]], other: list[tuple[datetime, float]], factor: float = 1.0
-) -> list[tuple[datetime, float]]:
-    """A load measured as one series minus another (e.g. inverter output minus export), hour by hour.
+def combined(histories: list[tuple[list[tuple[datetime, float]], float]]) -> list[tuple[datetime, float]]:
+    """A load from several statistics (e.g. PV + grid - battery), each with its factor, hour by hour.
 
-    Hours missing in the other series are left out: the first alone is no load.
+    Only hours all of them have: a part alone is no load.
     """
-    by_hour = dict(other)
-    return [(moment, max(power - factor * by_hour[moment], 0.0)) for moment, power in history if moment in by_hour]
+    if not histories:
+        return []
+    by_hour = [dict(history) for history, _ in histories]
+    hours = sorted(set.intersection(*(set(h) for h in by_hour)))
+    return [(hour, max(sum(h[hour] * factor for h, (_, factor) in zip(by_hour, histories, strict=True)), 0.0)) for hour in hours]
 
 
 def subtract_loads(
@@ -223,8 +224,3 @@ def build_load_forecast(
         history_daily_kwh=fmean(v for _, v in kept) * 24 / 1000 if len(kept) >= OWN_HISTORY_HOURS else None,
         daily_spread=daily_spread(kept, tz),
     )
-
-
-def find_load_entity(roles: list[Any]) -> str | None:
-    """Return the entity of the load_power role from resolved role values."""
-    return next((r.entity_id for r in roles if r.role == "load_power" and r.entity_id), None)

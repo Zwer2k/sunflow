@@ -20,7 +20,7 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
         "generic/stepped", "generic/current", "solax_modbus/solax_gen4_5", "huawei_solar/sun2000_luna2000", "modbus/victron_gx",
         "solaredge_modbus/storedge", "fronius/gen24", "goodwe/hybrid", "kostal_plenticore/plenticore", "indevolt/indevolt",
         "homevolt/homevolt", "marstek_modbus/venus", "zendure_ha/manager", "generic/heat_pump", "generic/relays",
-        "generic/grid_meter", "solax_modbus/growatt_hybrid", "solax_modbus/growatt_pv", "solarman/deye_micro",
+        "generic/grid_meter", "generic/load_meter", "solax_modbus/growatt_hybrid", "solax_modbus/growatt_pv", "solarman/deye_micro",
         "solaredge_modbus_multi/storedge",
     }
     assert set(library.optimizers) == {"huawei_solar/optimizer", "tigo_rs485/optimizer"}

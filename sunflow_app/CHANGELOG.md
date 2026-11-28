@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.80.26
+
+- Grid and house consumption are handled the same everywhere (live, recording, history, load forecast): measured by the device chosen under the measurement sources, else calculated from PV, grid and battery. Before, the load forecast never learned without a consumption sensor, and the recording left the consumption empty. Live tells whether a value is measured or calculated.
+- New "Load meter by hand" under Devices → Meters: any sensor (an extra meter, a template) as house consumption; it comes first.
+- Hybrid inverters count their PV power, not their AC output, as PV (SolarEdge, Huawei LUNA2000, Kostal): the AC output also holds what the battery gives or takes, so the battery was counted twice in the balance.
+- Grid meters added by hand no longer show up under "Verbraucher".
+
 ## 0.80.25
 
 - Assigning roles by hand offers every sensor, after the device's own ones (marked "other device"): e.g. a template sensor for the house consumption (#4).

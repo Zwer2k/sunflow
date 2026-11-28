@@ -87,7 +87,7 @@ def device_category(profile: dict[str, Any], device: DeviceConfig, snapshot: Sna
         return "inverter"
     if "battery" in capabilities:
         return "battery"
-    if "grid_meter" in capabilities:
+    if "grid_meter" in capabilities or "load_meter" in capabilities:
         return "meter"
     return "heat" if "heat_pump" in capabilities or device.kind == "heater" else "load"
 
@@ -160,10 +160,15 @@ class SiteStatus:
     hints: list[str] = field(default_factory=list)
 
 
-def pv_output(roles: list[RoleValue]) -> float | None:
-    """Return the AC output of a PV plant from its roles."""
+def pv_output_roles(capabilities: list[str]) -> tuple[str, ...]:
+    """Roles giving a plant's PV, best first: a hybrid's AC output also holds what its battery gives or takes."""
+    return ("pv_power", "ac_power") if "battery" in capabilities else PV_OUTPUT_ROLES
+
+
+def pv_output(roles: list[RoleValue], capabilities: list[str] | None = None) -> float | None:
+    """Return the PV output of a plant from its roles (the AC output of a PV-only inverter)."""
     by_role = {r.role: r.value for r in roles}
-    return next((by_role[r] for r in PV_OUTPUT_ROLES if by_role.get(r) is not None), None)
+    return next((by_role[r] for r in pv_output_roles(capabilities or []) if by_role.get(r) is not None), None)
 
 
 # Measured quantities the user can assign to a device; a device qualifies when its
@@ -219,7 +224,7 @@ def site_status(
             capabilities=profile["capabilities"],
             roles=roles,
             balance=check_balance(roles),
-            pv_output=pv_output(roles) if "pv" in profile["capabilities"] else None,
+            pv_output=pv_output(roles, profile["capabilities"]) if "pv" in profile["capabilities"] else None,
         )
         site.devices.append(status)
         by_id[device.id] = status

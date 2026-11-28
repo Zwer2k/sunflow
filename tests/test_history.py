@@ -178,16 +178,17 @@ def test_unmeasured_consumers_leave_the_house_load() -> None:
     assert [round(w) for _, w in base] == [400, 4400, 4500]
 
 
-def test_load_from_inverter_output_minus_export() -> None:
-    """A load measured as two sensors learns from their difference; an hour without the second is left out."""
-    from sunflow.planning.load_forecast import difference
+def test_load_from_several_statistics() -> None:
+    """A load from several statistics learns from their signed sum; an hour one of them lacks is left out."""
+    from sunflow.planning.load_forecast import combined
 
     hours = [START + timedelta(hours=h) for h in range(3)]
     output = [(h, 1500.0) for h in hours]
     # Meter + = export: 1000 W exported, then 400 W imported
     meter = [(hours[0], 1000.0), (hours[1], -400.0)]
 
-    assert difference(output, meter) == [(hours[0], 500.0), (hours[1], 1900.0)]
+    assert combined([(output, 1.0), (meter, -1.0)]) == [(hours[0], 500.0), (hours[1], 1900.0)]
+    assert combined([]) == []
 
 
 async def test_levels_per_consumer() -> None:

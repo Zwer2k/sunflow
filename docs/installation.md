@@ -138,7 +138,10 @@ Systeme, die dieselben Werte schreiben. Erst mit bestandenem Test lässt sich di
 Hier legst du fest, wie die Geräte zusammenhängen. Ein Beispiel: Ein zweiter Wechselrichter wird
 vom ersten als „PV extern“ mitgemessen, dann zählt Sunflow seine Leistung nicht doppelt. Unter
 **Messquellen** wählst du, welches Gerät Netz und Hausverbrauch liefert. „Automatisch“ nimmt
-einen eigenen Zähler am Stromzähler (z. B. Tibber Pulse) vor dem Wechselrichter.
+einen eigenen Zähler am Stromzähler (z. B. Tibber Pulse) vor dem Wechselrichter. Misst kein
+Gerät den Hausverbrauch, berechnet Sunflow ihn aus PV, Netz und Speicher, für Live, Verlauf,
+Aufzeichnung und Lastprognose gleich. Für einen eigenen Verbrauchszähler oder einen
+Template-Sensor gibt es unter Geräte → Zähler den „Verbrauchszähler von Hand“; er hat Vorrang.
 
 Die Gegenprobe vergleicht die Messwerte miteinander und meldet, ob die Bilanz aufgeht.
 
