@@ -1,0 +1,41 @@
+# Mennekes AMTRON Xtra / Premium (HCC3 controller) directly over Modbus TCP (unit 255).
+# Registers as evcc reads them; 32-bit values have the low word first. Status 1/2 idle, 3/4
+# plugged, 5/6 charging. The current in A (0 stops). No phase switching.
+# Not verified on hardware yet.
+profile: modbus/mennekes_hcc3
+version: 1
+
+connection:
+  type: modbus_tcp
+  port: 502
+  unit_id: 255
+  word_order: little
+  manufacturer: Mennekes
+  model: AMTRON Xtra / Premium
+  points:
+    status: {address: 770, type: input, encoding: uint16, states: {1: A, 2: A, 3: B, 4: B, 5: C, 6: C}}
+    power: {address: 783, type: input, encoding: uint32, unit: W, device_class: power}
+    energy: {address: 781, type: input, encoding: uint32, unit: Wh, device_class: energy}
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: power, unit: W}
+  connected: {key: status, on_states: [B, C]}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - modbus: {address: 1024, value: "{{ current_a }}", write: if_differs}
+  stop:
+    - modbus: {address: 1024, value: 0, write: if_differs}
+  release:
+    - modbus: {address: 1024, value: "{{ max_current_a }}", write: if_differs}

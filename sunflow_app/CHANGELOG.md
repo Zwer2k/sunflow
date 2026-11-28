@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.33
+
+- 11 wallboxes directly over Modbus TCP, registers as in evcc's drivers: ABB Terra AC, Alfen Eve, Webasto Next, Vestel EVC04 (Webasto/Ampure Unite, E.ON vBox), KEBA P30, Bender CC612/613 (Mennekes AMTRON Professional, Webasto Live, Garo, Ensto …), Mennekes AMTRON Xtra/Premium, Phoenix Contact EV-ETH (Wallbe, ESL Walli, E3/DC Easy Connect), Compleo eBox, cFos Power Brain and Amperfied connect. Heartbeats and setpoints only valid for a while are written while Sunflow controls. Not verified on hardware yet.
+
 ## 0.80.32
 
 - 15 new wallbox profiles through Home Assistant integrations, following the wallbox standard: Peblar, NRGkick, OpenEVSE, V2C Trydan, Wallbox (cloud), Lektrico (core); Easee (cloud), KEBA P30/P40 (dannerph), Heidelberg Energy Control, Webasto/Ampure Unite and Vestel EVC04, cFos Power Brain, Mennekes AMTRON 4You/4Business, SMA EV Charger, Fronius Wattpilot and any OCPP 1.6 wallbox (HACS). Cloud and stored currents change at most every few minutes. Not verified on hardware yet.

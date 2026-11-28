@@ -1,0 +1,62 @@
+# Alfen Eve Single / Double directly over Modbus TCP: needs the "Active Load Balancing" licence
+# and, in ACE Service Installer, Data Source "Energy Management System". Registers as evcc
+# reads them (socket 1 is unit 1). The status is the IEC 61851 state as text ("B1", "C2" …).
+# The current is a float in A and only valid for the validity time (300 s recommended): the
+# keepalive writes it again every 20 s while Sunflow controls the wallbox; afterwards Alfen
+# falls back to its safe current. Phase switching may not always take, as evcc notes.
+# Not verified on hardware yet.
+profile: modbus/alfen_eve
+version: 1
+
+connection:
+  type: modbus_tcp
+  port: 502
+  unit_id: 1
+  manufacturer: Alfen
+  model: Eve
+  poll: 10s
+  keepalive: {every: 20s, rewrite: [1210]}
+  points:
+    status:
+      address: 1201
+      encoding: string
+      length: 5
+      states: {A: A, B1: B, B2: B, C1: C, C2: C, D1: D, D2: D}
+    power: {address: 344, encoding: float32, unit: W, device_class: power}
+    energy: {address: 374, encoding: float64, unit: Wh, device_class: energy}
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: power, unit: W}
+  connected: {key: status, on_states: [B, C, D]}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 22000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3, advanced: true}
+  phase_mode: {unit: "", default: 0, min: 0, max: 3}
+  phase_up_w: {unit: W, default: 4500, min: 1500, max: 22000}
+  phase_down_w: {unit: W, default: 4000, min: 1000, max: 22000}
+  phase_up_delay_min: {unit: min, default: 5, min: 1, max: 60, advanced: true}
+  phase_down_delay_min: {unit: min, default: 2, min: 1, max: 60, advanced: true}
+  phase_min_interval_min: {unit: min, default: 15, min: 5, max: 240, advanced: true}
+  phase_max_switches_day: {unit: "", default: 12, min: 1, max: 100, advanced: true}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 32, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - modbus: {address: 1210, encoding: float32, value: "{{ current_a }}", write: if_differs}
+  stop:
+    - modbus: {address: 1210, encoding: float32, value: 0, write: if_differs}
+  release:
+    - modbus: {address: 1210, encoding: float32, value: "{{ max_current_a }}", write: if_differs}
+
+phase_switch:
+  one:
+    - modbus: {address: 1215, value: 1, write: if_differs}
+  three:
+    - modbus: {address: 1215, value: 3, write: if_differs}

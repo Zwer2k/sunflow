@@ -737,7 +737,9 @@ def test_add_direct_device(tmp_path: Path) -> None:
     client = TestClient(app)
 
     profiles = client.get("/api/v1/direct/profiles").json()
-    assert {p["profile"]: p["unit_id"] for p in profiles} == {"modbus/victron_gx": 100}
+    units = {p["profile"]: p["unit_id"] for p in profiles}
+    # The profile's default unit id is offered with it, e.g. Victron's 100, the wallboxes' 255
+    assert (units["modbus/victron_gx"], units["modbus/webasto_next"]) == (100, 255)
     assert client.post("/api/v1/config/devices/direct", json={"profile": "generic/switch", "host": "x"}).status_code == 422
 
     response = client.post(

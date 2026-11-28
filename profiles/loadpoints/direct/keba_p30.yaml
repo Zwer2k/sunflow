@@ -1,0 +1,47 @@
+# KEBA KeContact P30 c-/x-series directly over Modbus TCP (unit 255; enable Modbus with the DIP
+# switches or the web interface). Registers as evcc reads them: values are 32-bit, writes 16-bit.
+# Plugged is bit 2 of the cable state. The current is written in mA, charging is enabled with
+# register 5014. The failsafe timeout (register 5018) is written every 20 s while Sunflow
+# controls; afterwards the wallbox falls back to its failsafe current after 60 s. The P40 has
+# no enable register and is not covered by this profile.
+# Not verified on hardware yet.
+profile: modbus/keba_p30
+version: 1
+
+connection:
+  type: modbus_tcp
+  port: 502
+  unit_id: 255
+  manufacturer: KEBA
+  model: KeContact P30
+  keepalive: {every: 20s, steps: [{address: 5018, value: 60}]}
+  points:
+    plugged: {address: 1004, encoding: uint32, shift: 2, mask: 1, states: {0: "off", 1: "on"}}
+    charging_state: {address: 1000, encoding: uint32}
+    power: {address: 1020, encoding: uint32, scale: 0.001, unit: W, device_class: power}
+    energy: {address: 1036, encoding: uint32, scale: 0.1, unit: Wh, device_class: energy}
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: power, unit: W}
+  connected: {key: plugged, on_states: ["on"]}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - modbus: {address: 5004, scale: 0.001, value: "{{ current_a }}", write: if_differs}
+    - modbus: {address: 5014, value: 1, write: if_differs}
+  stop:
+    - modbus: {address: 5014, value: 0, write: if_differs}
+  release:
+    - modbus: {address: 5004, scale: 0.001, value: "{{ max_current_a }}", write: if_differs}
+    - modbus: {address: 5014, value: 1, write: if_differs}

@@ -23,6 +23,7 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
         "generic/grid_meter", "generic/load_meter", "solax_modbus/growatt_hybrid", "solax_modbus/growatt_pv", "solarman/deye_micro",
         "solaredge_modbus_multi/storedge",
         "peblar/charger", "nrgkick/charger", "openevse/charger", "v2c/charger", "wallbox/charger", "lektrico/charger", "easee/charger", "keba/charger", "heidelberg_energy_control/charger", "unite_ev_charger/charger", "cfos_powerbrain/charger", "mennekes_amtron/charger", "smaev/charger", "wattpilot/charger", "ocpp/chargepoint",
+        "modbus/abb_terra_ac", "modbus/alfen_eve", "modbus/webasto_next", "modbus/vestel_evc04", "modbus/keba_p30", "modbus/bender_cc613", "modbus/mennekes_hcc3", "modbus/phoenix_ev_eth", "modbus/compleo_ebox", "modbus/cfos_powerbrain", "modbus/amperfied_connect",
     }
     assert set(library.optimizers) == {"huawei_solar/optimizer", "tigo_rs485/optimizer"}
     assert set(library.battery_modules) == {"solax_modbus/sofar_bts"}

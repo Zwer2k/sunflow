@@ -128,6 +128,27 @@ Below the configured limit (default 12.2 V) the wallbox charges for the configur
 charging according to plan anyway, that continues. An evcc loadpoint charges in "Min+PV" mode for
 this. Only effective while Sunflow controls the wallbox.
 
+### Directly over Modbus TCP
+
+For wallboxes without a suitable integration Sunflow talks to the wallbox itself (Settings →
+Devices → Connect directly). The registers come from evcc's drivers. If a wallbox keeps remote
+mode only with regular writes, Sunflow writes them while it controls; afterwards the wallbox
+falls back to its safe current.
+
+| Device | Profile | Control | Phase switching | Requirements | Measuring verified | Control verified |
+|---|---|---|---|---|---|---|
+| ABB Terra AC | `modbus/abb_terra_ac` | Charging current every minute (mA), 0 A pauses | – | Enable Modbus TCP in the TerraConfig app | – | – |
+| Alfen Eve Single / Double | `modbus/alfen_eve` | Current every minute, renewed every 20 s (validity time) | 1 ↔ 3 phases by Sunflow | Licence "Active Load Balancing", data source "Energy Management System" | – | – |
+| Webasto Next / Ampure Unite (new) | `modbus/webasto_next` | Current every minute, life bit every 5 s | – | – | – | – |
+| Vestel EVC04, Webasto/Ampure Unite, E.ON vBox | `modbus/vestel_evc04` | Current every minute, alive register every 5 s | 1 ↔ 3 phases by Sunflow (firmware ≥ 3.187) | – | – | – |
+| KEBA KeContact P30 c/x | `modbus/keba_p30` | Charge/stop, current every minute (mA), failsafe every 20 s | – | Enable Modbus with the DIP switches or the web interface | – | – |
+| Bender CC612/CC613 (Mennekes AMTRON Professional, Webasto Live, Garo, Ensto …) | `modbus/bender_cc613` | Current every minute, 0 A pauses | – | Enable "Modbus TCP Server for energy management systems" | – | – |
+| Mennekes AMTRON Xtra / Premium (HCC3) | `modbus/mennekes_hcc3` | Current every minute, 0 A stops | – | – | – | – |
+| Phoenix Contact EV-ETH (Wallbe, ESL Walli, E3/DC Easy Connect, Compleo Pro) | `modbus/phoenix_ev_eth` | Charge/stop (coil), current every minute | – | DIP switch 10 on | – | – |
+| Compleo eBox Solo / Duo, SENEC.Wallbox, Neoom | `modbus/compleo_ebox` | Power limit in 100 W steps every minute | – | – | – | – |
+| cFos Power Brain Wallbox (direct) | `modbus/cfos_powerbrain` | Charge/stop, current every minute (0.1 A) | 1 ↔ 3 phases by Sunflow | Port 4701 | – | – |
+| Amperfied connect.home / connect.solar | `modbus/amperfied_connect` | Current every minute (0.1 A), standby off | – | – | – | – |
+
 ## Heat pump
 
 Heat pumps have their own area **Heat pump** in the settings (profile `generic/heat_pump`): measuring,

@@ -130,6 +130,27 @@ nach der Pause (Vorgabe 60 min) beginnt es erneut, damit ein selten aktualisiert
 ständig neu auslöst. Lädt die Wallbox nach Plan ohnehin, bleibt es dabei. Ein evcc-Ladepunkt
 lädt dafür im Modus „Min+PV“. Wirkt nur, solange Sunflow die Wallbox steuert.
 
+### Direkt über Modbus TCP
+
+Für Wallboxen ohne passende Integration spricht Sunflow die Wallbox selbst an (Einstellungen →
+Geräte → Direkt anbinden). Die Register stammen aus den Treibern von evcc. Hält eine Wallbox
+nur mit regelmäßigen Schreibzugriffen den Fernmodus, schreibt Sunflow sie, solange es steuert;
+danach fällt die Wallbox auf ihren sicheren Strom zurück.
+
+| Gerät | Profil | Steuerung | Phasenumschaltung | Voraussetzungen | Messen geprüft | Steuern geprüft |
+|---|---|---|---|---|---|---|
+| ABB Terra AC | `modbus/abb_terra_ac` | Ladestrom minütlich (mA), 0 A pausiert | – | Modbus TCP in der TerraConfig-App freigeben | – | – |
+| Alfen Eve Single / Double | `modbus/alfen_eve` | Ladestrom minütlich, alle 20 s erneuert (Gültigkeitsdauer) | 1 ↔ 3 Phasen durch Sunflow | Lizenz „Active Load Balancing“, Datenquelle „Energy Management System“ | – | – |
+| Webasto Next / Ampure Unite (neu) | `modbus/webasto_next` | Ladestrom minütlich, Lebenszeichen alle 5 s | – | – | – | – |
+| Vestel EVC04, Webasto/Ampure Unite, E.ON vBox | `modbus/vestel_evc04` | Ladestrom minütlich, Lebenszeichen alle 5 s | 1 ↔ 3 Phasen durch Sunflow (Firmware ≥ 3.187) | – | – | – |
+| KEBA KeContact P30 c/x | `modbus/keba_p30` | Laden/Stopp, Ladestrom minütlich (mA), Failsafe alle 20 s | – | Modbus per DIP-Schalter oder Weboberfläche freigeben | – | – |
+| Bender CC612/CC613 (Mennekes AMTRON Professional, Webasto Live, Garo, Ensto …) | `modbus/bender_cc613` | Ladestrom minütlich, 0 A pausiert | – | „Modbus TCP Server for energy management systems“ freigeben | – | – |
+| Mennekes AMTRON Xtra / Premium (HCC3) | `modbus/mennekes_hcc3` | Ladestrom minütlich, 0 A stoppt | – | – | – | – |
+| Phoenix Contact EV-ETH (Wallbe, ESL Walli, E3/DC Easy Connect, Compleo Pro) | `modbus/phoenix_ev_eth` | Laden/Stopp (Coil), Ladestrom minütlich | – | DIP-Schalter 10 an | – | – |
+| Compleo eBox Solo / Duo, SENEC.Wallbox, Neoom | `modbus/compleo_ebox` | Leistungsgrenze in 100-W-Schritten minütlich | – | – | – | – |
+| cFos Power Brain Wallbox (direkt) | `modbus/cfos_powerbrain` | Laden/Stopp, Ladestrom minütlich (0,1 A) | 1 ↔ 3 Phasen durch Sunflow | Port 4701 | – | – |
+| Amperfied connect.home / connect.solar | `modbus/amperfied_connect` | Ladestrom minütlich (0,1 A), Standby aus | – | – | – | – |
+
 ## Wärmepumpe
 
 Wärmepumpen haben unter Einstellungen einen eigenen Bereich **Wärmepumpe** (Profil

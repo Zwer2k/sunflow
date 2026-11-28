@@ -1,0 +1,55 @@
+# cFos Power Brain wallbox directly over Modbus TCP (port 4701, unit 1). Registers as evcc reads
+# them. Status in the low byte: 0 idle, 1 plugged, 2 charging. Enable, current (0.1 A) and the
+# phase relays are kept in RAM.
+# Not verified on hardware yet.
+profile: modbus/cfos_powerbrain
+version: 1
+
+connection:
+  type: modbus_tcp
+  port: 4701
+  unit_id: 1
+  manufacturer: cFos
+  model: Power Brain Wallbox
+  points:
+    status: {address: 8092, encoding: uint16, mask: 255, states: {0: A, 1: B, 2: C}}
+    power: {address: 8062, encoding: uint32, unit: W, device_class: power}
+    energy: {address: 8058, encoding: uint64, unit: Wh, device_class: energy}
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: power, unit: W}
+  connected: {key: status, on_states: [B, C]}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3, advanced: true}
+  phase_mode: {unit: "", default: 0, min: 0, max: 3}
+  phase_up_w: {unit: W, default: 4500, min: 1500, max: 22000}
+  phase_down_w: {unit: W, default: 4000, min: 1000, max: 22000}
+  phase_up_delay_min: {unit: min, default: 5, min: 1, max: 60, advanced: true}
+  phase_down_delay_min: {unit: min, default: 2, min: 1, max: 60, advanced: true}
+  phase_min_interval_min: {unit: min, default: 15, min: 5, max: 240, advanced: true}
+  phase_max_switches_day: {unit: "", default: 12, min: 1, max: 100, advanced: true}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - modbus: {address: 8093, scale: 0.1, value: "{{ current_a }}", write: if_differs}
+    - modbus: {address: 8094, value: 1, write: if_differs}
+  stop:
+    - modbus: {address: 8094, value: 0, write: if_differs}
+  release:
+    - modbus: {address: 8093, scale: 0.1, value: "{{ max_current_a }}", write: if_differs}
+    - modbus: {address: 8094, value: 1, write: if_differs}
+
+phase_switch:
+  one:
+    - modbus: {address: 8087, value: 1, write: if_differs}
+  three:
+    - modbus: {address: 8087, value: 0, write: if_differs}

@@ -1,0 +1,45 @@
+# ABB Terra AC wallbox directly over Modbus TCP (enable Modbus TCP in the TerraConfig app).
+# Registers as evcc reads them. The status is the high byte of the second status register (low
+# 7 bits): 0 idle, 1-3 plugged, 4 charging, 5 session stopped (still plugged). The current is
+# written in mA; 0 pauses. The wallbox needs reads at least every 30 s to keep communication
+# up, the poll does that. No phase switching.
+# Not verified on hardware yet.
+profile: modbus/abb_terra_ac
+version: 1
+
+connection:
+  type: modbus_tcp
+  port: 502
+  unit_id: 1
+  manufacturer: ABB
+  model: Terra AC
+  points:
+    status: {address: 16397, encoding: uint16, shift: 8, mask: 127, states: {0: A, 1: B, 2: B, 3: B, 4: C, 5: B}}
+    power: {address: 16412, encoding: uint32, unit: W, device_class: power}
+    session_energy: {address: 16414, encoding: uint32, unit: Wh, device_class: energy}
+    current_limit: {address: 16398, encoding: uint32, scale: 0.001, unit: A}
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: power, unit: W}
+  connected: {key: status, on_states: [B, C]}
+  charged_energy: {key: session_energy, unit: Wh, optional: true}
+  allowed_current: {key: current_limit, unit: A, optional: true}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 22000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 32, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - modbus: {address: 16640, encoding: uint32, scale: 0.001, value: "{{ current_a }}", write: if_differs}
+  stop:
+    - modbus: {address: 16640, encoding: uint32, scale: 0.001, value: 0, write: if_differs}
+  release:
+    - modbus: {address: 16640, encoding: uint32, scale: 0.001, value: "{{ max_current_a }}", write: if_differs}

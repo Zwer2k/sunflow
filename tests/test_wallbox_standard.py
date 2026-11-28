@@ -163,3 +163,34 @@ def test_short_keys_bind_the_right_entity(library: ProfileLibrary, profile_id: s
     by_id = {e["entity_id"]: e["unique_id"] for e in entities}
 
     assert by_id[bind_roles(library.profiles[profile_id], entities)[role]] == unique_id
+
+
+def _direct_wallboxes(library: ProfileLibrary) -> list[str]:
+    return sorted(p for p in _wallboxes(library) if "connection" in library.profiles[p])
+
+
+def test_direct_wallboxes_are_there(library: ProfileLibrary) -> None:
+    """Wallboxes without a Home Assistant integration, straight over Modbus TCP."""
+    assert len(_direct_wallboxes(library)) >= 10
+
+
+@pytest.mark.parametrize(
+    "profile_id",
+    [
+        "modbus/abb_terra_ac", "modbus/alfen_eve", "modbus/webasto_next", "modbus/vestel_evc04", "modbus/keba_p30",
+        "modbus/bender_cc613", "modbus/mennekes_hcc3", "modbus/phoenix_ev_eth", "modbus/compleo_ebox",
+        "modbus/cfos_powerbrain", "modbus/amperfied_connect",
+    ],
+)
+def test_direct_wallbox_roles_and_writes(library: ProfileLibrary, profile_id: str) -> None:
+    """Required roles name the profile's points; every step writes a number to a register."""
+    profile = library.profiles[profile_id]
+    entities = [{"entity_id": f"sensor.d_{key}", "unique_id": f"d_{key}", "device_id": "dev"} for key in profile["connection"]["points"]]
+    params = {name: spec["default"] for name, spec in profile["parameters"].items() if "default" in spec}
+
+    bound = bind_roles(profile, entities)
+    assert [r for r, spec in profile["roles"].items() if not spec.get("optional") and bound[r] is None] == []
+    sections = [*profile["charge_control"].values(), *(v for k, v in profile.get("phase_switch", {}).items() if k != "remember")]
+    for steps in sections:
+        for call in plan_steps(steps, params | VARIABLES, entities, "volatile"):
+            assert (call.domain, isinstance(call.data["value"], int | float)) == ("direct", True), (profile_id, call)
