@@ -213,3 +213,4 @@ Inside the App it uses the Supervisor proxy and `SUPERVISOR_TOKEN` instead.
 
 Copyright 2026 Zwer2k. Licensed under the [Apache License 2.0](LICENSE).
 The bundled Lit library (`frontend/vendor/`) is © Google LLC under the BSD-3-Clause license.
+Licences of works of others and the sources of device facts: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

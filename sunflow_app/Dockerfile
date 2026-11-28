@@ -9,6 +9,8 @@ COPY backend /app/backend
 COPY profiles /app/profiles
 COPY schema /app/schema
 COPY frontend /app/frontend
+# Lit is bundled in the frontend: its licence travels with it
+COPY LICENSE THIRD_PARTY_NOTICES.md /app/
 RUN pip install --no-cache-dir /app/backend
 
 ENV SUNFLOW_PROFILES_DIR=/app/profiles \

@@ -39,6 +39,20 @@ The App's log in Home Assistant is the first place users look. It must show:
   with traceback for unexpected types. Expected per-minute noise goes to `DEBUG`.
 - No tokens, keys or personal data in log messages.
 
+## Licences
+
+Sunflow is Apache-2.0. Taking over the work of others must not break its licence:
+
+- Facts (register maps, entity keys, protocol values) may be taken from any source; name the
+  source in the profile's header comment.
+- Code may be copied, translated or ported only from projects under a licence compatible with
+  Apache-2.0 (MIT, BSD, Apache-2.0, ISC). Keep their copyright notice and licence text: in the
+  file's header and in `THIRD_PARTY_NOTICES.md`, and say what was changed (Apache-2.0 asks for
+  that). Never copy from GPL, LGPL, AGPL or unlicensed code; when in doubt, write it anew from
+  the documentation and ask first.
+- Every bundled file of others (e.g. `frontend/vendor/`) is listed with its full licence text in
+  `THIRD_PARTY_NOTICES.md`, which ships in the App image.
+
 ## UI and texts
 
 - UI strings are written in German in the code; every new string gets its English

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.34
+
+- THIRD_PARTY_NOTICES.md with the full licence of the bundled Lit library and the sources of device facts (evcc, Home Assistant integrations); the App image ships it.
+
 ## 0.80.33
 
 - 11 wallboxes directly over Modbus TCP, registers as in evcc's drivers: ABB Terra AC, Alfen Eve, Webasto Next, Vestel EVC04 (Webasto/Ampure Unite, E.ON vBox), KEBA P30, Bender CC612/613 (Mennekes AMTRON Professional, Webasto Live, Garo, Ensto …), Mennekes AMTRON Xtra/Premium, Phoenix Contact EV-ETH (Wallbe, ESL Walli, E3/DC Easy Connect), Compleo eBox, cFos Power Brain and Amperfied connect. Heartbeats and setpoints only valid for a while are written while Sunflow controls. Not verified on hardware yet.
