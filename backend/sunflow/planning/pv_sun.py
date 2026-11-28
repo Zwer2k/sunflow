@@ -13,6 +13,7 @@ import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
+import logging
 from typing import Any
 
 from sunflow.config.models import ForecastPlane, SunflowConfig
@@ -20,11 +21,16 @@ from sunflow.devices.discovery import Snapshot
 from sunflow.devices.resolver import preview
 from sunflow.devices.site import pv_strings
 from sunflow.ha import HAClient, HACommandError
+from sunflow.log_state import Conditions
 from sunflow.planning.pv_episodes import SoilingHistory, daily_energy, soiling_history
 from sunflow.planning.pv_season import snow_on_all
 from sunflow.planning.pv_steps import Expected, PlaneState
 
 from .sun import sun_position
+
+_LOGGER = logging.getLogger(__name__)
+# Sources the learning makes do without: logged when they fail and when they work again
+CONDITIONS = Conditions(_LOGGER)
 
 ELEVATION_STEP = 5.0
 AZIMUTH_STEP = 10.0
@@ -629,7 +635,9 @@ async def _episodes(
         first = min((s.start for samples in history.values() for s in samples), default=now)
         try:
             temps = await daily_lows(client, entity_id, first, now, tz)
-        except HACommandError:
+            CONDITIONS.ok("soiling_temperature")
+        except HACommandError as err:
+            CONDITIONS.failed("soiling_temperature", "Outdoor temperature %s unavailable for the soiling check: %s", entity_id, err)
             temps = None
     energy = await asyncio.to_thread(daily_energy, history, tz, learned)
     return await asyncio.to_thread(soiling_history, energy, ratios, temps, now.astimezone(tz).date())
@@ -692,8 +700,10 @@ async def snow_now(
         if sources.irradiance:
             hours = await measured_hours(client, [sources.irradiance], start, now)
             bright = max(hours.values(), default=None)
-    except HACommandError:
+    except HACommandError as err:
+        CONDITIONS.failed("snow_level", "Outdoor temperature or brightness unavailable for the snow check: %s", err)
         return None
+    CONDITIONS.ok("snow_level")
     unit = (snapshot.states.get(sources.irradiance or "") or {}).get("attributes", {}).get("unit_of_measurement")
     return snow_on_all(levels, min(lows.values(), default=None), bright, unit)
 

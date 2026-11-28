@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 import uuid
 
+from sunflow.log_state import load_json
+
 SLOT = timedelta(minutes=15)
 
 
@@ -76,10 +78,7 @@ class OneTimeLoads:
     def __init__(self, data_dir: Path) -> None:
         """Load them."""
         self._path = data_dir / "one_time_loads.json"
-        try:
-            raw = json.loads(self._path.read_text())
-        except FileNotFoundError, ValueError:
-            raw = []
+        raw = load_json(self._path, [])
         self.loads = [
             OneTimeLoad(
                 **{

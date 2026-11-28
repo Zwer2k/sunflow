@@ -3,6 +3,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import logging
 from statistics import fmean
 from typing import Any
 
@@ -14,6 +15,8 @@ from sunflow.devices.site import device_parameters, pv_output_roles
 from sunflow.devices.site_values import site_values
 from sunflow.devices.state_history import state_means
 from sunflow.ha import HAClient, HAError
+
+_LOGGER = logging.getLogger(__name__)
 
 # Short-term statistics are kept 10 days by default; above that use hourly
 # Home Assistant keeps 5 minute statistics this long (recorder default), then hourly ones only
@@ -111,7 +114,8 @@ async def fetch_history(
         # A sensor without statistics (no state_class): means from its recorded states
         try:
             means = await state_means(client, statistic_id, start, end, bucket)
-        except HAError:
+        except HAError as err:
+            _LOGGER.debug("Recorded states of %s unavailable: %s", statistic_id, err)
             continue
         result[statistic_id] = [{"start": moment.timestamp() * 1000, "mean": value} for moment, value in means]
     # bucket start -> key -> statistic -> values

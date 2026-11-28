@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.28
+
+- The App log shows what Sunflow makes do without, once when it fails and once when it works again: weather forecast, learning of consumers, hot water, cars' SoC and departures, price history, exchange price, outdoor temperature for the soiling and snow checks, and directly connected devices that cannot be read.
+- An unreadable state file (e.g. the EEPROM write counter cut off by a crash) is logged instead of silently starting empty.
+
 ## 0.80.27
 
 - The App log shows more: a start line with version and mode, plan warnings (e.g. price or PV forecast unavailable) once when they come and when they are gone, and when no plan can be made.

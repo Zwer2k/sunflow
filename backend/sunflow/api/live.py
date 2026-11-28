@@ -2,6 +2,7 @@
 
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -27,6 +28,8 @@ from sunflow.planning.vehicle_soc import estimator
 from sunflow.planning.vehicles import vehicle_at
 
 from .common import _library, _local_tz, _snapshot
+
+_LOGGER = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -283,7 +286,9 @@ async def _forecast(request: Request, entity_id: str, kind: str) -> list[dict[st
                 "weather", "get_forecasts", {"type": kind}, target={"entity_id": entity_id}, return_response=True
             )
             forecast = response["response"][entity_id]["forecast"]
-        except (HAError, KeyError, TypeError):
+        except (HAError, KeyError, TypeError) as err:
+            # Shown only; the plan logs a failing weather forecast
+            _LOGGER.debug("Weather forecast for the live view unavailable: %s", err)
             forecast = []
         cache = {"at": now, "forecast": forecast}
         caches[kind] = cache

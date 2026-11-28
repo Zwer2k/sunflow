@@ -86,13 +86,17 @@ class ControlJournal:
         except FileNotFoundError:
             return
         since = datetime.now(UTC) - KEEP
+        skipped = 0
         for line in lines:
             try:
                 entry = json.loads(line)
                 if datetime.fromisoformat(entry["time"]) >= since:
                     self._entries.append(entry)
             except (ValueError, KeyError):
-                continue
+                skipped += 1
+        if skipped:
+            # Usually the last line, cut off by a crash
+            _LOGGER.warning("Skipped %d unreadable lines of the control journal", skipped)
 
     def record(self, entry: dict[str, Any]) -> None:
         """Keep one entry; time is an aware datetime."""

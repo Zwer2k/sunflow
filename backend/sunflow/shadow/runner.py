@@ -793,7 +793,9 @@ class ShadowRunner:
                 "weather", "get_forecasts", {"type": "hourly"}, target={"entity_id": entity_id}, return_response=True
             )
             return snow_ahead(response["response"][entity_id]["forecast"])
-        except (HAError, KeyError, TypeError):
+        except (HAError, KeyError, TypeError) as err:
+            # The weather forecast's failure is logged by the plan
+            _LOGGER.debug("Snow forecast of %s unavailable: %s", entity_id, err)
             return None
 
     def pv_recent(self, tz: tzinfo) -> tuple[float, float, float] | None:

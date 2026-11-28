@@ -1,12 +1,15 @@
 """Means per slot over a local day from Home Assistant's statistics (or recorded states)."""
 
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
+import logging
 from typing import Any
 
 from sunflow.devices.state_history import state_means
 from sunflow.ha import HAClient, HAError
 
 from .history import FIVE_MINUTE_LIMIT
+
+_LOGGER = logging.getLogger(__name__)
 
 # Statistics come in these units whatever the sensor reports
 STATISTIC_UNITS = {"power": "W", "voltage": "V", "electric_current": "A", "temperature": "°C"}
@@ -67,7 +70,8 @@ async def slot_means(
         # Without state_class there are no statistics: means from the recorded states
         try:
             means = await state_means(client, entity_id, start, end, step)
-        except HAError:
+        except HAError as err:
+            _LOGGER.debug("Recorded states of %s unavailable: %s", entity_id, err)
             continue
         result[entity_id] = [{"start": moment.timestamp() * 1000, "mean": value} for moment, value in means]
     return {entity_id: series_by_slot(result.get(entity_id, []), start, end, step) for entity_id in ids}

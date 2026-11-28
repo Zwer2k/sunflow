@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta, tzinfo
+import logging
 import math
 from statistics import fmean, median
 import time
@@ -30,6 +31,7 @@ from sunflow.devices.site import device_kind, device_parameters
 from sunflow.devices.site_values import site_values
 from sunflow.ha import HAClient, HACommandError, HAError
 from sunflow.i18n import N_, number, t
+from sunflow.log_state import Conditions
 
 from .habits import (
     ConsumerUsage,
@@ -79,6 +81,10 @@ from .sources import (
 )
 from .vehicle_usage import VehicleUsage, usage_from as vehicle_usage_from
 from .vehicles import PLUGGED, Recognized, recognize, soc_of, vehicle_max_power
+
+_LOGGER = logging.getLogger(__name__)
+# Sources the plan makes do without: logged when they fail and when they work again
+CONDITIONS = Conditions(_LOGGER)
 
 # The plan looks this far ahead; beyond the published prices with estimated ones
 HORIZON_HOURS = 96
@@ -701,8 +707,10 @@ async def consumer_usages(
             continue
         try:
             usage = await cached(("usage", entity), HABITS_TTL, lambda entity=entity, learner=learner: learner(client, entity))
-        except HAError:
+        except HAError as err:
+            CONDITIONS.failed(f"usage:{entity}", "Learning the usage of %s from %s failed: %s", device.name, entity, err)
             continue
+        CONDITIONS.ok(f"usage:{entity}")
         if usage is not None:
             result[device.id] = usage
     return result
@@ -734,8 +742,10 @@ async def hot_water_usages(
                 HABITS_TTL,
                 lambda t=level.entity_id, p=power.entity_id, k=wh_per_kelvin: learn_hot_water(client, t, p, k, now, tz),
             )
-        except HAError:
+        except HAError as err:
+            CONDITIONS.failed(f"hot_water:{device.id}", "Learning the hot water use of %s failed: %s", device.name, err)
             continue
+        CONDITIONS.ok(f"hot_water:{device.id}")
         if usage is not None:
             result[device.id] = usage
     return result
@@ -756,7 +766,9 @@ async def learned_vehicle_usages(
                 HABITS_TTL,
                 lambda e=vehicle.soc_entity: fetch_hourly_means(client, e, now, kind="max"),
             )
-        except HAError:
+            CONDITIONS.ok(f"vehicle_soc:{vehicle.id}")
+        except HAError as err:
+            CONDITIONS.failed(f"vehicle_soc:{vehicle.id}", "History of the SoC of %s unavailable: %s", vehicle.name, err)
             socs = []
         # A sensor without statistics: the samples Sunflow kept itself
         if (usage := vehicle_usage_from(socs or (own or {}).get(vehicle.id, []), tz)) is not None:
@@ -774,7 +786,9 @@ async def vehicle_presences(client: HAClient, config: SunflowConfig, tz: tzinfo)
             result[vehicle.id] = await cached(
                 ("presence", vehicle.plugged_entity), HABITS_TTL, lambda e=vehicle.plugged_entity: learn_departure(client, e, tz)
             )
-        except HAError:
+            CONDITIONS.ok(f"presence:{vehicle.id}")
+        except HAError as err:
+            CONDITIONS.failed(f"presence:{vehicle.id}", "Learning when %s leaves failed: %s", vehicle.name, err)
             continue
     return result
 
@@ -802,7 +816,9 @@ async def vehicle_departures(
             result[device.id] = await cached(
                 ("departure", role.entity_id), HABITS_TTL, lambda entity=role.entity_id: learn_departure(client, entity, tz)
             )
-        except HAError:
+            CONDITIONS.ok(f"departure:{device.id}")
+        except HAError as err:
+            CONDITIONS.failed(f"departure:{device.id}", "Learning the departures at %s failed: %s", device.name, err)
             continue
     return result
 
@@ -826,9 +842,11 @@ async def weather_forecast(
             "weather", "get_forecasts", {"type": "hourly"}, target={"entity_id": entity_id}, return_response=True
         )
         forecast = response["response"][entity_id]["forecast"]
-    except (HAError, KeyError, TypeError):
+    except (HAError, KeyError, TypeError) as err:
         # Corrections and models then work without weather
+        CONDITIONS.failed("weather", "Weather forecast of %s unavailable, planning without weather: %s", entity_id, err)
         return empty
+    CONDITIONS.ok("weather")
     by_hour = {
         datetime.fromisoformat(item["datetime"]).astimezone(UTC).replace(minute=0, second=0, microsecond=0): item
         for item in forecast
@@ -1510,15 +1528,19 @@ async def exchange_prices(
     try:
         # Without surcharges and VAT: the market price itself
         points = await fetch_prices(client, state, entry, start, HORIZON_HOURS, tz)
-    except HAError:
+    except HAError as err:
+        CONDITIONS.failed("exchange", "Exchange price of %s unavailable for the feed-in: %s", entity_id, err)
         return None
+    CONDITIONS.ok("exchange")
     horizon_end = start + timedelta(hours=HORIZON_HOURS)
     if points and max(p.end for p in points) < horizon_end:
         try:
             history = await cached(
                 ("hourly", entity_id), HABITS_TTL, lambda: fetch_hourly_means(client, entity_id, start, PRICE_HISTORY_DAYS)
             )
-        except HAError:
+        except HAError as err:
+            # Without it the last known day repeats
+            _LOGGER.debug("History of the exchange price unavailable: %s", err)
             history = []
         factor = price_factor(state.get("attributes", {}).get("unit_of_measurement")) or 1.0
         points = extend_prices(points, [(moment, price * factor) for moment, price in history], horizon_end, tz)
@@ -1634,7 +1656,9 @@ async def unused_plane_forecasts(
                     points = await forecast_solar_forecast(client, plane.ref, start, HORIZON_HOURS)
                 case _:
                     continue
-        except HACommandError:
+        except HACommandError as err:
+            # Only compared with, not planned with
+            _LOGGER.debug("Forecast of plane %s for comparison unavailable: %s", plane.display_name, err)
             continue
         slots = resample(points, SLOT)
         result[plane.key] = [value_at(slots, slot.start, "power") or 0.0 for slot in inputs]
@@ -1818,7 +1842,9 @@ async def compute_plan(
                     ("hourly", tariff.import_entity_id), HABITS_TTL,
                     lambda: fetch_hourly_means(client, tariff.import_entity_id or "", start, PRICE_HISTORY_DAYS),
                 )
-            except HAError:
+                CONDITIONS.ok("price_history")
+            except HAError as err:
+                CONDITIONS.failed("price_history", "History of the price %s unavailable, estimating from the known days: %s", tariff.import_entity_id, err)
                 history = []
             factor = price_factor(state.get("attributes", {}).get("unit_of_measurement")) or 1.0
             history = [(moment, price * factor) for moment, price in history]

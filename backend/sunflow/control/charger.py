@@ -17,6 +17,7 @@ from typing import Any
 from sunflow.config.models import DeviceConfig, SunflowConfig
 from sunflow.devices.resolver import UNAVAILABLE_STATES
 from sunflow.i18n import t
+from sunflow.log_state import load_json
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,10 +79,7 @@ class ChargerWatch:
     def __init__(self, data_dir: Path) -> None:
         """Load the states kept across restarts."""
         self._path = data_dir / STATE_FILE
-        try:
-            data = json.loads(self._path.read_text())
-        except FileNotFoundError, ValueError:
-            data = {}
+        data = load_json(self._path, {})
         self._states = {device_id: _State(**state) for device_id, state in data.items()}
         # Set when readiness changed: the plan has to follow
         self.changed = False

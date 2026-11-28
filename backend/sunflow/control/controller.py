@@ -69,6 +69,7 @@ from sunflow.devices.site import device_parameters
 from sunflow.direct.hub import DirectDevice, DirectHub, parse_duration
 from sunflow.ha import HAClient
 from sunflow.i18n import N_, number, t
+from sunflow.log_state import load_json
 from sunflow.planning.house_model import HouseModel, lower_bound, room_now
 from sunflow.planning.optimizer import ON_OFF_MIN_SHARE
 from sunflow.planning.vehicles import vehicle_at, vehicle_max_current
@@ -559,10 +560,7 @@ class TakeoverMarker:
 
     def get(self) -> dict[str, str | None]:
         """Device id -> previous mode option (None: the mode was already right)."""
-        try:
-            return json.loads(self._path.read_text())
-        except FileNotFoundError, ValueError:
-            return {}
+        return load_json(self._path, {})
 
     def set(self, device_id: str, previous_mode: str | None) -> None:
         """Remember a device Sunflow took over."""

@@ -9,6 +9,7 @@ import re
 from typing import Any, Protocol
 
 from sunflow.ha import HAClient
+from sunflow.log_state import load_json
 
 from .discovery import entity_has_key
 
@@ -289,11 +290,8 @@ class EepromGuard:
         self._max = max_writes_per_day
 
     def _load(self) -> dict[str, int]:
-        try:
-            data = json.loads(self._path.read_text())
-        except FileNotFoundError, ValueError:
-            # A file cut off by a crash must not block every write from then on
-            return {}
+        # A file cut off by a crash must not block every write from then on
+        data = load_json(self._path, {})
         today = date.today().isoformat()
         return data.get(today, {}) if isinstance(data, dict) else {}
 

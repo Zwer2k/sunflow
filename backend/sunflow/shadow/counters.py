@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
+from sunflow.log_state import load_json
+
 # Longer gaps (app stopped, Home Assistant away) are not bridged: the energy in them is unknown
 MAX_GAP = timedelta(minutes=5)
 
@@ -17,10 +19,7 @@ class EnergyCounters:
     def __init__(self, data_dir: Path) -> None:
         """Load the counters."""
         self._path = data_dir / "string_energy.json"
-        try:
-            data = json.loads(self._path.read_text())
-        except FileNotFoundError, ValueError:
-            data = {}
+        data = load_json(self._path, {})
         self.wh: dict[str, float] = data.get("wh", {})
         self._last: dict[str, float] = data.get("last", {})
         self._at = datetime.fromisoformat(data["at"]) if data.get("at") else None

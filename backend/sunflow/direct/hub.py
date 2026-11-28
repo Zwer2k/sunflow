@@ -73,7 +73,13 @@ class DirectDevice:
                 self.values[key] = None
                 errors.append(f"{key}: {err}")
         self.read_at = datetime.now(UTC)
-        self.error = "; ".join(errors) or None
+        error = "; ".join(errors) or None
+        # Once when reading starts to fail and when it works again, not every poll
+        if error and not self.error:
+            _LOGGER.warning("Reading %s failed: %s", self.name, error)
+        elif self.error and not error:
+            _LOGGER.info("Reading %s works again", self.name)
+        self.error = error
 
     async def write(self, spec: dict[str, Any], value: Any) -> None:
         """Run a write step of the profile."""

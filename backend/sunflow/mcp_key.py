@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import secrets
 
+from sunflow.log_state import load_json
+
 KEY_FILE = "mcp_key.json"
 # 0.68.0 kept the key itself; a key shown in the settings any time is gone with the hash
 LEGACY_FILE = "mcp_token"
@@ -22,10 +24,7 @@ class McpKey:
         """Load the hash of the current key, if one was created."""
         self._path = data_dir / KEY_FILE
         (data_dir / LEGACY_FILE).unlink(missing_ok=True)
-        try:
-            self._stored: dict[str, str] | None = json.loads(self._path.read_text())
-        except FileNotFoundError, ValueError:
-            self._stored = None
+        self._stored: dict[str, str] | None = load_json(self._path, None)
 
     @property
     def created(self) -> str | None:
