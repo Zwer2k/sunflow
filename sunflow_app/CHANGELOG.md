@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.27
+
+- The App log shows more: a start line with version and mode, plan warnings (e.g. price or PV forecast unavailable) once when they come and when they are gone, and when no plan can be made.
+
 ## 0.80.26
 
 - Grid and house consumption are handled the same everywhere (live, recording, history, load forecast): measured by the device chosen under the measurement sources, else calculated from PV, grid and battery. Before, the load forecast never learned without a consumption sensor, and the recording left the consumption empty. Live tells whether a value is measured or calculated.

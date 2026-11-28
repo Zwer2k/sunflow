@@ -428,6 +428,9 @@ class ShadowRunner:
         self._recent: deque[Sample] = deque(maxlen=RECENT_SAMPLES)
         self._recent_pv: deque[float] = deque(maxlen=PV_RECENT_SAMPLES)
         self._replan_failures = 0
+        # Plan warnings and status already in the log: logged when they come and go, not every plan
+        self._logged_warnings: set[str] = set()
+        self._logged_status: str | None = None
 
     async def run(self) -> None:
         """Run until cancelled."""
@@ -509,6 +512,26 @@ class ShadowRunner:
                         self.request_replan()
             except Exception as err:
                 _LOGGER.warning("Control step failed: %s", err, exc_info=not isinstance(err, HAError))
+
+    def _log_plan(self, warnings: list[str], problem: str | None) -> None:
+        """What the plan has to make do without, in the App's log: once when it comes, and when it is gone.
+
+        problem: why there is no plan (e.g. "no battery"), None for a plan.
+        """
+        current = {w for w in warnings if w}
+        for warning in sorted(current - self._logged_warnings):
+            _LOGGER.warning("Plan: %s", warning)
+        for warning in sorted(self._logged_warnings - current):
+            _LOGGER.info("Plan no longer: %s", warning)
+        self._logged_warnings = current
+        state = problem or "planned"
+        if state != self._logged_status:
+            # The first plan after the start and every change between planning and not are worth a line
+            if problem is None:
+                _LOGGER.info("Planning")
+            else:
+                _LOGGER.warning("No plan: %s", problem)
+            self._logged_status = state
 
     def _plugs_changed(self, snapshot: Snapshot) -> bool:
         """Whether a wallbox was plugged in or unplugged or its card changed since the last step."""
@@ -990,6 +1013,7 @@ class ShadowRunner:
         self.latest = result
         self.status.last_plan = datetime.now(UTC)
         self._planned_slot = start
+        self._log_plan(result.warnings, None if result.plan.slots else result.plan.status or "empty")
         if not result.plan.slots:
             return
         first = result.plan.slots[0]

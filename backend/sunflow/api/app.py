@@ -154,6 +154,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.controller = app.state.runner.controller = _plan_controller(app, settings)
         app.state.runner.counters = EnergyCounters(settings.data_dir)
         app.state.loads = OneTimeLoads(settings.data_dir)
+        config = app.state.store.load()
+        _LOGGER.info(
+            "Sunflow %s started: %d devices, %s, %d profiles",
+            __version__, len(config.devices), "controlling" if config.control.enabled else "planning only (shadow mode)",
+            len(app.state.profiles.profiles),
+        )
         runner_task = asyncio.create_task(app.state.runner.run())
         app.state.reload_watchdog = ReloadWatchdog(
             app.state.ha, lambda: app.state.profiles.profiles, app.state.controller.journal

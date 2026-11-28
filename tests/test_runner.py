@@ -282,3 +282,22 @@ async def test_plan_request_waits_for_the_replan_after_a_change(tmp_path: Path, 
     release.set()
 
     assert await request == "new"
+
+
+def test_plan_warnings_reach_the_log_once(caplog: pytest.LogCaptureFixture) -> None:
+    """A warning is logged when it comes and when it is gone, not with every plan; so is a missing plan."""
+    runner = ShadowRunner.__new__(ShadowRunner)
+    runner._logged_warnings, runner._logged_status = set(), None
+
+    with caplog.at_level("INFO", logger="sunflow.shadow.runner"):
+        runner._log_plan(["Keine PV-Prognose"], None)
+        runner._log_plan(["Keine PV-Prognose"], None)
+        runner._log_plan([], "no battery")
+        runner._log_plan([], "no battery")
+
+    assert [(r.levelname, r.getMessage()) for r in caplog.records] == [
+        ("WARNING", "Plan: Keine PV-Prognose"),
+        ("INFO", "Planning"),
+        ("INFO", "Plan no longer: Keine PV-Prognose"),
+        ("WARNING", "No plan: no battery"),
+    ]
