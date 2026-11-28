@@ -10,7 +10,8 @@ const EDGE = 80;
 /**
  * Searchable single choice (combobox) for long lists such as entities.
  *
- * options: [{value, label, detail?, hideValue?}]; fires "change" with detail {value}.
+ * options: [{value, label, detail?, hideValue?, group?}]; fires "change" with detail {value}.
+ * Options with a group are shown under its heading (pass them sorted by group).
  * An empty value is allowed when emptyLabel is set (e.g. "keine").
  * hideValues: the values are internal ids (devices), not shown below the label.
  */
@@ -52,7 +53,7 @@ class SunflowPicker extends LitElement {
     const words = this._query.toLowerCase().split(/\s+/).filter(Boolean);
     const all = this.emptyLabel !== null ? [{ value: "", label: this.emptyLabel }, ...this.options] : this.options;
     const found = all.filter((o) => {
-      const text = `${o.label} ${o.value} ${o.detail ?? ""}`.toLowerCase();
+      const text = `${o.label} ${o.value} ${o.detail ?? ""} ${o.group ?? ""}`.toLowerCase();
       return words.every((w) => text.includes(w));
     });
     return found.slice(0, MAX_RESULTS);
@@ -161,6 +162,9 @@ class SunflowPicker extends LitElement {
               ${matches.length
                 ? matches.map(
                     (o, i) => html`
+                      ${o.group && o.group !== matches[i - 1]?.group
+                        ? html`<li class="group" role="presentation">${o.group}</li>`
+                        : nothing}
                       <li
                         role="option"
                         id="${this._listId}-${i}"
@@ -198,6 +202,11 @@ class SunflowPicker extends LitElement {
     }
     input:focus { outline: 2px solid var(--sf-primary); outline-offset: 0; }
     :host([inline]) .list { position: static; margin-top: 4px; box-shadow: none; }
+    .list .group {
+      padding: 8px 12px 4px; font-size: 12px; font-weight: 600; color: var(--sf-muted); cursor: default;
+      text-transform: none; border-top: 1px solid var(--sf-border);
+    }
+    .list .group:first-child { border-top: 0; }
     .chevron { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--sf-muted); pointer-events: none; }
     .list {
       position: absolute; z-index: 10; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;

@@ -68,6 +68,21 @@ const ADVANCED_KEY = "sunflow.advanced";
 
 const REQUIRED_PARAMS = new Set(["capacity_wh", "tank_l"]);
 
+const DIRECT_CONNECTIONS = { modbus_tcp: "Modbus TCP", http: "HTTP" };
+
+/** Direct profiles grouped by kind of device and connection, e.g. "Wallboxen · Modbus TCP". */
+function directProfileOptions(profiles) {
+  const kind = (p) => (p.capabilities.includes("loadpoint") ? t("Wallboxen") : t("Wechselrichter und Speicher"));
+  const connection = (p) => (p.remote === "eebus" ? "EEBUS" : DIRECT_CONNECTIONS[p.type] ?? p.type);
+  return profiles
+    .map((p) => ({
+      value: p.profile,
+      label: [p.manufacturer, p.model].filter(Boolean).join(" ") || p.profile,
+      group: `${kind(p)} · ${connection(p)}`,
+    }))
+    .sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+}
+
 /** Category of a discovered device not taken over yet; a loadpoint measuring a temperature is a heater. */
 function deviceCategory(device, preview) {
   const caps = device.capabilities ?? [];
@@ -1593,7 +1608,7 @@ class SunflowApp extends LitElement {
     if (form === null) {
       return html`<section class="device compact">
         <div class="device-title">${t("Ohne Home-Assistant-Integration")}</div>
-        <p class="small muted help">${t("Manche Wechselrichter liest und steuert Sunflow selbst über das Netzwerk (Modbus TCP), z. B. Victron über das GX-Gerät.")}</p>
+        <p class="small muted help">${t("Geräte ohne passende Integration liest und steuert Sunflow selbst über das Netzwerk: Wechselrichter wie Victron (GX) und viele Wallboxen über Modbus TCP, EEBUS-Wallboxen über die App „Sunflow EEBUS“.")}</p>
         <div><button class="secondary" @click=${() => this._openDirect()}>${t("Gerät direkt anbinden …")}</button></div>
       </section>`;
     }
@@ -1607,7 +1622,7 @@ class SunflowApp extends LitElement {
           <label class="field">
             <span class="field-label">${t("Gerät")}</span>
             <sf-picker label=${t("Gerät")} hide-values empty-label=${t("bitte wählen …")} .value=${form.profile ?? ""}
-              .options=${profiles.map((p) => ({ value: p.profile, label: [p.manufacturer, p.model].filter(Boolean).join(" ") || p.profile }))}
+              .options=${directProfileOptions(profiles)}
               @change=${(e) => this._chooseDirectProfile(e.detail.value)}></sf-picker>
           </label>
           <label class="field">

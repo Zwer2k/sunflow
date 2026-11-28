@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.36
+
+- "Connect a device directly" groups the devices by kind and connection (e.g. "Wallboxes · Modbus TCP", "Wallboxes · EEBUS"); choice lists can show group headings, and the search also finds the group.
+
 ## 0.80.35
 
 - EEBUS wallboxes (Elli, Porsche, EVBox Livo, Kontron/Steca …) through the new optional App "Sunflow EEBUS": a Go service on eebus-go that runs in the host network (EEBUS finds devices by mDNS), so Sunflow itself stays in the normal App network. Pair the wallbox under Devices → Connect directly. Profile eebus/wallbox with the car's state of charge when the car reports it. Not verified on hardware yet.
