@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.30
+
+- Direct connection (Modbus TCP) for chargers: float32/float64 and 64-bit values, text registers, bit masks and named states (e.g. IEC 61851 A-F), coils, and a keepalive that writes a heartbeat or the last setpoint while Sunflow controls the device and stops when it hands it back.
+- Profile roles can name the entity domain, for integrations that use the same key on several platforms.
+
 ## 0.80.29
 
 - Log lines in the App log start with date and time, as in Home Assistant's own log; uvicorn's lines use the same format.

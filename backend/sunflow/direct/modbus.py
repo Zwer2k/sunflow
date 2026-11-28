@@ -8,6 +8,8 @@ from typing import Literal
 
 RegisterType = Literal["holding", "input"]
 READ_FUNCTIONS = {"holding": 3, "input": 4}
+READ_COILS = 1
+WRITE_COIL = 5
 WRITE_SINGLE = 6
 WRITE_MULTIPLE = 16
 MAX_READ = 125
@@ -52,6 +54,17 @@ class ModbusTcpClient:
         if size != 2 * count or len(pdu) < 2 + size:
             raise ModbusError(f"Unexpected response size {size} for {count} registers")
         return list(struct.unpack(f">{count}H", pdu[2 : 2 + size]))
+
+    async def read_coil(self, address: int) -> bool:
+        """Read one coil (a single bit)."""
+        pdu = await self._request(struct.pack(">BHH", READ_COILS, address, 1))
+        if pdu[1] < 1 or len(pdu) < 3:
+            raise ModbusError("Unexpected response size for a coil")
+        return bool(pdu[2] & 1)
+
+    async def write_coil(self, address: int, on: bool) -> None:
+        """Switch one coil."""
+        await self._request(struct.pack(">BHH", WRITE_COIL, address, 0xFF00 if on else 0))
 
     async def write(self, address: int, registers: list[int]) -> None:
         """Write registers; a single one with function 6, several with 16."""

@@ -4,7 +4,7 @@ from typing import Any, Protocol
 
 import aiohttp
 
-from .codec import decode, encode, words
+from .codec import decode, decode_text, encode, words
 from .modbus import ModbusError, ModbusTcpClient
 
 
@@ -15,8 +15,8 @@ class TransportError(Exception):
 class Transport(Protocol):
     """Reads profile points and runs write steps of one device."""
 
-    async def read(self, point: dict[str, Any]) -> float:
-        """Value of a point of the profile's connection."""
+    async def read(self, point: dict[str, Any]) -> float | str:
+        """Value of a point of the profile's connection (text for a text point or a mapped state)."""
 
     async def write(self, spec: dict[str, Any], value: Any) -> None:
         """Run a write step (its spec from the profile) with the resolved value."""
@@ -33,19 +33,30 @@ class ModbusTransport:
         self.client = ModbusTcpClient(host, port, unit_id)
         self._word_order = word_order
 
-    async def read(self, point: dict[str, Any]) -> float:
-        """Read a register value."""
-        encoding = point["encoding"]
+    async def read(self, point: dict[str, Any]) -> float | str:
+        """Read a register or coil; text, bit masks and state names as the point says."""
+        encoding = point.get("encoding", "uint16")
         try:
+            if point.get("type") == "coil":
+                return mapped(float(await self.client.read_coil(point["address"])), point)
+            if encoding == "string":
+                regs = await self.client.read(point["address"], point["length"], point.get("type", "holding"))
+                return state_name(decode_text(regs), point)
             regs = await self.client.read(point["address"], words(encoding), point.get("type", "holding"))
         except ModbusError as err:
             raise TransportError(str(err)) from err
-        return decode(regs, encoding, point.get("scale", 1.0), self._word_order)
+        raw = decode(regs, encoding, 1.0, self._word_order)
+        if "mask" in point or "shift" in point:
+            raw = float((int(raw) >> point.get("shift", 0)) & point.get("mask", -1))
+        return mapped(raw * point.get("scale", 1.0), point)
 
     async def write(self, spec: dict[str, Any], value: Any) -> None:
-        """Write a holding register."""
-        regs = encode(float(value), spec.get("encoding", "uint16"), spec.get("scale", 1.0), self._word_order)
+        """Write a holding register or a coil."""
         try:
+            if spec.get("type") == "coil":
+                await self.client.write_coil(spec["address"], bool(float(value)))
+                return
+            regs = encode(float(value), spec.get("encoding", "uint16"), spec.get("scale", 1.0), self._word_order)
             await self.client.write(spec["address"], regs)
         except ModbusError as err:
             raise TransportError(str(err)) from err
@@ -53,6 +64,23 @@ class ModbusTransport:
     async def close(self) -> None:
         """Close the TCP connection."""
         await self.client.close()
+
+
+def mapped(value: float, point: dict[str, Any]) -> float | str:
+    """A numeric status as its name ("states": {1: "B", ...}); unknown values stay numbers."""
+    states = point.get("states")
+    if not states:
+        return value
+    if value != int(value):
+        return value
+    # YAML keys may be numbers or text
+    return states.get(int(value), states.get(str(int(value)), value))
+
+
+def state_name(text: str, point: dict[str, Any]) -> str:
+    """A text status, renamed by the point's states (e.g. "B1" -> "B") or kept."""
+    states = point.get("states") or {}
+    return states.get(text, text)
 
 
 def json_value(data: Any, path: str) -> Any:

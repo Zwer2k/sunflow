@@ -125,6 +125,8 @@ BUDGET_MIN_WH = 5.0
 BUDGET_MAX_STEP = timedelta(minutes=5)
 # Phase switching of chargers: actions besides the charge actions
 PHASES_PREFIX = "phases_"
+# Actions that give a device back to its own logic: a direct device's keepalive stops
+HANDED_BACK = {"release"}
 PHASES_ONE, PHASES_THREE, PHASES_RESTORE = f"{PHASES_PREFIX}one", f"{PHASES_PREFIX}three", f"{PHASES_PREFIX}restore"
 MIN_PHASE_DELAY_MIN = 1.0
 MIN_PHASE_INTERVAL_MIN = 5.0
@@ -752,6 +754,7 @@ def device_access(
     steers_heat_pump = "heat_pump_control" in profile
 
     async def plan(action: str, runtime: dict[str, float]) -> tuple[list[PlannedCall], dict[str, dict[str, Any]]]:
+        planned[:] = [action]
         snapshot = await fetch_snapshot(client, hub)
         entities = device_entities(snapshot, device.ha_device_id)
         if action.startswith(HEAT_PUMP_PREFIX):
@@ -780,8 +783,14 @@ def device_access(
     def direct() -> DirectDevice | None:
         return hub.by_ha_device(device.ha_device_id) if hub else None
 
+    # The action the calls of the next run belong to: a direct device is kept alive until handed back
+    planned: list[str] = []
+
     async def run(calls: list[PlannedCall], states: dict[str, dict[str, Any]], force: bool = False) -> None:
         await execute(client, calls, states, guard, dry_run=False, direct=direct(), force=force)
+        # Switching phases happens while charging: it neither starts nor ends the control
+        if (target := direct()) is not None and planned and not planned[-1].startswith(PHASES_PREFIX):
+            target.held = planned[-1] not in HANDED_BACK
 
     def matches(call: PlannedCall, states: dict[str, dict[str, Any]]) -> bool:
         return current_matches(call, states, direct())

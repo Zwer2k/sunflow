@@ -45,11 +45,16 @@ class DirectDevice:
     profile: dict[str, Any]
     transport: Transport
     address: tuple[str, int | None, int | None]
-    values: dict[str, float | None] = field(default_factory=dict)
+    values: dict[str, float | str | None] = field(default_factory=dict)
     # Last value per write target, for write=if_differs (targets are not read back)
     values_written: dict[str, Any] = field(default_factory=dict)
     read_at: datetime | None = None
     error: str | None = None
+    # Sunflow controls the device: its keepalive runs (a charger falls back to its own safe mode without)
+    held: bool = False
+    keepalive_at: datetime | None = None
+    # Last register write per address (step spec, value), for the keepalive to repeat
+    last_writes: dict[int, tuple[dict[str, Any], Any]] = field(default_factory=dict)
 
     @property
     def ha_device_id(self) -> str:
@@ -84,6 +89,29 @@ class DirectDevice:
     async def write(self, spec: dict[str, Any], value: Any) -> None:
         """Run a write step of the profile."""
         await self.transport.write(spec, value)
+        if "address" in spec:
+            self.last_writes[spec["address"]] = (spec, value)
+
+    async def keep_alive(self, now: datetime) -> None:
+        """While Sunflow controls the device: its heartbeat writes and the last setpoints again.
+
+        Many chargers fall back to a safe current when nobody writes for a while; that is
+        what should happen when Sunflow stops, so nothing is written once it hands back.
+        """
+        keepalive = self.profile["connection"].get("keepalive")
+        if not keepalive or not self.held:
+            return
+        if self.keepalive_at is not None and now - self.keepalive_at < parse_duration(keepalive["every"], DEFAULT_POLL):
+            return
+        self.keepalive_at = now
+        steps = [(step, step["value"]) for step in keepalive.get("steps", [])]
+        # The last value Sunflow wrote, e.g. a current only valid for a short time
+        steps += [self.last_writes[address] for address in keepalive.get("rewrite", []) if address in self.last_writes]
+        try:
+            for step, value in steps:
+                await self.transport.write(step, value)
+        except TransportError as err:
+            _LOGGER.warning("Keepalive of %s failed: %s", self.name, err)
 
     def entities(self) -> list[dict[str, Any]]:
         """Registry entries of the pseudo entities, one per point."""
@@ -116,7 +144,7 @@ class DirectDevice:
                 attributes["device_class"] = device_class
             result[self.entity_id(key)] = {
                 "entity_id": self.entity_id(key),
-                "state": "unknown" if value is None else str(float(round(value, 6))),
+                "state": "unknown" if value is None else value if isinstance(value, str) else str(float(round(value, 6))),
                 "attributes": attributes,
                 "last_changed": changed,
                 "last_updated": changed,
@@ -170,9 +198,11 @@ class DirectHub:
         return next((d for d in self.devices.values() if d.ha_device_id == ha_device_id), None)
 
     async def poll(self) -> None:
-        """Read all devices once."""
+        """Read all devices once, and keep the controlled ones alive."""
+        now = datetime.now(UTC)
         for device in list(self.devices.values()):
             await device.poll()
+            await device.keep_alive(now)
 
     def start(self, source: Callable[[], tuple[Any, Any]]) -> None:
         """Poll in the background; source returns (config, profile library), followed each cycle."""

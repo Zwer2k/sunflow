@@ -8,12 +8,15 @@ ILLEGAL_ADDRESS = 2
 
 
 class DummyInverter:
-    """Answers reads (3, 4) and writes (6, 16) from its register maps; records writes."""
+    """Answers reads (1, 3, 4) and writes (5, 6, 16) from its register and coil maps; records writes."""
 
-    def __init__(self, holding: dict[int, int] | None = None, inputs: dict[int, int] | None = None) -> None:
-        """Initialize with register values; unknown addresses answer with an exception."""
+    def __init__(
+        self, holding: dict[int, int] | None = None, inputs: dict[int, int] | None = None, coils: dict[int, bool] | None = None
+    ) -> None:
+        """Initialize with register and coil values; unknown addresses answer with an exception."""
         self.holding = dict(holding or {})
         self.inputs = dict(inputs or {})
+        self.coils = dict(coils or {})
         self.writes: list[tuple[int, list[int]]] = []
         self.port = 0
         self._server: asyncio.Server | None = None
@@ -44,6 +47,16 @@ class DummyInverter:
 
     def _answer(self, pdu: bytes) -> bytes:
         function = pdu[0]
+        if function == 1:
+            address, _ = struct.unpack(">HH", pdu[1:5])
+            if address not in self.coils:
+                return bytes([function | 0x80, ILLEGAL_ADDRESS])
+            return bytes([function, 1, int(self.coils[address])])
+        if function == 5:
+            address, value = struct.unpack(">HH", pdu[1:5])
+            self.writes.append((address, [value]))
+            self.coils[address] = value == 0xFF00
+            return pdu[:5]
         if function in (3, 4):
             address, count = struct.unpack(">HH", pdu[1:5])
             table = self.holding if function == 3 else self.inputs

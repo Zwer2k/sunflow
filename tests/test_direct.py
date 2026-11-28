@@ -1,5 +1,6 @@
 """Tests for devices Sunflow talks to directly (Modbus TCP), against a dummy inverter."""
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +13,9 @@ from sunflow.devices.executor import EepromGuard, ExecutorError, execute, plan_s
 from sunflow.devices.profiles import ProfileLibrary, load_schema
 from sunflow.devices.resolver import bind_roles, device_entities
 from sunflow.direct.codec import decode, encode
-from sunflow.direct.hub import DirectHub, direct_device_id
+from sunflow.direct.hub import DirectDevice, DirectHub, direct_device_id
 from sunflow.direct.modbus import ModbusError, ModbusTcpClient
+from sunflow.direct.transports import ModbusTransport
 
 SCHEMA_DIR = Path(__file__).parent.parent / "schema"
 
@@ -74,6 +76,61 @@ def test_codec_round_trip(value: float, encoding: str, scale: float, order: str,
     """Values are encoded to registers and decoded back."""
     assert encode(value, encoding, scale, order) == registers
     assert decode(registers, encoding, scale, order) == pytest.approx(value)
+
+
+@pytest.mark.parametrize(
+    ("value", "encoding", "order", "registers"),
+    [
+        # Alfen's current setpoint and energy, ABB's 64-bit counters
+        pytest.param(16.0, "float32", "big", [0x4180, 0x0000], id="float32"),
+        pytest.param(16.0, "float32", "little", [0x0000, 0x4180], id="float32-little"),
+        pytest.param(12345.5, "float64", "big", [0x40C8, 0x1CC0, 0x0000, 0x0000], id="float64"),
+        pytest.param(5_000_000_000, "uint64", "big", [0x0000, 0x0001, 0x2A05, 0xF200], id="uint64"),
+    ],
+)
+def test_codec_wide_and_float_values(value: float, encoding: str, order: str, registers: list[int]) -> None:
+    """Floats and 64-bit values as chargers use them."""
+    assert encode(value, encoding, 1.0, order) == registers
+    assert decode(registers, encoding, 1.0, order) == pytest.approx(value)
+
+
+@pytest.mark.parametrize(
+    ("point", "expected"),
+    [
+        # ABB: status in the second byte, low 7 bits; 4 is charging (IEC 61851 C)
+        pytest.param({"address": 300, "encoding": "uint16", "shift": 8, "mask": 127, "states": {0: "A", 4: "C"}}, "C", id="byte-and-state"),
+        # KEBA: plugged is bit 2 of the cable state
+        pytest.param({"address": 301, "encoding": "uint16", "shift": 2, "mask": 1}, 1.0, id="bit"),
+        # Alfen: the IEC 61851 state as text, renamed to its letter
+        pytest.param({"address": 302, "encoding": "string", "length": 2, "states": {"C2": "C"}}, "C", id="text"),
+        # Phoenix Contact: enabled is a coil
+        pytest.param({"address": 400, "type": "coil", "states": {1: "on", 0: "off"}}, "on", id="coil"),
+    ],
+)
+async def test_points_of_chargers(point: dict[str, Any], expected: float | str) -> None:
+    """Status registers are read as chargers encode them: bits, bytes, text and coils."""
+    async with DummyInverter({300: 0x0400 | 0x84, 301: 0b0111, 302: 0x4332, 303: 0x0000}, coils={400: True}) as dummy:
+        transport = ModbusTransport("127.0.0.1", dummy.port, 1)
+        value = await transport.read(point)
+        await transport.close()
+    assert value == expected
+
+
+async def test_keepalive_only_while_controlled() -> None:
+    """The heartbeat and the last setpoint are written again while Sunflow controls the charger, not after."""
+    profile = {**PROFILE, "connection": {**PROFILE["connection"], "keepalive": {"every": "10s", "steps": [{"address": 202, "value": 1}], "rewrite": [201]}}}
+    async with DummyInverter(holding()) as dummy:
+        device = DirectDevice(id="d", name="Box", profile=profile, transport=ModbusTransport("127.0.0.1", dummy.port, 1), address=("127.0.0.1", dummy.port, 1))
+        await device.write({"address": 201, "encoding": "uint32"}, 1600)
+        start = datetime(2026, 11, 28, 12, tzinfo=UTC)
+        await device.keep_alive(start)
+        device.held = True
+        await device.keep_alive(start)
+        await device.keep_alive(start + timedelta(seconds=5))
+        device.held = False
+        await device.keep_alive(start + timedelta(seconds=20))
+        await device.transport.close()
+    assert dummy.writes == [(201, [0, 1600]), (202, [1]), (201, [0, 1600])]
 
 
 def test_encode_clamps_to_range() -> None:

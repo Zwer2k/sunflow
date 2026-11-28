@@ -72,6 +72,9 @@ def bind_roles(
     bindings: dict[str, str | None] = {}
     for role, spec in profile["roles"].items():
         matches = [e for e in entities if entity_has_key(e, spec["key"])]
+        # The same key as sensor and switch (e.g. Zaptec's operation mode): the role names its domain
+        if domain := spec.get("domain"):
+            matches = [e for e in matches if e["entity_id"].startswith(f"{domain}.")]
         # Prefer the shortest unique_id: "sofar_battery_power_total" over "sofar_battery_1_battery_power_total"
         matches.sort(key=lambda e: len(e.get("unique_id") or ""))
         bindings[role] = matches[0]["entity_id"] if matches else None
