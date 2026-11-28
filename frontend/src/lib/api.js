@@ -161,6 +161,9 @@ export const api = {
   setIntegrationSettings: (body) => request("PUT", "/config/integration", body),
   directStatus: () => request("GET", "/direct/status"),
   addDirect: (body) => request("POST", "/config/devices/direct", body),
+  eebusStatus: (host, port) => request("GET", `/eebus/status?${new URLSearchParams({ host, ...(port ? { port } : {}) })}`),
+  eebusTrust: (ski, host, port) =>
+    request("POST", `/eebus/trust/${encodeURIComponent(ski)}?${new URLSearchParams({ host, ...(port ? { port } : {}) })}`),
   updateManual: (configDeviceId, body) =>
     request("PUT", `/config/devices/manual/${encodeURIComponent(configDeviceId)}`, body),
   measurements: () => request("GET", "/config/measurements"),

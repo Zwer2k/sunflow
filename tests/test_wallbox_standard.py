@@ -194,3 +194,19 @@ def test_direct_wallbox_roles_and_writes(library: ProfileLibrary, profile_id: st
     for steps in sections:
         for call in plan_steps(steps, params | VARIABLES, entities, "volatile"):
             assert (call.domain, isinstance(call.data["value"], int | float)) == ("direct", True), (profile_id, call)
+
+
+def test_eebus_wallbox_through_the_eebus_app(library: ProfileLibrary) -> None:
+    """The EEBUS wallbox reads and writes the EEBUS App's API for its SKI."""
+    profile = library.profiles["eebus/wallbox"]
+    entities = [{"entity_id": f"sensor.d_{key}", "unique_id": f"d_{key}", "device_id": "dev"} for key in profile["connection"]["points"]]
+    params = {name: spec["default"] for name, spec in profile["parameters"].items() if "default" in spec}
+
+    calls = {action: plan_steps(steps, params | VARIABLES, entities, "volatile") for action, steps in profile["charge_control"].items()}
+
+    assert [r for r, spec in profile["roles"].items() if not spec.get("optional") and bind_roles(profile, entities)[r] is None] == []
+    assert {a: [(c.data["spec"].get("method", "POST"), c.data["spec"]["path"], c.data["value"]) for c in cs] for a, cs in calls.items()} == {
+        "charge": [("POST", "/devices/{remote}/limit", {"current_a": 10})],
+        "stop": [("POST", "/devices/{remote}/limit", {"current_a": 0})],
+        "release": [("DELETE", "/devices/{remote}/limit", None)],
+    }

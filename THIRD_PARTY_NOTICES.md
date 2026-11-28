@@ -41,6 +41,15 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+### Sunflow EEBUS App (`eebus/`, `sunflow_eebus/`)
+
+The EEBUS service is a separate program built on these Go modules, linked into it unchanged:
+enbility's eebus-go, ship-go and spine-go (MIT License, Copyright (c) 2022 Andreas Linde &
+Timo Vogel) and their dependencies (MIT, BSD and Apache-2.0 licences), plus the Go standard
+library (BSD-3-Clause). The full licence texts of every linked module are in
+`eebus/THIRD_PARTY_LICENSES.txt` (regenerate with `python3 tools/eebus_licences.py` after
+changing `eebus/go.mod`); the App image ships them.
+
 ## Facts taken from other projects
 
 No code of these projects is included. Profiles name facts about devices and integrations

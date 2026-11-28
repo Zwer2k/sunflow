@@ -165,7 +165,7 @@ const PHASE_NAMES = ["L1", "L2", "L3"];
 const MANUAL_CAPABILITIES = {
   meter: ["appliance"], heat_pump: ["appliance", "heat_pump"], grid_meter: ["grid_meter"], load_meter: ["load_meter"],
 };
-const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "" };
+const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "", remote: "" };
 
 const EMPTY_MANUAL = {
   name: "", type: "switch", kind: "load", switch_entity: "", level_entity: "", current_entity: "", power_entity: "",
@@ -265,6 +265,7 @@ class SunflowApp extends LitElement {
     _manual: { state: true },
     _direct: { state: true },
     _directProfiles: { state: true },
+    _eebus: { state: true },
     _link: { state: true },
     // Integrations not used by Sunflow are hidden until asked for
     _showUnusedIntegrations: { state: true },
@@ -1607,7 +1608,7 @@ class SunflowApp extends LitElement {
             <span class="field-label">${t("Gerät")}</span>
             <sf-picker label=${t("Gerät")} hide-values empty-label=${t("bitte wählen …")} .value=${form.profile ?? ""}
               .options=${profiles.map((p) => ({ value: p.profile, label: [p.manufacturer, p.model].filter(Boolean).join(" ") || p.profile }))}
-              @change=${(e) => set("profile", e.detail.value)}></sf-picker>
+              @change=${(e) => this._chooseDirectProfile(e.detail.value)}></sf-picker>
           </label>
           <label class="field">
             <span class="field-label">${t("Name")}</span>
@@ -1631,9 +1632,10 @@ class SunflowApp extends LitElement {
               </label>`
             : nothing}
         </div>
+        ${chosen?.remote === "eebus" ? this._renderEebusPairing(form) : nothing}
         <p class="small muted help">${t("Sunflow liest das Gerät sofort einmal; danach erscheint es unter „Geräte“ mit seinen Live-Werten. Gesteuert wird es erst, wenn du es unter „Steuerung“ freigibst.")}</p>
         <div class="actions">
-          <button class="primary" ?disabled=${!form.profile || !form.host.trim() || this._busy.has("direct")}
+          <button class="primary" ?disabled=${!form.profile || !form.host.trim() || (chosen?.remote && !form.remote) || this._busy.has("direct")}
             @click=${() => this._addDirect()}>${t("Anbinden")}</button>
           <button class="secondary" @click=${() => (this._direct = null)}>${t("Abbrechen")}</button>
         </div>
@@ -1652,13 +1654,58 @@ class SunflowApp extends LitElement {
     }
   }
 
+  /** A profile with a fixed gateway (the Sunflow EEBUS App) brings its address along. */
+  _chooseDirectProfile(profile) {
+    const chosen = (this._directProfiles ?? []).find((p) => p.profile === profile);
+    this._direct = { ...this._direct, profile, host: chosen?.host ?? this._direct.host, remote: "" };
+    this._eebus = null;
+    if (chosen?.remote === "eebus") this._loadEebus();
+  }
+
+  async _loadEebus() {
+    const form = this._direct;
+    try {
+      this._eebus = await api.eebusStatus(form.host.trim(), form.port);
+    } catch (err) {
+      this._eebus = { error: err.message };
+    }
+  }
+
+  /** EEBUS: the App's own SKI (entered at the wallbox) and the wallboxes it found, to pair one. */
+  _renderEebusPairing(form) {
+    const eebus = this._eebus;
+    if (!eebus) return html`<p class="small muted">${t("Suche EEBUS-Geräte …")}</p>`;
+    if (eebus.error) {
+      return html`<div class="alert warn">⚠ ${t("Die App „Sunflow EEBUS“ ist nicht erreichbar: {error}. Sie muss installiert sein und laufen.", { error: eebus.error })}</div>
+        <div><button class="secondary" @click=${() => this._loadEebus()}>${t("Erneut suchen")}</button></div>`;
+    }
+    const options = eebus.services.map((s) => ({
+      value: s.ski,
+      label: [s.brand, s.model].filter(Boolean).join(" ") || s.name || s.ski,
+      detail: [s.ski, s.trusted ? t("vertraut") : null, s.connected ? t("verbunden") : null].filter(Boolean).join(" · "),
+    }));
+    return html`
+      <p class="small muted help">${t("Trag diese SKI von Sunflow in der App der Wallbox ein (bei manchen heißt das „Energiemanager koppeln“), dann wähle die Wallbox:")}</p>
+      <p><code>${eebus.ski}</code></p>
+      <div class="field wide">
+        <span class="field-label">${t("EEBUS-Wallbox")}</span>
+        <sf-picker label=${t("EEBUS-Wallbox")} hide-values empty-label=${options.length ? t("bitte wählen …") : t("noch keine gefunden")}
+          .value=${form.remote} .options=${options} @change=${(e) => (this._direct = { ...this._direct, remote: e.detail.value })}></sf-picker>
+      </div>
+      <div><button class="secondary" @click=${() => this._loadEebus()}>${t("Erneut suchen")}</button></div>
+    `;
+  }
+
   async _addDirect() {
     const form = this._direct;
     const number = (text) => (String(text).trim() === "" ? null : Number(text));
     this._busy = new Set([...this._busy, "direct"]);
     try {
+      // The EEBUS App connects to the wallbox only once it trusts it
+      if (form.remote) await api.eebusTrust(form.remote, form.host.trim(), form.port);
       const saved = await api.addDirect({
         profile: form.profile, name: form.name, host: form.host.trim(), port: number(form.port), unit_id: number(form.unit_id),
+        remote: form.remote || null,
       });
       this._configDevices = { ...this._configDevices, [saved.ha_device_id]: saved };
       await this._loadDiscovery();

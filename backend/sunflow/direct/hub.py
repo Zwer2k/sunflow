@@ -44,7 +44,7 @@ class DirectDevice:
     name: str
     profile: dict[str, Any]
     transport: Transport
-    address: tuple[str, int | None, int | None]
+    address: tuple[str, int | None, int | None, str | None]
     values: dict[str, float | str | None] = field(default_factory=dict)
     # Last value per write target, for write=if_differs (targets are not read back)
     values_written: dict[str, Any] = field(default_factory=dict)
@@ -165,7 +165,7 @@ class DirectHub:
         wanted = {}
         for config, profile in devices:
             connection = config.connection
-            address = (connection.host, connection.port, connection.unit_id)
+            address = (connection.host, connection.port, connection.unit_id, connection.remote)
             current = self.devices.get(config.id)
             if current is not None and current.profile is profile and current.address == address:
                 current.name = config.name

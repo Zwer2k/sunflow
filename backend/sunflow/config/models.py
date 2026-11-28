@@ -194,6 +194,8 @@ class Connection(BaseModel):
     port: int | None = Field(default=None, ge=1, le=65535)
     # None: the profile's default unit id
     unit_id: int | None = Field(default=None, ge=0, le=255)
+    # The device behind a gateway, for profiles with a remote (e.g. an EEBUS wallbox's SKI)
+    remote: str | None = Field(default=None, max_length=64, pattern=r"^[0-9a-fA-F]*$")
 
 
 HeatPumpState = Literal["block", "normal", "boost", "forced"]

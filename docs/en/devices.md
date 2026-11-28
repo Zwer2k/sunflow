@@ -149,6 +149,18 @@ falls back to its safe current.
 | cFos Power Brain Wallbox (direct) | `modbus/cfos_powerbrain` | Charge/stop, current every minute (0.1 A) | 1 ↔ 3 phases by Sunflow | Port 4701 | – | – |
 | Amperfied connect.home / connect.solar | `modbus/amperfied_connect` | Current every minute (0.1 A), standby off | – | – | – | – |
 
+### Over EEBUS
+
+EEBUS wallboxes (Elli Charger Connect/Pro, Porsche, EVBox Livo, Kontron/Steca and others) are
+controlled through the separate App "Sunflow EEBUS". Only that App runs in the host network,
+because EEBUS finds devices by mDNS; Sunflow itself stays in the normal App network. Install it,
+enter its SKI in the wallbox's app, then choose "EEBUS Wallbox" under Devices → Connect directly
+and pair the wallbox found.
+
+| Device | Profile | Control | Phase switching | Requirements | Measuring verified | Control verified |
+|---|---|---|---|---|---|---|
+| EEBUS wallbox | `eebus/wallbox` | Current per phase every minute (OPEV), 0 A pauses; the car's state of charge when it reports it | – | App "Sunflow EEBUS" | – | – |
+
 ## Heat pump
 
 Heat pumps have their own area **Heat pump** in the settings (profile `generic/heat_pump`): measuring,

@@ -91,11 +91,15 @@ def json_value(data: Any, path: str) -> Any:
 
 
 class HttpTransport:
-    """Points are JSON values of GET requests; steps are requests with a templated body."""
+    """Points are JSON values of GET requests; steps are requests with a templated body.
 
-    def __init__(self, host: str, port: int) -> None:
+    remote: the device behind a gateway (e.g. an EEBUS wallbox's SKI), put in for "{remote}" in paths.
+    """
+
+    def __init__(self, host: str, port: int, remote: str | None = None) -> None:
         """Initialize the transport."""
         self.base = f"http://{host}:{port}"
+        self._remote = remote or ""
         self._session: aiohttp.ClientSession | None = None
         # One poll reads several points of the same document
         self._documents: dict[str, Any] = {}
@@ -109,9 +113,12 @@ class HttpTransport:
             self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5))
         return self._session
 
-    async def read(self, point: dict[str, Any]) -> float:
-        """Read a JSON value."""
-        path = point["path"]
+    def _path(self, path: str) -> str:
+        return path.replace("{remote}", self._remote)
+
+    async def read(self, point: dict[str, Any]) -> float | str | None:
+        """Read a JSON value: a number, a named state (true/false count as 1/0), None when null."""
+        path = self._path(point["path"])
         try:
             if path not in self._documents:
                 session = await self._session_()
@@ -119,18 +126,24 @@ class HttpTransport:
                     response.raise_for_status()
                     self._documents[path] = await response.json(content_type=None)
             value = json_value(self._documents[path], point.get("json", ""))
-            return float(value) * point.get("scale", 1.0)
+            if value is None:
+                # Not known right now (e.g. no car plugged in): unknown, not an error
+                return None
+            if isinstance(value, str):
+                return state_name(value, point)
+            return mapped(float(value) * point.get("scale", 1.0), point)
         except (aiohttp.ClientError, TimeoutError, KeyError, IndexError, TypeError, ValueError) as err:
             raise TransportError(f"{path}: {err}") from err
 
     async def write(self, spec: dict[str, Any], value: Any) -> None:
         """Send the request; value is the resolved body."""
         session = await self._session_()
+        path = self._path(spec["path"])
         try:
-            async with session.request(spec.get("method", "POST"), self.base + spec["path"], json=value) as response:
+            async with session.request(spec.get("method", "POST"), self.base + path, json=value) as response:
                 response.raise_for_status()
         except (aiohttp.ClientError, TimeoutError) as err:
-            raise TransportError(f"{spec['path']}: {err}") from err
+            raise TransportError(f"{path}: {err}") from err
 
     async def close(self) -> None:
         """Close the HTTP session."""
@@ -139,12 +152,14 @@ class HttpTransport:
             self._session = None
 
 
-def make_transport(connection: dict[str, Any], host: str, port: int | None, unit_id: int | None) -> Transport:
+def make_transport(
+    connection: dict[str, Any], host: str, port: int | None, unit_id: int | None, remote: str | None = None
+) -> Transport:
     """Transport for a profile connection and the device's address (port and unit id default to the profile's)."""
     match connection["type"]:
         case "modbus_tcp":
             unit = unit_id if unit_id is not None else connection.get("unit_id", 1)
             return ModbusTransport(host, port or connection.get("port", 502), unit, connection.get("word_order", "big"))
         case "http":
-            return HttpTransport(host, port or connection.get("port", 80))
+            return HttpTransport(host, port or connection.get("port", 80), remote)
     raise ValueError(f"Unknown connection type {connection['type']}")

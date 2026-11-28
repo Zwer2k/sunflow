@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.35
+
+- EEBUS wallboxes (Elli, Porsche, EVBox Livo, Kontron/Steca …) through the new optional App "Sunflow EEBUS": a Go service on eebus-go that runs in the host network (EEBUS finds devices by mDNS), so Sunflow itself stays in the normal App network. Pair the wallbox under Devices → Connect directly. Profile eebus/wallbox with the car's state of charge when the car reports it. Not verified on hardware yet.
+- Direct devices behind a gateway are addressed per device (remote, e.g. an EEBUS SKI); HTTP points name states and treat null as unknown; HTTP steps may DELETE.
+
 ## 0.80.34
 
 - THIRD_PARTY_NOTICES.md with the full licence of the bundled Lit library and the sources of device facts (evcc, Home Assistant integrations); the App image ships it.

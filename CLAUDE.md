@@ -69,6 +69,14 @@ Sunflow is Apache-2.0. Taking over the work of others must not break its licence
   All test parameters are type-annotated. Comments explain why, not what.
 - New profiles get a dummy in the profile tests and are added to `tests/test_profiles.py`.
 
+## EEBUS App (Go)
+
+- `eebus/` is the Go service of the App `sunflow_eebus/` (eebus-go); Sunflow itself has no Go.
+  Check with `go vet ./...`, `go test ./...` and `gofmt -l .` in `eebus/`.
+- After changing `eebus/go.mod` run `python3 tools/eebus_licences.py`; bump the version in
+  `sunflow_eebus/config.yaml` and add a section to `sunflow_eebus/CHANGELOG.md` for every change
+  of `eebus/`, so the Supervisor rebuilds the App.
+
 ## Versions and commits
 
 - Every change bumps the version in `sunflow_app_edge/config.yaml`, `backend/pyproject.toml`,

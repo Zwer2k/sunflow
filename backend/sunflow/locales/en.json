@@ -159,6 +159,8 @@
   "Octopus liefert gerade keine Preise je Viertelstunde für den dynamischen Tarif – geplant wird nur auf Eigenverbrauch.": "Octopus currently gives no quarter-hour prices for the dynamic tariff – planning for self-consumption only.",
   "Direktvermarktung ohne Börsenpreis – geplant wird mit der eingetragenen Vergütung als festem Wert. Börsenpreis unter Einstellungen → Tarif & Prognose wählen.": "Direct marketing without an exchange price – planning with the entered rate as fixed. Choose an exchange price under Settings → Tariff & forecast.",
   "Bitte die Leistung des Hausverbrauchs wählen": "Please choose the power of the house consumption",
+  "Die SKI hat 40 Hexadezimalzeichen": "The SKI has 40 hexadecimal digits",
+  "Die App „Sunflow EEBUS“ antwortet nicht ({error})": "The App \"Sunflow EEBUS\" does not answer ({error})",
   "Der Strompreis ist ein reiner Börsenpreis – Netzentgelt, Umlagen und Steuern fehlen. Aufschlag und Mehrwertsteuer unter Einstellungen → Tarif & Prognose eintragen.": "The electricity price is a pure exchange price – grid fees, levies and taxes are missing. Enter the surcharge and VAT under Settings → Tariff & forecast.",
   "Kein Bezugspreis – geplant wird nur auf Eigenverbrauch.": "No import price – planning for self-consumption only.",
   "PV-Prognose „{plane}“ reicht nur bis {time} – danach fehlt ihr Ertrag im Plan (die PV-Prognose ist dort eher zu niedrig).": "PV forecast \"{plane}\" only reaches until {time} – after that its yield is missing from the plan (the PV forecast is rather too low there).",

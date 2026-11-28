@@ -1,0 +1,52 @@
+# EEBUS wallboxes (Elli Charger Connect/Pro, Porsche, EVBox Livo, Kontron/Steca and others) through
+# the Sunflow EEBUS App, which runs eebus-go in the host network. Install that App, enter its SKI
+# in the wallbox's app and trust the wallbox in Sunflow. The App reports the car with the EEBUS
+# use cases EV commissioning, measurement and state of charge, and takes the current limit per
+# phase (overload protection, OPEV); 0 A pauses, deleting the limit gives the wallbox back.
+# Without a connection to the App the wallbox falls back to its own logic.
+# Not verified on hardware yet.
+profile: eebus/wallbox
+version: 1
+
+connection:
+  type: http
+  host: 172.30.32.1
+  port: 4713
+  remote: eebus
+  manufacturer: EEBUS
+  model: Wallbox (Sunflow EEBUS)
+  points:
+    car_connected: {path: "/devices/{remote}", json: ev_connected, states: {1: "on", 0: "off"}}
+    charging: {path: "/devices/{remote}", json: charging, states: {1: "on", 0: "off"}}
+    power: {path: "/devices/{remote}", json: power_w, unit: W, device_class: power}
+    energy: {path: "/devices/{remote}", json: energy_wh, unit: Wh, device_class: energy}
+    current_limit: {path: "/devices/{remote}", json: limit_a, unit: A}
+    max_current: {path: "/devices/{remote}", json: max_current_a, unit: A}
+    soc: {path: "/devices/{remote}", json: soc_pct, unit: "%", device_class: battery}
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: power, unit: W}
+  connected: {key: car_connected, on_states: ["on"]}
+  charging: {key: charging, optional: true}
+  charged_energy: {key: energy, unit: Wh, optional: true}
+  allowed_current: {key: current_limit, unit: A, optional: true}
+  # EEBUS reports the car's state of charge when the car tells the wallbox
+  vehicle_soc: {key: soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - http: {path: "/devices/{remote}/limit", body: {current_a: "{{ current_a }}"}, write: if_differs}
+  stop:
+    - http: {path: "/devices/{remote}/limit", body: {current_a: 0}, write: if_differs}
+  release:
+    - http: {path: "/devices/{remote}/limit", method: DELETE}

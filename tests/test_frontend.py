@@ -749,7 +749,7 @@ def test_add_direct_device(tmp_path: Path) -> None:
     device = response.json()
     assert device["ha_device_id"] == f"direct_{device['id']}"
     assert device["name"] == "GX (ESS)"
-    assert device["connection"] == {"host": "127.0.0.1", "port": 1, "unit_id": None}
+    assert device["connection"] == {"host": "127.0.0.1", "port": 1, "unit_id": None, "remote": None}
     status = client.get("/api/v1/direct/status").json()
     assert "battery_soc" in status[device["id"]]["error"]
 

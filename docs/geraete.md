@@ -151,6 +151,18 @@ danach fällt die Wallbox auf ihren sicheren Strom zurück.
 | cFos Power Brain Wallbox (direkt) | `modbus/cfos_powerbrain` | Laden/Stopp, Ladestrom minütlich (0,1 A) | 1 ↔ 3 Phasen durch Sunflow | Port 4701 | – | – |
 | Amperfied connect.home / connect.solar | `modbus/amperfied_connect` | Ladestrom minütlich (0,1 A), Standby aus | – | – | – | – |
 
+### Über EEBUS
+
+EEBUS-Wallboxen (Elli Charger Connect/Pro, Porsche, EVBox Livo, Kontron/Steca und andere) steuert
+Sunflow über die eigene App „Sunflow EEBUS“. Sie läuft als einzige im Host-Netzwerk, weil EEBUS
+Geräte per mDNS findet; Sunflow selbst bleibt im normalen App-Netz. Installieren, die angezeigte
+SKI der App in der App der Wallbox eintragen, dann unter Geräte → Direkt anbinden „EEBUS Wallbox“
+wählen und die gefundene Wallbox koppeln.
+
+| Gerät | Profil | Steuerung | Phasenumschaltung | Voraussetzungen | Messen geprüft | Steuern geprüft |
+|---|---|---|---|---|---|---|
+| EEBUS-Wallbox | `eebus/wallbox` | Ladestrom je Phase minütlich (OPEV), 0 A pausiert; Ladestand des Autos, wenn es ihn meldet | – | App „Sunflow EEBUS“ | – | – |
+
 ## Wärmepumpe
 
 Wärmepumpen haben unter Einstellungen einen eigenen Bereich **Wärmepumpe** (Profil

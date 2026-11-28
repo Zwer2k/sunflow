@@ -120,7 +120,7 @@ async def test_keepalive_only_while_controlled() -> None:
     """The heartbeat and the last setpoint are written again while Sunflow controls the charger, not after."""
     profile = {**PROFILE, "connection": {**PROFILE["connection"], "keepalive": {"every": "10s", "steps": [{"address": 202, "value": 1}], "rewrite": [201]}}}
     async with DummyInverter(holding()) as dummy:
-        device = DirectDevice(id="d", name="Box", profile=profile, transport=ModbusTransport("127.0.0.1", dummy.port, 1), address=("127.0.0.1", dummy.port, 1))
+        device = DirectDevice(id="d", name="Box", profile=profile, transport=ModbusTransport("127.0.0.1", dummy.port, 1), address=("127.0.0.1", dummy.port, 1, None))
         await device.write({"address": 201, "encoding": "uint32"}, 1600)
         start = datetime(2026, 11, 28, 12, tzinfo=UTC)
         await device.keep_alive(start)
@@ -248,3 +248,38 @@ async def test_direct_devices_appear_in_discovery() -> None:
     assert integration.supported
     (found,) = integration.devices
     assert (found.device_id, found.profile, found.name) == (device.ha_device_id, PROFILE["profile"], "Dummy WR")
+
+
+async def test_http_points_of_a_device_behind_a_gateway() -> None:
+    """The EEBUS App's API: the SKI goes into the path, true/false become states, null is unknown."""
+    from aiohttp import web
+    from aiohttp.test_utils import TestServer
+
+    from sunflow.direct.transports import HttpTransport
+
+    ski = "0123456789abcdef0123456789abcdef01234567"
+    seen: list[tuple[str, str, Any]] = []
+
+    async def device(request: web.Request) -> web.Response:
+        return web.json_response({"ev_connected": True, "power_w": 6900, "soc_pct": None})
+
+    async def limit(request: web.Request) -> web.Response:
+        seen.append((request.method, request.path, await request.json() if request.can_read_body else None))
+        return web.json_response({"result": "ok"})
+
+    app = web.Application()
+    app.router.add_get(f"/devices/{ski}", device)
+    app.router.add_route("*", f"/devices/{ski}/limit", limit)
+    async with TestServer(app) as server:
+        transport = HttpTransport("127.0.0.1", server.port, ski)
+        values = [
+            await transport.read({"path": "/devices/{remote}", "json": "ev_connected", "states": {1: "on", 0: "off"}}),
+            await transport.read({"path": "/devices/{remote}", "json": "power_w"}),
+            await transport.read({"path": "/devices/{remote}", "json": "soc_pct"}),
+        ]
+        await transport.write({"path": "/devices/{remote}/limit"}, {"current_a": 10})
+        await transport.write({"path": "/devices/{remote}/limit", "method": "DELETE"}, None)
+        await transport.close()
+
+    assert values == ["on", 6900.0, None]
+    assert seen == [("POST", f"/devices/{ski}/limit", {"current_a": 10}), ("DELETE", f"/devices/{ski}/limit", None)]
