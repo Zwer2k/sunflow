@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.29
+
+- Log lines in the App log start with date and time, as in Home Assistant's own log; uvicorn's lines use the same format.
+
 ## 0.80.28
 
 - The App log shows what Sunflow makes do without, once when it fails and once when it works again: weather forecast, learning of consumers, hot water, cars' SoC and departures, price history, exchange price, outdoor temperature for the soiling and snow checks, and directly connected devices that cannot be read.
