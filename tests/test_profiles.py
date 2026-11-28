@@ -21,13 +21,14 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
         "solaredge_modbus/storedge", "fronius/gen24", "goodwe/hybrid", "kostal_plenticore/plenticore", "indevolt/indevolt",
         "homevolt/homevolt", "marstek_modbus/venus", "zendure_ha/manager", "generic/heat_pump", "generic/relays",
         "generic/grid_meter", "solax_modbus/growatt_hybrid", "solax_modbus/growatt_pv", "solarman/deye_micro",
+        "solaredge_modbus_multi/storedge",
     }
     assert set(library.optimizers) == {"huawei_solar/optimizer", "tigo_rs485/optimizer"}
     assert set(library.battery_modules) == {"solax_modbus/sofar_bts"}
     assert library.integrations == {
         "solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "edl21", "homewizard", "powerfox", "discovergy",
         "goecharger_mqtt", "goecharger", "solaredge_modbus", "fronius", "goodwe", "kostal_plenticore", "indevolt", "homevolt",
-        "marstek_modbus", "zendure_ha", "solarman",
+        "marstek_modbus", "zendure_ha", "solarman", "solaredge_modbus_multi",
     }
 
 

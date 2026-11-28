@@ -1,5 +1,6 @@
 """Shipped inverter profiles against dummy devices with the entity keys of their integrations."""
 
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ from sunflow.devices.executor import EepromGuard, execute, plan_battery, plan_pv
 from sunflow.devices.profiles import ProfileLibrary, battery_actions, controls_battery
 from sunflow.devices.resolver import bind_roles, preview
 from sunflow.devices.site import derive_parameter
-from sunflow.direct.hub import DirectHub, direct_device_id
+from sunflow.direct.hub import DirectHub, direct_device_id, parse_duration
 
 # Entity keys per domain as the integrations create them (unique_id = "<prefix>_<key>")
 DUMMIES: dict[str, dict[str, Any]] = {
@@ -105,6 +106,22 @@ DUMMIES: dict[str, dict[str, Any]] = {
             ],
             "select": ["storage_control_mode", "storage_command_mode", "storage_default_mode"],
             "number": ["charge_limit", "discharge_limit", "backup_reserve"],
+        },
+    },
+    "solaredge_modbus_multi/storedge": {
+        "integration": "solaredge_modbus_multi",
+        # A serial starting with B: "<serial>_dc_power" must not pass as the battery's
+        "prefix": "SE5K-RWS48BEN4_B7E12345",
+        "keys": {
+            "sensor": [
+                "dc_power", "ac_power", "ac_energy_kwh", "B1_dc_power", "B1_battery_soe", "B1_max_energy",
+                "B1_max_charge_power", "B1_max_discharge_power", "B1_energy_import", "B1_energy_export",
+                "M1_ac_power", "M1_imported_kwh", "M1_exported_kwh", "dc_power_mmppt1",
+            ],
+            "select": ["storage_control_mode", "storage_command_mode", "storage_default_mode", "ac_charge_policy"],
+            "number": [
+                "storage_charge_limit", "storage_discharge_limit", "storage_command_timeout", "storage_backup_reserve",
+            ],
         },
     },
     "goodwe/hybrid": {
@@ -304,6 +321,47 @@ def test_solaredge_reads_attached_battery_and_meter(library: ProfileLibrary) -> 
     assert derive_parameter(profile["parameters"]["capacity_wh"], snapshot, "dev") == 9700
     hold = plan_battery(profile, "hold", {}, {"max_charge": 5000}, entities)
     assert [c.data for c in hold] == [{"option": "maximize_self_consumption"}, {"value": 5000}, {"value": 0}]
+
+
+def test_solaredge_multi_reads_battery_and_meter(library: ProfileLibrary) -> None:
+    """Numbered sub-device keys bind; the battery's capacity comes in kWh."""
+    profile = library.profiles["solaredge_modbus_multi/storedge"]
+    entities = dummy_entities("solaredge_modbus_multi/storedge")
+    prefix = "sensor.SE5K-RWS48BEN4_B7E12345"
+    bound = bind_roles(profile, entities)
+    assert bound["battery_power"] == f"{prefix}_B1_dc_power"
+    assert bound["grid_power"] == f"{prefix}_M1_ac_power"
+    assert bound["ac_power"] == f"{prefix}_ac_power"
+    states = {
+        f"{prefix}_dc_power": {"state": "595", "attributes": {"unit_of_measurement": "W"}},
+        f"{prefix}_B1_dc_power": {"state": "-224", "attributes": {"unit_of_measurement": "W"}},
+        f"{prefix}_B1_max_energy": {"state": "4.0", "attributes": {"unit_of_measurement": "kWh"}},
+    }
+    snapshot = Snapshot(entries=[], devices=[], entities=entities, states=states, energy_prefs=None)
+    values = {r.role: r.value for r in preview(profile, snapshot, "dev", {})}
+    assert values["pv_power"] == 371
+    assert derive_parameter(profile["parameters"]["capacity_wh"], snapshot, "dev") == 4000
+
+
+async def test_solaredge_multi_refresh_renews_the_command(library: ProfileLibrary, tmp_path: Path) -> None:
+    """A refresh writes the command again before its timeout; the default mode is only written on change."""
+    profile = library.profiles["solaredge_modbus_multi/storedge"]
+    entities = dummy_entities("solaredge_modbus_multi/storedge")
+    prefix = "SE5K-RWS48BEN4_B7E12345"
+    states = {
+        f"select.{prefix}_storage_default_mode": {"state": "Maximize Self Consumption"},
+        f"number.{prefix}_storage_command_timeout": {"state": "1800"},
+        f"select.{prefix}_storage_command_mode": {"state": "Charge from Solar Power and Grid"},
+        f"number.{prefix}_storage_charge_limit": {"state": "2000"},
+    }
+    calls = plan_battery(profile, "force_charge", {}, {"P": 2000}, entities)
+
+    await execute(None, calls, states, EepromGuard(tmp_path, 30), dry_run=True, force=True)  # type: ignore[arg-type]
+
+    assert [(c.entity_id.split(".")[0], c.status) for c in calls] == [
+        ("select", "skipped"), ("number", "dry_run"), ("select", "dry_run"), ("number", "dry_run"),
+    ]
+    assert parse_duration(profile["battery_control"]["refresh"], timedelta()) < timedelta(seconds=1800) / 2
 
 
 def test_percent_variables() -> None:

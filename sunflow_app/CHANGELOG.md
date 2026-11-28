@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.19
+
+- New profile `solaredge_modbus_multi/storedge` for SolarEdge StorEdge / Home Hub via the HACS integration solaredge_modbus_multi (WillCodeForCats): PV, battery, meter and battery remote control. The command timeout falls back to self consumption; Sunflow renews the command every 10 minutes. Not verified on hardware yet (#4).
+
 ## 0.80.18
 
 Battery modules are found with older solax_modbus versions too (module SoC and voltage without the pack prefix)

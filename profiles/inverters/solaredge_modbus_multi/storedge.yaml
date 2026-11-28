@@ -1,0 +1,86 @@
+# SolarEdge StorEdge / Home Hub with battery via the solaredge_modbus_multi custom integration
+# (HACS, WillCodeForCats). Needs "Storage control" enabled in the integration's options.
+# Battery control by storage remote control as in solaredge_modbus/storedge; the integration
+# names keys and options differently. Battery (B1, B2, ...) and meter (M1, ...) are sub-devices
+# of the inverter, their keys carry the number: "[0-9]" keeps the inverter's own "<serial>_dc_power"
+# from matching "B*_dc_power" when the serial starts with a B.
+# Signs: battery dc_power + = charge, meter ac_power + = export.
+# PV = inverter DC power + battery charge power (the inverter's DC side feeds both).
+# The battery's lifetime energy counters are left out: they are known to stay near zero.
+# The inverter falls back to the default command mode when the command timeout runs out:
+# Sunflow sets it to self consumption and renews the command well before (refresh).
+# Charging from the grid needs the AC charge policy not to be "Disabled" (set by the installer).
+# Not verified on hardware yet.
+profile: solaredge_modbus_multi/storedge
+version: 1
+match:
+  integration: solaredge_modbus_multi
+  requires: [storage_control_mode, storage_command_mode, storage_charge_limit, storage_discharge_limit]
+
+capabilities: [pv, battery, grid_meter, battery_control]
+watchdog: command
+fallback: auto
+
+roles:
+  battery_soc: {key: "B[0-9]_battery_soe", unit: "%"}
+  battery_power: {key: "B[0-9]_dc_power", unit: W, sign: charge_positive}
+  pv_power: {key: dc_power, unit: W, fine_keys: [dc_power, "B[0-9]_dc_power"]}
+  ac_power: {key: ac_power, unit: W}
+  grid_power: {key: "M[0-9]_ac_power", unit: W, sign: export_positive, optional: true}
+  pv_energy: {key: ac_energy_kwh, unit: kWh, optional: true}
+  grid_import_energy: {key: "M[0-9]_imported_kwh", unit: kWh, optional: true}
+  grid_export_energy: {key: "M[0-9]_exported_kwh", unit: kWh, optional: true}
+
+# Remote control only takes effect in this storage control mode
+control_mode: {key: storage_control_mode, option: Remote Control}
+
+parameters:
+  capacity_wh: {unit: Wh, derive: {sum_key: "B[0-9]_max_energy"}}
+  min_soc: {unit: "%", default: 10, min: 0, max: 100}
+  max_charge: {unit: W, derive: {sum_key: "B[0-9]_max_charge_power"}}
+  max_discharge: {unit: W, derive: {sum_key: "B[0-9]_max_discharge_power"}}
+  efficiency_pct: {unit: "%", default: 92, min: 40, max: 100}
+  inverter_efficiency_pct: {unit: "%", default: 97, min: 80, max: 100}
+  # Own draw of BMS and converters, taken from the stored energy also while idle
+  standby_w: {unit: W, default: 0, min: 0, max: 500, learn: standby}
+
+battery_control:
+  auto:
+    - select: {key: storage_default_mode, option: Maximize Self Consumption, storage: eeprom, write: if_differs}
+    - number: {key: storage_command_timeout, value: 1800, write: if_differs}
+    - select: {key: storage_command_mode, option: Maximize Self Consumption, write: if_differs}
+    - number: {key: storage_charge_limit, value: "{{ max_charge }}", write: if_differs, tolerance: 50}
+    - number: {key: storage_discharge_limit, value: "{{ max_discharge }}", write: if_differs, tolerance: 50}
+  hold:
+    - select: {key: storage_default_mode, option: Maximize Self Consumption, storage: eeprom, write: if_differs}
+    - number: {key: storage_command_timeout, value: 1800, write: if_differs}
+    - select: {key: storage_command_mode, option: Maximize Self Consumption, write: if_differs}
+    - number: {key: storage_charge_limit, value: "{{ max_charge }}", write: if_differs, tolerance: 50}
+    - number: {key: storage_discharge_limit, value: 0, write: if_differs}
+  limit_charge:
+    - select: {key: storage_default_mode, option: Maximize Self Consumption, storage: eeprom, write: if_differs}
+    - number: {key: storage_command_timeout, value: 1800, write: if_differs}
+    - select: {key: storage_command_mode, option: Maximize Self Consumption, write: if_differs}
+    - number: {key: storage_charge_limit, value: "{{ P }}", write: if_differs, tolerance: 100}
+    - number: {key: storage_discharge_limit, value: "{{ max_discharge }}", write: if_differs, tolerance: 50}
+  limit_discharge:
+    - select: {key: storage_default_mode, option: Maximize Self Consumption, storage: eeprom, write: if_differs}
+    - number: {key: storage_command_timeout, value: 1800, write: if_differs}
+    - select: {key: storage_command_mode, option: Maximize Self Consumption, write: if_differs}
+    - number: {key: storage_charge_limit, value: "{{ max_charge }}", write: if_differs, tolerance: 50}
+    - number: {key: storage_discharge_limit, value: "{{ P }}", write: if_differs, tolerance: 100}
+  force_charge:
+    - select: {key: storage_default_mode, option: Maximize Self Consumption, storage: eeprom, write: if_differs}
+    - number: {key: storage_command_timeout, value: 1800, write: if_differs}
+    - select: {key: storage_command_mode, option: Charge from Solar Power and Grid, write: if_differs}
+    - number: {key: storage_charge_limit, value: "{{ P }}", write: if_differs, tolerance: 100}
+  force_discharge:
+    - select: {key: storage_default_mode, option: Maximize Self Consumption, storage: eeprom, write: if_differs}
+    - number: {key: storage_command_timeout, value: 1800, write: if_differs}
+    - select: {key: storage_command_mode, option: Discharge to Maximize Export, write: if_differs}
+    - number: {key: storage_discharge_limit, value: "{{ P }}", write: if_differs, tolerance: 100}
+  # The command runs out after 30 minutes; renewed well before
+  refresh: 10min
+
+eeprom_guard:
+  max_writes_per_day: 30
