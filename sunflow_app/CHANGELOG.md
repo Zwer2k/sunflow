@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.31
+
+- Wallbox standard (design/wallbox.md): the roles, parameters and actions every wallbox profile provides, checked by a test, so a new wallbox needs only a profile. Charge steps also get the planned power as power_w, for chargers set by power instead of current.
+
 ## 0.80.30
 
 - Direct connection (Modbus TCP) for chargers: float32/float64 and 64-bit values, text registers, bit masks and named states (e.g. IEC 61851 A-F), coils, and a keepalive that writes a heartbeat or the last setpoint while Sunflow controls the device and stops when it hands it back.

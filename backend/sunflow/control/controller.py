@@ -1229,6 +1229,9 @@ class PlanController:
             if action == "charge" and "phases" in params:
                 # What the current on these phases gives (e.g. one phase: at most 3.7 kW at 16 A)
                 power = min(power, (params.get("max_current_a") or 16) * VOLTS * params["phases"])
+            if action == "charge":
+                # For chargers set by power instead of current (e.g. in 100 W steps)
+                runtime["power_w"] = runtime["current_a"] * VOLTS * int(params.get("phases") or 3)
             if steps:
                 runtime["off_option"] = off_step(steps) or ""
                 if action == "charge":
