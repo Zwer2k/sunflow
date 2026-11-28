@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.25
+
+- Assigning roles by hand offers every sensor, after the device's own ones (marked "other device"): e.g. a template sensor for the house consumption (#4).
+
 ## 0.80.24
 
 - SolarEdge (solaredge_modbus and solaredge_modbus_multi): the house consumption is calculated from the inverter's AC power and the meter, so the load forecast learns (#4).

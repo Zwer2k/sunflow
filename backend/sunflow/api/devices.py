@@ -67,23 +67,35 @@ class PreviewRequest(BaseModel):
 
 
 @router.get("/devices/{device_id}/entities")
-async def device_entity_list(request: Request, device_id: str) -> list[dict[str, Any]]:
-    """Return the entities of a device and its sub-devices for manual mapping."""
+async def device_entity_list(request: Request, device_id: str, others: bool = False) -> list[dict[str, Any]]:
+    """Return the entities of a device and its sub-devices for manual mapping.
+
+    others: also every other sensor (e.g. a template sensor of the house load), after the device's own.
+    """
     snapshot = await _snapshot(request)
-    result = []
-    for entity in device_entities(snapshot, device_id):
+    own = device_entities(snapshot, device_id)
+    own_ids = {e["entity_id"] for e in own}
+    rest = [
+        e for e in snapshot.entities
+        if others and e["entity_id"] not in own_ids and e["entity_id"].startswith("sensor.") and not e.get("disabled_by")
+    ]
+
+    def listed(entity: dict[str, Any], is_own: bool) -> dict[str, Any]:
         state = snapshot.states.get(entity["entity_id"], {})
         attributes = state.get("attributes", {})
-        result.append(
-            {
-                "entity_id": entity["entity_id"],
-                "name": attributes.get("friendly_name") or entity["entity_id"],
-                "state": state.get("state"),
-                "unit": attributes.get("unit_of_measurement"),
-                "device_class": attributes.get("device_class"),
-            }
-        )
-    return sorted(result, key=lambda e: e["entity_id"])
+        return {
+            "entity_id": entity["entity_id"],
+            "name": attributes.get("friendly_name") or entity["entity_id"],
+            "state": state.get("state"),
+            "unit": attributes.get("unit_of_measurement"),
+            "device_class": attributes.get("device_class"),
+            "own": is_own,
+        }
+
+    return [
+        *sorted((listed(e, True) for e in own), key=lambda e: e["entity_id"]),
+        *sorted((listed(e, False) for e in rest), key=lambda e: e["entity_id"]),
+    ]
 
 
 @router.get("/devices/{device_id}/preview")

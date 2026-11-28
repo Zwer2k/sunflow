@@ -76,7 +76,7 @@ export const api = {
     overrides
       ? request("POST", `/devices/${encodeURIComponent(haDeviceId)}/preview`, { profile, role_overrides: overrides })
       : request("GET", `/devices/${encodeURIComponent(haDeviceId)}/preview`),
-  entities: (haDeviceId) => request("GET", `/devices/${encodeURIComponent(haDeviceId)}/entities`),
+  entities: (haDeviceId, others = false) => request("GET", `/devices/${encodeURIComponent(haDeviceId)}/entities${others ? "?others=true" : ""}`),
   config: () => request("GET", "/config"),
   addDevice: (haDeviceId, profile, overrides) =>
     request("POST", "/config/devices", { ha_device_id: haDeviceId, profile, role_overrides: overrides ?? {} }),

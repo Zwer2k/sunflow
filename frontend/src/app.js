@@ -1095,7 +1095,8 @@ class SunflowApp extends LitElement {
     this._editing = new Set([...this._editing, id]);
     if (!this._entities[id]) {
       try {
-        this._entities = { ...this._entities, [id]: await api.entities(id) };
+        // Also sensors of other devices (a template for the house load), after the device's own
+        this._entities = { ...this._entities, [id]: await api.entities(id, true) };
       } catch (err) {
         this._error = t("Entitäten konnten nicht geladen werden: {error}", { error: err.message });
       }
@@ -2322,7 +2323,10 @@ class SunflowApp extends LitElement {
                       <sf-picker inline label=${t("Entität für {role}", { role: roleLabel(r.role) })}
                         empty-label=${t("Profil: {entity}", { entity: r.profile_entity_id ?? t("nicht gefunden") })}
                         .value=${override.entity_id ?? ""}
-                        .options=${sensors.map((e) => ({ value: e.entity_id, label: e.name, detail: `${e.state ?? "–"} ${e.unit ?? ""}` }))}
+                        .options=${sensors.map((e) => ({
+                          value: e.entity_id, label: e.name,
+                          detail: [`${e.state ?? "–"} ${e.unit ?? ""}`, e.own === false ? t("anderes Gerät") : null].filter(Boolean).join(" · "),
+                        }))}
                         @change=${(e) => this._setOverride(id, r.role, "entity_id", e.detail.value)}></sf-picker>
                     </td>
                     <td>

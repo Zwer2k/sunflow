@@ -35,6 +35,7 @@ export default {
   "Preis mit variablem Netzentgelt (Octopus)": "Price with variable grid fee (Octopus)",
   "dynamischer Tarif ohne aktuelle Preise (Octopus)": "dynamic tariff without current prices (Octopus)",
   "Preisliste": "Price list",
+  "anderes Gerät": "other device",
   "Aufschlag auf Börsenpreis": "Premium on exchange price",
   "z. B. 1,5": "e.g. 1.5",
   "Direktvermarktung und Solarspitzengesetz richten sich nach dem reinen Börsenpreis: Bei Direktvermarktung ist er die Vergütung (plus Aufschlag, ohne Aufschlag bei negativen Preisen), beim Solarspitzengesetz gibt es bei negativem Börsenpreis nichts.": "Direct marketing and the solar peak law follow the net exchange price: with direct marketing it is the remuneration (plus premium, without premium at negative prices); under the solar peak law nothing is paid at a negative exchange price.",

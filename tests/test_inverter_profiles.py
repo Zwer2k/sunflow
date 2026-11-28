@@ -344,6 +344,10 @@ def test_solaredge_multi_reads_battery_and_meter(library: ProfileLibrary) -> Non
     assert values["pv_power"] == 371
     # No house load sensor: AC output plus the 300 W imported
     assert values["load_power"] == 886
+    # A sensor of another device chosen for the house load (a template) is taken as it is
+    states["sensor.solar_house_consumption_w"] = {"state": "870", "attributes": {"unit_of_measurement": "W"}}
+    chosen = {r.role: r for r in preview(profile, snapshot, "dev", {"load_power": {"entity_id": "sensor.solar_house_consumption_w"}})}
+    assert (chosen["load_power"].value, chosen["load_power"].minus_role) == (870, None)
     assert derive_parameter(profile["parameters"]["capacity_wh"], snapshot, "dev") == 4000
 
 
