@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.37
+
+- Connecting a device directly: switching from the EEBUS wallbox to another device clears its prefilled address; an address typed in stays.
+
 ## 0.80.36
 
 - "Connect a device directly" groups the devices by kind and connection (e.g. "Wallboxes · Modbus TCP", "Wallboxes · EEBUS"); choice lists can show group headings, and the search also finds the group.

@@ -1669,10 +1669,13 @@ class SunflowApp extends LitElement {
     }
   }
 
-  /** A profile with a fixed gateway (the Sunflow EEBUS App) brings its address along. */
+  /** A profile with a fixed gateway (the Sunflow EEBUS App) brings its address along; an address typed in stays. */
   _chooseDirectProfile(profile) {
-    const chosen = (this._directProfiles ?? []).find((p) => p.profile === profile);
-    this._direct = { ...this._direct, profile, host: chosen?.host ?? this._direct.host, remote: "" };
+    const profiles = this._directProfiles ?? [];
+    const chosen = profiles.find((p) => p.profile === profile);
+    const previous = profiles.find((p) => p.profile === this._direct.profile);
+    const typed = this._direct.host && this._direct.host !== previous?.host ? this._direct.host : "";
+    this._direct = { ...this._direct, profile, host: chosen?.host ?? typed, remote: "" };
     this._eebus = null;
     if (chosen?.remote === "eebus") this._loadEebus();
   }
