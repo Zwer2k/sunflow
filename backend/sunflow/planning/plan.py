@@ -446,7 +446,9 @@ def flex_loads(
                     # The car's own charger may take less than the wallbox gives
                     max_power = info.max_power_w = min(max_power, limit)
                 params = params | {"vehicle_capacity_wh": vehicle.capacity_wh, "charge_efficiency_pct": vehicle.charge_efficiency_pct}
-                current = info.current = soc_of(vehicle, snapshot.states)
+                # The car's own sensor first; without one what the wallbox reports (EEBUS, OCPP, evcc)
+                own = soc_of(vehicle, snapshot.states)
+                current = info.current = own if own is not None else current
                 info.level_entity = vehicle.soc_entity or info.level_entity
                 info.capacity_wh, info.level_range = vehicle.capacity_wh, (0.0, 100.0)
                 # How this vehicle charges at this wallbox, with the scanned card its own settings; a change in

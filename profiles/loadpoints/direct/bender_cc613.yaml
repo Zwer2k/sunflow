@@ -2,7 +2,9 @@
 # AMTRON Professional / ChargeControl / 4You 500, Webasto Live, Garo GLB/LS4, Ensto, Juice,
 # TechniSat, Ebee and others. Enable "Modbus TCP Server for energy management systems" in the
 # web interface. Registers as evcc reads them. Control pilot state 1 idle, 2 plugged, 3/4
-# charging. The current in A (0 pauses). Phase switching differs by model and is left out.
+# charging. The current in A (0 pauses). Phase switching differs by model and is left out. The
+# car's state of charge (register 730, ISO 15118 only) is left out too: Mennekes 4You/4Business
+# firmware closes the Modbus connection when it is read.
 # Not verified on hardware yet.
 profile: modbus/bender_cc613
 version: 1

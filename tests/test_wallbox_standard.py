@@ -117,7 +117,10 @@ DUMMIES: dict[str, dict[str, list[str]]] = {
         "sensor": ["wp-nrg", "wp-car", "wp-wh"], "number": ["wp-amp"], "select": ["wp-frc", "wp-psm"],
     },
     "ocpp/chargepoint": {
-        "sensor": ["ocpp.cp1.power_active_import.sensor", "ocpp.cp1.status_connector.sensor", "ocpp.cp1.energy_session.sensor"],
+        "sensor": [
+            "ocpp.cp1.power_active_import.sensor", "ocpp.cp1.status_connector.sensor", "ocpp.cp1.energy_session.sensor",
+            "ocpp.cp1.soc.sensor",
+        ],
         "number": ["number.ocpp.cp1.maximum_current"],
     },
 }
@@ -155,6 +158,8 @@ def test_wallbox_dummy_matches_and_every_step_resolves(library: ProfileLibrary, 
         pytest.param("keba/charger", "charge_power", "keba-1-P", id="keba-power-not-power-factor"),
         pytest.param("cfos_powerbrain/charger", "charge_power", "C1_power", id="cfos-own-power"),
         pytest.param("v2c/charger", "stored_current", "E1_intensity", id="v2c-intensity-not-its-limits"),
+        # The car's state of charge as OCPP reports it
+        pytest.param("ocpp/chargepoint", "vehicle_soc", "ocpp.cp1.soc.sensor", id="ocpp-soc"),
     ],
 )
 def test_short_keys_bind_the_right_entity(library: ProfileLibrary, profile_id: str, role: str, unique_id: str) -> None:

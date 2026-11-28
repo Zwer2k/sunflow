@@ -102,6 +102,11 @@ source can be changed under "Balance check".
 | Fronius Wattpilot | wattpilot (HACS) | `wattpilot/charger` | Charge/stop (frc), current (amp) at most every 3 min | 1 ↔ 3 phases by Sunflow | – | – | – |
 | Any OCPP 1.6 wallbox (ABB, Alfen, Easee, go-e, KEBA, Wallbox, Zaptec …) | ocpp (HACS) | `ocpp/chargepoint` | Maximum current as charging profile every minute, 0 A pauses | – | – | – | – |
 
+The car's state of charge: Sunflow takes it from the car's integration (Settings → Vehicles). If
+the car has no such sensor, the state of charge the wallbox reports counts. Only wallboxes that get
+it from the car can do that: evcc, EEBUS and OCPP wallboxes with ISO 15118 (enable the measurand
+"SoC" in the OCPP integration). Ordinary AC wallboxes do not know it.
+
 Phase switching (go-e, wallbox parameters): for a planned fixed power (e.g. from the grid)
 Sunflow chooses the phases immediately. For PV surplus the average of the last minutes decides:
 switching up to 3 phases only after the switch-up delay and only if the plan also expects enough

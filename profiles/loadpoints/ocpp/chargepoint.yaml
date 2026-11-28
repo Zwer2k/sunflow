@@ -18,7 +18,8 @@ roles:
     key: "*.status_connector.sensor"
     on_states: [Preparing, Charging, SuspendedEV, SuspendedEVSE, Finishing]
   charged_energy: {key: "*.energy_session.sensor", unit: kWh, optional: true}
-  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+  # Only when the car reports it to the wallbox (ISO 15118) and the measurand SoC is enabled
+  vehicle_soc: {key: "*.soc.sensor", unit: "%", optional: true}
 
 parameters:
   max_power: {unit: W, default: 11000, min: 0}

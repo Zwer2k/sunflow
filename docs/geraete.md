@@ -104,6 +104,11 @@ Vorrang vor der Netzmessung des Wechselrichters; unter „Bilanzprüfung“ läs
 | Fronius Wattpilot | wattpilot (HACS) | `wattpilot/charger` | Laden/Stopp (frc), Ladestrom (amp) höchstens alle 3 min | 1 ↔ 3 Phasen durch Sunflow | – | – | – |
 | Jede OCPP-1.6-Wallbox (ABB, Alfen, Easee, go-e, KEBA, Wallbox, Zaptec …) | ocpp (HACS) | `ocpp/chargepoint` | Höchststrom als Ladeprofil minütlich, 0 A pausiert | – | – | – | – |
 
+Ladestand des Autos: Sunflow nimmt ihn aus der Integration des Autos (Einstellungen →
+Fahrzeuge). Hat das Auto keinen solchen Sensor, gilt der Ladestand, den die Wallbox meldet. Das
+können nur Wallboxen, die ihn vom Auto bekommen: evcc, EEBUS und OCPP-Wallboxen mit ISO 15118
+(Messwert „SoC“ in der OCPP-Integration aktivieren). Gewöhnliche AC-Wallboxen kennen ihn nicht.
+
 Phasenumschaltung (go-e, Kenndaten der Wallbox): Bei geplanter fester Leistung (z. B. aus dem
 Netz) wählt Sunflow die Phasen sofort. Beim PV-Überschuss entscheidet das Mittel der letzten
 Minuten: hoch auf 3 Phasen erst nach der Hochschalt-Verzögerung und nur, wenn der Plan auch für

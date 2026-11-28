@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.39
+
+- A recognized car without a SoC sensor of its own takes the state of charge its wallbox reports (EEBUS, OCPP with ISO 15118, evcc); before the plan knew none then. The OCPP profile reads the SoC measurand.
+
 ## 0.80.38
 
 - The Sunflow EEBUS App answers only Sunflow: Sunflow sends a key of its own, shown when pairing, to be entered in the App's configuration (token). No other App on the Supervisor's network can steer an EEBUS wallbox.

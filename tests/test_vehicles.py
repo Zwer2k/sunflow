@@ -127,6 +127,47 @@ def test_flex_loads_plan_the_recognized_vehicle(
 
 
 @pytest.mark.parametrize(
+    ("car_sensor", "expected"),
+    [
+        # The car's own integration knows best
+        pytest.param("sensor.fiat_soc", 40.0, id="car-sensor"),
+        # No sensor of the car: what the wallbox reports (EEBUS, OCPP, evcc)
+        pytest.param(None, 55.0, id="wallbox-reports-it"),
+    ],
+)
+def test_soc_of_the_car_or_of_the_wallbox(library, car_sensor: str | None, expected: float) -> None:
+    """A recognized car without a SoC sensor takes the SoC the wallbox reports."""
+    from datetime import UTC, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from sunflow.devices.discovery import Snapshot
+    from sunflow.planning.plan import flex_loads
+
+    entities = [
+        {"entity_id": "binary_sensor.goe_car", "unique_id": "123456-binary_sensor-car-1", "device_id": "goe"},
+        {"entity_id": "sensor.goe_power", "unique_id": "123456-sensor-nrg-11", "device_id": "goe"},
+        {"entity_id": "select.goe_frc", "unique_id": "123456-select-frc-frc", "device_id": "goe"},
+        {"entity_id": "number.goe_amp", "unique_id": "123456-number-amp-0", "device_id": "goe"},
+        {"entity_id": "sensor.goe_soc", "unique_id": "123456-sensor-vehicle_soc", "device_id": "goe"},
+    ]
+    states = {
+        "binary_sensor.goe_car": {"state": "on", "attributes": {}},
+        "sensor.goe_power": {"state": "0", "attributes": {"unit_of_measurement": "W"}},
+        "sensor.goe_soc": {"state": "55", "attributes": {"unit_of_measurement": "%"}},
+        "sensor.fiat_soc": {"state": "40", "attributes": {"unit_of_measurement": "%"}},
+    }
+    snapshot = Snapshot(entries=[], devices=[{"id": "goe"}], entities=entities, states=states, energy_prefs=None)
+    wallbox = DeviceConfig(id="wb", ha_device_id="goe", profile="goecharger_mqtt/charger", profile_version=1, name="Wallbox")
+    fiat = Vehicle(id="fiat", name="Fiat", capacity_wh=37500, soc_entity=car_sensor)
+    config = SunflowConfig(devices=[wallbox], vehicles=[fiat], charging=[ChargingProfile(vehicle_id="fiat", wallbox_id="wb")])
+    start = datetime(2026, 10, 30, 12, tzinfo=UTC)
+
+    _, (info,), _, _ = flex_loads(config, library.profiles, snapshot, [start + timedelta(minutes=15 * i) for i in range(4)], ZoneInfo("Europe/Berlin"))
+
+    assert (info.vehicle, info.current) == ("Fiat", expected)
+
+
+@pytest.mark.parametrize(
     ("transaction", "target", "deadline_hour", "label"),
     [
         # Without a ready-by time a day after now (12:00 UTC); with 07:00 Berlin it is 06:00 UTC
