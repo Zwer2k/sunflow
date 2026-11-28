@@ -180,7 +180,7 @@ const PHASE_NAMES = ["L1", "L2", "L3"];
 const MANUAL_CAPABILITIES = {
   meter: ["appliance"], heat_pump: ["appliance", "heat_pump"], grid_meter: ["grid_meter"], load_meter: ["load_meter"],
 };
-const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "", remote: "" };
+const EMPTY_DIRECT = { profile: "", name: "", host: "", port: "", unit_id: "", remote: "", remote_ip: "", remote_port: "" };
 
 const EMPTY_MANUAL = {
   name: "", type: "switch", kind: "load", switch_entity: "", level_entity: "", current_entity: "", power_entity: "",
@@ -1697,6 +1697,14 @@ class SunflowApp extends LitElement {
       return html`<div class="alert warn">⚠ ${t("Die App „Sunflow EEBUS“ ist nicht erreichbar: {error}. Sie muss installiert sein und laufen.", { error: eebus.error })}</div>
         <div><button class="secondary" @click=${() => this._loadEebus()}>${t("Erneut suchen")}</button></div>`;
     }
+    if (eebus.token_ok === false) {
+      // Only Sunflow may steer the wallbox: the EEBUS App answers nothing without this key
+      return html`
+        <p class="small muted help">${t("Trag diesen Schlüssel in der Konfiguration der App „Sunflow EEBUS“ unter „token“ ein und starte sie neu:")}</p>
+        <p><code>${eebus.token}</code></p>
+        <div><button class="secondary" @click=${() => this._loadEebus()}>${t("Erneut suchen")}</button></div>`;
+    }
+    const setForm = (field, value) => (this._direct = { ...this._direct, [field]: value });
     const options = eebus.services.map((s) => ({
       value: s.ski,
       label: [s.brand, s.model].filter(Boolean).join(" ") || s.name || s.ski,
@@ -1708,8 +1716,26 @@ class SunflowApp extends LitElement {
       <div class="field wide">
         <span class="field-label">${t("EEBUS-Wallbox")}</span>
         <sf-picker label=${t("EEBUS-Wallbox")} hide-values empty-label=${options.length ? t("bitte wählen …") : t("noch keine gefunden")}
-          .value=${form.remote} .options=${options} @change=${(e) => (this._direct = { ...this._direct, remote: e.detail.value })}></sf-picker>
+          .value=${form.remote} .options=${options} @change=${(e) => setForm("remote", e.detail.value)}></sf-picker>
       </div>
+      <details class="small">
+        <summary>${t("Wallbox in einem anderen Netzsegment")}</summary>
+        <p class="small muted help">${t("EEBUS findet Geräte per mDNS, das nicht über Netzsegmente (VLANs) reicht. Dann die SKI der Wallbox von Hand und ihre IP eintragen; der Port ist meist 4712. Alternativ im Router mDNS zwischen den Segmenten weiterleiten.")}</p>
+        <div class="fields">
+          <label class="field">
+            <span class="field-label">${t("SKI der Wallbox")}</span>
+            <span class="input-unit"><input placeholder="0123 4567 89AB …" .value=${form.remote} @input=${(e) => setForm("remote", e.target.value)}></span>
+          </label>
+          <label class="field">
+            <span class="field-label">${t("IP der Wallbox (optional)")}</span>
+            <span class="input-unit"><input placeholder="192.168.20.15" .value=${form.remote_ip} @input=${(e) => setForm("remote_ip", e.target.value)}></span>
+          </label>
+          <label class="field">
+            <span class="field-label">${t("EEBUS-Port der Wallbox")}</span>
+            <span class="input-unit"><input inputmode="numeric" placeholder="4712" .value=${form.remote_port} @input=${(e) => setForm("remote_port", e.target.value)}></span>
+          </label>
+        </div>
+      </details>
       <div><button class="secondary" @click=${() => this._loadEebus()}>${t("Erneut suchen")}</button></div>
     `;
   }
@@ -1720,7 +1746,10 @@ class SunflowApp extends LitElement {
     this._busy = new Set([...this._busy, "direct"]);
     try {
       // The EEBUS App connects to the wallbox only once it trusts it
-      if (form.remote) await api.eebusTrust(form.remote, form.host.trim(), form.port);
+      if (form.remote) {
+        const address = { ip: form.remote_ip.trim() || null, port: number(form.remote_port) };
+        await api.eebusTrust(form.remote, form.host.trim(), form.port, address);
+      }
       const saved = await api.addDirect({
         profile: form.profile, name: form.name, host: form.host.trim(), port: number(form.port), unit_id: number(form.unit_id),
         remote: form.remote || null,

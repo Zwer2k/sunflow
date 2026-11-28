@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -45,17 +46,25 @@ func main() {
 	port := flag.Int("port", 4712, "EEBUS (SHIP) port")
 	listen := flag.String("listen", "172.30.32.1:4713", "address of the API for Sunflow")
 	debug := flag.Bool("debug", false, "log EEBUS details")
+	token := flag.String("token", "", "token Sunflow sends (Authorization: Bearer)")
 	flag.Parse()
 	log.SetFlags(log.Ldate | log.Ltime)
 	// Options of the Home Assistant App, when run as one
 	var options struct {
-		Debug bool `json:"debug"`
+		Debug bool   `json:"debug"`
+		Token string `json:"token"`
 	}
 	if data, err := os.ReadFile(filepath.Join(*dataDir, "options.json")); err == nil {
 		if err := json.Unmarshal(data, &options); err != nil {
 			log.Printf("WARNING options.json unreadable: %v", err)
 		}
 		*debug = *debug || options.Debug
+		if *token == "" {
+			*token = strings.TrimSpace(options.Token)
+		}
+	}
+	if *token == "" {
+		log.Printf("WARNING No token set: the API answers nothing. Enter the token Sunflow shows (Devices → Connect directly → EEBUS) in this App's configuration and restart it")
 	}
 
 	backend, err := newBackend(*dataDir, *port, &logger{debug: *debug})
@@ -65,7 +74,7 @@ func main() {
 	backend.start()
 	log.Printf("Sunflow EEBUS %s started: SKI %s, EEBUS port %d, API on %s", version, backend.ski, *port, *listen)
 
-	server := &http.Server{Addr: *listen, Handler: NewHandler(backend), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Addr: *listen, Handler: NewHandler(backend, *token), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("ERROR API on %s failed: %v", *listen, err)

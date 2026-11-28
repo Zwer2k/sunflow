@@ -157,7 +157,10 @@ EEBUS-Wallboxen (Elli Charger Connect/Pro, Porsche, EVBox Livo, Kontron/Steca un
 Sunflow über die eigene App „Sunflow EEBUS“. Sie läuft als einzige im Host-Netzwerk, weil EEBUS
 Geräte per mDNS findet; Sunflow selbst bleibt im normalen App-Netz. Installieren, die angezeigte
 SKI der App in der App der Wallbox eintragen, dann unter Geräte → Direkt anbinden „EEBUS Wallbox“
-wählen und die gefundene Wallbox koppeln.
+wählen und die gefundene Wallbox koppeln. Beim ersten Mal zeigt Sunflow einen Schlüssel, der in der
+Konfiguration der EEBUS-App unter „token“ eingetragen wird: Ohne ihn antwortet die App niemandem,
+so kann keine andere App die Wallbox steuern. Steht die Wallbox in einem anderen Netzsegment (VLAN),
+in das mDNS nicht reicht, unter „Wallbox in einem anderen Netzsegment“ ihre SKI und IP eintragen.
 
 | Gerät | Profil | Steuerung | Phasenumschaltung | Voraussetzungen | Messen geprüft | Steuern geprüft |
 |---|---|---|---|---|---|---|

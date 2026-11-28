@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,7 +30,11 @@ import (
 	"github.com/enbility/ship-go/cert"
 	spineapi "github.com/enbility/spine-go/api"
 	"github.com/enbility/spine-go/model"
+	"github.com/enbility/zeroconf/v2"
 )
+
+// SHIP's usual port, when the wallbox's is not given
+const defaultShipPort = 4712
 
 var phaseNames = []model.ElectricalConnectionPhaseNameType{
 	model.ElectricalConnectionPhaseNameTypeA,
@@ -46,11 +51,13 @@ type eebusBackend struct {
 	visible   map[string]shipapi.RemoteService
 	connected map[string]bool
 	// The EV entity of each wallbox while a car is plugged in
-	evs   map[string]spineapi.EntityRemoteInterface
-	evcc  ucapi.CemEVCCInterface
-	evcem ucapi.CemEVCEMInterface
-	opev  ucapi.CemOPEVInterface
-	evsoc ucapi.CemEVSOCInterface
+	evs map[string]spineapi.EntityRemoteInterface
+	// Announcements of wallboxes in another network segment, by SKI
+	proxies map[string]*zeroconf.Server
+	evcc    ucapi.CemEVCCInterface
+	evcem   ucapi.CemEVCEMInterface
+	opev    ucapi.CemOPEVInterface
+	evsoc   ucapi.CemEVSOCInterface
 }
 
 func newBackend(dataDir string, port int, logger *logger) (*eebusBackend, error) {
@@ -72,6 +79,7 @@ func newBackend(dataDir string, port int, logger *logger) (*eebusBackend, error)
 		visible:   map[string]shipapi.RemoteService{},
 		connected: map[string]bool{},
 		evs:       map[string]spineapi.EntityRemoteInterface{},
+		proxies:   map[string]*zeroconf.Server{},
 	}
 	if err := b.trusted.load(); err != nil {
 		return nil, err
@@ -102,6 +110,7 @@ func newBackend(dataDir string, port int, logger *logger) (*eebusBackend, error)
 		b.svc.AddUseCase(uc)
 	}
 	for _, trusted := range b.trusted.list() {
+		b.announce(trusted, b.trusted.address(trusted))
 		b.svc.RegisterRemoteSKI(trusted)
 	}
 	return b, nil
@@ -109,7 +118,12 @@ func newBackend(dataDir string, port int, logger *logger) (*eebusBackend, error)
 
 func (b *eebusBackend) start() { b.svc.Start() }
 
-func (b *eebusBackend) stop() { b.svc.Shutdown() }
+func (b *eebusBackend) stop() {
+	for ski := range b.proxies {
+		b.announce(ski, Address{})
+	}
+	b.svc.Shutdown()
+}
 
 // onEvent follows cars being plugged in and out; everything else is read when asked.
 func (b *eebusBackend) onEvent(ski string, _ spineapi.DeviceRemoteInterface, entity spineapi.EntityRemoteInterface, event api.EventType) {
@@ -157,13 +171,17 @@ func compare(x, y string) int {
 	return 0
 }
 
-func (b *eebusBackend) Trust(ski string) error {
+func (b *eebusBackend) Trust(ski string, address Address) error {
 	if len(ski) != 40 {
 		return fmt.Errorf("an SKI has 40 hex digits, got %d", len(ski))
 	}
-	if err := b.trusted.add(ski); err != nil {
+	if address.IP != "" && net.ParseIP(address.IP) == nil {
+		return fmt.Errorf("%q is no IP address", address.IP)
+	}
+	if err := b.trusted.add(ski, address); err != nil {
 		return err
 	}
+	b.announce(ski, address)
 	b.svc.RegisterRemoteSKI(ski)
 	log.Printf("Trusting %s", ski)
 	return nil
@@ -173,9 +191,38 @@ func (b *eebusBackend) Untrust(ski string) error {
 	if err := b.trusted.remove(ski); err != nil {
 		return err
 	}
+	b.announce(ski, Address{})
 	b.svc.UnregisterRemoteSKI(ski)
 	log.Printf("No longer trusting %s", ski)
 	return nil
+}
+
+// announce makes a wallbox in another network segment findable: mDNS does not cross segments,
+// and eebus-go connects only to devices it found by mDNS. With an address given, the service
+// announces the wallbox at that address in its own segment, and its own search connects there;
+// TLS still checks the wallbox by its SKI. Without an address an announcement is withdrawn.
+func (b *eebusBackend) announce(ski string, address Address) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if server := b.proxies[ski]; server != nil {
+		server.Shutdown()
+		delete(b.proxies, ski)
+	}
+	if address.IP == "" {
+		return
+	}
+	port := address.Port
+	if port == 0 {
+		port = defaultShipPort
+	}
+	txt := []string{"txtvers=1", "id=" + ski, "path=/ship/", "ski=" + ski, "register=false"}
+	server, err := zeroconf.RegisterProxy("Sunflow-"+ski[:8], "_ship._tcp", "local.", port, "eebus-"+ski[:8], []string{address.IP}, txt, nil)
+	if err != nil {
+		log.Printf("WARNING Announcing %s at %s failed: %v", ski, address.IP, err)
+		return
+	}
+	b.proxies[ski] = server
+	log.Printf("Announcing %s at %s:%d (other network segment)", ski, address.IP, port)
 }
 
 func (b *eebusBackend) Device(ski string) (Device, bool) {
@@ -286,14 +333,21 @@ func (b *eebusBackend) ServicePairingDetailUpdate(ski string, detail *shipapi.Co
 	}
 }
 
-// trustStore keeps the SKIs of the trusted wallboxes in the data directory.
+// trustStore keeps the trusted wallboxes in the data directory: SKI and, for one in another
+// network segment, its address.
 type trustStore struct {
-	mu   sync.Mutex
-	path string
-	skis []string
+	mu      sync.Mutex
+	path    string
+	devices map[string]Address
+}
+
+type storedDevice struct {
+	SKI string `json:"ski"`
+	Address
 }
 
 func (t *trustStore) load() error {
+	t.devices = map[string]Address{}
 	data, err := os.ReadFile(t.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -302,49 +356,75 @@ func (t *trustStore) load() error {
 		return err
 	}
 	var stored struct {
+		Devices []storedDevice `json:"devices"`
+		// 0.1.0 kept the SKIs only
 		SKIs []string `json:"skis"`
 	}
 	if err := json.Unmarshal(data, &stored); err != nil {
 		return fmt.Errorf("%s unreadable: %w", t.path, err)
 	}
-	t.skis = stored.SKIs
+	for _, ski := range stored.SKIs {
+		t.devices[ski] = Address{}
+	}
+	for _, d := range stored.Devices {
+		t.devices[d.SKI] = d.Address
+	}
 	return nil
 }
 
 func (t *trustStore) save() error {
-	data, err := json.Marshal(map[string][]string{"skis": t.skis})
+	stored := struct {
+		Devices []storedDevice `json:"devices"`
+	}{Devices: []storedDevice{}}
+	for _, ski := range t.sorted() {
+		stored.Devices = append(stored.Devices, storedDevice{SKI: ski, Address: t.devices[ski]})
+	}
+	data, err := json.Marshal(stored)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(t.path, data, 0o600)
 }
 
+func (t *trustStore) sorted() []string {
+	skis := make([]string, 0, len(t.devices))
+	for ski := range t.devices {
+		skis = append(skis, ski)
+	}
+	slices.Sort(skis)
+	return skis
+}
+
 func (t *trustStore) list() []string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return slices.Clone(t.skis)
+	return t.sorted()
 }
 
 func (t *trustStore) has(ski string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return slices.Contains(t.skis, ski)
+	_, ok := t.devices[ski]
+	return ok
 }
 
-func (t *trustStore) add(ski string) error {
+func (t *trustStore) address(ski string) Address {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if slices.Contains(t.skis, ski) {
-		return nil
-	}
-	t.skis = append(t.skis, ski)
+	return t.devices[ski]
+}
+
+func (t *trustStore) add(ski string, address Address) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.devices[ski] = address
 	return t.save()
 }
 
 func (t *trustStore) remove(ski string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.skis = slices.DeleteFunc(t.skis, func(s string) bool { return s == ski })
+	delete(t.devices, ski)
 	return t.save()
 }
 

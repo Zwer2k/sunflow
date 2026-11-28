@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.38
+
+- The Sunflow EEBUS App answers only Sunflow: Sunflow sends a key of its own, shown when pairing, to be entered in the App's configuration (token). No other App on the Supervisor's network can steer an EEBUS wallbox.
+- EEBUS wallboxes in another network segment can be paired with their SKI and IP.
+
 ## 0.80.37
 
 - Connecting a device directly: switching from the EEBUS wallbox to another device clears its prefilled address; an address typed in stays.

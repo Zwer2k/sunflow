@@ -1,6 +1,6 @@
 name: Sunflow EEBUS
 # Bump with every change of eebus/: a new version makes the Supervisor rebuild from main
-version: "0.1.0"
+version: "0.1.1"
 slug: sunflow_eebus
 description: Lets Sunflow control EEBUS wallboxes (Elli, Porsche, EVBox Livo …); only needed for those
 url: https://github.com/Zwer2k/sunflow
@@ -12,7 +12,11 @@ init: false
 # EEBUS finds devices by mDNS and wallboxes connect back: only this App runs in the host network.
 # Its API for Sunflow listens on the Supervisor's network only (172.30.32.1:4713).
 host_network: true
+# token: the key Sunflow shows when pairing (Devices → Connect directly → EEBUS); the API
+# answers nothing without it, so no other App on the Supervisor's network can steer a wallbox
 options:
+  token: ""
   debug: false
 schema:
+  token: password
   debug: bool

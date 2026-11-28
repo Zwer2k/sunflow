@@ -17,12 +17,13 @@ from sunflow.direct.hub import DirectHub
 
 REPO = Path(__file__).resolve().parents[1]
 SKI = "0123456789abcdef0123456789abcdef01234567"
+TOKEN = "sunflows-key"
 
 
 @pytest.fixture
 def eebus_app() -> Iterator[ThreadingHTTPServer]:
-    """The EEBUS App's API in a thread of its own: its SKI, one wallbox found, trusting it."""
-    trusted: list[str] = []
+    """The EEBUS App's API in a thread of its own: its SKI, one wallbox found, trusting it; it knows TOKEN."""
+    trusted: list[tuple[str, object]] = []
 
     class Handler(BaseHTTPRequestHandler):
         def _answer(self, body: object) -> None:
@@ -33,25 +34,37 @@ def eebus_app() -> Iterator[ThreadingHTTPServer]:
             self.end_headers()
             self.wfile.write(data)
 
+        def _allowed(self) -> bool:
+            if self.headers.get("Authorization") == f"Bearer {TOKEN}":
+                return True
+            self.send_response(401)
+            self.end_headers()
+            return False
+
         def do_GET(self) -> None:  # noqa: N802 - the name http.server calls
-            self._answer({"ski": "own", "version": "test", "services": [{"ski": SKI, "brand": "Elli", "trusted": SKI in trusted}]})
+            if self._allowed():
+                self._answer({"ski": "own", "version": "test", "services": [{"ski": SKI, "brand": "Elli"}]})
 
         def do_POST(self) -> None:  # noqa: N802
-            trusted.append(self.path.removeprefix("/trust/"))
-            self._answer({"result": "ok"})
+            if self._allowed():
+                length = int(self.headers.get("Content-Length") or 0)
+                trusted.append((self.path.removeprefix("/trust/"), json.loads(self.rfile.read(length)) if length else None))
+                self._answer({"result": "ok"})
 
         def log_message(self, *_: object) -> None:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.trusted = trusted  # type: ignore[attr-defined]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server
     server.shutdown()
 
 
-def _app(tmp_path: Path) -> FastAPI:
+def _app(tmp_path: Path, token: str = TOKEN) -> FastAPI:
     app = create_app()
+    app.state.eebus_token = token
     app.state.store = ConfigStore(tmp_path)
     app.state.profiles = load_profiles(REPO / "profiles", load_schema(REPO / "schema"))
     app.state.direct = DirectHub()
@@ -60,18 +73,30 @@ def _app(tmp_path: Path) -> FastAPI:
 
 
 def test_pair_and_add_an_eebus_wallbox(tmp_path: Path, eebus_app: ThreadingHTTPServer) -> None:
-    """The wallbox found is trusted with its SKI as shown (groups, upper case) and added with it."""
+    """The wallbox is trusted with its SKI as shown (groups, upper case), in another segment with its IP, and added."""
     client = TestClient(_app(tmp_path))
     where = {"host": "127.0.0.1", "port": eebus_app.server_address[1]}
     shown = "0123 4567 89AB CDEF 0123 4567 89AB CDEF 0123 4567"
 
     found = client.get("/api/v1/eebus/status", params=where).json()
-    trusted = client.post(f"/api/v1/eebus/trust/{shown}", params=where).json()
+    trusted = client.post(f"/api/v1/eebus/trust/{shown}", params=where, json={"ip": "192.168.20.15", "port": 4711}).json()
     device = client.post("/api/v1/config/devices/direct", json={"profile": "eebus/wallbox", "remote": shown} | where).json()
 
-    assert [s["ski"] for s in found["services"]] == [SKI]
+    assert ([s["ski"] for s in found["services"]], found["token_ok"]) == ([SKI], True)
     assert trusted == {"ski": SKI}
+    assert eebus_app.trusted == [(SKI, {"ip": "192.168.20.15", "port": 4711})]  # type: ignore[attr-defined]
     assert device["connection"]["remote"] == SKI
+
+
+def test_the_eebus_app_without_sunflows_token(tmp_path: Path, eebus_app: ThreadingHTTPServer) -> None:
+    """The App does not know Sunflow's token yet: Sunflow shows it to be entered there (no 401 to the UI)."""
+    client = TestClient(_app(tmp_path, token="another"))
+    where = {"host": "127.0.0.1", "port": eebus_app.server_address[1]}
+
+    status = client.get("/api/v1/eebus/status", params=where)
+
+    assert (status.status_code, status.json()) == (200, {"token_ok": False, "token": "another"})
+    assert client.post(f"/api/v1/eebus/trust/{SKI}", params=where).status_code == 502
 
 
 @pytest.mark.parametrize(

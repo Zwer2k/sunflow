@@ -162,8 +162,9 @@ export const api = {
   directStatus: () => request("GET", "/direct/status"),
   addDirect: (body) => request("POST", "/config/devices/direct", body),
   eebusStatus: (host, port) => request("GET", `/eebus/status?${new URLSearchParams({ host, ...(port ? { port } : {}) })}`),
-  eebusTrust: (ski, host, port) =>
-    request("POST", `/eebus/trust/${encodeURIComponent(ski)}?${new URLSearchParams({ host, ...(port ? { port } : {}) })}`),
+  // address: {ip, port} of a wallbox in another network segment (optional)
+  eebusTrust: (ski, host, port, address = null) =>
+    request("POST", `/eebus/trust/${encodeURIComponent(ski)}?${new URLSearchParams({ host, ...(port ? { port } : {}) })}`, address),
   updateManual: (configDeviceId, body) =>
     request("PUT", `/config/devices/manual/${encodeURIComponent(configDeviceId)}`, body),
   measurements: () => request("GET", "/config/measurements"),

@@ -15,7 +15,16 @@ DISCOVERY_SERVICE = "sunflow_ems"
 
 def integration_token(data_dir: Path) -> str:
     """Token the integration authenticates with; created once and kept in the data directory."""
-    path = data_dir / "integration_token"
+    return stored_token(data_dir / "integration_token")
+
+
+def eebus_token(data_dir: Path) -> str:
+    """Token Sunflow sends to the Sunflow EEBUS App (entered in that App's configuration)."""
+    return stored_token(data_dir / "eebus_token")
+
+
+def stored_token(path: Path) -> str:
+    """A random token, created once and kept in the file."""
     try:
         if token := path.read_text().strip():
             return token

@@ -12,16 +12,18 @@ const testSKI = "0123456789abcdef0123456789abcdef01234567"
 
 // fakeBackend stands in for the wallbox side.
 type fakeBackend struct {
-	trusted []string
-	limits  []float64
-	release int
-	device  *Device
-	err     error
+	trusted   []string
+	addresses []Address
+	limits    []float64
+	release   int
+	device    *Device
+	err       error
 }
 
 func (f *fakeBackend) Status() Status { return Status{SKI: "own", Version: "test"} }
-func (f *fakeBackend) Trust(ski string) error {
+func (f *fakeBackend) Trust(ski string, address Address) error {
 	f.trusted = append(f.trusted, ski)
+	f.addresses = append(f.addresses, address)
 	return f.err
 }
 func (f *fakeBackend) Untrust(string) error { return f.err }
@@ -40,11 +42,37 @@ func (f *fakeBackend) ReleaseLimit(string) error {
 	return f.err
 }
 
+const testToken = "secret-token"
+
 func request(t *testing.T, b Backend, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
-	NewHandler(b).ServeHTTP(recorder, httptest.NewRequest(method, path, strings.NewReader(body)))
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	r.Header.Set("Authorization", "Bearer "+testToken)
+	NewHandler(b, testToken).ServeHTTP(recorder, r)
 	return recorder
+}
+
+func TestEveryRequestNeedsTheToken(t *testing.T) {
+	// Another App on the Supervisor's network must not steer the wallbox
+	cases := []struct {
+		name, configured, sent string
+		code                   int
+	}{
+		{"right", testToken, "Bearer " + testToken, http.StatusOK},
+		{"wrong", testToken, "Bearer guess", http.StatusUnauthorized},
+		{"missing", testToken, "", http.StatusUnauthorized},
+		{"none configured", "", "Bearer ", http.StatusUnauthorized},
+	}
+	for _, c := range cases {
+		recorder := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/status", nil)
+		r.Header.Set("Authorization", c.sent)
+		NewHandler(&fakeBackend{}, c.configured).ServeHTTP(recorder, r)
+		if recorder.Code != c.code {
+			t.Errorf("%s: got %d, want %d", c.name, recorder.Code, c.code)
+		}
+	}
 }
 
 func TestTrustNormalizesTheSKI(t *testing.T) {
@@ -89,5 +117,18 @@ func TestDeviceIsReadAsJSON(t *testing.T) {
 	}
 	if r := request(t, &fakeBackend{}, http.MethodGet, "/devices/"+testSKI, ""); r.Code != http.StatusNotFound {
 		t.Errorf("untrusted: %d", r.Code)
+	}
+}
+
+func TestTrustWithTheAddressOfAnotherSegment(t *testing.T) {
+	b := &fakeBackend{}
+	if r := request(t, b, http.MethodPost, "/trust/"+testSKI, `{"ip": "192.168.20.15", "port": 4711}`); r.Code != http.StatusOK {
+		t.Fatalf("got %d", r.Code)
+	}
+	if r := request(t, b, http.MethodPost, "/trust/"+testSKI, `{"port": "x"}`); r.Code != http.StatusBadRequest {
+		t.Errorf("bad body: %d", r.Code)
+	}
+	if len(b.addresses) != 1 || b.addresses[0] != (Address{IP: "192.168.20.15", Port: 4711}) {
+		t.Fatalf("got %v", b.addresses)
 	}
 }

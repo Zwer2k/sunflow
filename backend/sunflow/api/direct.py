@@ -1,5 +1,6 @@
 """Devices Sunflow talks to directly (Modbus TCP, HTTP): profiles, adding, address, status."""
 
+from ipaddress import IPv4Address
 import re
 from typing import Any
 
@@ -82,25 +83,49 @@ def _eebus_url(host: str, port: int | None) -> str:
     return f"http://{host}:{port or EEBUS_PORT}"
 
 
+def _eebus_session(request: Request) -> aiohttp.ClientSession:
+    """Session with the token the EEBUS App asks for."""
+    token = getattr(request.app.state, "eebus_token", "")
+    return aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5), headers={"Authorization": f"Bearer {token}"})
+
+
 @router.get("/eebus/status")
-async def eebus_status(host: str = EEBUS_HOST, port: int | None = None) -> dict[str, Any]:
-    """The Sunflow EEBUS App: its SKI (to enter at the wallbox) and the EEBUS devices it sees."""
+async def eebus_status(request: Request, host: str = EEBUS_HOST, port: int | None = None) -> dict[str, Any]:
+    """The Sunflow EEBUS App: its SKI (to enter at the wallbox) and the EEBUS devices it sees.
+
+    token_ok false: the App does not know Sunflow's token yet; it is returned to be entered in the
+    App's configuration.
+    """
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+        async with _eebus_session(request) as session:
             async with session.get(f"{_eebus_url(host, port)}/status") as response:
+                if response.status == 401:
+                    return {"token_ok": False, "token": getattr(request.app.state, "eebus_token", "")}
                 response.raise_for_status()
-                return await response.json()
+                return await response.json() | {"token_ok": True}
     except (aiohttp.ClientError, TimeoutError) as err:
         raise HTTPException(status_code=502, detail=t("Die App „Sunflow EEBUS“ antwortet nicht ({error})", error=err)) from err
 
 
+class EebusAddress(BaseModel):
+    """A wallbox in another network segment, which mDNS does not reach."""
+
+    ip: IPv4Address | None = None
+    port: int | None = Field(default=None, ge=1, le=65535)
+
+
 @router.post("/eebus/trust/{ski}")
-async def eebus_trust(ski: str, host: str = EEBUS_HOST, port: int | None = None) -> dict[str, Any]:
-    """Trust an EEBUS wallbox: the EEBUS App connects to it from then on."""
+async def eebus_trust(
+    request: Request, ski: str, address: EebusAddress | None = None, host: str = EEBUS_HOST, port: int | None = None
+) -> dict[str, Any]:
+    """Trust an EEBUS wallbox: the EEBUS App connects to it from then on (at the address, if given)."""
     remote = _remote(ski)
+    body = {k: str(v) if k == "ip" else v for k, v in (address or EebusAddress()).model_dump().items() if v is not None}
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-            async with session.post(f"{_eebus_url(host, port)}/trust/{remote}") as response:
+        async with _eebus_session(request) as session:
+            async with session.post(f"{_eebus_url(host, port)}/trust/{remote}", json=body or None) as response:
+                if response.status == 400:
+                    raise HTTPException(status_code=422, detail=(await response.json()).get("error"))
                 response.raise_for_status()
     except (aiohttp.ClientError, TimeoutError) as err:
         raise HTTPException(status_code=502, detail=t("Die App „Sunflow EEBUS“ antwortet nicht ({error})", error=err)) from err

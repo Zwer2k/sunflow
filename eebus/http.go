@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -42,10 +43,16 @@ type Device struct {
 	SoCPct      *float64 `json:"soc_pct"`
 }
 
+// Address of a wallbox in another network segment, which mDNS does not reach.
+type Address struct {
+	IP   string `json:"ip,omitempty"`
+	Port int    `json:"port,omitempty"`
+}
+
 // Backend is the EEBUS side; a fake in the tests.
 type Backend interface {
 	Status() Status
-	Trust(ski string) error
+	Trust(ski string, address Address) error
 	Untrust(ski string) error
 	Device(ski string) (Device, bool)
 	SetLimit(ski string, currentA float64) error
@@ -56,13 +63,38 @@ var errUnknownDevice = errors.New("unknown or not connected device")
 
 // NewHandler returns the API: GET /status, POST/DELETE /trust/{ski},
 // GET /devices/{ski}, POST/DELETE /devices/{ski}/limit (body {"current_a": 10}).
-func NewHandler(b Backend) http.Handler {
+// Every request needs "Authorization: Bearer <token>", the token Sunflow shows; without a
+// token set nothing is answered, so no other App on the Supervisor's network can steer.
+func NewHandler(b Backend, token string) http.Handler {
+	return authorized(token, routes(b))
+}
+
+func authorized(token string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		given := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if token == "" || subtle.ConstantTimeCompare([]byte(given), []byte(token)) != 1 {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token missing or wrong: set the token Sunflow shows in this App's configuration"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func routes(b Backend) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, b.Status())
 	})
+	// Body (optional): {"ip": "192.168.20.15", "port": 4712} for a wallbox in another network segment
 	mux.HandleFunc("POST /trust/{ski}", func(w http.ResponseWriter, r *http.Request) {
-		answer(w, b.Trust(normalizeSKI(r.PathValue("ski"))))
+		var address Address
+		if r.ContentLength != 0 {
+			if err := json.NewDecoder(r.Body).Decode(&address); err != nil || address.Port < 0 || address.Port > 65535 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body {\"ip\": \"…\", \"port\": 4712} expected"})
+				return
+			}
+		}
+		answer(w, b.Trust(normalizeSKI(r.PathValue("ski")), address))
 	})
 	mux.HandleFunc("DELETE /trust/{ski}", func(w http.ResponseWriter, r *http.Request) {
 		answer(w, b.Untrust(normalizeSKI(r.PathValue("ski"))))

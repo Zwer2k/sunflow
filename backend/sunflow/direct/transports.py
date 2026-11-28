@@ -96,10 +96,11 @@ class HttpTransport:
     remote: the device behind a gateway (e.g. an EEBUS wallbox's SKI), put in for "{remote}" in paths.
     """
 
-    def __init__(self, host: str, port: int, remote: str | None = None) -> None:
-        """Initialize the transport."""
+    def __init__(self, host: str, port: int, remote: str | None = None, headers: dict[str, str] | None = None) -> None:
+        """Initialize the transport; headers go with every request (e.g. the EEBUS App's token)."""
         self.base = f"http://{host}:{port}"
         self._remote = remote or ""
+        self._headers = headers or {}
         self._session: aiohttp.ClientSession | None = None
         # One poll reads several points of the same document
         self._documents: dict[str, Any] = {}
@@ -110,7 +111,7 @@ class HttpTransport:
 
     async def _session_(self) -> aiohttp.ClientSession:
         if self._session is None:
-            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5))
+            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5), headers=self._headers)
         return self._session
 
     def _path(self, path: str) -> str:
@@ -153,7 +154,12 @@ class HttpTransport:
 
 
 def make_transport(
-    connection: dict[str, Any], host: str, port: int | None, unit_id: int | None, remote: str | None = None
+    connection: dict[str, Any],
+    host: str,
+    port: int | None,
+    unit_id: int | None,
+    remote: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> Transport:
     """Transport for a profile connection and the device's address (port and unit id default to the profile's)."""
     match connection["type"]:
@@ -161,5 +167,5 @@ def make_transport(
             unit = unit_id if unit_id is not None else connection.get("unit_id", 1)
             return ModbusTransport(host, port or connection.get("port", 502), unit, connection.get("word_order", "big"))
         case "http":
-            return HttpTransport(host, port or connection.get("port", 80), remote)
+            return HttpTransport(host, port or connection.get("port", 80), remote, headers)
     raise ValueError(f"Unknown connection type {connection['type']}")

@@ -32,7 +32,7 @@ from sunflow.devices.profiles import load_profiles, load_schema
 from sunflow.direct.hub import DirectHub
 from sunflow.ha import HAClient, HAError
 from sunflow.i18n import t
-from sunflow.integration_link import announce, integration_token, running_peer
+from sunflow.integration_link import announce, eebus_token, integration_token, running_peer
 from sunflow.mcp_key import McpKey
 from sunflow.planning.one_time import OneTimeLoads
 from sunflow.planning.vehicle_soc import estimator
@@ -136,6 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
         app.state.settings = settings
         app.state.integration_token = integration_token(settings.data_dir)
+        app.state.eebus_token = eebus_token(settings.data_dir)
         app.state.mcp_key = McpKey(settings.data_dir)
         app.state.store = ConfigStore(settings.data_dir)
         estimator.load(settings.data_dir)
@@ -144,6 +145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.ha = HAClient(settings.ha_websocket_url, settings.ha_token)
         app.state.direct = DirectHub()
+        app.state.direct.tokens["eebus"] = app.state.eebus_token
         app.state.direct.start(lambda: (app.state.store.load(), app.state.profiles))
         app.state.snapshots = SnapshotCache(app.state.ha, direct=app.state.direct, live=True)
         app.state.device_tests = {}

@@ -283,3 +283,19 @@ async def test_http_points_of_a_device_behind_a_gateway() -> None:
 
     assert values == ["on", 6900.0, None]
     assert seen == [("POST", f"/devices/{ski}/limit", {"current_a": 10}), ("DELETE", f"/devices/{ski}/limit", None)]
+
+
+@pytest.mark.parametrize(
+    ("connection", "headers"),
+    [
+        pytest.param({"type": "http", "remote": "eebus"}, {"Authorization": "Bearer sunflows-key"}, id="eebus-app"),
+        # Other devices do not get the EEBUS App's key
+        pytest.param({"type": "modbus_tcp"}, None, id="other-device"),
+    ],
+)
+def test_the_eebus_key_goes_only_to_the_eebus_app(connection: dict[str, Any], headers: dict[str, str] | None) -> None:
+    """Reading and steering an EEBUS wallbox sends Sunflow's key; no other device sees it."""
+    hub = DirectHub()
+    hub.tokens["eebus"] = "sunflows-key"
+
+    assert hub._headers(connection) == headers

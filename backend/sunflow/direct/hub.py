@@ -158,6 +158,8 @@ class DirectHub:
     def __init__(self) -> None:
         """Initialize an empty hub."""
         self.devices: dict[str, DirectDevice] = {}
+        # Per gateway kind of a profile (connection.remote), the token its API needs
+        self.tokens: dict[str, str] = {}
         self._task: asyncio.Task[None] | None = None
 
     async def configure(self, devices: list[tuple[Any, dict[str, Any]]]) -> None:
@@ -175,7 +177,7 @@ class DirectHub:
                 id=config.id,
                 name=config.name,
                 profile=profile,
-                transport=make_transport(profile["connection"], *address),
+                transport=make_transport(profile["connection"], *address, self._headers(profile["connection"])),
                 address=address,
             )
         for device_id, device in self.devices.items():
@@ -192,6 +194,10 @@ class DirectHub:
                 if d.connection is not None and d.profile in library.profiles
             ]
         )
+
+    def _headers(self, connection: dict[str, Any]) -> dict[str, str] | None:
+        token = self.tokens.get(connection.get("remote") or "")
+        return {"Authorization": f"Bearer {token}"} if token else None
 
     def by_ha_device(self, ha_device_id: str) -> DirectDevice | None:
         """Device behind a pseudo device id."""
