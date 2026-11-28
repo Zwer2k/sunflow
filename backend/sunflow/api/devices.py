@@ -1,6 +1,5 @@
 """Configured devices: discovery preview, entities, parameters, batteries, categories."""
 
-from contextlib import suppress
 from dataclasses import asdict
 import logging
 import re
@@ -41,7 +40,7 @@ from sunflow.devices.resolver import (
     device_entities,
     preview,
 )
-from sunflow.devices.site import battery_module_ids, device_category, device_parameters
+from sunflow.devices.site import battery_module_ids, derive_parameter, device_category, device_parameters
 from sunflow.ha import HAError
 from sunflow.i18n import N_, t
 
@@ -742,15 +741,8 @@ async def _efficiency_estimate(request: Request, device: DeviceConfig, days: int
 
 
 def _module_capacity(spec: dict[str, Any] | None, snapshot: Snapshot, ha_device_id: str) -> float | None:
-    """Capacity of one battery module from the profile's derive key (e.g. full charge Ah x 51.2 V)."""
-    if not spec or "derive" not in spec:
-        return None
-    values = []
-    for entity in snapshot.entities:
-        if entity.get("device_id") == ha_device_id and entity_has_key(entity, spec["derive"]["sum_key"]):
-            with suppress(KeyError, TypeError, ValueError):
-                values.append(float(snapshot.states[entity["entity_id"]]["state"]))
-    return round(sum(values) * spec["derive"].get("factor", 1)) if values else None
+    """Capacity of one battery module from the profile's derive key, in Wh also from kWh sensors."""
+    return derive_parameter(spec, snapshot, ha_device_id) if spec else None
 
 
 @router.get("/config/batteries")

@@ -22,6 +22,10 @@ roles:
   pv_power: {key: dc_power, unit: W, fine_keys: [dc_power, "battery_*_dc_power"]}
   ac_power: {key: ac_power, unit: W}
   grid_power: {key: "meter_*_ac_power", unit: W, sign: export_positive, optional: true}
+  # No house load sensor: the inverter's AC output minus the meter's power (+ = export), i.e.
+  # plus the import; the battery's share is in the AC output of the hybrid
+  grid_export_power: {key: "meter_*_ac_power", unit: W, optional: true}
+  load_power: {key: ac_power, unit: W, minus: grid_export_power, optional: true}
   pv_energy: {key: ac_energy, unit: kWh, optional: true}
   grid_import_energy: {key: "meter_*_energy_imported", unit: kWh, optional: true}
   grid_export_energy: {key: "meter_*_energy_exported", unit: kWh, optional: true}

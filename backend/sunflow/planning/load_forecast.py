@@ -73,6 +73,17 @@ async def fetch_hourly_means(
     return await state_means(client, statistic_id, start, now, timedelta(hours=1))
 
 
+def difference(
+    history: list[tuple[datetime, float]], other: list[tuple[datetime, float]], factor: float = 1.0
+) -> list[tuple[datetime, float]]:
+    """A load measured as one series minus another (e.g. inverter output minus export), hour by hour.
+
+    Hours missing in the other series are left out: the first alone is no load.
+    """
+    by_hour = dict(other)
+    return [(moment, max(power - factor * by_hour[moment], 0.0)) for moment, power in history if moment in by_hour]
+
+
 def subtract_loads(
     history: list[tuple[datetime, float]], loads: list[list[tuple[datetime, float]]]
 ) -> tuple[list[tuple[datetime, float]], int]:

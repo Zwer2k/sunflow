@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.80.24
+
+- SolarEdge (solaredge_modbus and solaredge_modbus_multi): the house consumption is calculated from the inverter's AC power and the meter, so the load forecast learns (#4).
+- The load forecast learns from a consumption measured as two sensors from their difference, and from the device chosen for the consumption under the measurement sources (before always the battery inverter).
+- Battery modules whose capacity sensor shows kWh are listed in Wh (e.g. 4000 instead of 4).
+
 ## 0.80.23
 
 - Feed-in by exchange price: under the solar peak law nothing is paid in slots with a negative exchange price (before only when even the import price was negative). Direct marketing pays the exchange price plus the entered premium, at negative prices without premium (before it planned with a fixed rate).

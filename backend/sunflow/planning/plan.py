@@ -25,8 +25,8 @@ from sunflow.devices.profiles import (
     planned_battery,
     supported_action,
 )
-from sunflow.devices.resolver import preview
-from sunflow.devices.site import device_kind, device_parameters
+from sunflow.devices.resolver import CANONICAL_SIGNS, preview
+from sunflow.devices.site import device_kind, device_parameters, measurement_device
 from sunflow.ha import HAClient, HACommandError, HAError
 from sunflow.i18n import N_, number, t
 
@@ -41,6 +41,7 @@ from .hot_water import HotWaterUsage, learn_hot_water
 from .load_forecast import (
     LoadForecast,
     build_load_forecast,
+    difference,
     fetch_hourly_means,
     find_load_entity,
     subtract_loads,
@@ -1873,17 +1874,25 @@ async def compute_plan(
     warnings.extend(short_forecasts(used_planes, pv_ends, published_end, tz))
     pv = sum_forecasts(series) if series else []
 
-    # Load forecast from the history of the battery inverter's load sensor
+    # Load forecast from the history of the load sensor (the device chosen for it, else the battery inverter)
+    load_device = measurement_device(config, profiles, "load") or battery_device
     roles = preview(
-        profile,
+        profiles[load_device.profile],
         snapshot,
-        battery_device.ha_device_id,
-        {k: o.model_dump() for k, o in battery_device.role_overrides.items()},
+        load_device.ha_device_id,
+        {k: o.model_dump() for k, o in load_device.role_overrides.items()},
     )
     history = []
     if load_entity := find_load_entity(roles):
         try:
             history = await cached(("hourly", load_entity), HOURLY_TTL, lambda: fetch_hourly_means(client, load_entity, start))
+            # Measured as two sensors (e.g. inverter output minus export): the other one's history subtracted
+            load_role = next(r for r in roles if r.role == "load_power")
+            if load_role.minus_role and (other := next(r for r in roles if r.role == load_role.minus_role)).entity_id:
+                other_entity = other.entity_id
+                other_history = await cached(("hourly", other_entity), HOURLY_TTL, lambda: fetch_hourly_means(client, other_entity, start))
+                sign = -1.0 if other.sign is not None and other.sign not in CANONICAL_SIGNS else 1.0
+                history = difference(history, other_history, sign)
         except HACommandError as err:
             warnings.append(t("Verlauf des Hausverbrauchs nicht abrufbar ({error}) – Lastprognose mit Standardwerten.", error=err))
     # Loadpoints (wallbox, heater) are part of the measured household load

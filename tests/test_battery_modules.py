@@ -104,3 +104,15 @@ async def test_module_day() -> None:
     (day,) = await module_day(client, modules, start, start + timedelta(minutes=10), timedelta(minutes=5))
 
     assert day == {"id": "m1", "soc": [40, None], "temperature_max": [19.5, None], "cell_spread_mv": [15.0, None]}
+
+
+def test_module_capacity_in_kwh_counts_in_wh(library: ProfileLibrary) -> None:
+    """A module whose capacity sensor shows kWh (SolarEdge's B1_max_energy) is listed in Wh."""
+    from sunflow.api.devices import _module_capacity
+
+    spec = library.profiles["solaredge_modbus_multi/storedge"]["parameters"]["capacity_wh"]
+    entity = {"entity_id": "sensor.b1_max_energy", "unique_id": "SE5K_7E123456_B1_max_energy", "device_id": "b1"}
+    states = {"sensor.b1_max_energy": {"state": "4.0", "attributes": {"unit_of_measurement": "kWh"}}}
+    snapshot = Snapshot(entries=[], devices=[{"id": "b1"}], entities=[entity], states=states, energy_prefs=None)
+
+    assert _module_capacity(spec, snapshot, "b1") == 4000

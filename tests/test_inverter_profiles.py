@@ -336,10 +336,14 @@ def test_solaredge_multi_reads_battery_and_meter(library: ProfileLibrary) -> Non
         f"{prefix}_dc_power": {"state": "595", "attributes": {"unit_of_measurement": "W"}},
         f"{prefix}_B1_dc_power": {"state": "-224", "attributes": {"unit_of_measurement": "W"}},
         f"{prefix}_B1_max_energy": {"state": "4.0", "attributes": {"unit_of_measurement": "kWh"}},
+        f"{prefix}_ac_power": {"state": "586", "attributes": {"unit_of_measurement": "W"}},
+        f"{prefix}_M1_ac_power": {"state": "-300", "attributes": {"unit_of_measurement": "W"}},
     }
     snapshot = Snapshot(entries=[], devices=[], entities=entities, states=states, energy_prefs=None)
     values = {r.role: r.value for r in preview(profile, snapshot, "dev", {})}
     assert values["pv_power"] == 371
+    # No house load sensor: AC output plus the 300 W imported
+    assert values["load_power"] == 886
     assert derive_parameter(profile["parameters"]["capacity_wh"], snapshot, "dev") == 4000
 
 
