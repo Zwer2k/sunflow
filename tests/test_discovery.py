@@ -329,3 +329,47 @@ def test_battery_reading_zero_is_no_battery(library: ProfileLibrary, soc: str, p
     (integration,) = discover(snapshot, library)
 
     assert integration.devices[0].profile == profile
+
+
+SOLAREDGE_CONTROL = [
+    "select.storage_control_mode", "select.storage_command_mode", "number.storage_charge_limit", "number.storage_discharge_limit",
+]
+
+
+@pytest.mark.parametrize(
+    ("control", "profile"),
+    [
+        pytest.param(SOLAREDGE_CONTROL, "solaredge_modbus_multi/storedge", id="storage_control"),
+        # The control entities only exist with "Storage Control" enabled in the integration
+        pytest.param([], None, id="without_storage_control"),
+    ],
+)
+def test_solaredge_multi_is_offered(library: ProfileLibrary, control: list[str], profile: str | None) -> None:
+    """The HACS integration is listed; battery and meter are sub-devices of the inverter."""
+    uid = "SE5K-RWS48BEN4_7E123456"
+    devices = [
+        {"id": "inv", "name": "SolarEdge I1", "config_entries": ["se"], "via_device_id": None},
+        {"id": "bat", "name": "SolarEdge I1 B1", "config_entries": ["se"], "via_device_id": "inv"},
+        {"id": "met", "name": "SolarEdge I1 M1", "config_entries": ["se"], "via_device_id": "inv"},
+    ]
+    keys = {
+        "inv": ["sensor.dc_power", "sensor.ac_power", *control],
+        "bat": ["sensor.B1_battery_soe", "sensor.B1_dc_power"],
+        "met": ["sensor.M1_ac_power"],
+    }
+    entities = [
+        {"entity_id": f"{key.split('.')[0]}.{device}_{i}", "unique_id": f"{uid}_{key.split('.')[1]}",
+         "device_id": device, "config_entry_id": "se"}
+        for device, device_keys in keys.items()
+        for i, key in enumerate(device_keys)
+    ]
+    snapshot = Snapshot(
+        entries=[{"entry_id": "se", "domain": "solaredge_modbus_multi", "title": "SolarEdge", "state": "loaded"}],
+        devices=devices, entities=entities, states={}, energy_prefs=None,
+    )
+
+    [integration] = discover(snapshot, library)
+
+    assert integration.supported
+    assert [(d.name, d.profile) for d in integration.devices] == [("SolarEdge I1", profile)]
+    assert sorted(c.name for c in integration.devices[0].components) == ["SolarEdge I1 B1", "SolarEdge I1 M1"]
