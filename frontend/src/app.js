@@ -2584,6 +2584,7 @@ class SunflowApp extends LitElement {
         <div class="device-title">${t("Einspeisevergütung")}</div>
         ${plants.map((device) => {
           const feedEdit = this._feedEdits[device.id] ?? {};
+          const direct = (feedEdit.model ?? device.feed_in?.model ?? "eeg_fixed") === "direct";
           return html`
             <div class="fields">
               <div class="field">
@@ -2596,9 +2597,9 @@ class SunflowApp extends LitElement {
                 </select>
               </div>
               <label class="field">
-                <span class="field-label">${t("Vergütung")}</span>
+                <span class="field-label">${direct ? t("Aufschlag auf Börsenpreis") : t("Vergütung")}</span>
                 <span class="input-unit">
-                  <input inputmode="decimal" placeholder=${t("z. B. 8,2")}
+                  <input inputmode="decimal" placeholder=${direct ? t("z. B. 1,5") : t("z. B. 8,2")}
                     .value=${feedEdit.rate ?? toDisplay(device.feed_in?.rate_ct_per_kwh, "ct")}
                     @input=${(e) => this._editFeedIn(device.id, "rate", e.target.value)}>
                   <span class="muted">ct/kWh</span>
@@ -2611,7 +2612,36 @@ class SunflowApp extends LitElement {
               </div>
             </div>`;
         })}
+        ${this._renderExchangeSource(plants)}
       </section>
+    `;
+  }
+
+  /** The net exchange price the feed-in follows (direct marketing, solar peak law). */
+  _renderExchangeSource(plants) {
+    const sources = this._sources;
+    const models = plants.map((d) => this._feedEdits[d.id]?.model ?? d.feed_in?.model ?? "eeg_fixed");
+    if (!sources || !models.some((m) => m === "direct" || m === "solar_peak")) return nothing;
+    const importExchange = sources.prices.find((p) => p.entity_id === sources.tariff.import_entity_id)?.exchange;
+    const options = [...sources.prices]
+      .sort((a, b) => Number(b.exchange) - Number(a.exchange))
+      .map((p) => ({
+        value: p.entity_id,
+        label: p.name,
+        detail: [PRICE_ADAPTERS[p.adapter] ?? p.adapter, p.current !== null ? formatCt(p.current) : null].filter(Boolean).join(" · "),
+      }));
+    return html`
+      <p class="small muted help">${t("Direktvermarktung und Solarspitzengesetz richten sich nach dem reinen Börsenpreis: Bei Direktvermarktung ist er die Vergütung (plus Aufschlag, ohne Aufschlag bei negativen Preisen), beim Solarspitzengesetz gibt es bei negativem Börsenpreis nichts.")}</p>
+      <div class="field wide">
+        <span class="field-label">${t("Börsenpreis")}</span>
+        <sf-picker label=${t("Quelle Börsenpreis")}
+          empty-label=${importExchange ? t("– wie Bezugspreis (ohne Aufschläge) –") : t("– keiner –")}
+          .value=${sources.tariff.exchange_entity_id ?? ""} .options=${options}
+          @change=${(e) => this._saveTariff({ ...sources.tariff, exchange_entity_id: e.detail.value || null })}></sf-picker>
+      </div>
+      ${!importExchange && !sources.tariff.exchange_entity_id
+        ? html`<div class="alert warn">⚠ ${t("Ohne Börsenpreis erkennt Sunflow negative Preise nur am Bezugspreis, und Direktvermarktung rechnet mit dem Aufschlag als fester Vergütung. Geeignet ist z. B. der Sensor „Market Price“ von EPEX Spot oder Nord Pool.")}</div>`
+        : nothing}
     `;
   }
 

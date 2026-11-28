@@ -1443,10 +1443,10 @@ def device_actions(plan: Plan, profile: dict[str, Any], key: str | None = None) 
 
 
 def feed_in_of(config: SunflowConfig, battery_device: DeviceConfig | None) -> FeedIn | None:
-    """Feed-in of the battery inverter's plant first, else the first configured rate."""
+    """Feed-in of the battery inverter's plant first, else the first configured rate (direct marketing needs none)."""
     candidates = ([battery_device] if battery_device else []) + config.devices
     for device in candidates:
-        if (feed_in := config.feed_in.get(device.id)) and feed_in.rate_ct_per_kwh is not None:
+        if (feed_in := config.feed_in.get(device.id)) and (feed_in.rate_ct_per_kwh is not None or feed_in.model == "direct"):
             return feed_in
     return None
 
@@ -1457,14 +1457,62 @@ def feed_in_price(config: SunflowConfig, battery_device: DeviceConfig | None) ->
     return feed_in.rate_ct_per_kwh / 100 if feed_in and feed_in.rate_ct_per_kwh is not None else 0.0
 
 
-def slot_feed_in(inputs: list[SlotInput], feed_in: FeedIn | None) -> list[SlotInput]:
-    """Feed-in per slot: under the solar peak law nothing is paid at negative prices.
+def slot_feed_in(inputs: list[SlotInput], feed_in: FeedIn | None, exchange: list[PricePoint] | None = None) -> list[SlotInput]:
+    """Feed-in per slot by the net exchange price.
 
-    Only the import price is known; when even it is negative the market price is too.
+    Solar peak law: nothing at a negative exchange price; without one known only where even the
+    import price is negative. Direct marketing: the exchange price plus the rate (market premium),
+    at a negative price no premium; without an exchange price the rate as fixed.
     """
-    if feed_in is None or feed_in.model != "solar_peak":
+    if feed_in is None or feed_in.model == "eeg_fixed":
         return inputs
-    return [replace(slot, feed_in=0.0) if slot.price < 0 else slot for slot in inputs]
+    rate = (feed_in.rate_ct_per_kwh or 0.0) / 100
+    result = []
+    for slot in inputs:
+        market = value_at(exchange or [], slot.start, "price")
+        if feed_in.model == "solar_peak":
+            negative = market < 0 if market is not None else slot.price < 0
+            result.append(replace(slot, feed_in=0.0) if negative else slot)
+        elif market is None:
+            result.append(slot)
+        else:
+            result.append(replace(slot, feed_in=market + rate if market >= 0 else market))
+    return result
+
+
+async def exchange_prices(
+    client: HAClient, snapshot: Snapshot, config: SunflowConfig, start: datetime, tz: tzinfo
+) -> list[PricePoint] | None:
+    """The net exchange price per slot for the feed-in: the chosen entity, else an exchange import price.
+
+    Beyond the published prices the usual ones of each hour; None without a source.
+    """
+    tariff = config.tariff
+    entity_id = tariff.exchange_entity_id
+    if entity_id is None and tariff.import_entity_id:
+        state = snapshot.states.get(tariff.import_entity_id)
+        entry = next((e for e in snapshot.entities if e["entity_id"] == tariff.import_entity_id), None)
+        if state is not None and is_exchange(state, entry):
+            entity_id = tariff.import_entity_id
+    if entity_id is None or (state := snapshot.states.get(entity_id)) is None:
+        return None
+    entry = next((e for e in snapshot.entities if e["entity_id"] == entity_id), None)
+    try:
+        # Without surcharges and VAT: the market price itself
+        points = await fetch_prices(client, state, entry, start, HORIZON_HOURS, tz)
+    except HAError:
+        return None
+    horizon_end = start + timedelta(hours=HORIZON_HOURS)
+    if points and max(p.end for p in points) < horizon_end:
+        try:
+            history = await cached(
+                ("hourly", entity_id), HABITS_TTL, lambda: fetch_hourly_means(client, entity_id, start, PRICE_HISTORY_DAYS)
+            )
+        except HAError:
+            history = []
+        factor = price_factor(state.get("attributes", {}).get("unit_of_measurement")) or 1.0
+        points = extend_prices(points, [(moment, price * factor) for moment, price in history], horizon_end, tz)
+    return points or None
 
 
 def curtailable_shares(
@@ -1882,7 +1930,13 @@ async def compute_plan(
         warnings.append(notice)
 
     settings = optimizer_settings(config, battery, battery_device.id)
-    inputs = slot_feed_in(build_inputs(start, prices, pv, load, feed_in_price(config, battery_device)), feed_in_of(config, battery_device))
+    feed_in = feed_in_of(config, battery_device)
+    exchange = await exchange_prices(client, snapshot, config, start, tz) if feed_in is not None and feed_in.model != "eeg_fixed" else None
+    if feed_in is not None and feed_in.model == "direct" and exchange is None:
+        warnings.append(
+            t("Direktvermarktung ohne Börsenpreis – geplant wird mit der eingetragenen Vergütung als festem Wert. Börsenpreis unter Einstellungen → Tarif & Prognose wählen.")
+        )
+    inputs = slot_feed_in(build_inputs(start, prices, pv, load, feed_in_price(config, battery_device)), feed_in, exchange)
     if len(inputs) < MIN_HORIZON_HOURS * 4:
         warnings.append(t("Preise reichen nur wenige Stunden in die Zukunft."))
     raw_pv = [slot.pv_w for slot in inputs]

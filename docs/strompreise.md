@@ -45,3 +45,19 @@ Stunden noch einmal. Geschätzte Preise sind im Plan gestrichelt und als „gesc
 prägen nur das Ende des Plans und werden ersetzt, sobald die echten Preise da sind. Geschätzt wird
 nur so weit, wie alle PV-Prognosen reichen, damit fehlender PV-Ertrag den Plan nicht verzerrt.
 Zeittarife und feste Preise sind ohnehin bekannt und reichen über den ganzen Zeitraum.
+
+## Einspeisung nach Börsenpreis
+
+Die Einspeisevergütung stellst du je Wechselrichter unter Einstellungen → Tarif & Prognose ein:
+
+| Modell | Vergütung je Viertelstunde |
+|---|---|
+| Feste EEG-Vergütung | der eingetragene Satz |
+| Solarspitzengesetz | der eingetragene Satz, bei negativem Börsenpreis nichts |
+| Direktvermarktung | Börsenpreis plus eingetragener Aufschlag (z. B. Marktprämie minus Entgelt des Direktvermarkters); bei negativem Börsenpreis der Börsenpreis ohne Aufschlag |
+
+Beide Modelle brauchen den reinen Börsenpreis. Ist der Bezugspreis selbst ein Börsenpreis
+(Nord Pool Core, EPEX Spot „Market Price“), nimmt Sunflow ihn ohne Aufschläge. Sonst wählst du
+unter der Einspeisevergütung eine Quelle „Börsenpreis“, z. B. den Sensor „Market Price“ von
+EPEX Spot. Ohne Börsenpreis erkennt Sunflow negative Preise nur an einem negativen Bezugspreis,
+und Direktvermarktung rechnet mit dem Aufschlag als fester Vergütung.

@@ -33,6 +33,8 @@ class FeedIn(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
 
     model: Literal["eeg_fixed", "solar_peak", "direct"] = "eeg_fixed"
+    # Fixed rate; with direct marketing what comes on top of the exchange price (market premium
+    # minus the marketer's fee, may be negative)
     rate_ct_per_kwh: float | None = None
 
 
@@ -392,6 +394,9 @@ class TariffConfig(BaseModel):
     # Added to a pure exchange price (Nord Pool, EPEX market price): grid fee, levies, provider fee
     exchange_surcharge_ct: float | None = Field(default=None, ge=-50, le=100)
     exchange_vat_pct: float | None = Field(default=None, ge=0, le=50)
+    # Net exchange price for the feed-in (direct marketing, solar peak law); without it the import
+    # price when that is an exchange price
+    exchange_entity_id: str | None = None
 
 
 class ForecastPlane(BaseModel):

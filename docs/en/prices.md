@@ -44,3 +44,19 @@ hours repeated. Estimated prices are dashed in the plan and marked as "estimated
 they only shape the end of the plan and are replaced as soon as the real prices arrive. Prices
 are only estimated as far as all PV forecasts reach, so that missing PV yield does not distort
 the plan. Time-of-use tariffs and fixed prices are known anyway and cover the whole period.
+
+## Feed-in by exchange price
+
+Set the feed-in remuneration per inverter under Settings → Tariff & forecast:
+
+| Model | Remuneration per quarter hour |
+|---|---|
+| Fixed EEG rate | the entered rate |
+| Solar peak law | the entered rate, nothing at a negative exchange price |
+| Direct marketing | exchange price plus the entered premium (e.g. market premium minus the marketer's fee); at a negative exchange price the exchange price without premium |
+
+Both models need the net exchange price. If the import price is an exchange price itself (Nord
+Pool Core, EPEX Spot "Market Price"), Sunflow takes it without surcharges. Otherwise choose an
+"Exchange price" source below the feed-in remuneration, e.g. the "Market Price" sensor of EPEX
+Spot. Without an exchange price Sunflow only sees negative prices in a negative import price, and
+direct marketing uses the premium as a fixed rate.

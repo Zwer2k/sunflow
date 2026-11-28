@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.23
+
+- Feed-in by exchange price: under the solar peak law nothing is paid in slots with a negative exchange price (before only when even the import price was negative). Direct marketing pays the exchange price plus the entered premium, at negative prices without premium (before it planned with a fixed rate).
+- New optional source "Exchange price" below the feed-in remuneration (e.g. EPEX Spot "Market Price"); an exchange import price is used without surcharges.
+
 ## 0.80.22
 
 - EPEX Spot: the "Market Price" sensor is recognized as a net exchange price again (by its attribute `price_per_kwh`), so the surcharges and VAT are added. Before, it was taken as the final price.
