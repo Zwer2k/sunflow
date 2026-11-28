@@ -1,0 +1,52 @@
+# NRGkick (Gen2) via the nrgkick core integration (local, silver). Unique ids look like
+# "<serial>_<key>". The current is set with the number current_set (6 A up, 0.1 A steps),
+# charging is paused with the switch charging_enabled, the phases with the number phase_count.
+# Not verified on hardware yet.
+profile: nrgkick/charger
+version: 1
+match:
+  integration: nrgkick
+  requires: [current_set, charging_enabled]
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: total_active_power, unit: W}
+  connected: {key: status, domain: sensor, on_states: [connected, charging]}
+  charged_energy: {key: charged_energy, unit: Wh, optional: true}
+  stored_current: {key: current_set, domain: number, unit: A, optional: true}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0, derive: {sum_key: rated_current, factor: 690}}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3, advanced: true}
+  phase_mode: {unit: "", default: 0, min: 0, max: 3}
+  phase_up_w: {unit: W, default: 4500, min: 1500, max: 22000}
+  phase_down_w: {unit: W, default: 4000, min: 1000, max: 22000}
+  phase_up_delay_min: {unit: min, default: 5, min: 1, max: 60, advanced: true}
+  phase_down_delay_min: {unit: min, default: 2, min: 1, max: 60, advanced: true}
+  phase_min_interval_min: {unit: min, default: 15, min: 5, max: 240, advanced: true}
+  phase_max_switches_day: {unit: "", default: 12, min: 1, max: 100, advanced: true}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32, derive: {sum_key: rated_current}}
+
+charge_control:
+  charge:
+    - number: {key: current_set, value: "{{ current_a }}", write: if_differs}
+    - switch: {key: charging_enabled, state: "on", write: if_differs}
+  stop:
+    - switch: {key: charging_enabled, state: "off", write: if_differs}
+  release:
+    - switch: {key: charging_enabled, state: "on", write: if_differs}
+  remember: {key: current_set, domain: number}
+
+phase_switch:
+  one:
+    - number: {key: phase_count, value: 1, storage: eeprom, write: if_differs}
+  three:
+    - number: {key: phase_count, value: 3, storage: eeprom, write: if_differs}
+
+eeprom_guard:
+  max_writes_per_day: 20

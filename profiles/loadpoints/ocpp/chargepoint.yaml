@@ -1,0 +1,38 @@
+# Any OCPP 1.6 wallbox via the ocpp custom integration (HACS, lbbrhzn): Home Assistant is the
+# central system the wallbox connects to (ABB, Alfen, Easee, go-e, Wallbox, Zaptec, KEBA and
+# many more). Unique ids use dots ("ocpp.<id>.power_active_import.sensor"), hence the
+# wildcards. The current is the maximum current, a charging profile the wallbox keeps until
+# replaced; 0 A pauses without ending the transaction. Phase switching is not offered.
+# Not verified on hardware yet.
+profile: ocpp/chargepoint
+version: 1
+match:
+  integration: ocpp
+  requires: ["*.maximum_current", "*.status_connector.sensor"]
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: "*.power_active_import.sensor", unit: kW}
+  connected:
+    key: "*.status_connector.sensor"
+    on_states: [Preparing, Charging, SuspendedEV, SuspendedEVSE, Finishing]
+  charged_energy: {key: "*.energy_session.sensor", unit: kWh, optional: true}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - number: {key: "*.maximum_current", value: "{{ current_a }}", write: if_differs}
+  stop:
+    - number: {key: "*.maximum_current", value: 0, write: if_differs}
+  # No limit of Sunflow: the wallbox's own maximum
+  release:
+    - number: {key: "*.maximum_current", value: 32, write: if_differs}

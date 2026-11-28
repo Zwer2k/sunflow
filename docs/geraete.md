@@ -88,6 +88,21 @@ Vorrang vor der Netzmessung des Wechselrichters; unter „Bilanzprüfung“ läs
 | evcc-Ladepunkt (Wallbox oder Heizstab) | evcc_intg | `evcc_intg/loadpoint` | Modus „Sofort“, „PV“, „Aus“; evcc folgt dem PV-Überschuss selbst | durch evcc selbst (im PV-Modus) | – | ✅ | – (noch nicht bestätigt) |
 | go-e Charger mit API v2 (Gemini, HOME+, HOMEfix) | goecharger_mqtt | `goecharger_mqtt/charger` | Laden/Stopp, Ladestrom nach PV-Überschuss (amp, höchstens alle 3 min) | 1 ↔ 3 Phasen durch Sunflow (Schwellen, Verzögerungen, Mindestabstand, Tageslimit in den Kenndaten) | Ladekarte des erkannten Fahrzeugs | ✅ | 🧪 (Phasen), sonst – (noch nicht bestätigt) |
 | go-e Charger mit API v1 (HOME, ältere Firmware) | goecharger (HTTP) | `goecharger/charger` | Laden erlauben/sperren, Ladestrom minütlich nach PV-Überschuss (amx, ohne Flash-Schreiben) | – (feste Phasen in den Kenndaten) | – | – (noch nicht bestätigt) | – (noch nicht bestätigt) |
+| Peblar Home / Business | peblar (Core) | `peblar/charger` | Laden/Stopp, Ladestrom minütlich | 1 ↔ 3 Phasen durch Sunflow (falls die Installation es erlaubt) | – | – | – |
+| NRGkick Gen2 | nrgkick (Core) | `nrgkick/charger` | Laden/Pause, Ladestrom minütlich (0,1 A) | 1 ↔ 3 Phasen durch Sunflow | – | – | – |
+| OpenEVSE | openevse (Core) | `openevse/charger` | Laden/Stopp über Override, Ladestrom minütlich | – | – | – | – |
+| V2C Trydan | v2c (Core) | `v2c/charger` | Laden/Pause, Ladestrom minütlich; dynamischen Modus der Wallbox ausschalten | – | – | – | – |
+| Wallbox Pulsar, Commander, Copper | wallbox (Core, Cloud) | `wallbox/charger` | Laden/Pause, Ladestrom höchstens alle 5 min (Cloud) | – | – | – | – |
+| Lektrico | lektrico (Core) | `lektrico/charger` | Ladestrom über die dynamische Grenze minütlich, 0 A stoppt | 1 ↔ 3 Phasen durch Sunflow | – | – | – |
+| Easee Home / Charge | easee (HACS, Cloud) | `easee/charger` | Laden/Pause, dynamische Grenze höchstens alle 5 min (Cloud) | 1 ↔ 3 Phasen durch Sunflow (Cloud-Einstellung, nur bei Änderung) | – | – | – |
+| KEBA KeContact P30 / P40 | keba (HACS, dannerph) | `keba/charger` | Laden/Stopp, temporärer Ladestrom (currtime) minütlich | – | – | – | – |
+| Heidelberg Energy Control, Amperfied connect | heidelberg_energy_control (HACS) | `heidelberg_energy_control/charger` | Laden/Stopp, Ladestrom minütlich (RAM); Standby der Box ausschalten | – | – | – | – |
+| Webasto / Ampure Unite, Vestel EVC04 | unite_ev_charger (HACS) | `unite_ev_charger/charger` | Laden/Stopp, Ladestrom minütlich; Steuermodus der Integration „external“ | 1 ↔ 3 Phasen durch Sunflow | – | – | – |
+| cFos Power Brain Wallbox | cfos_powerbrain (HACS) | `cfos_powerbrain/charger` | Laden/Stopp, Ladestrom minütlich (RAM) | 1 ↔ 3 Phasen durch Sunflow | – | – | – |
+| Mennekes AMTRON 4You / 4Business | mennekes_amtron (HACS) | `mennekes_amtron/charger` | HEMS-Strom minütlich, 0 A stoppt; Kommunikations-Timeout der Box 300 s | – | – | – | – |
+| SMA EV Charger | smaev (HACS) | `smaev/charger` | Laden/Stopp über den Lademodus, Ladestrom höchstens alle 5 min | – | – | – | – |
+| Fronius Wattpilot | wattpilot (HACS) | `wattpilot/charger` | Laden/Stopp (frc), Ladestrom (amp) höchstens alle 3 min | 1 ↔ 3 Phasen durch Sunflow | – | – | – |
+| Jede OCPP-1.6-Wallbox (ABB, Alfen, Easee, go-e, KEBA, Wallbox, Zaptec …) | ocpp (HACS) | `ocpp/chargepoint` | Höchststrom als Ladeprofil minütlich, 0 A pausiert | – | – | – | – |
 
 Phasenumschaltung (go-e, Kenndaten der Wallbox): Bei geplanter fester Leistung (z. B. aus dem
 Netz) wählt Sunflow die Phasen sofort. Beim PV-Überschuss entscheidet das Mittel der letzten

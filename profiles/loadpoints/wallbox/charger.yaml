@@ -1,0 +1,43 @@
+# Wallbox Pulsar, Commander, Copper via the wallbox core integration (myWallbox cloud).
+# Unique ids put the key first: "<key>-<serial>", hence the wildcards. The current is the
+# maximum charging current, a setting in the cloud: changed at most every 5 minutes. The
+# switch "paused" resumes when on and pauses when off; the integration offers it only
+# while a car is connected.
+# Not verified on hardware yet.
+profile: wallbox/charger
+version: 1
+match:
+  integration: wallbox
+  requires: ["max_charging_current-*", "status_description-*"]
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: "charging_power-*", unit: kW}
+  connected:
+    key: "status_description-*"
+    on_states: ["Charging", "Paused", "Waiting for car demand", "Scheduled", "Locked, car connected", "Waiting for next schedule"]
+  charged_energy: {key: "added_energy-*", unit: kWh, optional: true}
+  stored_current: {key: "max_charging_current-*", domain: number, unit: A, optional: true}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  # max_available_power is in A despite its name
+  max_power: {unit: W, default: 11000, min: 0, derive: {sum_key: "max_available_power-*", factor: 690}}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32, derive: {sum_key: "max_available_power-*"}}
+  # A cloud setting: not more often than this
+  current_interval_min: {unit: min, default: 5, min: 5, max: 60, advanced: true}
+
+charge_control:
+  charge:
+    - number: {key: "max_charging_current-*", value: "{{ current_a }}", write: if_differs}
+    - switch: {key: "paused-*", state: "on", write: if_differs}
+  stop:
+    - switch: {key: "paused-*", state: "off", write: if_differs}
+  release:
+    - switch: {key: "paused-*", state: "on", write: if_differs}
+  remember: {key: "max_charging_current-*", domain: number}

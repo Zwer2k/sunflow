@@ -1,0 +1,35 @@
+# OpenEVSE via the openevse core integration (local push, platinum). Unique ids look like
+# "<id>-<key>". The current is the charge rate; from firmware 4.1.2 the library sets it as a
+# claim that the charger drops again on its own. Charging is forced on and off with the
+# override state; "auto" hands it back to the charger's own logic.
+# Not verified on hardware yet.
+profile: openevse/charger
+version: 1
+match:
+  integration: openevse
+  requires: [charge_rate, override_state]
+
+capabilities: [loadpoint]
+
+roles:
+  charge_power: {key: current_power, unit: W}
+  connected: {key: vehicle, domain: binary_sensor}
+  charged_energy: {key: usage_session, unit: Wh, optional: true}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0, derive: {sum_key: max_amps, factor: 690}}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 1, min: 1, max: 3}
+  min_current_a: {unit: A, default: 6, min: 6, max: 80}
+  max_current_a: {unit: A, default: 16, min: 6, max: 80, derive: {sum_key: max_amps}}
+
+charge_control:
+  charge:
+    - number: {key: charge_rate, value: "{{ current_a }}", write: if_differs}
+    - select: {key: override_state, option: active, write: if_differs}
+  stop:
+    - select: {key: override_state, option: disabled, write: if_differs}
+  release:
+    - select: {key: override_state, option: auto, write: if_differs}

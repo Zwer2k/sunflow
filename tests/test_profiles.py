@@ -22,6 +22,7 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
         "homevolt/homevolt", "marstek_modbus/venus", "zendure_ha/manager", "generic/heat_pump", "generic/relays",
         "generic/grid_meter", "generic/load_meter", "solax_modbus/growatt_hybrid", "solax_modbus/growatt_pv", "solarman/deye_micro",
         "solaredge_modbus_multi/storedge",
+        "peblar/charger", "nrgkick/charger", "openevse/charger", "v2c/charger", "wallbox/charger", "lektrico/charger", "easee/charger", "keba/charger", "heidelberg_energy_control/charger", "unite_ev_charger/charger", "cfos_powerbrain/charger", "mennekes_amtron/charger", "smaev/charger", "wattpilot/charger", "ocpp/chargepoint",
     }
     assert set(library.optimizers) == {"huawei_solar/optimizer", "tigo_rs485/optimizer"}
     assert set(library.battery_modules) == {"solax_modbus/sofar_bts"}
@@ -29,6 +30,7 @@ def test_repository_profiles_are_valid(library: ProfileLibrary) -> None:
         "solax_modbus", "huawei_solar", "evcc_intg", "manual", "tibber_local", "edl21", "homewizard", "powerfox", "discovergy",
         "goecharger_mqtt", "goecharger", "solaredge_modbus", "fronius", "goodwe", "kostal_plenticore", "indevolt", "homevolt",
         "marstek_modbus", "zendure_ha", "solarman", "solaredge_modbus_multi",
+        "cfos_powerbrain", "easee", "heidelberg_energy_control", "keba", "lektrico", "mennekes_amtron", "nrgkick", "ocpp", "openevse", "peblar", "smaev", "unite_ev_charger", "v2c", "wallbox", "wattpilot",
     }
 
 

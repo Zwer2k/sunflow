@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.32
+
+- 15 new wallbox profiles through Home Assistant integrations, following the wallbox standard: Peblar, NRGkick, OpenEVSE, V2C Trydan, Wallbox (cloud), Lektrico (core); Easee (cloud), KEBA P30/P40 (dannerph), Heidelberg Energy Control, Webasto/Ampure Unite and Vestel EVC04, cFos Power Brain, Mennekes AMTRON 4You/4Business, SMA EV Charger, Fronius Wattpilot and any OCPP 1.6 wallbox (HACS). Cloud and stored currents change at most every few minutes. Not verified on hardware yet.
+
 ## 0.80.31
 
 - Wallbox standard (design/wallbox.md): the roles, parameters and actions every wallbox profile provides, checked by a test, so a new wallbox needs only a profile. Charge steps also get the planned power as power_w, for chargers set by power instead of current.

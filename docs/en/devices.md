@@ -86,6 +86,21 @@ source can be changed under "Balance check".
 | evcc loadpoint (wallbox or heating rod) | evcc_intg | `evcc_intg/loadpoint` | mode "Now", "PV", "Off"; evcc follows the PV surplus itself | by evcc itself (in PV mode) | – | ✅ | – (not confirmed yet) |
 | go-e Charger with API v2 (Gemini, HOME+, HOMEfix) | goecharger_mqtt | `goecharger_mqtt/charger` | charge/stop, charging current following PV surplus (amp, at most every 3 min) | 1 ↔ 3 phases by Sunflow (thresholds, delays, minimum interval, daily limit in the parameters) | charging card of the detected vehicle | ✅ | 🧪 (phases), otherwise – (not confirmed yet) |
 | go-e Charger with API v1 (HOME, older firmware) | goecharger (HTTP) | `goecharger/charger` | allow/lock charging, charging current every minute following PV surplus (amx, no flash writes) | – (fixed phases in the parameters) | – | – (not confirmed yet) | – (not confirmed yet) |
+| Peblar Home / Business | peblar (Core) | `peblar/charger` | Charge/stop, current every minute | 1 ↔ 3 phases by Sunflow (if the installation allows) | – | – | – |
+| NRGkick Gen2 | nrgkick (Core) | `nrgkick/charger` | Charge/pause, current every minute (0.1 A) | 1 ↔ 3 phases by Sunflow | – | – | – |
+| OpenEVSE | openevse (Core) | `openevse/charger` | Charge/stop by override, current every minute | – | – | – | – |
+| V2C Trydan | v2c (Core) | `v2c/charger` | Charge/pause, current every minute; switch off the wallbox's dynamic mode | – | – | – | – |
+| Wallbox Pulsar, Commander, Copper | wallbox (Core, cloud) | `wallbox/charger` | Charge/pause, current at most every 5 min (cloud) | – | – | – | – |
+| Lektrico | lektrico (Core) | `lektrico/charger` | Current by the dynamic limit every minute, 0 A stops | 1 ↔ 3 phases by Sunflow | – | – | – |
+| Easee Home / Charge | easee (HACS, cloud) | `easee/charger` | Charge/pause, dynamic limit at most every 5 min (cloud) | 1 ↔ 3 phases by Sunflow (cloud setting, only on change) | – | – | – |
+| KEBA KeContact P30 / P40 | keba (HACS, dannerph) | `keba/charger` | Charge/stop, temporary current (currtime) every minute | – | – | – | – |
+| Heidelberg Energy Control, Amperfied connect | heidelberg_energy_control (HACS) | `heidelberg_energy_control/charger` | Charge/stop, current every minute (RAM); switch off the box's standby | – | – | – | – |
+| Webasto / Ampure Unite, Vestel EVC04 | unite_ev_charger (HACS) | `unite_ev_charger/charger` | Charge/stop, current every minute; integration control mode "external" | 1 ↔ 3 phases by Sunflow | – | – | – |
+| cFos Power Brain Wallbox | cfos_powerbrain (HACS) | `cfos_powerbrain/charger` | Charge/stop, current every minute (RAM) | 1 ↔ 3 phases by Sunflow | – | – | – |
+| Mennekes AMTRON 4You / 4Business | mennekes_amtron (HACS) | `mennekes_amtron/charger` | HEMS current every minute, 0 A stops; box communication timeout 300 s | – | – | – | – |
+| SMA EV Charger | smaev (HACS) | `smaev/charger` | Charge/stop by the session mode, current at most every 5 min | – | – | – | – |
+| Fronius Wattpilot | wattpilot (HACS) | `wattpilot/charger` | Charge/stop (frc), current (amp) at most every 3 min | 1 ↔ 3 phases by Sunflow | – | – | – |
+| Any OCPP 1.6 wallbox (ABB, Alfen, Easee, go-e, KEBA, Wallbox, Zaptec …) | ocpp (HACS) | `ocpp/chargepoint` | Maximum current as charging profile every minute, 0 A pauses | – | – | – | – |
 
 Phase switching (go-e, wallbox parameters): for a planned fixed power (e.g. from the grid)
 Sunflow chooses the phases immediately. For PV surplus the average of the last minutes decides:

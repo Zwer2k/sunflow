@@ -1,0 +1,51 @@
+# cFos Power Brain wallbox via the cfos_powerbrain custom integration (HACS, TimoFriedri;
+# Modbus). Unique ids look like "<serial>_<key>". Current, charging enabled and phase mode are
+# kept in RAM and may change every minute (the default_* and fail_safe_* numbers are flash:
+# never written). Without Modbus for 300 s the box falls back to its failsafe current.
+# Not verified on hardware yet.
+profile: cfos_powerbrain/charger
+version: 1
+match:
+  integration: cfos_powerbrain
+  requires: [charging_current_limit, charging_enabled]
+
+capabilities: [loadpoint]
+
+roles:
+  # The S0 meters' "<serial>_s0_<n>_power" are longer: the charger's own wins
+  charge_power: {key: power, domain: sensor, unit: W}
+  connected: {key: vehicle_connected, domain: binary_sensor}
+  charged_energy: {key: session_energy, unit: kWh, optional: true}
+  vehicle_soc: {key: vehicle_soc, unit: "%", optional: true}
+
+parameters:
+  max_power: {unit: W, default: 11000, min: 0}
+  vehicle_capacity_wh: {unit: Wh, min: 0}
+  charge_efficiency_pct: {unit: "%", default: 90, min: 50, max: 100}
+  phases: {unit: "", default: 3, min: 1, max: 3, advanced: true}
+  phase_mode: {unit: "", default: 0, min: 0, max: 3}
+  phase_up_w: {unit: W, default: 4500, min: 1500, max: 22000}
+  phase_down_w: {unit: W, default: 4000, min: 1000, max: 22000}
+  phase_up_delay_min: {unit: min, default: 5, min: 1, max: 60, advanced: true}
+  phase_down_delay_min: {unit: min, default: 2, min: 1, max: 60, advanced: true}
+  phase_min_interval_min: {unit: min, default: 15, min: 5, max: 240, advanced: true}
+  phase_max_switches_day: {unit: "", default: 12, min: 1, max: 100, advanced: true}
+  min_current_a: {unit: A, default: 6, min: 6, max: 32}
+  max_current_a: {unit: A, default: 16, min: 6, max: 32}
+
+charge_control:
+  charge:
+    - number: {key: charging_current_limit, value: "{{ current_a }}", write: if_differs}
+    - switch: {key: charging_enabled, state: "on", write: if_differs}
+  stop:
+    - switch: {key: charging_enabled, state: "off", write: if_differs}
+  release:
+    - number: {key: charging_current_limit, value: "{{ max_current_a }}", write: if_differs}
+    - switch: {key: charging_enabled, state: "on", write: if_differs}
+
+# Kept in RAM: switched by Sunflow as needed
+phase_switch:
+  one:
+    - select: {key: phase_mode, option: single_phase, write: if_differs}
+  three:
+    - select: {key: phase_mode, option: three_phase, write: if_differs}
