@@ -12,7 +12,7 @@ Tariff & forecast; all sensors with a unit per kWh are offered.
 | Nord Pool | nordpool (HACS) | attributes `raw_today` / `raw_tomorrow` | as configured in the integration |
 | aWATTar, smartENERGY, Energy-Charts, SMARD, ENTSO-E, Tibber, Energyforecast | EPEX Spot (HACS) | attribute `data` | sensor "Total Price": final price; "Market Price": net spot price |
 | ENTSO-E | ENTSO-e (HACS) | attribute `prices` | as configured in the integration |
-| Octopus (time-of-use tariffs) | Octopus Germany (HACS) | attribute `timeslots` | final price |
+| Octopus (dynamic and time-of-use tariffs) | Octopus Germany (HACS) | attribute `rates` (price per quarter hour), without `rates` the attribute `timeslots` | final price |
 | others | any price sensor | current value only | assumed constant |
 
 A pure spot price (Nord Pool Core, EPEX Spot "Market Price") lacks grid fees, levies, the

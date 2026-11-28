@@ -31,6 +31,7 @@ export default {
   "Leistungsstufen (Auswahl)": "Power levels (select)",
   "Stromstärke (Zahl)": "Current (number)",
   "Zeittarif": "Time-of-use tariff",
+  "Preis je Viertelstunde (Octopus)": "Price per quarter hour (Octopus)",
   "Börsenpreis (Nord Pool)": "Spot price (Nord Pool)",
   "Börsenpreis netto (Nord Pool)": "Spot price net (Nord Pool)",
   "dynamischer Preis (EPEX Spot)": "dynamic price (EPEX Spot)",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.80.21
+
+- Octopus Germany: dynamic tariffs (e.g. DynamicOctopus) are read from the attribute `rates` with the final price per quarter hour. Before, Sunflow took `timeslots`, which for these tariffs holds only the fixed part, and planned with a constant price far too low (#5).
+
 ## 0.80.20
 
 - The live PV deviation fades out after half an hour (half-life), after an hour only under a clear sky: in a broken sky a cloud has mostly passed by then (measured over 33 days). Before, a 20-minute cloud lowered the next hours far too much.

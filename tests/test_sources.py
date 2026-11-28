@@ -32,6 +32,36 @@ OCTOPUS_GO = {
 }
 
 
+# Octopus Germany with a dynamic tariff: timeslots hold only the fixed part, rates the final price
+OCTOPUS_DYNAMIC = {
+    "state": "0.3586",
+    "attributes": {
+        "unit_of_measurement": "€/kWh",
+        "timeslots": [{"name": "STANDARD", "rate": "15.7675", "activation_rules": [{"from_time": "00:00:00", "to_time": "00:00:00"}]}],
+        # Sorted by text, so with mixed offsets out of order; the 00:00+01:00 slot is 23:00 UTC
+        "rates": [
+            {"start": "2026-11-27T23:15:00+00:00", "end": "2026-11-27T23:30:00+00:00", "value_inc_vat": 0.3312},
+            {"start": "2026-11-28T00:00:00+01:00", "end": "2026-11-27T23:15:00+00:00", "value_inc_vat": 0.3401},
+            {"start": "2026-11-27T23:30:00+00:00", "end": "2026-11-27T23:45:00+00:00", "value_inc_vat": 0.3250},
+            {"start": "2026-11-27T23:30:00+00:00", "end": "2026-11-27T23:45:00+00:00", "value_inc_vat": 0.3250},
+        ],
+        "rates_count": 4,
+    },
+}
+
+
+def test_octopus_dynamic_tariff_reads_the_final_price_per_slot() -> None:
+    """rates win over the fixed part in timeslots; sorted by time, each slot once."""
+    start = datetime(2026, 11, 28, 0, 0, tzinfo=BERLIN)
+
+    points = price_series({"entity_id": "sensor.p", **OCTOPUS_DYNAMIC}, start, 1, BERLIN)
+
+    assert detect_price_adapter(OCTOPUS_DYNAMIC["attributes"]) == "octopus_rates"
+    assert [(p.start.astimezone(BERLIN).strftime("%H:%M"), p.price) for p in points] == [
+        ("00:00", 0.3401), ("00:15", 0.3312), ("00:30", 0.3250),
+    ]
+
+
 def test_timeslot_prices() -> None:
     """Time-of-use slots expand to 15 minute prices in local time."""
     start = datetime(2026, 10, 24, 22, 0, tzinfo=BERLIN)

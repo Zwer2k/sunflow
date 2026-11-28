@@ -12,7 +12,7 @@ Einstellungen → Tarif & Prognose; angeboten werden alle Sensoren mit einer Ein
 | Nord Pool | nordpool (HACS) | Attribute `raw_today` / `raw_tomorrow` | wie in der Integration eingestellt |
 | aWATTar, smartENERGY, Energy-Charts, SMARD, ENTSO-E, Tibber, Energyforecast | EPEX Spot (HACS) | Attribut `data` | Sensor „Total Price“: Endpreis; „Market Price“: Börsenpreis netto |
 | ENTSO-E | ENTSO-e (HACS) | Attribut `prices` | wie in der Integration eingestellt |
-| Octopus (Zeittarife) | Octopus Germany (HACS) | Attribut `timeslots` | Endpreis |
+| Octopus (dynamische Tarife und Zeittarife) | Octopus Germany (HACS) | Attribut `rates` (Preis je Viertelstunde), ohne `rates` das Attribut `timeslots` | Endpreis |
 | andere | beliebiger Preissensor | nur der aktuelle Wert | wird als konstant angenommen |
 
 Bei einem reinen Börsenpreis (Nord Pool Core, EPEX Spot „Market Price“) fehlen Netzentgelt,

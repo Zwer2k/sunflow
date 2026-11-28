@@ -175,6 +175,7 @@ const FORECAST_SOURCES = { solcast: "Solcast", forecast_solar: "Forecast.Solar" 
 
 const PRICE_ADAPTERS = {
   timeslots: t("Zeittarif"),
+  octopus_rates: t("Preis je Viertelstunde (Octopus)"),
   tibber: "Tibber",
   nordpool: t("Börsenpreis (Nord Pool)"),
   nordpool_core: t("Börsenpreis netto (Nord Pool)"),

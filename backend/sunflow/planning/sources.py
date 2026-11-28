@@ -72,6 +72,10 @@ def detect_price_adapter(attributes: dict[str, Any], platform: str | None = None
     """Pick how to read the price schedule: from a sensor's attributes or its integration's action."""
     if platform == "tibber":
         return "tibber"
+    # Octopus Germany lists the final price per slot in rates for every time-of-use product; its
+    # timeslots of a dynamic tariff hold only the fixed part
+    if isinstance(attributes.get("rates"), list) and attributes["rates"] and "value_inc_vat" in attributes["rates"][0]:
+        return "octopus_rates"
     if isinstance(attributes.get("timeslots"), list) and attributes["timeslots"]:
         return "timeslots"
     # The Nord Pool custom integration lists the prices; the core one answers an action
@@ -180,6 +184,17 @@ def epex_spot_prices(attributes: dict[str, Any]) -> list[PricePoint]:
         for item in attributes["data"]
         if item.get("price_per_kwh") is not None
     ]
+
+
+def octopus_rates(attributes: dict[str, Any]) -> list[PricePoint]:
+    """Read Octopus Germany's rates (value_inc_vat in €/kWh); unsorted and with mixed UTC offsets."""
+    points = {}
+    for item in attributes["rates"]:
+        if item.get("value_inc_vat") is None:
+            continue
+        start = datetime.fromisoformat(item["start"])
+        points[start] = PricePoint(start=start, end=datetime.fromisoformat(item["end"]), price=float(item["value_inc_vat"]))
+    return [points[start] for start in sorted(points)]
 
 
 def with_ends(starts: list[tuple[datetime, float]]) -> list[PricePoint]:
@@ -302,6 +317,8 @@ def price_series(
     match detect_price_adapter(attributes):
         case "timeslots":
             return timeslot_prices(attributes, start, hours, tz)
+        case "octopus_rates":
+            points = octopus_rates(attributes)
         case "nordpool":
             points = nordpool_prices(attributes, factor)
         case "epex_spot" | "epex_market":
