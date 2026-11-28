@@ -1534,8 +1534,10 @@ def build_inputs(
     return inputs
 
 
-# Weight of the live PV deviation halves over this time ahead
-NOWCAST_HALF_LIFE = timedelta(minutes=60)
+# Weight of the live PV deviation halves over this time ahead: a cloud in a broken sky has mostly
+# passed after half an hour, a clear sky stays longer (measured over 33 days of recorded slots)
+NOWCAST_HALF_LIFE = timedelta(minutes=30)
+NOWCAST_CLEAR_HALF_LIFE = timedelta(minutes=60)
 NOWCAST_RANGE = (0.2, 3.0)
 # From this much measured PV the measurement is clear enough to scale the forecast further
 # (a dull forecast on a bright day); no slot ahead gets more than is measured now
@@ -1579,9 +1581,10 @@ async def unused_plane_forecasts(
     return result
 
 
-def nowcast_weights(count: int) -> list[float]:
-    """How much the measured PV counts per slot ahead: fully now, half after an hour."""
-    return [0.5 ** ((t * SLOT) / NOWCAST_HALF_LIFE) for t in range(count)]
+def nowcast_weights(count: int, cloud: float | None = None) -> list[float]:
+    """How much the measured PV counts per slot ahead: fully now, half after the half-life of the sky now."""
+    half_life = NOWCAST_CLEAR_HALF_LIFE if cloud is not None and cloud < CLEAR_SKY_CLOUD else NOWCAST_HALF_LIFE
+    return [0.5 ** ((t * SLOT) / half_life) for t in range(count)]
 
 
 def day_nowcast(
@@ -1615,11 +1618,12 @@ def day_nowcast(
     return result, weights
 
 
-def nowcast(inputs: list[SlotInput], live_pv_w: float) -> list[SlotInput]:
+def nowcast(inputs: list[SlotInput], live_pv_w: float, cloud: float | None = None) -> list[SlotInput]:
     """Carry the current deviation of the measured PV over to the next hours.
 
     Clouds that are there now (or a sunnier hour than forecast) usually last a while:
-    the forecast is scaled by measured / forecast, fully now and fading out ahead.
+    the forecast is scaled by measured / forecast, fully now and fading out ahead, slower
+    under a clear sky (cloud: coverage now in %).
     """
     forecast = inputs[0].pv_w
     if max(forecast, live_pv_w) < NOWCAST_MIN_W:
@@ -1627,7 +1631,7 @@ def nowcast(inputs: list[SlotInput], live_pv_w: float) -> list[SlotInput]:
     upper = NOWCAST_CLEAR_MAX if live_pv_w >= NOWCAST_CLEAR_W else NOWCAST_RANGE[1]
     ratio = min(max((live_pv_w + 50) / (forecast + 50), NOWCAST_RANGE[0]), upper)
     result = []
-    for slot, weight in zip(inputs, nowcast_weights(len(inputs)), strict=True):
+    for slot, weight in zip(inputs, nowcast_weights(len(inputs), cloud), strict=True):
         factor = 1 + (ratio - 1) * weight
         ceiling = max(live_pv_w, slot.pv_w) if ratio > 1 else math.inf
         pv = min(slot.pv_w * factor, ceiling)
@@ -1937,8 +1941,9 @@ async def compute_plan(
     if pv_recent is not None:
         inputs, measured = day_nowcast(inputs, raw_pv, pv_recent, tz)
     if live_pv_w is not None and inputs:
-        inputs = nowcast(inputs, live_pv_w)
-        measured = [max(a, b) for a, b in zip(measured, nowcast_weights(len(inputs)), strict=True)]
+        cloud_now = clouds[0] if clouds else None
+        inputs = nowcast(inputs, live_pv_w, cloud_now)
+        measured = [max(a, b) for a, b in zip(measured, nowcast_weights(len(inputs), cloud_now), strict=True)]
     if live_load_w is not None and inputs:
         inputs = load_nowcast(inputs, live_load_w)
     if (risk := PV_RISK[config.optimizer.pv_risk]) > 0:

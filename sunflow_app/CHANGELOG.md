@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.80.20
+
+- The live PV deviation fades out after half an hour (half-life), after an hour only under a clear sky: in a broken sky a cloud has mostly passed by then (measured over 33 days). Before, a 20-minute cloud lowered the next hours far too much.
+- The live PV is the mean of the last ten minutes instead of five, and counts only from five minutes after a start on.
+
 ## 0.80.19
 
 - New profile `solaredge_modbus_multi/storedge` for SolarEdge StorEdge / Home Hub via the HACS integration solaredge_modbus_multi (WillCodeForCats): PV, battery, meter and battery remote control. The command timeout falls back to self consumption; Sunflow renews the command every 10 minutes. Not verified on hardware yet (#4).

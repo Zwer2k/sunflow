@@ -196,7 +196,9 @@ zum günstigsten Zeitpunkt ein (siehe [Sunflow-Integration](integration.md)).
   der Rohprognose: Sonst hebt eine klare Woche im Herbst ein Süddach, aber kein Norddach, und das
   Norddach sähe verschmutzt aus. Verglichen wird immer nur mit den Flächen, die an allen
   betrachteten Tagen gemessen wurden: Eine Fläche, die später dazukommt, ist kein Sprung der anderen.
-- **Der Tag bisher**: Die gemessene PV der letzten Minuten setzt die nächste Stunde fort. Wie die
+- **Der Tag bisher**: Die gemessene PV der letzten zehn Minuten setzt sich in die nächsten Stunden
+  fort, nach einer halben Stunde noch halb, bei klarem Himmel nach einer Stunde: Eine Wolke bei
+  durchbrochenem Himmel ist meist schnell vorbei. Wie die
   letzten drei Stunden gegenüber dem ausfielen, was Sunflow für genau diese Stunden erwartet hat,
   trägt den Rest des Tages, nach drei Stunden noch halb: Ein klarer Tag, der über dem Gelernten
   liegt, hebt auch den Nachmittag, ein trüber senkt ihn. Ein Dach, das morgens wie gelernt im

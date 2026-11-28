@@ -119,6 +119,10 @@ RECENT_SAMPLES = 5
 # Fewer samples (just after a start) say nothing about what the battery does
 RECENT_ACTION_MIN_SAMPLES = 3
 NOWCAST_MIN_SAMPLES = 2
+# PV is averaged over more minutes than the rest: a single gap in the clouds should not move the
+# next hours; and only from a few minutes on, a start right in such a gap would count it fully
+PV_RECENT_SAMPLES = 10
+PV_NOWCAST_MIN_SAMPLES = 5
 # How the day went so far: measured against raw forecast PV over this time
 PV_RECENT = timedelta(hours=3)
 
@@ -422,6 +426,7 @@ class ShadowRunner:
         self._replan_retry_at = datetime.min.replace(tzinfo=UTC)
         # The last minutes, for the nowcast and to notice deviations from the plan
         self._recent: deque[Sample] = deque(maxlen=RECENT_SAMPLES)
+        self._recent_pv: deque[float] = deque(maxlen=PV_RECENT_SAMPLES)
         self._replan_failures = 0
 
     async def run(self) -> None:
@@ -470,6 +475,8 @@ class ShadowRunner:
             if (sample := await take_sample(self._client, self._store, self._library, self.snapshots)) is not None:
                 self._recorder.samples.append(sample)
                 self._recent.append(sample)
+                if sample.pv_w is not None:
+                    self._recent_pv.append(sample.pv_w)
                 self.last_sample = sample
                 self.last_sample_at = datetime.now(UTC)
                 if self.counters is not None and sample.strings:
@@ -547,9 +554,8 @@ class ShadowRunner:
 
     def live_pv(self) -> float | None:
         """Mean PV of the last minutes."""
-        values = [s.pv_w for s in self._recent if s.pv_w is not None]
-        # A single reading after a restart is chance (a passing cloud)
-        return sum(values) / len(values) if len(values) >= NOWCAST_MIN_SAMPLES else None
+        values = list(self._recent_pv)
+        return sum(values) / len(values) if len(values) >= PV_NOWCAST_MIN_SAMPLES else None
 
     def live_load(self) -> float | None:
         """Mean consumption of the last minutes without the controllable consumers (as forecast)."""

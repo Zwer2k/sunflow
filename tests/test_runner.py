@@ -67,8 +67,17 @@ async def test_replan_pause_grows_up_to_the_maximum(tmp_path: Path, monkeypatch:
     assert pauses == [5, 10, 20, 30, 30]
 
 
-def test_nowcast_carries_the_live_deviation_ahead() -> None:
-    """Twice the forecast PV now: the next slots get more, fading out over the hours."""
+@pytest.mark.parametrize(
+    ("cloud", "half_life_slots"),
+    [
+        pytest.param(10.0, 4, id="clear-sky-an-hour"),
+        # A cloud in a broken sky has mostly passed after half an hour
+        pytest.param(70.0, 2, id="broken-sky-half-an-hour"),
+        pytest.param(None, 2, id="no-weather"),
+    ],
+)
+def test_nowcast_carries_the_live_deviation_ahead(cloud: float | None, half_life_slots: int) -> None:
+    """Twice the forecast PV now: the next slots get more, fading out faster unless the sky is clear."""
     from datetime import UTC, datetime, timedelta
 
     from sunflow.planning.optimizer import SlotInput
@@ -77,11 +86,10 @@ def test_nowcast_carries_the_live_deviation_ahead() -> None:
     start = datetime(2026, 10, 30, 11, tzinfo=UTC)
     inputs = [SlotInput(start=start + timedelta(minutes=15 * t), pv_w=2000, load_w=500, price=0.3, feed_in=0.08) for t in range(16)]
 
-    result = nowcast(inputs, 4000)
+    result = nowcast(inputs, 4000, cloud)
 
     assert result[0].pv_w == pytest.approx(2000 * 4050 / 2050)
-    # One hour ahead half of the deviation is left
-    assert result[4].pv_w == pytest.approx(2000 * (1 + (4050 / 2050 - 1) / 2))
+    assert result[half_life_slots].pv_w == pytest.approx(2000 * (1 + (4050 / 2050 - 1) / 2))
     assert result[0].pv_w > result[4].pv_w > result[15].pv_w > 2000
     # At night nothing changes
     assert nowcast([SlotInput(start=start, pv_w=0, load_w=500, price=0.3, feed_in=0.08)], 20)[0].pv_w == 0
@@ -138,6 +146,26 @@ def test_live_load_leaves_out_the_controllable_consumers() -> None:
     runner._recent = deque([Sample(soc_wh=None, battery_w=0, grid_w=0, pv_w=0, load_w=3400, loadpoint_w=2800)] * 4)
 
     assert runner.live_load() == pytest.approx(600)
+
+
+@pytest.mark.parametrize(
+    ("pv", "expected"),
+    [
+        # The mean of the last ten minutes: a short gap in the clouds weighs less
+        pytest.param([3000] * 8 + [1000] * 4, (6 * 3000 + 4 * 1000) / 10, id="ten-minute-mean"),
+        # Just after a start a few minutes are needed, a single gap in the clouds is chance
+        pytest.param([1000] * 4, None, id="too-few-after-a-start"),
+    ],
+)
+def test_live_pv_is_the_mean_of_the_last_minutes(pv: list[float], expected: float | None) -> None:
+    """The nowcast starts from the PV of the last ten minutes, not of a single moment."""
+    from collections import deque
+
+    runner = ShadowRunner.__new__(ShadowRunner)
+    runner._recent_pv = deque(maxlen=runner_module.PV_RECENT_SAMPLES)
+    runner._recent_pv.extend(pv)
+
+    assert runner.live_pv() == expected
 
 
 def _runner_with_plan(tmp_path: Path, pv: float, load: float = 500, soc: float = 10000) -> ShadowRunner:

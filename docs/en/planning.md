@@ -191,7 +191,9 @@ action `sunflow_ems.plan_load` (see [Sunflow integration](integration.md)).
   of the raw forecast: otherwise a clear week in autumn lifts a south roof but not a north roof,
   and the north roof would look soiled. A plane is only compared with the planes measured on all
   the days looked at: a plane that joins later is no step of the others.
-- **The day so far**: the PV measured in the last minutes carries on into the next hour. How the
+- **The day so far**: the PV measured in the last ten minutes carries on into the next hours, half
+  of it after half an hour, after an hour under a clear sky: a cloud in a broken sky has mostly
+  passed soon. How the
   last three hours went against what Sunflow expected for exactly those hours carries the rest of
   the day, half of it after three hours: a clear day above what was learned lifts the afternoon
   too, a dull one lowers it. A roof shaded in the morning as learned does not lower the afternoon.
