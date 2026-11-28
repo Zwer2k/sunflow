@@ -1,5 +1,6 @@
 # SolarEdge StorEdge / Home Hub with battery via the solaredge_modbus_multi custom integration
-# (HACS, WillCodeForCats). Needs "Storage control" enabled in the integration's options.
+# (HACS, WillCodeForCats). Needs "Detect batteries" (off by default) and "Storage control"
+# enabled in the integration's options; meters are detected by default.
 # Battery control by storage remote control as in solaredge_modbus/storedge; the integration
 # names keys and options differently. Battery (B1, B2, ...) and meter (M1, ...) are sub-devices
 # of the inverter, their keys carry the number: "[0-9]" keeps the inverter's own "<serial>_dc_power"
